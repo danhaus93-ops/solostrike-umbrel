@@ -1,0 +1,30 @@
+export function fmtHr(hps) {
+  if(!hps)return'0 H/s';
+  const u=['H/s','KH/s','MH/s','GH/s','TH/s','PH/s','EH/s'];
+  let v=hps,i=0;while(v>=1000&&i<u.length-1){v/=1000;i++;}
+  return`${v<10?v.toFixed(2):v<100?v.toFixed(1):v.toFixed(0)} ${u[i]}`;
+}
+export function fmtDiff(d){
+  if(!d)return'0';
+  if(d>=1e12)return`${(d/1e12).toFixed(2)}T`;
+  if(d>=1e9)return`${(d/1e9).toFixed(2)}B`;
+  if(d>=1e6)return`${(d/1e6).toFixed(2)}M`;
+  return d.toFixed(0);
+}
+export function fmtNum(n){return new Intl.NumberFormat().format(Math.round(n||0));}
+export function fmtUptime(ts){
+  const s=Math.floor((Date.now()-ts)/1000),d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);
+  return d>0?`${d}d ${h}h ${m}m`:h>0?`${h}h ${m}m`:`${m}m`;
+}
+export function fmtOdds(days){
+  if(!days)return'—';
+  if(days<1)return`${(days*24).toFixed(1)} hrs`;
+  if(days<30)return`${days.toFixed(1)} days`;
+  if(days<365)return`${(days/30).toFixed(1)} mo`;
+  return`${(days/365).toFixed(1)} yrs`;
+}
+export function timeAgo(ts){
+  const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;
+  if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;
+}
