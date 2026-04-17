@@ -2,27 +2,17 @@ version: "3.8"
 
 services:
 
-  # ── ckpool: Solo mining backend ──────────────────────────────────────────────
-    ckpool:
+  ckpool:
     image: ghcr.io/getumbrel/docker-ckpool-solo:latest
     container_name: solostrike_ckpool
     restart: on-failure
-    stop_grace_period: 1m
     command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
     volumes:
       - ${APP_DATA_DIR}/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/ckpool/logs:/var/log/ckpool
     networks:
       - default
-      - bitcoin_network
-    environment:
-      - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP:-bitcoin_bitcoind_1}
-      - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT:-8332}
-      - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER:-umbrel}
-      - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS:-moneyprintergobrrr}
 
-
-  # ── API: Log parser + REST + WebSocket ───────────────────────────────────────
   api:
     image: ghcr.io/danhaus93-ops/solostrike-api:latest
     container_name: solostrike_api
@@ -38,15 +28,13 @@ services:
       - CKPOOL_LOG_DIR=/var/log/ckpool
       - CKPOOL_CONFIG_DIR=/etc/ckpool
       - CONFIG_DIR=/app/config
-      - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP:-bitcoin_bitcoind_1}
-      - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT:-8332}
-      - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER:-umbrel}
-      - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS:-moneyprintergobrrr}
+      - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP}
+      - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT}
+      - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
+      - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
     networks:
       - default
-      - bitcoin_network
 
-  # ── UI: React dashboard served by nginx ─────────────────────────────────────
   ui:
     image: ghcr.io/danhaus93-ops/solostrike-ui:latest
     container_name: solostrike_ui
@@ -61,6 +49,3 @@ services:
 networks:
   default:
     name: solostrike_default
-  bitcoin_network:
-    external: true
-    name: bitcoin_default
