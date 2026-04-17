@@ -3,11 +3,12 @@ version: "3.8"
 services:
 
   # ── ckpool: Solo mining backend ──────────────────────────────────────────────
-  ckpool:
-    image: ghcr.io/danhaus93-ops/solostrike-ckpool:latest
+    ckpool:
+    image: ghcr.io/getumbrel/docker-ckpool-solo:latest
     container_name: solostrike_ckpool
     restart: on-failure
     stop_grace_period: 1m
+    command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
     volumes:
       - ${APP_DATA_DIR}/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/ckpool/logs:/var/log/ckpool
@@ -19,6 +20,7 @@ services:
       - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT:-8332}
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER:-umbrel}
       - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS:-moneyprintergobrrr}
+
 
   # ── API: Log parser + REST + WebSocket ───────────────────────────────────────
   api:
