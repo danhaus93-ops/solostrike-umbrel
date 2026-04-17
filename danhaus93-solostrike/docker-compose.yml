@@ -1,7 +1,7 @@
 services:
 
   ckpool:
-    image: ghcr.io/getumbrel/docker-ckpool-solo:latest
+    image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a
     container_name: solostrike_ckpool
     restart: on-failure
     command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
