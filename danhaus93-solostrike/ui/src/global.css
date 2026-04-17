@@ -1,0 +1,19 @@
+:root {
+  --bg-void:#060708;--bg-deep:#0b0d0f;--bg-surface:#101316;--bg-raised:#161b20;--bg-elevated:#1c2129;
+  --amber:#F5A623;--amber-hot:#FF7A00;--amber-dim:#6B4710;
+  --cyan:#00FFD1;--red:#FF3B3B;--green:#39FF6A;
+  --text-1:#EAD9C0;--text-2:#6B6050;--text-3:#302C27;
+  --border:rgba(245,166,35,0.1);--border-hot:rgba(245,166,35,0.35);
+  --fd:'Chakra Petch',sans-serif;--fm:'JetBrains Mono',monospace;
+  --glow-a:0 0 24px rgba(245,166,35,0.25);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
+  background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%)}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--bg-deep)}::-webkit-scrollbar-thumb{background:var(--amber-dim)}
+::selection{background:rgba(245,166,35,0.2)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.fade-in{animation:slideUp .35s ease both}
