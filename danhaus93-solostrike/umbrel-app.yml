@@ -2,6 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.png
 version: "1.0.0"
 tagline: Solo Bitcoin mining pool with Stratum V2 bridge
 description: >-
