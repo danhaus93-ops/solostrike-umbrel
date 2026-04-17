@@ -17,8 +17,6 @@ dependencies:
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
-gallery:
-  - 1.jpg
 path: ""
 defaultUsername: ""
 defaultPassword: ""
