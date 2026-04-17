@@ -6,25 +6,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-ckpool:
-    name: Build ckpool
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: ./danhaus93-solostrike/ckpool
-          push: true
-          tags: ghcr.io/danhaus93-ops/solostrike-ckpool:latest
-
   build-api:
     name: Build API
     runs-on: ubuntu-latest
