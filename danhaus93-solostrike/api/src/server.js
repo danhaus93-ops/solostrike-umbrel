@@ -26,6 +26,17 @@ const RPC_PORT = process.env.BITCOIN_RPC_PORT || '8332';
 const RPC_USER = process.env.BITCOIN_RPC_USER || 'umbrel';
 const RPC_PASS = process.env.BITCOIN_RPC_PASS || 'solostrikexxxxxxxx';
 
+// New: read pool tuning from env vars (like GoBrrr does)
+const POOL_SIGNATURE   = process.env.POOL_SIGNATURE   || 'SoloStrike/';
+const START_DIFFICULTY = parseInt(process.env.START_DIFFICULTY || '10000', 10);
+const MIN_DIFFICULTY   = parseInt(process.env.MIN_DIFFICULTY   || '1',     10);
+const MAX_DIFFICULTY   = parseInt(process.env.MAX_DIFFICULTY   || '0',     10);
+const BLOCKPOLL        = parseInt(process.env.BLOCKPOLL        || '50',    10);
+const UPDATE_INTERVAL  = parseInt(process.env.UPDATE_INTERVAL  || '20',    10);
+const STRATUM_PORT     = parseInt(process.env.STRATUM_PORT     || '3333',  10);
+const ZMQ_HASHBLOCK    = process.env.BITCOIN_ZMQ_HASHBLOCK     || null;
+const MEMPOOL_API_URL  = process.env.MEMPOOL_API_URL           || null;
+
 async function rpc(method, params = []) {
   const auth = Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64');
   try {
@@ -47,6 +58,7 @@ let state = {
   blocks: [],
   shares: { accepted: 0, rejected: 0, stale: 0 },
   network: { height: 0, difficulty: 0, hashrate: 0 },
+  mempool: { feeRate: null, size: null, unconfirmedCount: null },
   uptime: Date.now(),
   status: 'starting',
   bestshare: 0,
@@ -64,6 +76,7 @@ async function saveCfg() {
   await fs.ensureDir(CONFIG_DIR);
   await fs.writeJson(CONFIG_FILE, cfg, { spaces: 2 });
 }
+
 async function writeCkpoolConf(address) {
   const conf = {
     btcd: [{
@@ -73,22 +86,25 @@ async function writeCkpoolConf(address) {
       notify: true,
     }],
     btcaddress: address,
-    btcsig: 'SoloStrike/',
-    blockpoll: 100,
+    btcsig: POOL_SIGNATURE,
+    blockpoll: BLOCKPOLL,
     nonce1length: 4,
     nonce2length: 8,
-    update_interval: 30,
+    update_interval: UPDATE_INTERVAL,
     version_mask: '1fffe000',
     logdir: '/var/log/ckpool',
-    serverurl: ['0.0.0.0:3333'],
-    mindiff: 1,
-    startdiff: 42,
-    maxdiff: 0,
+    serverurl: [`0.0.0.0:${STRATUM_PORT}`],
+    mindiff: MIN_DIFFICULTY,
+    startdiff: START_DIFFICULTY,
+    maxdiff: MAX_DIFFICULTY,
     solo: true,
   };
+  if (ZMQ_HASHBLOCK) {
+    conf.zmqblock = ZMQ_HASHBLOCK;
+  }
   await fs.ensureDir(CKPOOL_CFG_DIR);
   await fs.writeJson(CKPOOL_CONF, conf, { spaces: 2 });
-  console.log(`[API] ckpool config written with address ${address}`);
+  console.log(`[API] ckpool config written (startdiff=${START_DIFFICULTY}, mindiff=${MIN_DIFFICULTY}, zmq=${ZMQ_HASHBLOCK ? 'on' : 'off'}) address=${address}`);
 }
 
 const RE_BLOCK = /BLOCK FOUND.*height[:\s]+(\d+).*hash[:\s]+([a-f0-9]+)/i;
@@ -135,6 +151,27 @@ async function pollNetwork() {
 }
 setInterval(pollNetwork, 15000);
 
+// New: poll Umbrel mempool app for fee + size (if available)
+async function pollMempool() {
+  if (!MEMPOOL_API_URL) return;
+  try {
+    const [feesRes, mempoolRes] = await Promise.all([
+      fetch(`${MEMPOOL_API_URL}/v1/fees/recommended`, { timeout: 4000 }),
+      fetch(`${MEMPOOL_API_URL}/mempool`, { timeout: 4000 }),
+    ]);
+    if (feesRes.ok) {
+      const fees = await feesRes.json();
+      state.mempool.feeRate = fees.fastestFee || null;
+    }
+    if (mempoolRes.ok) {
+      const mp = await mempoolRes.json();
+      state.mempool.size = mp.vsize || null;
+      state.mempool.unconfirmedCount = mp.count || null;
+    }
+  } catch {}
+}
+setInterval(pollMempool, 30000);
+
 function broadcast(msg) {
   const data = JSON.stringify(msg);
   wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(data); });
@@ -149,8 +186,30 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'CONFIG', data: cfg }));
 });
 
+// REST endpoints
 app.get('/api/state', (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfg));
+
+// Public API endpoints (like GoBrrr added in v1.02)
+app.get('/api/public/summary', (req, res) => {
+  const s = transformState(state);
+  res.json({
+    poolHashrate: s.hashrate?.current || 0,
+    networkHashrate: s.network?.hashrate || 0,
+    workers: s.totalWorkers,
+    accepted: s.shares?.accepted || 0,
+    rejected: s.shares?.rejected || 0,
+    bestshare: s.bestshare,
+    blocksFound: (s.blocks || []).length,
+    odds: s.odds,
+  });
+});
+app.get('/api/public/workers', (req, res) => {
+  const s = transformState(state);
+  res.json((s.workers || []).map(w => ({
+    name: w.name, hashrate: w.hashrate, status: w.status, bestshare: w.bestshare,
+  })));
+});
 
 app.post('/api/setup', async (req, res) => {
   const { payoutAddress, poolName } = req.body;
@@ -182,6 +241,7 @@ async function boot() {
   await loadCfg();
   if (cfg.payoutAddress) await writeCkpoolConf(cfg.payoutAddress);
   pollNetwork();
+  pollMempool();
   watchLogs();
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
