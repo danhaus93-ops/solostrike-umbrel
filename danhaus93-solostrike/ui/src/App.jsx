@@ -439,7 +439,39 @@ export default function App() {
 
   const openSettings = async () => {
     try { const c=await getConfig(); setSettingsCfg(c); } catch {}
-    setShowSettings(true);
-  };
+    setShowSettings(  if (state.status==='loading') return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.2em',color:'var(--text-2)',textTransform:'uppercase',animation:'pulse 1.5s ease-in-out infinite'}}>
+      Connecting to pool…
+    </div>
+  );
 
-  if (state​​​​​​​​​​​​​​​​
+  if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
+
+  return (
+    <>
+      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column'}}>
+        <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings}/>
+        <Ticker state={state}/>
+        <main style={{flex:1,padding:'1.25rem',maxWidth:1400,margin:'0 auto',width:'100%'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.875rem'}}>
+            <div style={{gridColumn:'span 2'}}><HashrateChart history={state.hashrate?.history} current={state.hashrate?.current}/></div>
+            <div style={{gridColumn:'span 2'}}><WorkerGrid workers={state.workers}/></div>
+            <NetworkStats network={state.network}/>
+            <OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/>
+            <ShareStats shares={state.shares} hashrate={state.hashrate?.current}/>
+            <BestShareLeaderboard workers={state.workers} poolBest={state.bestshare}/>
+            <BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/>
+            <MempoolPanel mempool={state.mempool}/>
+          </div>
+        </main>
+        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1.5rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.58rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase'}}>
+          <span>SoloStrike v1.1 — ckpool-solo</span>
+          <span>Stratum · Port <span style={{color:'var(--cyan)'}}>3333</span></span>
+        </footer>
+      </div>
+      {showSettings&&<SettingsModal onClose={()=>setShowSettings(false)} saveConfig={saveConfig} currentConfig={settingsCfg}/>}
+      {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
+    </>
+  );
+}
+
