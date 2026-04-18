@@ -1,7 +1,6 @@
 version: "3.7"
 
 services:
-
   app_proxy:
     environment:
       APP_HOST: danhaus93-solostrike_ui_1
@@ -11,6 +10,8 @@ services:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a
     restart: on-failure
     command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
+    ports:
+      - "3333:3333"
     volumes:
       - ${APP_DATA_DIR}/data/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/data/ckpool/logs:/var/log/ckpool
