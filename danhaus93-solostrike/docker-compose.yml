@@ -9,16 +9,30 @@ services:
   ckpool:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a
     restart: on-failure
+    stop_grace_period: 1m
     command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
     ports:
       - "3333:3333"
     volumes:
       - ${APP_DATA_DIR}/data/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/data/ckpool/logs:/var/log/ckpool
+    environment:
+      - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP}
+      - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT}
+      - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
+      - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
+      - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
+      - POOL_SIGNATURE=SoloStrike/
+      - START_DIFFICULTY=10000
+      - MIN_DIFFICULTY=1
+      - MAX_DIFFICULTY=0
+      - BLOCKPOLL=50
+      - UPDATE_INTERVAL=20
 
   api:
     image: ghcr.io/danhaus93-ops/solostrike-api:latest
     restart: on-failure
+    stop_grace_period: 30s
     depends_on:
       - ckpool
     volumes:
@@ -34,6 +48,15 @@ services:
       - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT}
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
       - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
+      - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
+      - MEMPOOL_API_URL=http://mempool_app_proxy_1:3006/api
+      - POOL_SIGNATURE=SoloStrike/
+      - START_DIFFICULTY=10000
+      - MIN_DIFFICULTY=1
+      - MAX_DIFFICULTY=0
+      - BLOCKPOLL=50
+      - UPDATE_INTERVAL=20
+      - STRATUM_PORT=3333
 
   ui:
     image: ghcr.io/danhaus93-ops/solostrike-ui:latest
