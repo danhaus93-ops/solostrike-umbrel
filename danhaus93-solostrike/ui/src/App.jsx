@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
-import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, timeAgo } from './utils.js';
+import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, timeAgo, fmtPct, fmtDurationMs, fmtSats, blockTimeAgo } from './utils.js';
 
 // ── Shared style tokens ───────────────────────────────────────────────────────
 const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'1rem' };
 const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.5rem 0.75rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.35rem' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+
+const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
 // ── Header ────────────────────────────────────────────────────────────────────
 function Header({ uptime, connected, status, onSettings }) {
@@ -38,7 +40,18 @@ function Header({ uptime, connected, status, onSettings }) {
 // ── Ticker ────────────────────────────────────────────────────────────────────
 function Ticker({ state }) {
   const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
-  const items = [`WORKERS ${online}/${(state.workers||[]).length}`, `HEIGHT ${fmtNum(state.network?.height)}`, `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`, `NET HASHRATE ${fmtHr(state.network?.hashrate)}`, `ACCEPTED ${fmtNum(state.shares?.accepted)}`, `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`, `BEST ${fmtNum(Math.round(state.bestshare||0))}`];
+  const luckVal = state.luck?.luck;
+  const items = [
+    `WORKERS ${online}/${(state.workers||[]).length}`,
+    `HEIGHT ${fmtNum(state.network?.height)}`,
+    `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
+    `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
+    `ACCEPTED ${fmtNum(state.shares?.accepted)}`,
+    `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
+    `BEST ${fmtNum(Math.round(state.bestshare||0))}`,
+    luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
+    state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
+  ].filter(Boolean);
   const t = items.join('   ·   ');
   return (
     <div style={{ background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
@@ -76,7 +89,7 @@ function HashrateChart({ history, current }) {
   );
 }
 
-// ── Worker grid ───────────────────────────────────────────────────────────────
+// ── Worker grid (now w/ miner-type icon, per-worker difficulty, traffic-light health) ─
 function WorkerGrid({ workers }) {
   const sorted = [...(workers||[])].sort((a,b)=>(a.status==='offline'?1:-1)-(b.status==='offline'?1:-1)||(b.hashrate||0)-(a.hashrate||0));
   const online = sorted.filter(w=>w.status!=='offline').length;
@@ -97,13 +110,22 @@ function WorkerGrid({ workers }) {
           {sorted.map(w=>{
             const on=w.status!=='offline';
             const total=(w.shares||0)+(w.rejected||0)||1;
+            const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
+            const icon = w.minerIcon || '▪';
             return(
               <div key={w.name} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45}}>
-                <div style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:on?'var(--green)':'var(--text-3)',boxShadow:on?'0 0 6px var(--green)':'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+                <div title={w.health||'unknown'} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 6px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+                <span title={w.minerType||'Unknown'} style={{fontSize:13,color:on?'var(--cyan)':'var(--text-3)',width:16,textAlign:'center',flexShrink:0}}>{icon}</span>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{w.name}</div>
-                  <div style={{height:2,background:'var(--bg-deep)',marginTop:4,borderRadius:1,overflow:'hidden'}}>
-                    <div style={{height:'100%',width:`${(w.shares/total)*100}%`,background:'var(--green)',borderRadius:1}}/>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {w.name}
+                    {w.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-3)',marginLeft:6,textTransform:'uppercase'}}>{w.minerType}</span>}
+                  </div>
+                  <div style={{display:'flex',gap:8,alignItems:'center',marginTop:4}}>
+                    <div style={{flex:1,height:2,background:'var(--bg-deep)',borderRadius:1,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${(w.shares/total)*100}%`,background:'var(--green)',borderRadius:1}}/>
+                    </div>
+                    {w.diff>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',whiteSpace:'nowrap'}}>diff {fmtDiff(w.diff)}</span>}
                   </div>
                 </div>
                 <span style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)'}}>
@@ -173,7 +195,96 @@ function OddsDisplay({ odds, hashrate, netHashrate }) {
   );
 }
 
-// ── Share stats (now with shares-per-minute) ──────────────────────────────────
+// ── Luck gauge (NEW) ──────────────────────────────────────────────────────────
+function LuckGauge({ luck }) {
+  const { progress=0, blocksExpected=0, blocksFound=0, luck: luckVal=null } = luck||{};
+  const visualPct = Math.min(300, progress);
+  const w = Math.min(100, visualPct/3);
+  const barColor = luckVal==null
+    ? 'var(--amber)'
+    : (luckVal>=100 ? 'var(--green)' : luckVal>=50 ? 'var(--amber)' : 'var(--red)');
+  return (
+    <div style={card} className="fade-in">
+      <div style={cardTitle}>▸ Luck — Since Pool Start</div>
+      <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
+        <div style={{textAlign:'center',padding:'0.6rem 0'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:barColor,textShadow:`0 0 20px ${barColor}50`,lineHeight:1}}>
+            {luckVal==null ? '—' : fmtPct(luckVal, 1)}
+          </div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:4}}>
+            {luckVal==null ? 'warming up' : luckVal>=100 ? 'lucky' : 'unlucky so far'}
+          </div>
+        </div>
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>
+            <span>Progress to next block</span>
+            <span style={{color:'var(--amber)'}}>{fmtPct(progress,2)}</span>
+          </div>
+          <div style={{height:4,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${w}%`,background:barColor,boxShadow:`0 0 8px ${barColor}80`,transition:'width 0.6s ease'}}/>
+          </div>
+        </div>
+        <div style={{...statRow,marginBottom:0}}>
+          <span style={label}>Blocks Expected</span>
+          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{blocksExpected.toFixed(3)}</span>
+        </div>
+        <div style={{...statRow,marginBottom:0}}>
+          <span style={label}>Blocks Found</span>
+          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:blocksFound>0?'var(--green)':'var(--text-1)'}}>{blocksFound}</span>
+        </div>
+        <p style={{fontSize:'0.55rem',color:'var(--text-3)',fontFamily:'var(--fm)',textAlign:'center',lineHeight:1.5,marginTop:'0.25rem'}}>
+          luck compares found vs.<br/>statistically expected blocks
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Retarget countdown (NEW) ──────────────────────────────────────────────────
+function RetargetPanel({ retarget }) {
+  if (!retarget) return null;
+  const { progressPercent=0, difficultyChange=0, remainingBlocks=0, remainingTime=0, nextRetargetHeight } = retarget;
+  const changeColor = difficultyChange>=0 ? 'var(--red)' : 'var(--green)';
+  const pct = Math.max(0, Math.min(100, progressPercent));
+  return (
+    <div style={card} className="fade-in">
+      <div style={cardTitle}>▸ Difficulty Retarget</div>
+      <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
+        <div style={{textAlign:'center',padding:'0.25rem 0'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'1.6rem',fontWeight:700,color:changeColor,textShadow:`0 0 14px ${changeColor}50`,lineHeight:1}}>
+            {difficultyChange>=0?'+':''}{difficultyChange.toFixed(2)}%
+          </div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:4}}>estimated change</div>
+        </div>
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>
+            <span>Epoch progress</span>
+            <span style={{color:'var(--cyan)'}}>{pct.toFixed(1)}%</span>
+          </div>
+          <div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${pct}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)',transition:'width 0.6s ease'}}/>
+          </div>
+        </div>
+        <div style={{...statRow,marginBottom:0}}>
+          <span style={label}>Remaining Blocks</span>
+          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(remainingBlocks)}</span>
+        </div>
+        <div style={{...statRow,marginBottom:0}}>
+          <span style={label}>ETA</span>
+          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{fmtDurationMs(remainingTime)}</span>
+        </div>
+        {nextRetargetHeight && (
+          <div style={{...statRow,marginBottom:0}}>
+            <span style={label}>Next Retarget Height</span>
+            <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--cyan)'}}>{fmtNum(nextRetargetHeight)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Share stats (w/ shares-per-minute + CSV export) ───────────────────────────
 function ShareStats({ shares, hashrate }) {
   const { accepted=0, rejected=0, stale=0 } = shares||{};
   const total=accepted+rejected+stale||1;
@@ -181,7 +292,10 @@ function ShareStats({ shares, hashrate }) {
   const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
   return (
     <div style={card} className="fade-in">
-      <div style={cardTitle}>▸ Share Stats</div>
+      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span>▸ Share Stats</span>
+        <a href="/api/export/workers.csv" download title="Export workers as CSV" style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>
+      </div>
       <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.75rem'}}>
         {[['✓','Accepted',fmtNum(accepted),'var(--green)'],['✕','Rejected',fmtNum(rejected),'var(--red)'],['⏱','Stale',fmtNum(stale),'var(--amber)']].map(([icon,lbl,val,c])=>(
           <div key={lbl} style={{flex:1,background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem',display:'flex',flexDirection:'column',alignItems:'center',gap:'0.2rem'}}>
@@ -274,11 +388,14 @@ function MempoolPanel({ mempool }) {
   );
 }
 
-// ── Block feed ────────────────────────────────────────────────────────────────
+// ── Block feed (our blocks) ───────────────────────────────────────────────────
 function BlockFeed({ blocks, blockAlert }) {
   return (
     <div style={card} className="fade-in">
-      <div style={cardTitle}>▸ Blocks Found — {(blocks||[]).length} total</div>
+      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span>▸ Blocks Found — {(blocks||[]).length} total</span>
+        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>}
+      </div>
       {!(blocks||[]).length?(
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>
           No blocks found yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem'}}>Keep mining ⛏</span>
@@ -298,6 +415,39 @@ function BlockFeed({ blocks, blockAlert }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Recent network blocks panel w/ solo-winner highlight (NEW) ────────────────
+function RecentBlocksPanel({ netBlocks }) {
+  const list = netBlocks || [];
+  if (!list.length) return null;
+  return (
+    <div style={{...card, gridColumn:'span 2'}} className="fade-in">
+      <div style={cardTitle}>▸ Recent Network Blocks — Fellow Solo Winners Highlighted</div>
+      <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',maxHeight:300,overflowY:'auto'}}>
+        {list.map(b=>(
+          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none'}}>
+            <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:600,color:b.isSolo?'var(--amber)':'var(--text-1)'}}>#{fmtNum(b.height)}</span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',color:b.isSolo?'var(--amber)':'var(--text-2)',textTransform:'uppercase'}}>{b.pool}</span>
+                {b.isSolo && <span style={{fontFamily:'var(--fd)',fontSize:'0.52rem',color:'var(--amber)',border:'1px solid var(--amber)',padding:'1px 5px',letterSpacing:'0.12em'}}>SOLO</span>}
+              </div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:2}}>
+                {fmtNum(b.tx_count||0)} tx · {blockTimeAgo(b.timestamp)}
+                {b.reward!=null && <> · <span style={{color:'var(--cyan)'}}>{fmtSats(b.reward)}</span></>}
+              </div>
+            </div>
+            <a href={`https://mempool.space/block/${b.id}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--text-2)',fontSize:12,flexShrink:0}}>↗</a>
+          </div>
+        ))}
+      </div>
+      <p style={{fontSize:'0.55rem',color:'var(--text-3)',fontFamily:'var(--fm)',textAlign:'center',lineHeight:1.5,marginTop:'0.5rem'}}>
+        solo flag = block mined by unknown / community / solo pool — next one could be you ⛏
+      </p>
     </div>
   );
 }
@@ -455,18 +605,21 @@ export default function App() {
         <Ticker state={state}/>
         <main style={{flex:1,padding:'1.25rem',maxWidth:1400,margin:'0 auto',width:'100%'}}>
           <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.875rem'}}>
-            <div style={{gridColumn:'span 2'}}><HashrateChart history={state.hashrate?.history} current={state.hashrate?.current}/></div>
-            <div style={{gridColumn:'span 2'}}><WorkerGrid workers={state.workers}/></div>
+            <HashrateChart history={state.hashrate?.history} current={state.hashrate?.current}/>
+            <WorkerGrid workers={state.workers}/>
             <NetworkStats network={state.network}/>
             <OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/>
+            <LuckGauge luck={state.luck}/>
+            <RetargetPanel retarget={state.retarget}/>
             <ShareStats shares={state.shares} hashrate={state.hashrate?.current}/>
             <BestShareLeaderboard workers={state.workers} poolBest={state.bestshare}/>
             <BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/>
             <MempoolPanel mempool={state.mempool}/>
+            <RecentBlocksPanel netBlocks={state.netBlocks}/>
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1.5rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.58rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase'}}>
-          <span>SoloStrike v1.1 — ckpool-solo</span>
+          <span>SoloStrike v1.2.0 — ckpool-solo</span>
           <span>Stratum · Port <span style={{color:'var(--cyan)'}}>3333</span></span>
         </footer>
       </div>
