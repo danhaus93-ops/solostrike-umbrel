@@ -178,8 +178,6 @@ function ShareStats({ shares, hashrate }) {
   const { accepted=0, rejected=0, stale=0 } = shares||{};
   const total=accepted+rejected+stale||1;
   const rate=((accepted/total)*100).toFixed(2);
-  // Approx raw diff-1 share submissions per minute based on current hashrate
-  // (hashrate / 2^32) × 60 seconds — matches what miners display locally
   const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
   return (
     <div style={card} className="fade-in">
@@ -261,7 +259,7 @@ function MempoolPanel({ mempool }) {
           {mempool.feeRate} sat/vB
         </span>
       </div>
-      {mempool.unconfirmedCount && (
+      {mempool.unconfirmedCount != null && (
         <div style={statRow}>
           <span style={label}>Mempool TX</span>
           <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--cyan)'}}>
@@ -439,7 +437,10 @@ export default function App() {
 
   const openSettings = async () => {
     try { const c=await getConfig(); setSettingsCfg(c); } catch {}
-    setShowSettings(  if (state.status==='loading') return (
+    setShowSettings(true);
+  };
+
+  if (state.status==='loading') return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.2em',color:'var(--text-2)',textTransform:'uppercase',animation:'pulse 1.5s ease-in-out infinite'}}>
       Connecting to pool…
     </div>
@@ -474,4 +475,3 @@ export default function App() {
     </>
   );
 }
-
