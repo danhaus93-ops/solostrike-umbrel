@@ -20,6 +20,19 @@ function startStatusPoller(state, broadcast, logDir) {
   const poolStatus = path.join(logDir, 'pool/pool.status');
   const usersDir = path.join(logDir, 'users');
 
+  // Remove workers who haven't reported shares in more than 24 hours
+  const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+  function cleanupStaleWorkers() {
+    const now = Date.now();
+    for (const key of Object.keys(state.workers)) {
+      const w = state.workers[key];
+      if (w.lastSeen && (now - w.lastSeen) > STALE_THRESHOLD_MS) {
+        delete state.workers[key];
+      }
+    }
+  }
+
   async function poll() {
     try {
       if (await fs.pathExists(poolStatus)) {
@@ -73,6 +86,7 @@ function startStatusPoller(state, broadcast, logDir) {
         }
       }
 
+      cleanupStaleWorkers();
       broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
     } catch (e) {
       console.error('[StatusPoller]', e.message);
@@ -81,7 +95,7 @@ function startStatusPoller(state, broadcast, logDir) {
 
   setInterval(poll, 5000);
   poll();
-  console.log('[StatusPoller] Started, polling every 5s');
+  console.log('[StatusPoller] Started, polling every 5s (cleanup > 24h stale)');
 }
 
 module.exports = { startStatusPoller };
