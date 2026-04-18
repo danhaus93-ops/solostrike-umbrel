@@ -1,7 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
+const { transformState } = require('./state-transform');
 
-// Converts ckpool hashrate strings like "1.32T", "389G", "19.3G" to bits/s
 function parseHashrate(s) {
   if (!s) return 0;
   const str = String(s);
@@ -22,7 +22,6 @@ function startStatusPoller(state, broadcast, logDir) {
 
   async function poll() {
     try {
-      // ── Pool summary: line-delimited JSON ─────────────────────────────────
       if (await fs.pathExists(poolStatus)) {
         const content = await fs.readFile(poolStatus, 'utf8');
         const lines = content.trim().split('\n').filter(Boolean);
@@ -31,24 +30,19 @@ function startStatusPoller(state, broadcast, logDir) {
             const summary = JSON.parse(lines[0]);
             const rates = JSON.parse(lines[1]);
             const shares = JSON.parse(lines[2]);
-
             const hr = parseHashrate(rates.hashrate1m);
             state.hashrate.current = hr;
             state.hashrate.history.push({ ts: Date.now(), hr });
             if (state.hashrate.history.length > 360) state.hashrate.history.shift();
-
             state.shares.accepted = shares.accepted || 0;
             state.shares.rejected = shares.rejected || 0;
             state.bestshare = shares.bestshare || 0;
             state.totalWorkers = summary.Workers || 0;
             state.totalUsers = summary.Users || 0;
-          } catch (e) {
-            // pool.status is being rewritten; skip this tick
-          }
+          } catch (e) {}
         }
       }
 
-      // ── Per-worker files (one JSON object per user) ───────────────────────
       if (await fs.pathExists(usersDir)) {
         const userFiles = await fs.readdir(usersDir);
         for (const userFile of userFiles) {
@@ -59,37 +53,27 @@ function startStatusPoller(state, broadcast, logDir) {
             const data = await fs.readFile(fullPath, 'utf8');
             const userData = JSON.parse(data);
             if (!Array.isArray(userData.worker)) continue;
-
             for (const w of userData.worker) {
               const key = w.workername;
               if (!key) continue;
               if (!state.workers[key]) {
                 state.workers[key] = {
-                  name: key,
-                  hashrate: 0,
-                  shares: 0,
-                  rejected: 0,
-                  lastSeen: Date.now(),
-                  diff: 0,
-                  status: 'online',
-                  bestshare: 0,
+                  name: key, hashrate: 0, shares: 0, rejected: 0,
+                  lastSeen: Date.now(), diff: 0, status: 'online', bestshare: 0,
                 };
               }
               state.workers[key].hashrate = parseHashrate(w.hashrate1m);
               state.workers[key].shares = w.shares || 0;
               state.workers[key].bestshare = w.bestshare || 0;
-              state.workers[key].lastSeen =
-                (w.lastshare || Math.floor(Date.now() / 1000)) * 1000;
+              state.workers[key].lastSeen = (w.lastshare || Math.floor(Date.now()/1000)) * 1000;
               const age = Date.now() - state.workers[key].lastSeen;
               state.workers[key].status = age < 10 * 60 * 1000 ? 'online' : 'offline';
             }
-          } catch (e) {
-            // user file might be partially written; skip
-          }
+          } catch (e) {}
         }
       }
 
-      broadcast({ type: 'STATE_UPDATE', data: state });
+      broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
     } catch (e) {
       console.error('[StatusPoller]', e.message);
     }
