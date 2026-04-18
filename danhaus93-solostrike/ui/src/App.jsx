@@ -11,7 +11,7 @@ const label = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em'
 
 // ── Header ────────────────────────────────────────────────────────────────────
 function Header({ uptime, connected, status, onSettings }) {
-  const statusMap = { running:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
+  const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
   return (
     <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 1.5rem', height:52, borderBottom:'1px solid var(--border)', background:'rgba(6,7,8,0.95)', backdropFilter:'blur(8px)', position:'sticky', top:0, zIndex:50 }}>
@@ -38,7 +38,7 @@ function Header({ uptime, connected, status, onSettings }) {
 // ── Ticker ────────────────────────────────────────────────────────────────────
 function Ticker({ state }) {
   const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
-  const items = [`WORKERS ${online}/${(state.workers||[]).length}`, `HEIGHT ${fmtNum(state.network?.height)}`, `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`, `NET HASHRATE ${fmtHr(state.network?.hashrate)}`, `ACCEPTED ${fmtNum(state.shares?.accepted)}`, `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`];
+  const items = [`WORKERS ${online}/${(state.workers||[]).length}`, `HEIGHT ${fmtNum(state.network?.height)}`, `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`, `NET HASHRATE ${fmtHr(state.network?.hashrate)}`, `ACCEPTED ${fmtNum(state.shares?.accepted)}`, `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`, `BEST ${fmtNum(Math.round(state.bestshare||0))}`];
   const t = items.join('   ·   ');
   return (
     <div style={{ background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
@@ -173,11 +173,14 @@ function OddsDisplay({ odds, hashrate, netHashrate }) {
   );
 }
 
-// ── Share stats ───────────────────────────────────────────────────────────────
-function ShareStats({ shares }) {
+// ── Share stats (now with shares-per-minute) ──────────────────────────────────
+function ShareStats({ shares, hashrate }) {
   const { accepted=0, rejected=0, stale=0 } = shares||{};
   const total=accepted+rejected+stale||1;
   const rate=((accepted/total)*100).toFixed(2);
+  // Approx raw diff-1 share submissions per minute based on current hashrate
+  // (hashrate / 2^32) × 60 seconds — matches what miners display locally
+  const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
   return (
     <div style={card} className="fade-in">
       <div style={cardTitle}>▸ Share Stats</div>
@@ -199,6 +202,76 @@ function ShareStats({ shares }) {
         <span>Accept rate</span>
         <span style={{color:parseFloat(rate)>99?'var(--green)':'var(--amber)'}}>{rate}%</span>
       </div>
+      <div style={{display:'flex',justifyContent:'space-between',marginTop:'0.25rem',fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)'}}>
+        <span>Shares / min (est.)</span>
+        <span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Best Share Leaderboard ────────────────────────────────────────────────────
+function BestShareLeaderboard({ workers, poolBest }) {
+  const sorted = [...(workers || [])]
+    .filter(w => (w.bestshare||0) > 0)
+    .sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0))
+    .slice(0, 5);
+  return (
+    <div style={card} className="fade-in">
+      <div style={cardTitle}>▸ Best Shares — All-Time</div>
+      {sorted.length === 0 ? (
+        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
+          No shares submitted yet<br/>
+          <span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Keep mining ⛏</span>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
+          {sorted.map((w, i) => (
+            <div key={w.name} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`}}>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',width:18}}>#{i+1}</span>
+              <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {w.name.includes('.') ? w.name.split('.').pop() : w.name.slice(0,14)+'…'}
+              </div>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:600,color:i===0?'var(--amber)':'var(--cyan)'}}>
+                {fmtNum(Math.round(w.bestshare || 0))}
+              </span>
+            </div>
+          ))}
+          <div style={{...statRow,marginTop:'0.4rem',borderColor:'var(--border-hot)'}}>
+            <span style={label}>Pool Best</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
+              {fmtNum(Math.round(poolBest || 0))}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Mempool fees (if Mempool app installed) ───────────────────────────────────
+function MempoolPanel({ mempool }) {
+  if (!mempool || mempool.feeRate == null) return null;
+  return (
+    <div style={card} className="fade-in">
+      <div style={cardTitle}>▸ Next Block — Potential Reward</div>
+      <div style={statRow}>
+        <span style={label}>Priority Fee</span>
+        <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:600,color:'var(--amber)'}}>
+          {mempool.feeRate} sat/vB
+        </span>
+      </div>
+      {mempool.unconfirmedCount && (
+        <div style={statRow}>
+          <span style={label}>Mempool TX</span>
+          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--cyan)'}}>
+            {fmtNum(mempool.unconfirmedCount)}
+          </span>
+        </div>
+      )}
+      <p style={{fontSize:'0.58rem',color:'var(--text-3)',fontFamily:'var(--fm)',textAlign:'center',lineHeight:1.5,marginTop:'0.5rem'}}>
+        coinbase reward + fees<br/>go 100% to you if you find it ⛏
+      </p>
     </div>
   );
 }
@@ -275,8 +348,13 @@ function SetupScreen({ onComplete }) {
   const submit = async () => {
     if(!addr.trim()){setError('Please enter a Bitcoin address.');return;}
     setLoading(true);setError('');
-    try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payoutAddress:addr.trim()})});const d=await r.json();if(!r.ok){setError(d.error||'Invalid address.');return;}onComplete();}
-    catch{setError('Cannot reach pool API.');}finally{setLoading(false);}
+    try{
+      const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payoutAddress:addr.trim()})});
+      const d=await r.json();
+      if(!r.ok){setError(d.error||'Invalid address.');return;}
+      onComplete();
+    } catch{setError('Cannot reach pool API.');}
+    finally{setLoading(false);}
   };
   return (
     <div style={{position:'fixed',inset:0,background:'var(--bg-void)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100}}>
@@ -339,7 +417,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig }) {
         <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem',marginTop:'1rem'}}>Pool Name</label>
         <input style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none'}} maxLength={32} value={poolName} onChange={e=>setPoolName(e.target.value)}/>
         <div style={{height:1,background:'var(--border)',margin:'1.25rem 0'}}/>
-        {[['Stratum Port','3333'],['Dashboard Port','1234'],['Protocol','Stratum V1/V2']].map(([l,v])=>(
+        {[['Stratum Port','3333'],['Dashboard Port','1234'],['Protocol','Stratum V1']].map(([l,v])=>(
           <div key={l} style={{...statRow,marginBottom:'0.35rem'}}><span style={label}>{l}</span><span style={{fontFamily:'var(--fm)',color:'var(--cyan)',fontSize:'0.75rem'}}>{v}</span></div>
         ))}
         <button onClick={submit} disabled={loading} style={{width:'100%',marginTop:'1.25rem',padding:'0.75rem',background:saved?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.8rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer',opacity:loading?0.6:1,transition:'background 0.2s'}}>
@@ -364,36 +442,4 @@ export default function App() {
     setShowSettings(true);
   };
 
-  if (state.status==='loading') return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.2em',color:'var(--text-2)',textTransform:'uppercase',animation:'pulse 1.5s ease-in-out infinite'}}>
-      Connecting to pool…
-    </div>
-  );
-
-  if (state.status==='no_address') return <SetupScreen onComplete={()=>window.location.reload()}/>;
-
-  return (
-    <>
-      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column'}}>
-        <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings}/>
-        <Ticker state={state}/>
-        <main style={{flex:1,padding:'1.25rem',maxWidth:1400,margin:'0 auto',width:'100%'}}>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.875rem'}}>
-            <div style={{gridColumn:'span 2'}}><HashrateChart history={state.hashrate?.history} current={state.hashrate?.current}/></div>
-            <div style={{gridColumn:'span 2'}}><WorkerGrid workers={state.workers}/></div>
-            <NetworkStats network={state.network}/>
-            <OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/>
-            <ShareStats shares={state.shares}/>
-            <BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/>
-          </div>
-        </main>
-        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1.5rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.58rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase'}}>
-          <span>SoloStrike v1.0 — ckpool-solo</span>
-          <span>Stratum · Port <span style={{color:'var(--cyan)'}}>3333</span></span>
-        </footer>
-      </div>
-      {showSettings&&<SettingsModal onClose={()=>setShowSettings(false)} saveConfig={saveConfig} currentConfig={settingsCfg}/>}
-      {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
-    </>
-  );
-}
+  if (state​​​​​​​​​​​​​​​​
