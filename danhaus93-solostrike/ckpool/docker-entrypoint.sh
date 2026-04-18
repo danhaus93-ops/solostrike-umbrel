@@ -39,8 +39,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
   "serverurl": [
     "0.0.0.0:3333"
   ],
-  "mindiff": 512,
-  "startdiff": 512,
+  "mindiff": 1,
+  "startdiff": 42,
   "maxdiff": 0,
   "solo": true
 }
