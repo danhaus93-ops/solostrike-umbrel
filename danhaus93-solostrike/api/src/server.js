@@ -24,7 +24,7 @@ const CKPOOL_CONF     = path.join(CKPOOL_CFG_DIR, 'ckpool.conf');
 const RPC_HOST = process.env.BITCOIN_RPC_HOST || '10.21.21.8';
 const RPC_PORT = process.env.BITCOIN_RPC_PORT || '8332';
 const RPC_USER = process.env.BITCOIN_RPC_USER || 'umbrel';
-const RPC_PASS = process.env.BITCOIN_RPC_PASS || 'moneyprintergobrrr';
+const RPC_PASS = process.env.BITCOIN_RPC_PASS || 'solostrikexxxxxxxx';
 
 async function rpc(method, params = []) {
   const auth = Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64');
