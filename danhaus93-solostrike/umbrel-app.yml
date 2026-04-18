@@ -2,15 +2,36 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
 version: "1.0.0"
-tagline: Solo Bitcoin mining pool with Stratum V2 bridge
+tagline: Zero-fee solo Bitcoin mining pool for your Umbrel
 description: >-
-  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel. Connect your
-  ASICs (Antminer, BitAxe, NerdMiner, NerdQaxe++, Avalon Nano 3S) directly to
-  your own Bitcoin node. Zero fees — every block pays 100% to your wallet.
-  Features a real-time dashboard with live hashrate charts, per-worker stats,
-  block probability calculator, and share tracking.
+  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
+  dashboard.
+
+
+  Connect your ASICs directly to your own Bitcoin node and keep 100% of every
+  block you find — no pool fees, no custody risk, no middleman.
+
+
+  Features:
+
+  • Real-time hashrate waveform and live worker monitoring
+
+  • Block probability calculator with expected-find time
+
+  • Share statistics (accepted / rejected / stale) with accept-rate tracking
+
+  • Found-block feed with mempool.space integration and confetti celebration
+
+  • Network stats pulled live from your Bitcoin Core node (height, difficulty, net hashrate)
+
+  • One-time setup — enter your payout address once, miners connect automatically
+
+  • Works with any Stratum V1 miner: Antminer, BitAxe, NerdMiner, NerdQaxe++, Avalon Nano 3S, and more
+
+
+  100% self-custody. Your node, your rules, your blocks.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
@@ -18,6 +39,7 @@ dependencies:
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
 path: ""
 defaultUsername: ""
 defaultPassword: ""
