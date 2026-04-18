@@ -2,8 +2,8 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.0.0"
-tagline: Zero-fee solo Bitcoin mining pool for your Umbrel
+version: "1.1.0"
+tagline: Zero-fee solo Bitcoin mining pool with a Deep Mine dashboard
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
   the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
@@ -16,26 +16,42 @@ description: >-
 
   Features:
 
-  • Real-time hashrate waveform and live worker monitoring
+  • Real-time hashrate waveform and per-worker monitoring with live best-share tracking
 
-  • Block probability calculator with expected-find time
+  • Block probability calculator with expected-find time and pool network share
 
-  • Share statistics (accepted / rejected / stale) with accept-rate tracking
+  • Share statistics (accepted / rejected / stale / bestshare per worker) with accept-rate tracking
 
   • Found-block feed with mempool.space integration and confetti celebration
 
-  • Network stats pulled live from your Bitcoin Core node (height, difficulty, net hashrate)
+  • ZMQ block notifications from Bitcoin Core for instant new-block work updates
+
+  • Smart vardiff: BitAxes to petahash farms on the same port — no config needed
+
+  • Tested with rented hashrate (Braiins Hashpower) and local ASICs side-by-side
+
+  • Works with any Stratum V1 miner: Antminer S19 XP, BitAxe, NerdMiner, NerdQaxe++, Avalon Nano 3S, and more
 
   • One-time setup — enter your payout address once, miners connect automatically
 
-  • Works with any Stratum V1 miner: Antminer, BitAxe, NerdMiner, NerdQaxe++, Avalon Nano 3S, and more
-
 
   100% self-custody. Your node, your rules, your blocks.
+
+
+  Release Notes:
+
+
+  V1.1.0 — ZMQ block notifications, smart vardiff (startdiff 10000, mindiff 1),
+  per-worker best-share leaderboard, tested with Braiins Hashpower rentals,
+  mempool app integration for block-feed data, faster ckpool polling (50ms)
+
+
+  V1.0.0 — Initial release
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
   - bitcoin
+  - mempool
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
@@ -45,3 +61,7 @@ defaultUsername: ""
 defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
+releaseNotes: >-
+  V1.1.0 — ZMQ block notifications for instant new-block templates, smart vardiff
+  that accepts everything from BitAxes to Braiins Hashpower rentals, per-worker
+  best-share leaderboard, mempool app integration, faster polling.
