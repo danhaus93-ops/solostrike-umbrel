@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.1.0"
+version: "1.2.0"
 tagline: Zero-fee solo Bitcoin mining pool with a Deep Mine dashboard
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -18,11 +18,21 @@ description: >-
 
   • Real-time hashrate waveform and per-worker monitoring with live best-share tracking
 
+  • Automatic miner-type detection (BitAxe, NerdQaxe++, Antminer S19/S21, Avalon Nano 3S, Whatsminer, Braiins rentals)
+
+  • Per-worker live difficulty display and traffic-light health status (green / amber / red)
+
   • Block probability calculator with expected-find time and pool network share
 
-  • Share statistics (accepted / rejected / stale / bestshare per worker) with accept-rate tracking
+  • Luck gauge — cumulative blocks-found vs. statistically expected, with progress-to-next-block bar
 
-  • Found-block feed with mempool.space integration and confetti celebration
+  • Difficulty retarget countdown — remaining blocks, ETA, estimated % change
+
+  • Recent network blocks feed with fellow-solo-winner highlighting
+
+  • Share statistics (accepted / rejected / stale / bestshare per worker) with CSV export
+
+  • Found-block feed with mempool.space integration, confetti celebration, and CSV export
 
   • ZMQ block notifications from Bitcoin Core for instant new-block work updates
 
@@ -39,6 +49,12 @@ description: >-
 
 
   Release Notes:
+
+
+  V1.2.0 — Miner-type auto-detection, per-worker live difficulty, traffic-light
+  worker health, luck gauge with progress-to-next-block, difficulty retarget
+  countdown, recent network blocks feed with solo-winner highlighting, CSV export
+  for workers and found-blocks, fixed WebSocket state sync bug.
 
 
   V1.1.0 — ZMQ block notifications, smart vardiff (startdiff 10000, mindiff 1),
@@ -62,6 +78,7 @@ defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
 releaseNotes: >-
-  V1.1.0 — ZMQ block notifications for instant new-block templates, smart vardiff
-  that accepts everything from BitAxes to Braiins Hashpower rentals, per-worker
-  best-share leaderboard, mempool app integration, faster polling.
+  V1.2.0 — Miner-type auto-detection (BitAxe, NerdQaxe, S19, Avalon, Whatsminer,
+  Braiins), per-worker live difficulty, traffic-light worker health, luck gauge
+  with progress-to-next-block, difficulty retarget countdown, recent network
+  blocks with solo-winner highlighting, CSV export for workers and blocks.
