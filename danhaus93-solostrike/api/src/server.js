@@ -7,6 +7,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const fetch = require('node-fetch');
 const { startStatusPoller } = require('./status-poller');
+const { transformState } = require('./state-transform');
 
 const app = express();
 app.use(cors());
@@ -14,14 +15,12 @@ app.use(express.json());
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// ── Paths ─────────────────────────────────────────────────────────────────────
 const CONFIG_DIR      = process.env.CONFIG_DIR       || '/app/config';
 const CKPOOL_LOG_DIR  = process.env.CKPOOL_LOG_DIR   || '/var/log/ckpool';
 const CKPOOL_CFG_DIR  = process.env.CKPOOL_CONFIG_DIR || '/etc/ckpool';
 const CONFIG_FILE     = path.join(CONFIG_DIR, 'solostrike.json');
 const CKPOOL_CONF     = path.join(CKPOOL_CFG_DIR, 'ckpool.conf');
 
-// ── Bitcoin RPC ───────────────────────────────────────────────────────────────
 const RPC_HOST = process.env.BITCOIN_RPC_HOST || '10.21.21.8';
 const RPC_PORT = process.env.BITCOIN_RPC_PORT || '8332';
 const RPC_USER = process.env.BITCOIN_RPC_USER || 'umbrel';
@@ -41,7 +40,6 @@ async function rpc(method, params = []) {
   } catch (e) { return null; }
 }
 
-// ── State ─────────────────────────────────────────────────────────────────────
 let cfg = { payoutAddress: null, poolName: 'SoloStrike' };
 let state = {
   workers: {},
@@ -56,7 +54,6 @@ let state = {
   totalUsers: 0,
 };
 
-// ── Config I/O ────────────────────────────────────────────────────────────────
 async function loadCfg() {
   try {
     await fs.ensureDir(CONFIG_DIR);
@@ -68,8 +65,6 @@ async function saveCfg() {
   await fs.writeJson(CONFIG_FILE, cfg, { spaces: 2 });
 }
 async function writeCkpoolConf(address) {
-  // Use separate user/pass fields because some passwords contain
-  // characters that break the "user:pass" combined auth parser
   const conf = {
     btcd: [{
       url: `http://${RPC_HOST}:${RPC_PORT}`,
@@ -86,8 +81,8 @@ async function writeCkpoolConf(address) {
     version_mask: '1fffe000',
     logdir: '/var/log/ckpool',
     serverurl: ['0.0.0.0:3333'],
-    mindiff: 512,
-    startdiff: 512,
+    mindiff: 1,
+    startdiff: 42,
     maxdiff: 0,
     solo: true,
   };
@@ -96,7 +91,6 @@ async function writeCkpoolConf(address) {
   console.log(`[API] ckpool config written with address ${address}`);
 }
 
-// ── Log parsing (for blocks found via ckpool.log) ─────────────────────────────
 const RE_BLOCK = /BLOCK FOUND.*height[:\s]+(\d+).*hash[:\s]+([a-f0-9]+)/i;
 
 function parseLine(line) {
@@ -127,7 +121,6 @@ function watchLogs() {
   chokidar.watch(logFile, { usePolling: true, interval: 1000 }).on('change', read).on('add', read);
 }
 
-// ── Worker heartbeat ──────────────────────────────────────────────────────────
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000;
   Object.values(state.workers).forEach(w => {
@@ -135,7 +128,6 @@ setInterval(() => {
   });
 }, 30000);
 
-// ── Network polling ───────────────────────────────────────────────────────────
 async function pollNetwork() {
   const [chain, mining] = await Promise.all([rpc('getblockchaininfo'), rpc('getmininginfo')]);
   if (chain) { state.network.height = chain.blocks; state.network.difficulty = chain.difficulty; }
@@ -143,23 +135,21 @@ async function pollNetwork() {
 }
 setInterval(pollNetwork, 15000);
 
-// ── WebSocket broadcasting ────────────────────────────────────────────────────
 function broadcast(msg) {
   const data = JSON.stringify(msg);
   wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(data); });
 }
 
 setInterval(() => {
-  broadcast({ type: 'STATE_UPDATE', data: state });
+  broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
 }, 5000);
 
 wss.on('connection', (ws) => {
-  ws.send(JSON.stringify({ type: 'STATE_UPDATE', data: state }));
+  ws.send(JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state) }));
   ws.send(JSON.stringify({ type: 'CONFIG', data: cfg }));
 });
 
-// ── REST endpoints ────────────────────────────────────────────────────────────
-app.get('/api/state', (req, res) => res.json(state));
+app.get('/api/state', (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfg));
 
 app.post('/api/setup', async (req, res) => {
@@ -188,7 +178,6 @@ app.post('/api/settings', async (req, res) => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true, uptime: Date.now() - state.uptime }));
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   await loadCfg();
   if (cfg.payoutAddress) await writeCkpoolConf(cfg.payoutAddress);
