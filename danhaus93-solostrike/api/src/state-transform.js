@@ -6,7 +6,7 @@ function computeOdds(state) {
     return { perBlock: 0, expectedDays: null, perDay: 0 };
   }
   const perBlock       = poolHR / netHR;
-  const blocksPerDay   = 144; // Bitcoin average
+  const blocksPerDay   = 144;
   const perDay         = 1 - Math.pow(1 - perBlock, blocksPerDay);
   const expectedBlocks = 1 / perBlock;
   const expectedDays   = expectedBlocks / blocksPerDay;
@@ -14,33 +14,29 @@ function computeOdds(state) {
 }
 
 // Luck / lottery progress.
-// We maintain a running integral of hashrate*time ("hash-seconds") since pool start.
+// Hash-seconds integral (state._avgState.totalHashTime) vs expected hashes-per-block.
 // Expected hashes to find one block at current difficulty = netDiff * 2^32.
-// Progress = cumulative hash-seconds / hashes-per-block  (as percent toward 1 block).
-// Luck    = blocks-found / blocks-expected * 100 (only meaningful after >= 1 block or when expected >= 0.5).
 function computeLuck(state) {
   const netDiff = state.network?.difficulty || 0;
-  const avg     = state.hashrate?._avgState;
+  const avg     = state._avgState;
   const found   = (state.blocks || []).length;
   if (!netDiff || !avg || !avg.totalHashTime) {
     return { progress: 0, blocksExpected: 0, blocksFound: found, luck: null };
   }
   const hashesPerBlock = netDiff * Math.pow(2, 32);
   const blocksExpected = avg.totalHashTime / hashesPerBlock;
-  const progress       = blocksExpected * 100;                        // % toward next expected
+  const progress       = blocksExpected * 100;
   const luck           = blocksExpected >= 0.01 ? (found / blocksExpected) * 100 : null;
   return { progress, blocksExpected, blocksFound: found, luck };
 }
 
-// Transform state so workers is an array, matching what the UI expects,
-// and add computed odds + luck + difficulty retarget + recent network blocks.
+// Transform state into a public payload safe to broadcast.
+// Strips internal-only fields (_avgState) before emission.
 function transformState(state) {
-  // Strip the internal _avgState blob from public output
-  const { _avgState, ...hashrateOut } = state.hashrate || {};
+  const { _avgState, workers, ...rest } = state;
   return {
-    ...state,
-    hashrate:  hashrateOut,
-    workers:   Object.values(state.workers || {}),
+    ...rest,
+    workers:   Object.values(workers || {}),
     odds:      computeOdds(state),
     luck:      computeLuck(state),
     retarget:  state.retarget  || null,
