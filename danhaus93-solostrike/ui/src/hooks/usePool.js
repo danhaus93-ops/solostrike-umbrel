@@ -20,21 +20,24 @@ export function usePool() {
   const [state, setState]           = useState(DEF);
   const [connected, setConnected]   = useState(false);
   const [blockAlert, setBlockAlert] = useState(null);
-  const wsRef    = useRef(null);
-  const retryRef = useRef(null);
+  const wsRef       = useRef(null);
+  const retryRef    = useRef(null);
+  const retryCount  = useRef(0);
 
-  // Initial REST hydrate
   useEffect(() => {
     fetch('/api/state').then(r => r.json()).then(d => setState(p => ({ ...p, ...d }))).catch(() => {});
   }, []);
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
-    ws.onopen    = () => { setConnected(true); clearTimeout(retryRef.current); };
+    ws.onopen = () => {
+      setConnected(true);
+      retryCount.current = 0;
+      clearTimeout(retryRef.current);
+    };
     ws.onmessage = e => {
       try {
         const msg = JSON.parse(e.data);
-        // Server emits STATE_UPDATE on every push and on initial connection
         if (msg.type === 'STATE_UPDATE') setState(p => ({ ...p, ...msg.data }));
         else if (msg.type === 'BLOCK_FOUND') {
           setBlockAlert(msg.data);
@@ -43,13 +46,18 @@ export function usePool() {
         else if (msg.type === 'CONFIG') setState(p => ({ ...p, config: { ...p.config, ...msg.data } }));
       } catch {}
     };
-    ws.onclose   = () => { setConnected(false); retryRef.current = setTimeout(connect, 3000); };
-    ws.onerror   = () => { try { ws.close(); } catch {} };
+    ws.onclose = () => {
+      setConnected(false);
+      // Exponential backoff: 3s, 6s, 12s, 24s, capped at 30s
+      const delay = Math.min(30000, 3000 * Math.pow(2, retryCount.current));
+      retryCount.current = Math.min(4, retryCount.current + 1);
+      retryRef.current = setTimeout(connect, delay);
+    };
+    ws.onerror = () => { try { ws.close(); } catch {} };
   }, []);
 
   useEffect(() => { connect(); return () => { clearTimeout(retryRef.current); wsRef.current?.close(); }; }, [connect]);
 
-  // Settings save — hits /api/settings (primary) with /api/config as alias on the server side
   const saveConfig = useCallback(async (payload) => {
     const res = await fetch('/api/settings', {
       method: 'POST',
