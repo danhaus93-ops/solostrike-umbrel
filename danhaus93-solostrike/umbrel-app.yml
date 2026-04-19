@@ -50,7 +50,6 @@ developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
   - bitcoin
-  - mempool
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
@@ -79,6 +78,6 @@ releaseNotes: >-
 
   • New Top Pool Finders leaderboard — last 20 network blocks aggregated
 
-  • Expanded Bitcoin Network card
+  • Expanded Bitcoin Network card with live mempool integration
 
-  • New /api/prices endpoint
+  • Worker Grid now displays short worker names instead of full BTC addresses
