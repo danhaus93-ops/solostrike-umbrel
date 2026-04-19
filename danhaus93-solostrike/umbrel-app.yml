@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.2.2"
+version: "1.2.3"
 tagline: Zero-fee solo Bitcoin mining pool with a Deep Mine dashboard
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -22,19 +22,27 @@ description: >-
 
   • Per-worker live difficulty and best-share display
 
+  • Worker search — instantly filter by name or miner type
+
   • Block probability calculator, Luck gauge, difficulty retarget countdown
+
+  • Bitcoin Node panel — Core version, peers, relay fee, mempool size
+
+  • Latest Block hero strip — most recently mined block, who found it
 
   • Top Pool Finders leaderboard — see who's winning the hashwar right now
 
   • Recent network blocks feed with solo-winner highlighting
 
-  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
+  • Block reward, BTC price (7 currencies), and mempool fees
 
-  • Compact AxeOS-style share display — raw counts with compact difficulty formatting
+  • Compact AxeOS-style share display — diff-weighted work in G/M/T format
 
   • Drag-and-drop card reordering — layout persists per-device
 
   • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
+
+  • Leaderboard table — worker, miner type, hashrate, best diff, status
 
   • CSV export for workers and found blocks
 
@@ -45,7 +53,7 @@ description: >-
   • One-time setup — enter your payout address once, miners connect automatically
 
 
-  100% self-custody. Your node, your rules, your blocks.
+  100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
@@ -63,21 +71,22 @@ submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
 icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
 releaseNotes: >-
-  V1.2.2 — Mature UI release.
+  V1.2.3 — Pool Transparency release.
 
 
-  • Mobile-first responsive grid (1/2/4 cols), drag-and-drop card reordering with
-  localStorage persistence
+  • New Bitcoin Node panel — Core version, total/inbound/outbound peers, relay
+  fee, mempool tx count, mempool size in MB
 
-  • Compact AxeOS-style share display — raw counts with compact difficulty
-  formatting ("2.79 G" instead of "2,790,000,000")
+  • Latest Block hero strip — ticker now highlights the most recent network
+  block with height, pool name, time-since, and reward
 
-  • BTC price with 7-currency picker (USD / EUR / GBP / CAD / CHF / AUD / JPY)
+  • Worker search box — type to instantly filter the Worker Grid by name or
+  miner type (handy when you have 10+ rigs)
 
-  • Block reward shown in BTC + fiat equivalent, mempool fees in BTC
+  • Leaderboard upgraded to table format — now shows hashrate, miner type,
+  and live status dot alongside best difficulty
 
-  • New Top Pool Finders leaderboard — last 20 network blocks aggregated
+  • Dropped mempool app dependency (falls back to mempool.space public API
+  automatically; users with local Mempool app can still override)
 
-  • Expanded Bitcoin Network card with live mempool integration
-
-  • Worker Grid now displays short worker names instead of full BTC addresses
+  • Backend RPC polling extended to getnetworkinfo + getmempoolinfo
