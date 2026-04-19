@@ -9,7 +9,6 @@ const { startStatusPoller }             = require('./status-poller');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress, rowsToCsv }  = require('./validators');
 
-// Node 18+ ships fetch natively as a global. Wrap it to support { timeout }.
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
   const ctrl = new AbortController();
@@ -52,8 +51,6 @@ const UPDATE_INTERVAL  = parseInt(process.env.UPDATE_INTERVAL  || '20',    10);
 const STRATUM_PORT     = parseInt(process.env.STRATUM_PORT     || '3333',  10);
 const ZMQ_HASHBLOCK    = process.env.BITCOIN_ZMQ_HASHBLOCK     || null;
 
-// Default to mempool.space public API. If users install the Umbrel Mempool app,
-// they can override via MEMPOOL_API_URL in docker-compose.yml for fully local data.
 const MEMPOOL_API_URL  = process.env.MEMPOOL_API_URL || 'https://mempool.space/api';
 const MEMPOOL_PUBLIC   = process.env.MEMPOOL_PUBLIC_URL || 'https://mempool.space';
 
@@ -99,6 +96,7 @@ let state = {
   shares: { accepted: 0, rejected: 0, stale: 0, acceptedCount: 0, rejectedCount: 0, sps1m: 0 },
   network: { height: 0, difficulty: 0, hashrate: 0 },
   mempool: { feeRate: null, size: null, unconfirmedCount: null, totalFeesBtc: 0 },
+  nodeInfo: { subversion: null, connected: false, peers: 0, peersIn: 0, peersOut: 0, relayFee: null, mempoolBytes: 0, mempoolCount: 0 },
   retarget: null,
   netBlocks: [],
   prices: {},
@@ -179,9 +177,28 @@ setInterval(() => {
 }, 30000);
 
 async function pollNetwork() {
-  const [chain, mining] = await Promise.all([rpc('getblockchaininfo'), rpc('getmininginfo')]);
+  const [chain, mining, netinfo, mempoolinfo] = await Promise.all([
+    rpc('getblockchaininfo'),
+    rpc('getmininginfo'),
+    rpc('getnetworkinfo'),
+    rpc('getmempoolinfo'),
+  ]);
   if (chain)  { state.network.height = chain.blocks; state.network.difficulty = chain.difficulty; }
-  if (mining)   state.network.hashrate = mining.networkhashps;
+  if (mining) { state.network.hashrate = mining.networkhashps; }
+  if (netinfo) {
+    state.nodeInfo.subversion  = netinfo.subversion || null;
+    state.nodeInfo.connected   = true;
+    state.nodeInfo.peers       = netinfo.connections || 0;
+    state.nodeInfo.peersIn     = netinfo.connections_in || 0;
+    state.nodeInfo.peersOut    = netinfo.connections_out || 0;
+    state.nodeInfo.relayFee    = netinfo.relayfee || null;
+  } else {
+    state.nodeInfo.connected = false;
+  }
+  if (mempoolinfo) {
+    state.nodeInfo.mempoolBytes = mempoolinfo.bytes || 0;
+    state.nodeInfo.mempoolCount = mempoolinfo.size || 0;
+  }
 }
 setInterval(pollNetwork, 15000);
 
@@ -293,7 +310,7 @@ setInterval(() => {
 // ==============================================================================
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfg));
-app.get('/api/health', (req, res) => res.json({ ok: true, uptime: Date.now() - state.uptime, version: '1.2.2' }));
+app.get('/api/health', (req, res) => res.json({ ok: true, uptime: Date.now() - state.uptime, version: '1.2.3' }));
 app.get('/api/prices', (req, res) => res.json(state.prices || {}));
 
 app.get('/api/public/summary', rateLimit, (req, res) => {
@@ -303,7 +320,6 @@ app.get('/api/public/summary', rateLimit, (req, res) => {
     networkHashrate: s.network?.hashrate || 0,
     workers:         s.totalWorkers,
     accepted:        s.shares?.accepted || 0,
-    acceptedCount:   s.shares?.acceptedCount || 0,
     rejected:        s.shares?.rejected || 0,
     bestshare:       s.bestshare,
     blocksFound:     (s.blocks || []).length,
@@ -316,7 +332,6 @@ app.get('/api/public/workers', rateLimit, (req, res) => {
   res.json((s.workers || []).map(w => ({
     name: w.name, hashrate: w.hashrate, status: w.status, bestshare: w.bestshare,
     minerType: w.minerType, diff: w.diff, health: w.health,
-    sharesCount: w.sharesCount, rejectedCount: w.rejectedCount,
   })));
 });
 
@@ -331,7 +346,7 @@ app.get('/api/export/workers.csv', rateLimit, (req, res) => {
   const s = transformState(state);
   const rows = [
     ['# generated_at_utc', new Date().toISOString()],
-    ['# solostrike_version', '1.2.2'],
+    ['# solostrike_version', '1.2.3'],
     ['workername','miner_type','hashrate_hps','work_accepted','rejected','bestshare','difficulty','status','health','last_seen_iso'],
   ];
   (s.workers || []).forEach(w => {
@@ -348,7 +363,7 @@ app.get('/api/export/workers.csv', rateLimit, (req, res) => {
 app.get('/api/export/blocks.csv', rateLimit, (req, res) => {
   const rows = [
     ['# generated_at_utc', new Date().toISOString()],
-    ['# solostrike_version', '1.2.2'],
+    ['# solostrike_version', '1.2.3'],
     ['height','hash','found_at_iso'],
   ];
   (state.blocks || []).forEach(b => {
@@ -404,7 +419,7 @@ async function boot() {
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
   const PORT = 3001;
-  server.listen(PORT, () => console.log(`[SoloStrike API v1.2.2] Listening on :${PORT}`));
+  server.listen(PORT, () => console.log(`[SoloStrike API v1.2.3] Listening on :${PORT}`));
 }
 
 boot();
