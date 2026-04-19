@@ -49,7 +49,9 @@ services:
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
       - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
       - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
-      - MEMPOOL_API_URL=http://mempool_app_proxy_1:3006/api
+      # MEMPOOL_API_URL unset = defaults to https://mempool.space/api inside server.js
+      # To use the local Umbrel Mempool app instead, install it and set:
+      # - MEMPOOL_API_URL=http://<mempool-container>:<port>/api
       - POOL_SIGNATURE=SoloStrike/
       - START_DIFFICULTY=10000
       - MIN_DIFFICULTY=1
