@@ -12,8 +12,34 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%)}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--bg-deep)}::-webkit-scrollbar-thumb{background:var(--amber-dim)}
 ::selection{background:rgba(245,166,35,0.2)}
+
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .fade-in{animation:slideUp .35s ease both}
+
+/* --- Responsive grid: mobile-first -------------------------------------- */
+.ss-grid{display:grid;gap:0.75rem;grid-template-columns:1fr}
+@media (min-width:640px){.ss-grid{gap:0.875rem;grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1024px){.ss-grid{grid-template-columns:repeat(4,1fr)}}
+
+/* Cards that want to span 2 cols on desktop, full width on mobile/tablet */
+.ss-span-2{grid-column:span 1}
+@media (min-width:640px){.ss-span-2{grid-column:span 2}}
+
+/* --- Drag and drop card styles ------------------------------------------ */
+.ss-card{position:relative;transition:opacity 0.2s,transform 0.2s}
+.ss-card.ss-dragging{opacity:0.4;transform:scale(0.98)}
+.ss-card.ss-drag-over{outline:2px dashed var(--amber);outline-offset:-2px}
+.ss-drag-handle{position:absolute;top:8px;right:8px;font-size:14px;color:var(--text-3);cursor:grab;user-select:none;padding:2px 6px;z-index:2;touch-action:none}
+.ss-drag-handle:hover{color:var(--amber)}
+.ss-drag-handle:active{cursor:grabbing}
+
+/* Hide drag handle on small screens to reduce clutter; cards still tap/hold */
+@media (max-width:639px){
+  .ss-drag-handle{font-size:12px;opacity:0.5}
+}
+
+/* Touch target for mobile header controls */
+button{touch-action:manipulation}
