@@ -21,7 +21,6 @@ function startStatusPoller(state, broadcast, logDir) {
   const poolStatus = path.join(logDir, 'pool/pool.status');
   const usersDir   = path.join(logDir, 'users');
 
-  // Remove workers who haven't reported shares in more than 24 hours
   const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
   function cleanupStaleWorkers() {
@@ -34,17 +33,15 @@ function startStatusPoller(state, broadcast, logDir) {
     }
   }
 
-  // Rolling average hashrate integral (for luck calc)
+  // Rolling hashrate*time integral for Luck calculation.
+  // Stored at state._avgState (top level) — NOT inside state.hashrate — so it
+  // never leaks into any serialization that skips transformState().
   function updateAvgHashrate(current) {
     const now = Date.now();
-    if (!state.hashrate._avgState) {
-      state.hashrate._avgState = { lastTs: now, totalHashTime: 0 };
-    }
-    const a = state.hashrate._avgState;
-    const dt = (now - a.lastTs) / 1000; // seconds
-    if (dt > 0 && dt < 3600) {          // skip absurd gaps (sleep etc)
-      a.totalHashTime += current * dt;  // hash-seconds
-    }
+    if (!state._avgState) state._avgState = { lastTs: now, totalHashTime: 0 };
+    const a = state._avgState;
+    const dt = (now - a.lastTs) / 1000;
+    if (dt > 0 && dt < 3600) a.totalHashTime += current * dt;
     a.lastTs = now;
   }
 
@@ -65,6 +62,7 @@ function startStatusPoller(state, broadcast, logDir) {
             updateAvgHashrate(hr);
             state.shares.accepted  = shares.accepted  || 0;
             state.shares.rejected  = shares.rejected  || 0;
+            state.shares.stale     = shares.stale || shares.sps || 0;
             state.bestshare        = shares.bestshare || 0;
             state.totalWorkers     = summary.Workers  || 0;
             state.totalUsers       = summary.Users    || 0;
@@ -101,13 +99,11 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.shares    = w.shares    || 0;
               wk.rejected  = w.rejected  || wk.rejected || 0;
               wk.bestshare = w.bestshare || 0;
-              // ckpool exposes per-worker difficulty as lastdiff / bestever / diff varies
               wk.diff      = w.lastdiff || w.diff || wk.diff || 0;
               wk.lastSeen  = (w.lastshare || Math.floor(Date.now()/1000)) * 1000;
               const age = Date.now() - wk.lastSeen;
               wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
-              // back-fill meta in case worker existed before we added detection
               if (!wk.minerType) {
                 const meta = detectMiner(key);
                 wk.minerType = meta.type; wk.minerIcon = meta.icon; wk.minerVendor = meta.vendor;
