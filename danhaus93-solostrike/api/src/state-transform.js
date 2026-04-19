@@ -13,9 +13,6 @@ function computeOdds(state) {
   return { perBlock, expectedDays, perDay };
 }
 
-// Luck / lottery progress.
-// Hash-seconds integral (state._avgState.totalHashTime) vs expected hashes-per-block.
-// Expected hashes to find one block at current difficulty = netDiff * 2^32.
 function computeLuck(state) {
   const netDiff = state.network?.difficulty || 0;
   const avg     = state._avgState;
@@ -30,17 +27,46 @@ function computeLuck(state) {
   return { progress, blocksExpected, blocksFound: found, luck };
 }
 
-// Transform state into a public payload safe to broadcast.
-// Strips internal-only fields (_avgState) before emission.
+// Aggregate the last N network blocks into top pool-finders leaderboard.
+// Returns top 5 pools with block count in the sample window.
+function computeTopFinders(state) {
+  const blocks = state.netBlocks || [];
+  if (!blocks.length) return [];
+  const counts = new Map();
+  for (const b of blocks) {
+    const name = b.pool || 'Unknown';
+    const prev = counts.get(name) || { name, count: 0, isSolo: b.isSolo };
+    prev.count += 1;
+    counts.set(name, prev);
+  }
+  return Array.from(counts.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}
+
+// Compute estimated next-block reward = subsidy + mempool fees total
+function computeBlockReward(state) {
+  const subsidyBtc = 3.125;
+  const feesBtc    = state.mempool?.totalFeesBtc || 0;
+  return {
+    subsidyBtc,
+    feesBtc,
+    totalBtc: subsidyBtc + feesBtc,
+    totalSats: Math.round((subsidyBtc + feesBtc) * 1e8),
+  };
+}
+
 function transformState(state) {
   const { _avgState, workers, ...rest } = state;
   return {
     ...rest,
-    workers:   Object.values(workers || {}),
-    odds:      computeOdds(state),
-    luck:      computeLuck(state),
-    retarget:  state.retarget  || null,
-    netBlocks: state.netBlocks || [],
+    workers:     Object.values(workers || {}),
+    odds:        computeOdds(state),
+    luck:        computeLuck(state),
+    retarget:    state.retarget  || null,
+    netBlocks:   state.netBlocks || [],
+    topFinders:  computeTopFinders(state),
+    blockReward: computeBlockReward(state),
   };
 }
 
