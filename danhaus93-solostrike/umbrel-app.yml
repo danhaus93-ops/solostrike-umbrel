@@ -46,32 +46,6 @@ description: >-
 
 
   100% self-custody. Your node, your rules, your blocks.
-
-
-  Release Notes:
-
-
-  V1.2.2 — Mature UI release. Mobile-first responsive grid (1/2/4 cols), drag-and-drop
-  card reordering with localStorage persistence, GoBrrr/AxeOS-style share display
-  (raw counts + compact difficulty formatting like "2.79 G"), BTC price with 7-
-  currency picker (USD/EUR/GBP/CAD/CHF/AUD/JPY), block reward in BTC+fiat, mempool
-  fees in BTC, Top Pool Finders leaderboard from last 20 network blocks, expanded
-  Bitcoin Network card. New /api/prices endpoint.
-
-
-  V1.2.1 — Production hardening. BTC address validation (client+server), CSV
-  injection defense, WebSocket heartbeat + backoff, rate limiting, nginx gzip +
-  security headers, expanded miner detection, native Node fetch.
-
-
-  V1.2.0 — Miner detection, per-worker difficulty + health, luck gauge, retarget
-  countdown, recent network blocks with solo highlighting, CSV export.
-
-
-  V1.1.0 — ZMQ block notifications, smart vardiff, per-worker best-share leaderboard.
-
-
-  V1.0.0 — Initial release
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
@@ -80,13 +54,32 @@ dependencies:
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
-icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
+gallery:
+  - 1.png
+  - 2.png
+  - 3.png
 path: ""
 defaultUsername: ""
 defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
 releaseNotes: >-
-  V1.2.2 — Mobile-first responsive layout, drag-and-drop card reordering,
-  GoBrrr/AxeOS-style share display, BTC price with 7-currency picker, block
-  reward + mempool fees under Bitcoin Network card, Top Pool Finders panel.
+  V1.2.2 — Mature UI release.
+
+
+  • Mobile-first responsive grid (1/2/4 cols), drag-and-drop card reordering with
+  localStorage persistence
+
+  • GoBrrr/AxeOS-style share display — raw counts with compact difficulty formatting
+  ("2.79 G" instead of "2,790,000,000")
+
+  • BTC price with 7-currency picker (USD / EUR / GBP / CAD / CHF / AUD / JPY)
+
+  • Block reward shown in BTC + fiat equivalent, mempool fees in BTC
+
+  • New Top Pool Finders leaderboard — last 20 network blocks aggregated
+
+  • Expanded Bitcoin Network card
+
+  • New /api/prices endpoint
