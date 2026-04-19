@@ -30,7 +30,7 @@ description: >-
 
   • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
 
-  • AxeOS / GoBrrr-style share display — raw counts with compact difficulty formatting
+  • Compact AxeOS-style share display — raw counts with compact difficulty formatting
 
   • Drag-and-drop card reordering — layout persists per-device
 
@@ -55,8 +55,8 @@ repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
 gallery:
-  - 1.png
-  - 2.png
+  - 1.jpeg
+  - 2.jpeg
 path: ""
 defaultUsername: ""
 defaultPassword: ""
@@ -70,8 +70,8 @@ releaseNotes: >-
   • Mobile-first responsive grid (1/2/4 cols), drag-and-drop card reordering with
   localStorage persistence
 
-  • GoBrrr/AxeOS-style share display — raw counts with compact difficulty formatting
-  ("2.79 G" instead of "2,790,000,000")
+  • Compact AxeOS-style share display — raw counts with compact difficulty
+  formatting ("2.79 G" instead of "2,790,000,000")
 
   • BTC price with 7-currency picker (USD / EUR / GBP / CAD / CHF / AUD / JPY)
 
