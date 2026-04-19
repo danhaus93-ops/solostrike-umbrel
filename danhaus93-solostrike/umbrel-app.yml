@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.2.1"
+version: "1.2.2"
 tagline: Zero-fee solo Bitcoin mining pool with a Deep Mine dashboard
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -16,31 +16,31 @@ description: >-
 
   Features:
 
-  • Real-time hashrate waveform and per-worker monitoring with live best-share tracking
+  • Real-time hashrate waveform, per-worker monitoring, traffic-light health
 
   • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
 
-  • Per-worker live difficulty display and traffic-light health status (green / amber / red)
+  • Per-worker live difficulty and best-share display
 
-  • Block probability calculator with expected-find time and pool network share
+  • Block probability calculator, Luck gauge, difficulty retarget countdown
 
-  • Luck gauge — cumulative blocks-found vs. statistically expected, with progress-to-next-block bar
+  • Top Pool Finders leaderboard — see who's winning the hashwar right now
 
-  • Difficulty retarget countdown — remaining blocks, ETA, estimated % change
+  • Recent network blocks feed with solo-winner highlighting
 
-  • Recent network blocks feed with fellow-solo-winner highlighting
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
 
-  • Share statistics (accepted / rejected / stale / bestshare per worker) with CSV export
+  • AxeOS / GoBrrr-style share display — raw counts with compact difficulty formatting
 
-  • Found-block feed with mempool.space integration, confetti celebration, and CSV export
+  • Drag-and-drop card reordering — layout persists per-device
 
-  • ZMQ block notifications from Bitcoin Core for instant new-block work updates
+  • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
 
-  • Smart vardiff: BitAxes to petahash farms on the same port — no config needed
+  • CSV export for workers and found blocks
 
-  • Tested with rented hashrate (Braiins Hashpower) and local ASICs side-by-side
+  • ZMQ block notifications, smart vardiff (BitAxes to PH/s rentals on same port)
 
-  • Works with any Stratum V1 miner: Antminer S19 XP, BitAxe, NerdMiner, NerdQaxe++, Avalon Nano 3S, and more
+  • Works with any Stratum V1 miner
 
   • One-time setup — enter your payout address once, miners connect automatically
 
@@ -51,22 +51,24 @@ description: >-
   Release Notes:
 
 
-  V1.2.1 — Production hardening. Client + server BTC address validation. CSV-
-  injection defense. WebSocket heartbeat + exponential reconnect backoff. Rate
-  limiting on public endpoints. Nginx gzip, security headers, 1h WS timeout.
-  Expanded miner detection (BitAxe Gamma/Supra/Ultra, S19j/k Pro, S21 XP,
-  Avalon Q, L7/L9). Native Node fetch — node-fetch EOL dep removed. Log-
-  rotation-safe watcher. Fail-fast on missing RPC password.
+  V1.2.2 — Mature UI release. Mobile-first responsive grid (1/2/4 cols), drag-and-drop
+  card reordering with localStorage persistence, GoBrrr/AxeOS-style share display
+  (raw counts + compact difficulty formatting like "2.79 G"), BTC price with 7-
+  currency picker (USD/EUR/GBP/CAD/CHF/AUD/JPY), block reward in BTC+fiat, mempool
+  fees in BTC, Top Pool Finders leaderboard from last 20 network blocks, expanded
+  Bitcoin Network card. New /api/prices endpoint.
 
 
-  V1.2.0 — Miner-type auto-detection, per-worker live difficulty, traffic-light
-  worker health, luck gauge with progress-to-next-block, difficulty retarget
-  countdown, recent network blocks feed with solo-winner highlighting, CSV export
-  for workers and found-blocks, fixed WebSocket state sync bug.
+  V1.2.1 — Production hardening. BTC address validation (client+server), CSV
+  injection defense, WebSocket heartbeat + backoff, rate limiting, nginx gzip +
+  security headers, expanded miner detection, native Node fetch.
 
 
-  V1.1.0 — ZMQ block notifications, smart vardiff, per-worker best-share
-  leaderboard, tested with Braiins Hashpower rentals, mempool app integration.
+  V1.2.0 — Miner detection, per-worker difficulty + health, luck gauge, retarget
+  countdown, recent network blocks with solo highlighting, CSV export.
+
+
+  V1.1.0 — ZMQ block notifications, smart vardiff, per-worker best-share leaderboard.
 
 
   V1.0.0 — Initial release
@@ -85,7 +87,6 @@ defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
 releaseNotes: >-
-  V1.2.1 — Production hardening. BTC address validation, CSV injection defense,
-  WebSocket heartbeat + backoff, rate limiting, nginx gzip + security headers,
-  expanded miner detection, native Node fetch (no more node-fetch EOL dep),
-  log-rotation-safe watcher, fail-fast on missing RPC config.
+  V1.2.2 — Mobile-first responsive layout, drag-and-drop card reordering,
+  GoBrrr/AxeOS-style share display, BTC price with 7-currency picker, block
+  reward + mempool fees under Bitcoin Network card, Top Pool Finders panel.
