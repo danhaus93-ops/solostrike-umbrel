@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.2.0"
+version: "1.2.1"
 tagline: Zero-fee solo Bitcoin mining pool with a Deep Mine dashboard
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -18,7 +18,7 @@ description: >-
 
   • Real-time hashrate waveform and per-worker monitoring with live best-share tracking
 
-  • Automatic miner-type detection (BitAxe, NerdQaxe++, Antminer S19/S21, Avalon Nano 3S, Whatsminer, Braiins rentals)
+  • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
 
   • Per-worker live difficulty display and traffic-light health status (green / amber / red)
 
@@ -51,15 +51,22 @@ description: >-
   Release Notes:
 
 
+  V1.2.1 — Production hardening. Client + server BTC address validation. CSV-
+  injection defense. WebSocket heartbeat + exponential reconnect backoff. Rate
+  limiting on public endpoints. Nginx gzip, security headers, 1h WS timeout.
+  Expanded miner detection (BitAxe Gamma/Supra/Ultra, S19j/k Pro, S21 XP,
+  Avalon Q, L7/L9). Native Node fetch — node-fetch EOL dep removed. Log-
+  rotation-safe watcher. Fail-fast on missing RPC password.
+
+
   V1.2.0 — Miner-type auto-detection, per-worker live difficulty, traffic-light
   worker health, luck gauge with progress-to-next-block, difficulty retarget
   countdown, recent network blocks feed with solo-winner highlighting, CSV export
   for workers and found-blocks, fixed WebSocket state sync bug.
 
 
-  V1.1.0 — ZMQ block notifications, smart vardiff (startdiff 10000, mindiff 1),
-  per-worker best-share leaderboard, tested with Braiins Hashpower rentals,
-  mempool app integration for block-feed data, faster ckpool polling (50ms)
+  V1.1.0 — ZMQ block notifications, smart vardiff, per-worker best-share
+  leaderboard, tested with Braiins Hashpower rentals, mempool app integration.
 
 
   V1.0.0 — Initial release
@@ -78,7 +85,7 @@ defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
 releaseNotes: >-
-  V1.2.0 — Miner-type auto-detection (BitAxe, NerdQaxe, S19, Avalon, Whatsminer,
-  Braiins), per-worker live difficulty, traffic-light worker health, luck gauge
-  with progress-to-next-block, difficulty retarget countdown, recent network
-  blocks with solo-winner highlighting, CSV export for workers and blocks.
+  V1.2.1 — Production hardening. BTC address validation, CSV injection defense,
+  WebSocket heartbeat + backoff, rate limiting, nginx gzip + security headers,
+  expanded miner detection, native Node fetch (no more node-fetch EOL dep),
+  log-rotation-safe watcher, fail-fast on missing RPC config.
