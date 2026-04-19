@@ -4,14 +4,20 @@ export function fmtHr(hps) {
   let v=hps,i=0;while(v>=1000&&i<u.length-1){v/=1000;i++;}
   return`${v<10?v.toFixed(2):v<100?v.toFixed(1):v.toFixed(0)} ${u[i]}`;
 }
+
+// GoBrrr-style compact difficulty: "2.79 G", "1.60 T", "52.20 M"
 export function fmtDiff(d){
   if(!d)return'0';
-  if(d>=1e12)return`${(d/1e12).toFixed(2)}T`;
-  if(d>=1e9)return`${(d/1e9).toFixed(2)}B`;
-  if(d>=1e6)return`${(d/1e6).toFixed(2)}M`;
-  if(d>=1e3)return`${(d/1e3).toFixed(2)}K`;
+  if(d>=1e15)return`${(d/1e15).toFixed(2)} P`;
+  if(d>=1e12)return`${(d/1e12).toFixed(2)} T`;
+  if(d>=1e9)return`${(d/1e9).toFixed(2)} G`;
+  if(d>=1e6)return`${(d/1e6).toFixed(2)} M`;
+  if(d>=1e3)return`${(d/1e3).toFixed(2)} K`;
   return d.toFixed(0);
 }
+// Alias for contexts where we want to be explicit
+export const fmtDiffCompact = fmtDiff;
+
 export function fmtNum(n){return new Intl.NumberFormat().format(Math.round(n||0));}
 export function fmtUptime(ts){
   const s=Math.floor((Date.now()-ts)/1000),d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);
@@ -29,7 +35,6 @@ export function timeAgo(ts){
   if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;
   if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;
 }
-// New v1.2.0 helpers
 export function fmtPct(x, digits=2){
   if(x==null||isNaN(x))return'—';
   if(Math.abs(x)<0.0001)return '0%';
@@ -49,7 +54,21 @@ export function fmtSats(sats){
   if(btc>=1)return`${btc.toFixed(3)} BTC`;
   return`${Math.round(sats).toLocaleString()} sat`;
 }
+export function fmtBtc(btc, digits=4){
+  if(btc==null||isNaN(btc))return'—';
+  return`${btc.toFixed(digits)} BTC`;
+}
 export function blockTimeAgo(unixTs){
   if(!unixTs)return'—';
   return timeAgo(unixTs*1000);
 }
+
+// Currency formatter for BTC price display
+const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', GBP:'£', CAD:'C$', CHF:'Fr', AUD:'A$', JPY:'¥' };
+export function fmtFiat(amount, currency='USD'){
+  if(amount==null||isNaN(amount))return'—';
+  const sym=CURRENCY_SYMBOLS[currency]||'$';
+  const digits=currency==='JPY'?0:2;
+  return`${sym}${amount.toLocaleString(undefined,{minimumFractionDigits:digits,maximumFractionDigits:digits})}`;
+}
+export const CURRENCIES = ['USD','EUR','GBP','CAD','CHF','AUD','JPY'];
