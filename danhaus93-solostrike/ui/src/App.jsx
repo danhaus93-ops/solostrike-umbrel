@@ -181,17 +181,17 @@ function Header({ connected, status, onSettings, privateMode, minimalMode }) {
   );
 }
 
-// ── Ticker (reads a stable snapshot prop — data never mutates) ────────────────
-function Ticker({ snapshotText, enabled, speedSec }) {
+// ── Ticker (memoized — never re-renders after props are set, no flicker) ──────
+const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   if (!enabled || !snapshotText) return null;
   return (
     <div className="ss-hide-scrollbar" style={{ ...STRIP_FULL_WIDTH, background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
-      <div style={{ whiteSpace:'nowrap', animation:`ticker ${speedSec || DEFAULT_TICKER_SPEED}s linear infinite`, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block' }}>
+      <div style={{ whiteSpace:'nowrap', animation:`ticker ${speedSec || DEFAULT_TICKER_SPEED}s linear infinite`, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block', willChange:'transform', transform:'translateZ(0)' }}>
         {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
       </div>
     </div>
   );
-}
+});
 
 // ── Latest Block strip ────────────────────────────────────────────────────────
 function LatestBlockStrip({ netBlocks, blockReward }) {
