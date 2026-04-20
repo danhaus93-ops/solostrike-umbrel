@@ -1619,7 +1619,6 @@ export default function App() {
   const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
   const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
 
-  // Ticker snapshot — captured ONCE when first data batch arrives, never updated
   const [tickerSnapshot, setTickerSnapshot] = useState('');
   useEffect(() => {
     if (tickerSnapshot) return;
@@ -1713,7 +1712,7 @@ export default function App() {
 
   return (
     <>
-      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflowX:'hidden'}}>
+      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflowX:'clip'}}>
         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
           <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode}/>
           <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
@@ -1730,7 +1729,7 @@ export default function App() {
           />
           <SyncWarningBanner sync={state.sync}/>
         </div>
-        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflowX:'hidden'}}>
+        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflowX:'clip'}}>
           <div className="ss-grid" style={{minWidth:0,maxWidth:'100%'}}>
             {order.map(id=>{
               if (!effectiveVisibleCards.includes(id)) return null;
