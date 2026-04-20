@@ -501,16 +501,6 @@ function HashrateChart({ history, week, current, averages, minimalMode }) {
       <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom: showAverages ? '0.6rem' : '0.8rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
       </div>
-      {showAverages && (
-        <div style={{display:'flex', gap:'0.6rem', flexWrap:'wrap', marginBottom:'0.8rem', paddingBottom:'0.6rem', borderBottom:'1px dashed var(--border)'}}>
-          {avgRow.map(([lbl, v]) => (
-            <div key={lbl} style={{display:'flex', flexDirection:'column', gap:2}}>
-              <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>{lbl}</span>
-              <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600}}>{fmtHr(v)}</span>
-            </div>
-          ))}
-        </div>
-      )}
       <div style={{display:'flex', gap:4, marginBottom:'0.6rem', justifyContent:'flex-end'}}>
         {rangeBtn('1h', '1H')}
         {rangeBtn('6h', '6H')}
