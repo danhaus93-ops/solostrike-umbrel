@@ -181,56 +181,48 @@ function Header({ connected, status, onSettings, privateMode, minimalMode }) {
   );
 }
 
-// ── Ticker (GPU compositor layer, isolated from parent repaints) ──────────────
+// ── Ticker (seamless scroll, GPU layer, isolated from parent repaints) ───────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   if (!enabled || !snapshotText) return null;
+  const duration = speedSec || DEFAULT_TICKER_SPEED;
   return (
     <>
       <style>{`
         @keyframes ss-ticker-scroll {
-          0%   { transform: translate3d(0, 0, 0); }
-          100% { transform: translate3d(-50%, 0, 0); }
-        }
-        .ss-ticker-wrap {
-          position: relative;
-          width: 100%;
-          box-sizing: border-box;
-          max-width: 100%;
-          min-width: 0;
-          background: var(--bg-deep);
-          border-bottom: 1px solid var(--border);
-          overflow: hidden;
-          height: 26px;
-          display: flex;
-          align-items: center;
-          contain: layout paint style;
-          isolation: isolate;
-        }
-        .ss-ticker-track {
-          white-space: nowrap;
-          font-family: var(--fd);
-          font-size: 0.55rem;
-          letter-spacing: 0.15em;
-          color: var(--text-2);
-          text-transform: uppercase;
-          display: inline-flex;
-          animation-name: ss-ticker-scroll;
-          animation-timing-function: linear;
-          animation-iteration-count: infinite;
-          will-change: transform;
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
-          transform: translate3d(0, 0, 0);
-        }
-        .ss-ticker-track > span {
-          display: inline-block;
-          padding-right: 3rem;
+          from { transform: translate3d(0, 0, 0); }
+          to   { transform: translate3d(-50%, 0, 0); }
         }
       `}</style>
-      <div className="ss-ticker-wrap">
-        <div className="ss-ticker-track" style={{ animationDuration: `${speedSec || DEFAULT_TICKER_SPEED}s` }}>
-          <span>{snapshotText}</span>
-          <span>{snapshotText}</span>
+      <div style={{
+        width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0,
+        background:'var(--bg-deep)',
+        borderBottom:'1px solid var(--border)',
+        overflow:'hidden',
+        height:26,
+        display:'flex',
+        alignItems:'center',
+        contain:'layout paint style',
+        isolation:'isolate',
+      }}>
+        <div style={{
+          whiteSpace:'nowrap',
+          fontFamily:'var(--fd)',
+          fontSize:'0.55rem',
+          letterSpacing:'0.15em',
+          color:'var(--text-2)',
+          textTransform:'uppercase',
+          display:'inline-block',
+          flexShrink:0,
+          animationName:'ss-ticker-scroll',
+          animationDuration:`${duration}s`,
+          animationTimingFunction:'linear',
+          animationIterationCount:'infinite',
+          transform:'translate3d(0,0,0)',
+          backfaceVisibility:'hidden',
+          WebkitBackfaceVisibility:'hidden',
+          willChange:'transform',
+        }}>
+          {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
         </div>
       </div>
     </>
