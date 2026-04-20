@@ -1,3 +1,7 @@
+// ============================================================
+// SoloStrike v1.3.0 — App.jsx — PART 1 of 2
+// Paste Part 2 directly below the END-OF-PART-1 marker
+// ============================================================
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceDot } from 'recharts';
 import { usePool } from './hooks/usePool.js';
@@ -14,17 +18,13 @@ const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--re
 const LS_CARD_ORDER   = 'ss_card_order_v1';
 const LS_CURRENCY     = 'ss_currency_v1';
 const LS_ALIASES      = 'ss_worker_aliases_v1';
+const LS_NOTES        = 'ss_worker_notes_v1';
 const LS_OFFLINE_SEEN = 'ss_offline_seen_v1';
 
-function loadAliases() {
-  try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; }
-}
+function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
-const LS_NOTES = 'ss_worker_notes_v1';
-function loadNotes() {
-  try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; }
-}
-function saveNotes(n) { try { localStorage.setItem(LS_NOTES, JSON.stringify(n)); } catch {} }
+function loadNotes()   { try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
+function saveNotes(n)  { try { localStorage.setItem(LS_NOTES, JSON.stringify(n)); } catch {} }
 
 // Strip BTC address prefix. "bc1q...wgsk.S19XP" -> "S19XP"
 function stripAddr(fullName) {
@@ -33,7 +33,6 @@ function stripAddr(fullName) {
   if (dot === -1) return fullName;
   return fullName.slice(dot + 1);
 }
-// Display name with alias override
 function displayName(fullName, aliases) {
   if (!fullName) return '';
   if (aliases && aliases[fullName]) return aliases[fullName];
@@ -162,6 +161,40 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
   );
 }
 
+// ── Stratum URL strip (NEW in v1.3.0) ─────────────────────────────────────────
+function StratumUrlStrip() {
+  const [copied, setCopied] = useState(false);
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
+  const url = `stratum+tcp://${host}:3333`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true); setTimeout(()=>setCopied(false), 1800);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); setCopied(true); setTimeout(()=>setCopied(false), 1800); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
+  return (
+    <div onClick={copy} style={{
+      background:'linear-gradient(90deg, rgba(0,255,209,0.04) 0%, rgba(6,7,8,0.95) 60%)',
+      borderBottom:'1px solid var(--border)',
+      padding:'0.5rem 1rem',
+      display:'flex', alignItems:'center', gap:'0.75rem',
+      fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.08em',
+      textTransform:'uppercase', cursor:'pointer',
+      overflowX:'auto', whiteSpace:'nowrap',
+    }}>
+      <span style={{color:'var(--cyan)', fontWeight:700}}>📡 STRATUM</span>
+      <span style={{color:'var(--text-2)'}}>·</span>
+      <span style={{color:'var(--text-1)', fontFamily:'var(--fm)', textTransform:'none', letterSpacing:0}}>{url}</span>
+      <span style={{marginLeft:'auto', color: copied?'var(--green)':'var(--text-3)', fontSize:'0.55rem'}}>{copied?'✓ COPIED':'TAP TO COPY'}</span>
+    </div>
+  );
+}
+
 // ── Sync warning banner ───────────────────────────────────────────────────────
 function SyncWarningBanner({ sync }) {
   if (!sync?.warn) return null;
@@ -200,13 +233,7 @@ function OfflineToasts({ workers, aliases }) {
     (workers || []).forEach(w => {
       const prevStatus = prevRef.current[w.name];
       if (prevStatus && prevStatus !== 'offline' && w.status === 'offline' && !seen[w.name + ':' + w.lastSeen]) {
-        newToasts.push({
-          id: `${w.name}-${w.lastSeen}`,
-          name: w.name,
-          displayName: displayName(w.name, aliases),
-          lastSeen: w.lastSeen,
-          minerType: w.minerType,
-        });
+        newToasts.push({ id:`${w.name}-${w.lastSeen}`, name:w.name, displayName:displayName(w.name, aliases), lastSeen:w.lastSeen, minerType:w.minerType });
         seen[w.name + ':' + w.lastSeen] = Date.now();
       }
       prevRef.current[w.name] = w.status;
@@ -230,66 +257,60 @@ function OfflineToasts({ workers, aliases }) {
           padding:'0.7rem 0.9rem', boxShadow:'0 6px 24px rgba(245,166,35,0.15), 0 0 18px rgba(245,166,35,0.2)',
           animation:'fadeIn 0.3s ease',
         }}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.15em', color:'var(--amber)', textTransform:'uppercase', marginBottom:4}}>
-            ⚠ WORKER OFFLINE
-          </div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.15em', color:'var(--amber)', textTransform:'uppercase', marginBottom:4}}>⚠ WORKER OFFLINE</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600}}>
             {t.displayName}
             {t.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.54rem',color:'var(--text-3)',marginLeft:8,letterSpacing:'0.1em',textTransform:'uppercase'}}>{t.minerType}</span>}
           </div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', marginTop:2}}>
-            Last share {timeAgo(t.lastSeen)} · tap to dismiss
-          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', marginTop:2}}>Last share {timeAgo(t.lastSeen)} · tap to dismiss</div>
         </div>
       ))}
     </div>
   );
 }
 
-// ── Hashrate chart — labels, grid, and ₿ peak marker ─────────────────────────
-function HashrateChart({ history, current }) {
+// ── Hashrate chart — clean, current-point ₿ marker ───────────────────────────
+function HashrateChart({ history, current, averages }) {
   const data = (history||[]).map(p=>({hr: p.hr, ts: p.ts}));
-  const peakPoint = useMemo(() => {
-    if (!data.length) return null;
-    return data.reduce((best, p) => (p.hr > (best?.hr || 0) ? p : best), data[0]);
-  }, [data]);
-  const peak = peakPoint?.hr || current || 0;
+  const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
+  const latest = data.length ? data[data.length - 1] : null;
   const [p0, p1] = fmtHr(current).split(' ');
-  const tickFmt = (v) => {
-    if (v == null) return '';
-    const s = fmtHr(v);
-    return s.replace(/\.00\b/, '').replace(/\.(\d)0\b/, '.$1');
-  };
+  const avgRow = [
+    ['1m',  averages?.hr1m],
+    ['5m',  averages?.hr5m],
+    ['1h',  averages?.hr1h],
+    ['24h', averages?.hr24h],
+    ['7d',  averages?.hr7d],
+  ].filter(([,v]) => v != null && v > 0);
   return (
     <div style={card} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Pool Hashrate — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>PEAK {fmtHr(peak)}</span>}
       </div>
-      <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:'1.25rem' }}>
+      <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom: avgRow.length ? '0.6rem' : '1.25rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
       </div>
-      <ResponsiveContainer width="100%" height={180}>
-        <AreaChart data={data} margin={{top:24,right:6,left:0,bottom:8}}>
+      {avgRow.length > 0 && (
+        <div style={{display:'flex', gap:'0.6rem', flexWrap:'wrap', marginBottom:'1rem', paddingBottom:'0.6rem', borderBottom:'1px dashed var(--border)'}}>
+          {avgRow.map(([lbl, v]) => (
+            <div key={lbl} style={{display:'flex', flexDirection:'column', gap:2}}>
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>{lbl}</span>
+              <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600}}>{fmtHr(v)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <ResponsiveContainer width="100%" height={140}>
+        <AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
           <defs>
             <linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#F5A623" stopOpacity={0.28}/>
               <stop offset="95%" stopColor="#F5A623" stopOpacity={0.02}/>
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="rgba(245,166,35,0.08)" strokeDasharray="2 4" vertical={false}/>
           <XAxis hide dataKey="ts"/>
-          <YAxis
-            orientation="right"
-            domain={[0, (dataMax)=>Math.max(dataMax, peak) * 1.18]}
-            tick={{ fill:'var(--text-3)', fontFamily:'var(--fm)', fontSize:10 }}
-            tickFormatter={tickFmt}
-            axisLine={false}
-            tickLine={false}
-            tickCount={5}
-            width={64}
-            tickMargin={6}
-          />
+          <YAxis hide domain={[0, (dataMax)=>Math.max(dataMax, peak)*1.15]}/>
           <Tooltip content={({active,payload})=>{
             if(!active||!payload?.length) return null;
             const p = payload[0].payload;
@@ -301,23 +322,18 @@ function HashrateChart({ history, current }) {
             );
           }}/>
           <Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
-          {peakPoint && peakPoint.ts != null && (
-            <ReferenceDot
-              x={peakPoint.ts}
-              y={peakPoint.hr}
-              r={0}
-              isFront={true}
+          {latest && latest.ts != null && (
+            <ReferenceDot x={latest.ts} y={latest.hr} r={0} isFront={true}
               shape={(props) => {
                 const { cx, cy } = props;
                 if (cx == null || cy == null) return null;
                 return (
-                  <g style={{filter:'drop-shadow(0 0 6px rgba(245,166,35,0.7))'}}>
-                    <circle cx={cx} cy={cy} r={10} fill="rgba(6,7,8,0.9)" stroke="#F5A623" strokeWidth="1.5"/>
+                  <g style={{filter:'drop-shadow(0 0 8px rgba(245,166,35,0.8))'}}>
+                    <circle cx={cx} cy={cy} r={10} fill="rgba(6,7,8,0.95)" stroke="#F5A623" strokeWidth="1.5"/>
                     <text x={cx} y={cy+4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#F5A623" fontFamily="var(--fm)">₿</text>
                   </g>
                 );
-              }}
-            />
+              }}/>
           )}
         </AreaChart>
       </ResponsiveContainer>
@@ -374,8 +390,9 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
             const disp = displayName(w.name, aliases);
             const lastShareAgo = w.lastSeen ? fmtAgoShort(w.lastSeen) : '—';
             return(
-            <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-
-              <div title={w.health||'unknown'} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 6px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+              <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-raised)'}>
+                <div title={w.health||'unknown'} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 6px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
                 <span title={w.minerType||'Unknown'} style={{fontSize:13,color:on?'var(--cyan)':'var(--text-3)',width:16,textAlign:'center',flexShrink:0}}>{icon}</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:'var(--fm)',fontSize:'0.82rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500}} title={w.name}>
@@ -386,9 +403,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                     <div style={{flex:1,height:2,background:'var(--bg-deep)',borderRadius:1,overflow:'hidden'}}>
                       <div style={{height:'100%',width:`${(workAccepted/totalWork)*100}%`,background:'var(--green)',borderRadius:1}}/>
                     </div>
-                    <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',whiteSpace:'nowrap'}}>
-                      last {lastShareAgo}
-                    </span>
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',whiteSpace:'nowrap'}}>last {lastShareAgo}</span>
                     {w.diff>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',whiteSpace:'nowrap'}}>diff {fmtDiff(w.diff)}</span>}
                   </div>
                 </div>
@@ -410,7 +425,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
   );
 }
 
-// ── Bitcoin Network ───────────────────────────────────────────────────────────
+// ── Bitcoin Network (relabeled "Next Block Prize" + jackpot emphasis) ────────
 function NetworkStats({ network, blockReward, mempool, prices, currency, privateMode }) {
   const price = prices?.[currency];
   const rewardUsd = price && blockReward ? blockReward.totalBtc * price : null;
@@ -427,11 +442,11 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
       ))}
       <div style={{height:1,background:'var(--border)',margin:'0.7rem 0'}}/>
       {blockReward && (
-        <div style={statRow}>
-          <span style={label}>Block Reward</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.82rem',fontWeight:600,color:'var(--amber)',textAlign:'right'}}>
+        <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(245,166,35,0.25)'}}>
+          <span style={{...label, color:'var(--amber)'}}>🏆 Next Block Prize</span>
+          <span style={{fontFamily:'var(--fd)',fontSize:'0.92rem',fontWeight:700,color:'var(--amber)',textAlign:'right',textShadow:'0 0 12px rgba(245,166,35,0.35)'}}>
             {fmtBtc(blockReward.totalBtc, 3)}
-            {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',fontWeight:400,marginTop:2}}>{fmtFiat(rewardUsd, currency)}</div>}
+            {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--green)',fontWeight:600,marginTop:2,textShadow:'0 0 8px rgba(57,255,106,0.2)'}}>{fmtFiat(rewardUsd, currency)}</div>}
           </span>
         </div>
       )}
@@ -498,7 +513,7 @@ function BitcoinNodePanel({ nodeInfo }) {
   );
 }
 
-// ── Odds (now w/ weekly + monthly) ────────────────────────────────────────────
+// ── Odds (daily + weekly + monthly) ──────────────────────────────────────────
 function OddsDisplay({ odds, hashrate, netHashrate }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0 } = odds||{};
   const R=48, C=2*Math.PI*R;
@@ -799,210 +814,6 @@ function BlockAlert({ block, onDismiss }) {
   </>);
 }
 
-// ── Worker Detail Modal ───────────────────────────────────────────────────────
-function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
-  const [copied, setCopied] = useState('');
-  const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
-  const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    setAliasVal(aliases[worker.name] || '');
-    setNoteVal(notes[worker.name] || '');
-    setDirty(false);
-  }, [worker.name, aliases, notes]);
-
-  const w = worker;
-  const on = w.status !== 'offline';
-  const raw = w.sharesCount || 0;
-  const rawRej = w.rejectedCount || 0;
-  const work = w.shares || 0;
-  const workRej = w.rejected || 0;
-  const totalWork = work + workRej || 1;
-  const acceptRate = ((work / totalWork) * 100).toFixed(2);
-  const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
-  const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
-  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
-  const freshness = (() => {
-    const age = Date.now() - (w.lastSeen || 0);
-    if (age < 2*60*1000) return 'fresh (<2m)';
-    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
-    return `offline (${Math.floor(age/60000)}m)`;
-  })();
-
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
-  const stratumUrl = `stratum+tcp://${host}:3333`;
-
-  const copy = async (val, label) => {
-    try {
-      await navigator.clipboard.writeText(val);
-      setCopied(label);
-      setTimeout(() => setCopied(''), 2000);
-    } catch {
-      // fallback
-      const ta = document.createElement('textarea');
-      ta.value = val; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); setCopied(label); setTimeout(()=>setCopied(''),2000); } catch {}
-      document.body.removeChild(ta);
-    }
-  };
-
-  const save = () => {
-    const nextA = { ...aliases };
-    if (!aliasVal.trim()) delete nextA[w.name]; else nextA[w.name] = aliasVal.trim().slice(0, 32);
-    onAliasesChange(nextA);
-    const nextN = { ...notes };
-    if (!noteVal.trim()) delete nextN[w.name]; else nextN[w.name] = noteVal.trim().slice(0, 200);
-    onNotesChange(nextN);
-    setDirty(false);
-  };
-
-  const exportCsv = () => {
-    const rows = [
-      ['# generated_at_utc', new Date().toISOString()],
-      ['# worker', w.name],
-      ['# display_name', aliases[w.name] || stripAddr(w.name)],
-      ['field','value'],
-      ['hashrate_hps', w.hashrate || 0],
-      ['current_difficulty', w.diff || 0],
-      ['best_share', Math.round(w.bestshare || 0)],
-      ['work_accepted', work],
-      ['work_rejected', workRej],
-      ['accept_rate_pct', acceptRate],
-      ['raw_shares', raw],
-      ['raw_rejected', rawRej],
-      ['miner_type', w.minerType || ''],
-      ['miner_vendor', w.minerVendor || ''],
-      ['status', w.status || ''],
-      ['health', w.health || ''],
-      ['last_seen_iso', w.lastSeen ? new Date(w.lastSeen).toISOString() : ''],
-    ];
-    const csv = rows.map(r => r.map(v => {
-      const s = String(v == null ? '' : v);
-      if (/[,"\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
-      return s;
-    }).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `solostrike-worker-${stripAddr(w.name).replace(/[^A-Za-z0-9]/g,'_')}-${Date.now()}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-  };
-
-  const section = { marginBottom:'1rem' };
-  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
-  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
-  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
-  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'65%' };
-  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
-  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
-  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)', lineHeight:1 };
-  const btn = { padding:'0.55rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', flex:1, minWidth:'48%' };
-  const btnDisabled = { ...btn, color:'var(--text-3)', cursor:'not-allowed', opacity:0.5 };
-  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none' };
-
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
-        {/* Header band */}
-        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem'}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:4}}>
-              <span style={{fontSize:16,color:'var(--cyan)'}}>{w.minerIcon || '▪'}</span>
-              <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
-            </div>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
-              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
-            </div>
-            <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
-              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
-              <span style={{color:on?'var(--green)':'var(--red)'}}>{on?'ONLINE':'OFFLINE'}</span>
-              <span style={{color:'var(--text-3)',marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):'—'}</span>
-            </div>
-          </div>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px',flexShrink:0}}>✕</button>
-        </div>
-
-        <div style={{padding:'1rem 1.25rem'}}>
-          {/* Hero stats */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
-            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Live Diff</div><div style={{...heroVal,color:'var(--cyan)'}}>{fmtDiff(w.diff||0)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
-          </div>
-
-          {/* Shares section */}
-          <div style={section}>
-            <div style={sectionTitle}>▸ Shares</div>
-            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:workRej?'var(--red)':'var(--text-1)'}}>{fmtDiff(workRej)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
-          </div>
-
-          {/* Connection section */}
-          <div style={section}>
-            <div style={sectionTitle}>▸ Connection</div>
-            <div style={kvRow}><span style={kvLabel}>Stratum URL</span><span style={{...kvVal,fontSize:'0.68rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Worker IP</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.workerip || '— (v1.4)'}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Client</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.useragent || '— (v1.4)'}</span></div>
-          </div>
-
-          {/* Health section */}
-          <div style={section}>
-            <div style={sectionTitle}>▸ Health</div>
-            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
-          </div>
-
-          {/* Options section */}
-          <div style={section}>
-            <div style={sectionTitle}>▸ Options</div>
-            <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
-              <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32}
-                onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Shows as alias everywhere in the UI</div>
-            </div>
-            <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
-              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200}
-                onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Saved to this device only, never leaves the app</div>
-            </div>
-            <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Target Difficulty</div>
-              <input type="text" value="auto" disabled style={{...inputStyle,opacity:0.5,cursor:'not-allowed'}}/>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Override vardiff — available in v1.4</div>
-            </div>
-            {dirty && (
-              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div style={section}>
-            <div style={sectionTitle}>▸ Actions</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button onClick={()=>copy(stratumUrl,'stratum')} style={btn}>{copied==='stratum'?'✓ Copied':'Copy Stratum URL'}</button>
-              <button onClick={()=>copy(w.name,'name')}       style={btn}>{copied==='name'?'✓ Copied':'Copy Workername'}</button>
-              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
-              <button disabled title="Available in v1.4" style={btnDisabled}>Reset Stats</button>
-              <button disabled title="Available in v1.4" style={{...btnDisabled,flex:'1 1 100%'}}>Kick &amp; Reconnect</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Setup screen ──────────────────────────────────────────────────────────────
 function SetupScreen({ onComplete }) {
   const [addr,setAddr]=useState(''); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
@@ -1033,7 +844,7 @@ function SetupScreen({ onComplete }) {
   );
 }
 
-// ── Settings modal (NEW: Private Mode, Webhooks, Aliases) ─────────────────────
+// ── Settings modal (4 tabs) ───────────────────────────────────────────────────
 function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange }) {
   const [tab, setTab] = useState('main');
   const [addr,setAddr]=useState('');
@@ -1082,10 +893,10 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {saved&&<div style={{background:'rgba(57,255,106,0.06)',border:'1px solid rgba(57,255,106,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--green)',marginBottom:'1rem'}}>✓ Saved</div>}
         {error&&<div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'1rem'}}>⚠ {error}</div>}
 
-        {tab==='main' && (<MainTab {...{addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,onResetLayout,submit,saved,loading}}/>)}
-        {tab==='privacy' && (<PrivacyTab {...{privateMode,setPrivateMode,submit,saved,loading}}/>)}
-        {tab==='aliases' && (<AliasesTab {...{workers,aliases,onAliasesChange}}/>)}
-        {tab==='hooks' && (<WebhooksTab />)}
+        {tab==='main' && <MainTab {...{addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,onResetLayout,submit,saved,loading}}/>}
+        {tab==='privacy' && <PrivacyTab {...{privateMode,setPrivateMode,submit,saved,loading}}/>}
+        {tab==='aliases' && <AliasesTab {...{workers,aliases,onAliasesChange}}/>}
+        {tab==='hooks' && <WebhooksTab />}
       </div>
     </div>
   );
@@ -1151,8 +962,7 @@ function AliasesTab({workers, aliases, onAliasesChange}) {
   useEffect(()=>setLocalAliases(aliases||{}), [aliases]);
   const updateAlias = (name, val) => {
     const next = { ...localAliases };
-    if (!val.trim()) delete next[name];
-    else next[name] = val.trim().slice(0, 32);
+    if (!val.trim()) delete next[name]; else next[name] = val.trim().slice(0, 32);
     setLocalAliases(next);
   };
   const save = () => { onAliasesChange(localAliases); };
@@ -1197,10 +1007,7 @@ function WebhooksTab() {
       await load();
     } catch(e){ setErr(e.message); } finally { setBusy(false); }
   };
-  const del = async (id) => {
-    await fetch(`/api/webhooks/${id}`, { method:'DELETE' });
-    await load();
-  };
+  const del = async (id) => { await fetch(`/api/webhooks/${id}`, { method:'DELETE' }); await load(); };
   const EVENT_LABELS = { block_found:'Block Found', worker_offline:'Worker Offline', worker_online:'Worker Online' };
   const toggleEvent = (ev) => setNewEvents(list => list.includes(ev) ? list.filter(x=>x!==ev) : [...list, ev]);
   return (
@@ -1246,6 +1053,199 @@ function WebhooksTab() {
   );
 }
 
+// ── Worker Detail Modal (NEW) ─────────────────────────────────────────────────
+function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
+  const [copied, setCopied] = useState('');
+  const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
+  const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setAliasVal(aliases[worker.name] || '');
+    setNoteVal(notes[worker.name] || '');
+    setDirty(false);
+  }, [worker.name, aliases, notes]);
+
+  const w = worker;
+  const on = w.status !== 'offline';
+  const raw = w.sharesCount || 0;
+  const rawRej = w.rejectedCount || 0;
+  const work = w.shares || 0;
+  const workRej = w.rejected || 0;
+  const totalWork = work + workRej || 1;
+  const acceptRate = ((work / totalWork) * 100).toFixed(2);
+  const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
+  const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
+  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
+  const freshness = (() => {
+    const age = Date.now() - (w.lastSeen || 0);
+    if (age < 2*60*1000) return 'fresh (<2m)';
+    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
+    return `offline (${Math.floor(age/60000)}m)`;
+  })();
+
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
+  const stratumUrl = `stratum+tcp://${host}:3333`;
+
+  const copy = async (val, label) => {
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopied(label); setTimeout(() => setCopied(''), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = val; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); setCopied(label); setTimeout(()=>setCopied(''),2000); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
+
+  const save = () => {
+    const nextA = { ...aliases };
+    if (!aliasVal.trim()) delete nextA[w.name]; else nextA[w.name] = aliasVal.trim().slice(0, 32);
+    onAliasesChange(nextA);
+    const nextN = { ...notes };
+    if (!noteVal.trim()) delete nextN[w.name]; else nextN[w.name] = noteVal.trim().slice(0, 200);
+    onNotesChange(nextN);
+    setDirty(false);
+  };
+
+  const exportCsv = () => {
+    const rows = [
+      ['# generated_at_utc', new Date().toISOString()],
+      ['# worker', w.name],
+      ['# display_name', aliases[w.name] || stripAddr(w.name)],
+      ['field','value'],
+      ['hashrate_hps', w.hashrate || 0],
+      ['current_difficulty', w.diff || 0],
+      ['best_share', Math.round(w.bestshare || 0)],
+      ['work_accepted', work],
+      ['work_rejected', workRej],
+      ['accept_rate_pct', acceptRate],
+      ['raw_shares', raw],
+      ['raw_rejected', rawRej],
+      ['miner_type', w.minerType || ''],
+      ['miner_vendor', w.minerVendor || ''],
+      ['status', w.status || ''],
+      ['health', w.health || ''],
+      ['last_seen_iso', w.lastSeen ? new Date(w.lastSeen).toISOString() : ''],
+    ];
+    const csv = rows.map(r => r.map(v => {
+      const s = String(v == null ? '' : v);
+      if (/[,"\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+      return s;
+    }).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `solostrike-worker-${stripAddr(w.name).replace(/[^A-Za-z0-9]/g,'_')}-${Date.now()}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  };
+
+  const section = { marginBottom:'1rem' };
+  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
+  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'65%' };
+  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
+  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
+  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)', lineHeight:1 };
+  const btn = { padding:'0.55rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', flex:1, minWidth:'48%' };
+  const btnDisabled = { ...btn, color:'var(--text-3)', cursor:'not-allowed', opacity:0.5 };
+  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none' };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
+        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem'}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:4}}>
+              <span style={{fontSize:16,color:'var(--cyan)'}}>{w.minerIcon || '▪'}</span>
+              <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
+            </div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
+              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
+            </div>
+            <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+              <span style={{color:on?'var(--green)':'var(--red)'}}>{on?'ONLINE':'OFFLINE'}</span>
+              <span style={{color:'var(--text-3)',marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):'—'}</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px',flexShrink:0}}>✕</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
+            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Live Diff</div><div style={{...heroVal,color:'var(--cyan)'}}>{fmtDiff(w.diff||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
+          </div>
+
+          <div style={section}>
+            <div style={sectionTitle}>▸ Shares</div>
+            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:workRej?'var(--red)':'var(--text-1)'}}>{fmtDiff(workRej)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
+          </div>
+
+          <div style={section}>
+            <div style={sectionTitle}>▸ Connection</div>
+            <div style={kvRow}><span style={kvLabel}>Stratum URL</span><span style={{...kvVal,fontSize:'0.68rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Worker IP</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.workerip || '— (v1.4)'}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Client</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.useragent || '— (v1.4)'}</span></div>
+          </div>
+
+          <div style={section}>
+            <div style={sectionTitle}>▸ Health</div>
+            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
+          </div>
+
+          <div style={section}>
+            <div style={sectionTitle}>▸ Options</div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
+              <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Shows as alias everywhere in the UI</div>
+            </div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
+              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Saved to this device only, never leaves the app</div>
+            </div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Target Difficulty</div>
+              <input type="text" value="auto" disabled style={{...inputStyle,opacity:0.5,cursor:'not-allowed'}}/>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Override vardiff — available in v1.4</div>
+            </div>
+            {dirty && (
+              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
+            )}
+          </div>
+
+          <div style={section}>
+            <div style={sectionTitle}>▸ Actions</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              <button onClick={()=>copy(stratumUrl,'stratum')} style={btn}>{copied==='stratum'?'✓ Copied':'Copy Stratum URL'}</button>
+              <button onClick={()=>copy(w.name,'name')}       style={btn}>{copied==='name'?'✓ Copied':'Copy Workername'}</button>
+              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
+              <button disabled title="Available in v1.4" style={btnDisabled}>Reset Stats</button>
+              <button disabled title="Available in v1.4" style={{...btnDisabled,flex:'1 1 100%'}}>Kick &amp; Reconnect</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Card order ────────────────────────────────────────────────────────────────
 const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'blocks', 'topfinders', 'recent'];
 function loadOrder() {
@@ -1274,6 +1274,8 @@ export default function App() {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [aliases, setAliases] = useState(loadAliases);
+  const [notes, setNotes] = useState(loadNotes);
+  const [selectedWorker, setSelectedWorker] = useState(null);
 
   useEffect(()=>{ if(blockAlert) setDismissedAlert(false); }, [blockAlert]);
 
@@ -1284,6 +1286,7 @@ export default function App() {
   const handleCurrencyChange = (c) => { setCurrency(c); saveCurrency(c); };
   const handleResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
   const handleAliasesChange = (a) => { setAliases(a); saveAliases(a); };
+  const handleNotesChange = (n) => { setNotes(n); saveNotes(n); };
 
   const onDragStart = (id) => setDraggedId(id);
   const onDragOver  = (id) => { if (id !== dragOverId) setDragOverId(id); };
@@ -1310,8 +1313,8 @@ export default function App() {
   if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
 
   const cards = {
-    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current}/> },
-    workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases}/> },
+    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current} averages={state.hashrate?.averages}/> },
+    workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
     network:    { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
     node:       { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
     odds:       { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
@@ -1327,11 +1330,11 @@ export default function App() {
   return (
     <>
       <div style={{minHeight:'100vh',display:'flex',flexDirection:'column'}}>
-        {/* STICKY HEADER CLUSTER — all banners pinned, content scrolls behind */}
         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)' }}>
           <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
           <Ticker state={state}/>
           <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>
+          <StratumUrlStrip/>
           <SyncWarningBanner sync={state.sync}/>
         </div>
         <main style={{flex:1,padding:'1rem',maxWidth:1400,margin:'0 auto',width:'100%'}}>
@@ -1355,6 +1358,10 @@ export default function App() {
       {showSettings&&<SettingsModal onClose={()=>setShowSettings(false)} saveConfig={saveConfig} currentConfig={settingsCfg} currency={currency} onCurrencyChange={handleCurrencyChange} onResetLayout={handleResetLayout} workers={state.workers} aliases={aliases} onAliasesChange={handleAliasesChange}/>}
       {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
       <OfflineToasts workers={state.workers} aliases={aliases}/>
+      {selectedWorker && (() => {
+        const live = (state.workers || []).find(w => w.name === selectedWorker.name) || selectedWorker;
+        return <WorkerDetailModal worker={live} onClose={()=>setSelectedWorker(null)} aliases={aliases} onAliasesChange={handleAliasesChange} notes={notes} onNotesChange={handleNotesChange}/>;
+      })()}
     </>
   );
 }
