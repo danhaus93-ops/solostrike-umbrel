@@ -181,51 +181,71 @@ function Header({ connected, status, onSettings, privateMode, minimalMode }) {
   );
 }
 
-// ── Ticker (seamless scroll, GPU layer, isolated from parent repaints) ───────
+// ── Ticker (JS rAF animation — immune to any CSS/layout reflow restarts) ──────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
-  if (!enabled || !snapshotText) return null;
+  const trackRef = useRef(null);
+  const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
+
+  useEffect(() => {
+    if (!enabled || !snapshotText) return;
+    const track = trackRef.current;
+    if (!track) return;
+
+    const measure = () => {
+      stateRef.current.halfWidth = track.scrollWidth / 2;
+    };
+    measure();
+    window.addEventListener('resize', measure);
+
+    const step = (t) => {
+      const s = stateRef.current;
+      if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
+      if (s.lastT == null) s.lastT = t;
+      const dt = (t - s.lastT) / 1000;
+      s.lastT = t;
+      const pxPerSec = s.halfWidth / duration;
+      s.x -= pxPerSec * dt;
+      while (s.x <= -s.halfWidth) s.x += s.halfWidth;
+      track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
+      s.rafId = requestAnimationFrame(step);
+    };
+    stateRef.current.rafId = requestAnimationFrame(step);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
+      stateRef.current.lastT = null;
+    };
+  }, [enabled, snapshotText, duration]);
+
+  if (!enabled || !snapshotText) return null;
+
   return (
-    <>
-      <style>{`
-        @keyframes ss-ticker-scroll {
-          from { transform: translate3d(0, 0, 0); }
-          to   { transform: translate3d(-50%, 0, 0); }
-        }
-      `}</style>
-      <div style={{
-        width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0,
-        background:'var(--bg-deep)',
-        borderBottom:'1px solid var(--border)',
-        overflow:'hidden',
-        height:26,
-        display:'flex',
-        alignItems:'center',
-        contain:'layout paint style',
-        isolation:'isolate',
+    <div style={{
+      width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0,
+      background:'var(--bg-deep)',
+      borderBottom:'1px solid var(--border)',
+      overflow:'hidden',
+      height:26,
+      display:'flex',
+      alignItems:'center',
+    }}>
+      <div ref={trackRef} style={{
+        whiteSpace:'nowrap',
+        fontFamily:'var(--fd)',
+        fontSize:'0.55rem',
+        letterSpacing:'0.15em',
+        color:'var(--text-2)',
+        textTransform:'uppercase',
+        display:'inline-block',
+        flexShrink:0,
+        willChange:'transform',
+        transform:'translate3d(0,0,0)',
       }}>
-        <div style={{
-          whiteSpace:'nowrap',
-          fontFamily:'var(--fd)',
-          fontSize:'0.55rem',
-          letterSpacing:'0.15em',
-          color:'var(--text-2)',
-          textTransform:'uppercase',
-          display:'inline-block',
-          flexShrink:0,
-          animationName:'ss-ticker-scroll',
-          animationDuration:`${duration}s`,
-          animationTimingFunction:'linear',
-          animationIterationCount:'infinite',
-          transform:'translate3d(0,0,0)',
-          backfaceVisibility:'hidden',
-          WebkitBackfaceVisibility:'hidden',
-          willChange:'transform',
-        }}>
-          {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
-        </div>
+        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
       </div>
-    </>
+    </div>
   );
 });
 
