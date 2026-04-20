@@ -29,22 +29,23 @@ const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const DEFAULT_TICKER_SPEED = 30;
 
 const ALL_CARDS = [
-  { id:'hashrate',   label:'Pool Hashrate' },
-  { id:'workers',    label:'Connected Workers' },
-  { id:'network',    label:'Bitcoin Network' },
-  { id:'node',       label:'Bitcoin Node' },
-  { id:'odds',       label:'Block Probability' },
-  { id:'luck',       label:'Luck Gauge' },
-  { id:'retarget',   label:'Difficulty Retarget' },
-  { id:'shares',     label:'Share Stats' },
-  { id:'best',       label:'Leaderboard' },
-  { id:'blocks',     label:'Blocks Found' },
-  { id:'topfinders', label:'Top Pool Finders' },
-  { id:'recent',     label:'Recent Network Blocks' },
+  { id:'hashrate',      label:'Pool Hashrate' },
+  { id:'workers',       label:'Connected Workers' },
+  { id:'network',       label:'Bitcoin Network' },
+  { id:'node',          label:'Bitcoin Node' },
+  { id:'odds',          label:'Block Probability' },
+  { id:'luck',          label:'Luck Gauge' },
+  { id:'retarget',      label:'Difficulty Retarget' },
+  { id:'shares',        label:'Share Stats' },
+  { id:'best',          label:'Leaderboard' },
+  { id:'closestcalls',  label:'Closest Calls — Top 10' },
+  { id:'blocks',        label:'Blocks Found' },
+  { id:'topfinders',    label:'Top Pool Finders' },
+  { id:'recent',        label:'Recent Network Blocks' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'workers', 'blocks'];
-const DEFAULT_PRESET  = ['hashrate', 'workers', 'network', 'shares', 'best', 'blocks'];
+const DEFAULT_PRESET  = ['hashrate', 'workers', 'network', 'shares', 'best', 'closestcalls', 'blocks'];
 const EVERYTHING_PRESET = [...ALL_CARD_IDS];
 
 function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
@@ -116,7 +117,7 @@ function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, childre
   );
 }
 
-// ── Live clock hook (uses device local timezone) ──────────────────────────────
+// ── Live clock hook ───────────────────────────────────────────────────────────
 function useNow(refreshMs = 30000) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -138,7 +139,7 @@ function fmtClockDate(d) {
   return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
 }
 
-// ── ZMQ badge — shows Bitcoin Core ZMQ connection status ──────────────────────
+// ── ZMQ badge ─────────────────────────────────────────────────────────────────
 function ZmqBadge({ zmq }) {
   if (!zmq) return null;
   const z = zmq;
@@ -209,7 +210,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
   );
 }
 
-// ── Ticker (JS rAF animation — immune to CSS/layout reflow restarts) ─────────
+// ── Ticker ────────────────────────────────────────────────────────────────────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const trackRef = useRef(null);
   const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
@@ -476,7 +477,7 @@ function OfflineToasts({ workers, aliases }) {
   );
 }
 
-// ── Hashrate chart (1H/6H/24H/7D range selector + smoothing) ────────────────
+// ── Hashrate chart ────────────────────────────────────────────────────────────
 function HashrateChart({ history, week, current }) {
   const [range, setRange] = useState('1h');
 
@@ -635,6 +636,72 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Closest Calls — pool-wide top 10 best-diff shares ever ──────────────────
+function ClosestCallsPanel({ closestCalls, aliases }) {
+  const list = closestCalls || [];
+  if (!list.length) {
+    return (
+      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+        <div style={cardTitle}>▸ Closest Calls — Top 10 Near-Misses</div>
+        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
+          Building leaderboard…<br/>
+          <span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Shares tracked as they come in</span>
+        </div>
+      </div>
+    );
+  }
+
+  const maxDiff = list[0]?.diff || 1;
+
+  return (
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <span>▸ Closest Calls — All-Time Top {list.length}</span>
+        <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>fleet-wide</span>
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
+        {list.map((c, i) => {
+          const pct = (c.diff / maxDiff) * 100;
+          const disp = displayName(c.workerName, aliases);
+          const color = i === 0 ? 'var(--amber)' : i < 3 ? 'var(--cyan)' : 'var(--text-1)';
+          return (
+            <div key={`${c.workerName}-${c.ts}`} style={{
+              padding:'0.55rem 0.7rem',
+              background:'var(--bg-raised)',
+              border:`1px solid ${i===0?'rgba(245,166,35,0.35)':i<3?'rgba(0,255,209,0.15)':'var(--border)'}`,
+              position:'relative',
+              overflow:'hidden',
+              minWidth:0,
+              boxShadow: i===0 ? '0 0 10px rgba(245,166,35,0.12)' : 'none',
+            }}>
+              <div style={{position:'absolute', inset:0, width:`${pct}%`, background: i===0?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)', transition:'width 0.6s ease'}}/>
+              <div style={{position:'relative', display:'flex', alignItems:'center', gap:'0.6rem'}}>
+                <span style={{
+                  fontFamily:'var(--fd)', fontSize:'0.72rem', fontWeight:700,
+                  color, minWidth:22, flexShrink:0,
+                  textShadow: i===0 ? '0 0 8px rgba(245,166,35,0.5)' : 'none',
+                }}>#{i+1}</span>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={c.workerName}>
+                    {disp}
+                    {c.minerType && <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em', color:'var(--text-3)', marginLeft:6, textTransform:'uppercase'}}>{c.minerType}</span>}
+                  </div>
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-3)', marginTop:2}}>
+                    {c.ts ? timeAgo(c.ts) : '—'}
+                  </div>
+                </div>
+                <span style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color, flexShrink:0, textShadow: i===0 ? '0 0 10px rgba(245,166,35,0.4)' : 'none'}}>
+                  {fmtDiff(c.diff)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1201,7 +1268,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </button>
         <button onClick={()=>applyPreset(DEFAULT_PRESET)}
           style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border-hot)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
-          Default (6)
+          Default ({DEFAULT_PRESET.length})
         </button>
         <button onClick={()=>applyPreset(EVERYTHING_PRESET)}
           style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
@@ -1443,7 +1510,7 @@ function WebhooksTab() {
   );
 }
 
-// ── Worker Detail Modal (dual-port display) ──────────────────────────────────
+// ── Worker Detail Modal — NOW WITH CLICKABLE IP LINK ─────────────────────────
 function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
@@ -1477,6 +1544,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
   const stratumUrl      = `stratum+tcp://${host}:3333`;
   const stratumUrlHobby = `stratum+tcp://${host}:3334`;
+  const minerUrl        = w.ip ? `http://${w.ip}` : null;
 
   const copy = async (val, lbl) => {
     try {
@@ -1510,6 +1578,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
       ['best_share', Math.round(w.bestshare || 0)],
       ['work_accepted', work],
       ['work_rejected', workRej],
+      ['ip', w.ip || ''],
     ];
     const csv = rows.map(r => r.map(v => {
       const s = String(v == null ? '' : v);
@@ -1565,6 +1634,27 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
 
+          {/* NEW: Prominent Miner Web UI link if we have an IP */}
+          {minerUrl && (
+            <div style={{...section, marginBottom:'1.25rem'}}>
+              <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
+                display:'flex', alignItems:'center', gap:'0.7rem',
+                padding:'0.8rem 1rem',
+                background:'linear-gradient(90deg, rgba(0,255,209,0.1) 0%, rgba(0,255,209,0.02) 100%)',
+                border:'1px solid rgba(0,255,209,0.35)',
+                textDecoration:'none', cursor:'pointer',
+                boxShadow:'0 0 12px rgba(0,255,209,0.08)',
+              }}>
+                <span style={{fontSize:22, flexShrink:0}}>🌐</span>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>OPEN MINER WEB UI</div>
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{minerUrl}</div>
+                </div>
+                <span style={{color:'var(--cyan)', fontSize:16, fontFamily:'var(--fm)', flexShrink:0}}>↗</span>
+              </a>
+            </div>
+          )}
+
           <div style={section}>
             <div style={secTitle}>▸ Shares</div>
             <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
@@ -1583,6 +1673,16 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             <div style={secTitle}>▸ Connection</div>
             <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
+            <div style={kvRow}>
+              <span style={kvLabel}>Miner IP</span>
+              {w.ip ? (
+                <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{...kvVal, color:'var(--cyan)', textDecoration:'underline', cursor:'pointer', fontWeight:600}}>
+                  {w.ip} ↗
+                </a>
+              ) : (
+                <span style={{...kvVal, color:'var(--text-3)'}}>— <span style={{fontSize:'0.6rem'}}>(waiting for auth)</span></span>
+              )}
+            </div>
             <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
           </div>
 
@@ -1611,9 +1711,10 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           <div style={section}>
             <div style={secTitle}>▸ Actions</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button onClick={()=>copy(stratumUrl,'asic')}      style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
-              <button onClick={()=>copy(stratumUrlHobby,'hobby')} style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
-              <button onClick={()=>copy(w.name,'name')}           style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
+              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
+              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
+              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?'✓ Copied':'Copy Miner IP'}</button>}
+              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
               <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
               <button disabled style={btnDisabled}>Reset Stats</button>
             </div>
@@ -1625,7 +1726,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Card order + currency helpers ─────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'blocks', 'topfinders', 'recent'];
+const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'closestcalls', 'blocks', 'topfinders', 'recent'];
 function loadOrder() {
   try {
     const saved = localStorage.getItem(LS_CARD_ORDER);
@@ -1740,18 +1841,19 @@ export default function App() {
   if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
 
   const cards = {
-    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
-    workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
-    network:    { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
-    node:       { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
-    odds:       { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
-    luck:       { spanTwo:false, el:<LuckGauge luck={state.luck}/> },
-    retarget:   { spanTwo:false, el:<RetargetPanel retarget={state.retarget}/> },
-    shares:     { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare}/> },
-    best:       { spanTwo:false, el:<BestShareLeaderboard workers={state.workers} poolBest={state.bestshare} aliases={aliases}/> },
-    blocks:     { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
-    topfinders: { spanTwo:false, el:<TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/> },
-    recent:     { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
+    hashrate:     { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
+    workers:      { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
+    network:      { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
+    node:         { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
+    odds:         { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
+    luck:         { spanTwo:false, el:<LuckGauge luck={state.luck}/> },
+    retarget:     { spanTwo:false, el:<RetargetPanel retarget={state.retarget}/> },
+    shares:       { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare}/> },
+    best:         { spanTwo:false, el:<BestShareLeaderboard workers={state.workers} poolBest={state.bestshare} aliases={aliases}/> },
+    closestcalls: { spanTwo:false, el:<ClosestCallsPanel closestCalls={state.snapshots?.closestCalls} aliases={aliases}/> },
+    blocks:       { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
+    topfinders:   { spanTwo:false, el:<TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/> },
+    recent:       { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
   };
 
   const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
@@ -1793,7 +1895,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.3.3 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.3.4 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <span>Ports <span style={{color:'var(--cyan)'}}>3333</span> · <span style={{color:'var(--cyan)'}}>3334</span></span>
         </footer>
       </div>
