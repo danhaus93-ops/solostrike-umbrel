@@ -22,6 +22,12 @@ function startStatusPoller(state, broadcast, logDir) {
   const usersDir   = path.join(logDir, 'users');
   const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
+  // 24 hours of history at 1-minute resolution = 1440 points.
+  // Recharts handles this fine; UI can downsample for rendering if needed.
+  const HISTORY_INTERVAL_MS = 60 * 1000;
+  const HISTORY_MAX_POINTS  = 1440;
+  let lastHistoryPush = 0;
+
   function cleanupStaleWorkers() {
     const now = Date.now();
     for (const key of Object.keys(state.workers)) {
@@ -32,6 +38,9 @@ function startStatusPoller(state, broadcast, logDir) {
     }
   }
 
+  // Rolling hashrate*time integral for the Luck calculation. Stored at the
+  // top-level state._avgState so it never leaks into broadcast payloads
+  // (transformState strips it). Keep updating every poll for accuracy.
   function updateAvgHashrate(current) {
     const now = Date.now();
     if (!state._avgState) state._avgState = { lastTs: now, totalHashTime: 0 };
@@ -53,19 +62,33 @@ function startStatusPoller(state, broadcast, logDir) {
             const shares  = JSON.parse(lines[2]);
             const hr      = parseHashrate(rates.hashrate1m);
             state.hashrate.current = hr;
-            state.hashrate.history.push({ ts: Date.now(), hr });
-            if (state.hashrate.history.length > 360) state.hashrate.history.shift();
+
+            // Always update average for luck calc (fine-grained).
             updateAvgHashrate(hr);
-            // Diff-weighted totals (big numbers) — keep for bestshare ring math
+
+            // Push to history only every 60s so we can keep 24h of data
+            // without the array exploding. Ring-buffer capped at 1440 points.
+            const now = Date.now();
+            if (now - lastHistoryPush >= HISTORY_INTERVAL_MS) {
+              state.hashrate.history.push({ ts: now, hr });
+              if (state.hashrate.history.length > HISTORY_MAX_POINTS) {
+                state.hashrate.history.shift();
+              }
+              lastHistoryPush = now;
+            }
+
+            // Diff-weighted totals from ckpool's pool.status (these are work
+            // units scaled to difficulty, not raw share counts — that's by
+            // design; ckpool doesn't expose raw counts).
             state.shares.accepted      = shares.accepted      || 0;
             state.shares.rejected      = shares.rejected      || 0;
-            // Raw counts (small numbers, AxeOS-style)
-            state.shares.acceptedCount = shares.acceptedCount || summary.shares_accepted || summary.sps_accepted || 0;
-            state.shares.rejectedCount = shares.rejectedCount || summary.shares_rejected || summary.sps_rejected || 0;
-            state.shares.stale         = shares.stale || shares.sps || 0;
-            state.bestshare            = shares.bestshare || 0;
-            state.totalWorkers         = summary.Workers  || 0;
-            state.totalUsers           = summary.Users    || 0;
+            state.shares.acceptedCount = shares.acceptedCount || 0;
+            state.shares.rejectedCount = shares.rejectedCount || 0;
+            state.shares.stale         = shares.stale         || 0;
+            state.shares.sps1m         = shares.SPS1m         || 0;
+            state.bestshare            = shares.bestshare     || 0;
+            state.totalWorkers         = summary.Workers      || 0;
+            state.totalUsers           = summary.Users        || 0;
           } catch (e) {}
         }
       }
@@ -97,14 +120,12 @@ function startStatusPoller(state, broadcast, logDir) {
               }
               const wk = state.workers[key];
               wk.hashrate       = parseHashrate(w.hashrate1m);
-              // Diff-weighted (big) — kept for compatibility
-              wk.shares         = w.shares   || 0;
-              wk.rejected       = w.rejected || wk.rejected || 0;
-              // Raw counts (small numbers) — AxeOS-style display
-              wk.sharesCount    = w.sharesCount    || w.shares_count    || w.n_shares   || wk.sharesCount   || 0;
-              wk.rejectedCount  = w.rejectedCount  || w.rejected_count  || w.n_rejected || wk.rejectedCount || 0;
-              wk.bestshare      = w.bestshare || 0;
-              wk.diff           = w.lastdiff || w.diff || wk.diff || 0;
+              wk.shares         = w.shares         || 0;
+              wk.rejected       = w.rejected       || wk.rejected || 0;
+              wk.sharesCount    = w.sharesCount    || w.shares_count   || 0;
+              wk.rejectedCount  = w.rejectedCount  || w.rejected_count || 0;
+              wk.bestshare      = w.bestshare      || 0;
+              wk.diff           = w.lastdiff       || w.diff || wk.diff || 0;
               wk.lastSeen       = (w.lastshare || Math.floor(Date.now()/1000)) * 1000;
               const age = Date.now() - wk.lastSeen;
               wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
@@ -127,7 +148,7 @@ function startStatusPoller(state, broadcast, logDir) {
 
   setInterval(poll, 5000);
   poll();
-  console.log('[StatusPoller] Started, polling every 5s');
+  console.log(`[StatusPoller] Started (poll 5s, history push 60s, keep ${HISTORY_MAX_POINTS} points = 24h)`);
 }
 
 module.exports = { startStatusPoller };
