@@ -138,8 +138,36 @@ function fmtClockDate(d) {
   return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
 }
 
+// ── ZMQ badge — shows Bitcoin Core ZMQ connection status ──────────────────────
+function ZmqBadge({ zmq }) {
+  if (!zmq) return null;
+  const z = zmq;
+  const now = Date.now();
+  const idleMs = 30 * 60 * 1000;
+  const recentlyHeard = z.lastBlockHeardAt && (now - z.lastBlockHeardAt < idleMs);
+
+  let color, text, title;
+  if (!z.enabled) {
+    color = 'var(--text-3)'; text = 'ZMQ OFF';
+    title = 'ZMQ not configured — pool relies on RPC polling (slightly slower block notifications)';
+  } else if (recentlyHeard) {
+    color = 'var(--green)'; text = 'ZMQ';
+    title = `ZMQ active — last block heard ${Math.floor((now - z.lastBlockHeardAt)/60000)}m ago${z.endpoint ? '\n' + z.endpoint : ''}`;
+  } else {
+    color = 'var(--amber)'; text = 'ZMQ IDLE';
+    title = `ZMQ configured but no recent block. Normal during quiet periods.${z.endpoint ? '\n' + z.endpoint : ''}`;
+  }
+
+  return (
+    <span title={title} style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.12em', textTransform:'uppercase', color, flexShrink:0, marginLeft:4 }}>
+      <span style={{ width:5, height:5, borderRadius:'50%', background: color, boxShadow: z.enabled ? `0 0 5px ${color}` : 'none' }}/>
+      {text}
+    </span>
+  );
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ connected, status, onSettings, privateMode, minimalMode }) {
+function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }) {
   const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
@@ -155,6 +183,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode }) {
               <div style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
               <span style={{ color:st.c }}>{st.t}</span>
             </div>
+            <ZmqBadge zmq={zmq}/>
             {privateMode && (
               <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
             )}
@@ -1414,7 +1443,7 @@ function WebhooksTab() {
   );
 }
 
-// ── Worker Detail Modal (P3a dual-port display) ──────────────────────────────
+// ── Worker Detail Modal (dual-port display) ──────────────────────────────────
 function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
@@ -1734,7 +1763,7 @@ export default function App() {
     <>
       <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflowX:'clip'}}>
         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
-          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode}/>
+          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode} zmq={state.zmq}/>
           <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
           {latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
           <CustomizableTopStrip
@@ -1764,7 +1793,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.3.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.3.3 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <span>Ports <span style={{color:'var(--cyan)'}}>3333</span> · <span style={{color:'var(--cyan)'}}>3334</span></span>
         </footer>
       </div>
