@@ -2,8 +2,8 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.2.3"
-tagline: Zero-fee solo Bitcoin mining pool with a Deep Mine dashboard
+version: "1.3.0"
+tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
   the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
@@ -14,29 +14,38 @@ description: >-
   block you find — no pool fees, no custody risk, no middleman.
 
 
+  v1.3.0 introduces Private Mode — toggle one switch and the entire app goes
+  airgapped. No mempool.space calls, no price feeds, no outbound traffic of
+  any kind. Your mining activity is yours alone.
+
+
   Features:
 
-  • Real-time hashrate waveform, per-worker monitoring, traffic-light health
+  • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • Real-time hashrate waveform with 24h history, axis labels, and peak tracking
+
+  • Sticky header cluster — pool status, ticker, latest block, and sync warnings always visible
 
   • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
 
-  • Per-worker live difficulty and best-share display
+  • Worker search, miner rename aliases, per-worker last-share timestamps
 
-  • Worker search — instantly filter by name or miner type
+  • Worker offline toast notifications — catch outages the moment they happen
 
-  • Block probability calculator, Luck gauge, difficulty retarget countdown
+  • Bitcoin Core sync warning banner when your node falls behind
 
-  • Bitcoin Node panel — Core version, peers, relay fee, mempool size
+  • Bitcoin Node panel — Core version, total/in/out peers, relay fee, mempool size
 
-  • Latest Block hero strip — most recently mined block, who found it
+  • Block probability — daily, weekly, and monthly odds + expected time to block
 
-  • Top Pool Finders leaderboard — see who's winning the hashwar right now
+  • Luck gauge, difficulty retarget countdown, Top Pool Finders leaderboard
+
+  • Latest Block hero strip — most recently mined block, pool, and reward
 
   • Recent network blocks feed with solo-winner highlighting
 
-  • Block reward, BTC price (7 currencies), and mempool fees
-
-  • Compact AxeOS-style share display — diff-weighted work in G/M/T format
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
 
   • Drag-and-drop card reordering — layout persists per-device
 
@@ -46,11 +55,15 @@ description: >-
 
   • CSV export for workers and found blocks
 
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc. on block found or worker offline/online
+
+  • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
+
+  • Public read-only API — share your pool stats externally
+
   • ZMQ block notifications, smart vardiff (BitAxes to PH/s rentals on same port)
 
-  • Works with any Stratum V1 miner
-
-  • One-time setup — enter your payout address once, miners connect automatically
+  • Works with any Stratum V1 miner — one-time setup, miners connect automatically
 
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
@@ -71,22 +84,47 @@ submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
 icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
 releaseNotes: >-
-  V1.2.3 — Pool Transparency release.
+  V1.3.0 — Private Mode + Operator Console release.
 
 
-  • New Bitcoin Node panel — Core version, total/inbound/outbound peers, relay
-  fee, mempool tx count, mempool size in MB
+  THE HEADLINE:
 
-  • Latest Block hero strip — ticker now highlights the most recent network
-  block with height, pool name, time-since, and reward
 
-  • Worker search box — type to instantly filter the Worker Grid by name or
-  miner type (handy when you have 10+ rigs)
+  🔒 Private Mode — flip one toggle in Settings to cut off ALL outbound API
+  calls. No mempool.space, no price feeds. Perfect airgapped operation. Auto-
+  detects Umbrel Mempool app if installed and uses it for local data.
+  Features requiring external data gracefully hide. The first truly airgapped-
+  capable solo pool on Umbrel.
 
-  • Leaderboard upgraded to table format — now shows hashrate, miner type,
-  and live status dot alongside best difficulty
 
-  • Dropped mempool app dependency (falls back to mempool.space public API
-  automatically; users with local Mempool app can still override)
+  OPERATOR CONSOLE:
 
-  • Backend RPC polling extended to getnetworkinfo + getmempoolinfo
+
+  • Sticky header cluster — Header, ticker, Latest Block strip, and sync warnings
+  stay pinned at the top while content scrolls behind with a blur effect
+
+  • Bitcoin Core sync warning banner — red alert when your node is behind so
+  you never mine on stale templates unaware
+
+  • Worker offline toasts — amber toast notifications when a miner disconnects,
+  with last-share timestamp and miner type
+
+  • Miner rename aliases — rename .S19XP to "Main Rig" etc., saved per-device
+
+  • Last-share timestamp per worker (4s, 2m, 1h format)
+
+  • Webhooks — new /api/webhooks CRUD endpoint, POST block_found /
+  worker_offline / worker_online events to any URL (Discord, Telegram, ntfy.sh,
+  Home Assistant, custom bots)
+
+  • Prometheus /metrics endpoint for Grafana and Home Assistant integration
+
+  • Daily, weekly, AND monthly block odds in the Block Probability card
+
+  • 24-hour hashrate history with Y-axis labels, grid lines, and peak reference
+
+  • Bitcoin Core sync status exposed in state.sync (ibd, progress, behind count)
+
+
+  All features are OFF by default and opt-in — upgrading from 1.2.3 changes
+  nothing until you flip the Private Mode switch or add your first webhook.
