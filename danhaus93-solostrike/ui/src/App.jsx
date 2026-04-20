@@ -448,11 +448,26 @@ function OfflineToasts({ workers, aliases }) {
   );
 }
 
-// ── Hashrate chart ────────────────────────────────────────────────────────────
-function HashrateChart({ history, current, averages }) {
-  const data = (history||[]).map(p=>({hr: p.hr, ts: p.ts}));
+function HashrateChart({ history, week, current, averages, minimalMode }) {
+  const [range, setRange] = useState('1h');
+
+  const windowMs = { '1h': 60*60*1000, '6h': 6*60*60*1000, '24h': 24*60*60*1000, '7d': 7*24*60*60*1000 }[range];
+  const source = range === '7d' ? (week || []) : (history || []);
+  const cutoff = Date.now() - windowMs;
+  const filtered = source.filter(p => p && p.ts >= cutoff);
+
+  const smoothWindow = { '1h': 3, '6h': 5, '24h': 10, '7d': 30 }[range];
+  const smoothed = filtered.map((p, i) => {
+    const start = Math.max(0, i - smoothWindow + 1);
+    const slice = filtered.slice(start, i + 1);
+    const avg = slice.reduce((s, x) => s + (x.hr || 0), 0) / slice.length;
+    return { ts: p.ts, hr: avg };
+  });
+
+  const data = smoothed;
   const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
   const [p0, p1] = fmtHr(current).split(' ');
+
   const avgRow = [
     ['1m',  averages?.hr1m],
     ['5m',  averages?.hr5m],
@@ -461,17 +476,33 @@ function HashrateChart({ history, current, averages }) {
     ['7d',  averages?.hr7d],
   ].filter(([,v]) => v != null && v > 0);
 
+  const showAverages = !minimalMode && avgRow.length > 0;
+
+  const rangeBtn = (key, label) => (
+    <button key={key} onClick={() => setRange(key)}
+      style={{
+        padding:'4px 10px', minWidth:38,
+        background: range === key ? 'var(--bg-raised)' : 'transparent',
+        border: `1px solid ${range === key ? 'var(--border-hot)' : 'var(--border)'}`,
+        color: range === key ? 'var(--amber)' : 'var(--text-2)',
+        fontFamily:'var(--fd)', fontSize:'0.58rem', fontWeight:600,
+        letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer',
+      }}>
+      {label}
+    </button>
+  );
+
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Pool Hashrate — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>PEAK {fmtHr(peak)}</span>}
       </div>
-      <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom: avgRow.length ? '0.6rem' : '1.25rem' }}>
+      <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom: showAverages ? '0.6rem' : '0.8rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
       </div>
-      {avgRow.length > 0 && (
-        <div style={{display:'flex', gap:'0.6rem', flexWrap:'wrap', marginBottom:'1rem', paddingBottom:'0.6rem', borderBottom:'1px dashed var(--border)'}}>
+      {showAverages && (
+        <div style={{display:'flex', gap:'0.6rem', flexWrap:'wrap', marginBottom:'0.8rem', paddingBottom:'0.6rem', borderBottom:'1px dashed var(--border)'}}>
           {avgRow.map(([lbl, v]) => (
             <div key={lbl} style={{display:'flex', flexDirection:'column', gap:2}}>
               <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>{lbl}</span>
@@ -480,6 +511,12 @@ function HashrateChart({ history, current, averages }) {
           ))}
         </div>
       )}
+      <div style={{display:'flex', gap:4, marginBottom:'0.6rem', justifyContent:'flex-end'}}>
+        {rangeBtn('1h', '1H')}
+        {rangeBtn('6h', '6H')}
+        {rangeBtn('24h', '24H')}
+        {rangeBtn('7d', '7D')}
+      </div>
       <div style={{width:'100%', maxWidth:'100%', overflow:'hidden', minWidth:0}}>
         <ResponsiveContainer width="100%" height={140}>
           <AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
@@ -1694,7 +1731,7 @@ export default function App() {
   if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
 
   const cards = {
-    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current} averages={state.hashrate?.averages}/> },
+    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current} averages={state.hashrate?.averages} minimalMode={minimalMode}/> },
     workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
     network:    { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
     node:       { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
