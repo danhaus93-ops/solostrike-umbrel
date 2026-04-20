@@ -125,7 +125,7 @@ let cfg = {
 
 let state = {
   workers: {},
-  hashrate: { current: 0, history: [] },
+  hashrate: { current: 0, history: [], week: [], averages: {} },
   blocks: [],
   shares: { accepted: 0, rejected: 0, stale: 0, acceptedCount: 0, rejectedCount: 0, sps1m: 0 },
   network: { height: 0, difficulty: 0, hashrate: 0 },
@@ -182,6 +182,8 @@ async function loadPersist() {
       if (Array.isArray(p.blocks))               state.blocks = p.blocks.slice(0, 50);
       if (p._avgState && typeof p._avgState === 'object') state._avgState = { ...p._avgState, lastTs: Date.now() };
       if (Array.isArray(p.history))              state.hashrate.history = p.history.slice(-1440);
+            if (Array.isArray(p.week))                 state.hashrate.week    = p.week.slice(-10080);
+
       if (Number.isFinite(p.bestshareAll))       state.bestshare = Math.max(state.bestshare, p.bestshareAll);
       console.log(`[Persist] restored: ${state.blocks.length} blocks, ${state.hashrate.history.length} history points`);
     }
@@ -199,6 +201,7 @@ function schedulePersist() {
         blocks: state.blocks,
         _avgState: state._avgState,
         history: state.hashrate.history,
+                week: state.hashrate.week,
         bestshareAll: state.bestshare,
       });
     } catch (e) { console.error('[Persist] save failed:', e.message); }
@@ -696,6 +699,7 @@ async function shutdown(signal) {
       blocks: state.blocks,
       _avgState: state._avgState,
       history: state.hashrate.history,
+            week: state.hashrate.week,
       bestshareAll: state.bestshare,
     });
     console.log('[Shutdown] state flushed to disk');
