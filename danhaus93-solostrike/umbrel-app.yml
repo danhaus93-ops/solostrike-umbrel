@@ -1,0 +1,121 @@
+manifestVersion: 1
+id: danhaus93-solostrike
+category: bitcoin
+name: SoloStrike
+version: "1.3.4"
+tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
+description: >-
+  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
+  dashboard.
+
+
+  Connect your ASICs directly to your own Bitcoin node and keep 100% of every
+  block you find — no pool fees, no custody risk, no middleman.
+
+
+  v1.3.0 introduces Private Mode — toggle one switch and the entire app goes
+  airgapped. No mempool.space calls, no price feeds, no outbound traffic of
+  any kind. Your mining activity is yours alone.
+
+
+  Features:
+
+  • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
+
+  • Closest Calls leaderboard — historical top 10 best-diff shares across your fleet
+
+  • Daily hashrate snapshots — 90 days of avg/peak history
+
+  • Sticky header cluster — pool status, ticker, latest block, sync warnings, ZMQ indicator
+
+  • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
+
+  • Worker search, miner rename aliases, per-worker last-share timestamps
+
+  • Click miner IP to open its web UI in a new tab
+
+  • Worker offline toast notifications — catch outages the moment they happen
+
+  • Bitcoin Core sync warning banner when your node falls behind
+
+  • Bitcoin Node panel — Core version, total/in/out peers, relay fee, mempool size
+
+  • Block probability — daily, weekly, and monthly odds + expected time to block
+
+  • Luck gauge, difficulty retarget countdown, Top Pool Finders leaderboard
+
+  • Latest Block hero strip — most recently mined block, pool, and reward
+
+  • Recent network blocks feed with solo-winner highlighting
+
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
+
+  • Drag-and-drop card reordering — layout persists per-device
+
+  • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
+
+  • Leaderboard table — worker, miner type, hashrate, best diff, status
+
+  • CSV export for workers and found blocks
+
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc.
+
+  • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
+
+  • Public read-only API — share your pool stats externally
+
+  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
+
+  • Works with any Stratum V1 miner — one-time setup, miners connect automatically
+
+
+  100% self-custody. Truly zero fees. Your node, your rules, your blocks.
+releaseNotes: >-
+  v1.3.4 — Closest Calls + Snapshots + Miner IP links.
+
+
+  NEW:
+
+  • Closest Calls card — pool-wide historical leaderboard of the top 10
+  highest-difficulty shares ever submitted, across all workers and all time.
+  Persisted across restarts. Who came closest to a block?
+
+  • Daily snapshots — automatic UTC midnight rollup of avg/peak hashrate,
+  work done, and blocks found. 90 days retained. Available at /api/snapshots
+
+  • Miner IP capture — pool now captures each miner's IP from ckpool auth logs
+
+  • Worker Detail Modal shows the miner's IP address as a clickable link that
+  opens the miner's web dashboard (BitAxe AxeOS, Antminer control panel, etc.)
+  in a new tab
+
+
+  CARRIED FORWARD FROM v1.3.3:
+
+  • ZMQ status badge in header (🟢 active / 🟡 idle / ⚪ off)
+
+  • Dual stratum ports 3333 (ASIC) + 3334 (hobby miners)
+
+
+  Pure additive update. No breaking changes, no config migrations required.
+developer: danhaus93-ops
+website: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
+repo: https://github.com/danhaus93-ops/solostrike-umbrel
+support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
+port: 1234
+gallery:
+  - 1.png
+  - 2.png
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: danhaus93-ops
+submission: https://github.com/danhaus93-ops/solostrike-umbrel
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
