@@ -1697,7 +1697,7 @@ export default function App() {
   return (
     <>
       <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflow:'hidden'}}>
-        <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
+         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgb(6,7,8)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
           <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode}/>
           <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
           {latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
