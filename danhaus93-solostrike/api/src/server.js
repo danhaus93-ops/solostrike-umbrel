@@ -6,6 +6,7 @@ const chokidar  = require('chokidar');
 const fs        = require('fs-extra');
 const path      = require('path');
 const { startStatusPoller }             = require('./status-poller');
+const { startUaTailer }                 = require('./ua-tailer');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress, rowsToCsv }  = require('./validators');
 
@@ -718,7 +719,9 @@ async function boot() {
   pollMempool();
   pollPrices();
   watchLogs();
+  startUaTailer({ configDir: CONFIG_DIR, logDir: CKPOOL_LOG_DIR });
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
+
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
   const PORT = 3001;
   server.listen(PORT, () => console.log(`[SoloStrike API v${VERSION}] Listening on :${PORT} (privateMode=${cfg.privateMode})`));
