@@ -10,7 +10,7 @@ const { startUaTailer }                 = require('./ua-tailer');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress, rowsToCsv }  = require('./validators');
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.3';
 
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
@@ -144,6 +144,7 @@ let state = {
   bestshare: 0,
   totalWorkers: 0,
   totalUsers: 0,
+  zmq: { enabled: false, endpoint: null, lastBlockHeardAt: null },
   _avgState: null,
   _workerLastStatus: {},
 };
@@ -151,7 +152,9 @@ let state = {
 const PRIVATE   = () => cfg.privateMode === true;
 const MEMPOOL_BASE = () => PRIVATE() ? LOCAL_MEMPOOL_URL : MEMPOOL_API_URL;
 
-console.log(`[SoloStrike API v${VERSION}] booting. privateMode default: ${cfg.privateMode}`);
+state.zmq.enabled  = !!ZMQ_HASHBLOCK;
+state.zmq.endpoint = ZMQ_HASHBLOCK;
+console.log(`[SoloStrike API v${VERSION}] booting. privateMode default: ${cfg.privateMode}, zmq: ${state.zmq.enabled ? 'enabled' : 'disabled'}`);
 
 async function loadCfg() {
   try {
@@ -259,6 +262,7 @@ function parseLine(line) {
       const b = { height, hash, ts: Date.now() };
       state.blocks.unshift(b);
       if (state.blocks.length > 50) state.blocks.pop();
+      state.zmq.lastBlockHeardAt = Date.now();
       broadcast({ type: 'BLOCK_FOUND', data: b });
       triggerWebhooks('block_found', b);
       schedulePersist();
@@ -380,6 +384,7 @@ async function pollMempool() {
     }
     if (blocksRes && blocksRes.ok) {
       const blocks = await blocksRes.json();
+      const prevTopHeight = state.netBlocks?.[0]?.height || 0;
       state.netBlocks = (blocks || []).slice(0, 20).map(b => ({
         height:    b.height,  id: b.id, timestamp: b.timestamp,
         tx_count:  b.tx_count, size: b.size,
@@ -389,6 +394,10 @@ async function pollMempool() {
         fees:      b?.extras?.totalFees,
         isSolo:    isSoloBlock(b),
       }));
+      const newTopHeight = state.netBlocks?.[0]?.height || 0;
+      if (newTopHeight > prevTopHeight && prevTopHeight > 0) {
+        state.zmq.lastBlockHeardAt = Date.now();
+      }
     }
   } catch (e) {
     console.error('[Mempool]', e.message);
@@ -512,6 +521,7 @@ app.get('/api/health', (req, res) => res.json({
   nodeConnected: state.nodeInfo.connected,
   workersOnline: Object.values(state.workers).filter(w => w.status !== 'offline').length,
   blocksFound: state.blocks.length,
+  zmq: state.zmq,
 }));
 app.get('/api/prices', (req, res) => res.json(state.prices || {}));
 
@@ -564,6 +574,7 @@ app.get('/metrics', (req, res) => {
   add('solostrike_node_sync_warn',           '1 if Bitcoin Core not fully synced',              'gauge',   s.sync?.warn ? 1 : 0);
   add('solostrike_mempool_txs',              'Mempool transaction count',                       'gauge',   s.nodeInfo?.mempoolCount || 0);
   add('solostrike_mempool_bytes',            'Mempool size in bytes',                           'gauge',   s.nodeInfo?.mempoolBytes || 0);
+  add('solostrike_zmq_enabled',              '1 if ZMQ hashblock notifications configured',     'gauge',   s.zmq?.enabled ? 1 : 0);
   (s.workers || []).forEach(w => {
     const safe = (w.name || '').replace(/[^a-zA-Z0-9_.]/g, '_');
     lines.push(`solostrike_worker_hashrate_hps{worker="${safe}",miner="${w.minerType || 'Unknown'}"} ${w.hashrate || 0}`);
