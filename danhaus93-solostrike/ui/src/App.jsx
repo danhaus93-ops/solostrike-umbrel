@@ -73,7 +73,7 @@ const BTC_ADDR_RE = /^(bc1[a-z0-9]{6,87}|tb1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1
 function isValidBtcAddress(a){ if(!a||typeof a!=='string')return false; const t=a.trim(); return t.length>=26&&t.length<=90&&BTC_ADDR_RE.test(t); }
 
 // ── Full-width strip wrapper style — used by all sticky strips ────────────────
-const STRIP_FULL_WIDTH = { width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0 };
+const STRIP_FULL_WIDTH = { width:'100%', boxSizing:'border-box', maxWidth:'100%' , minWidth:0 };
 
 // ── DraggableCard ─────────────────────────────────────────────────────────────
 function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, children, spanTwo }) {
@@ -1589,7 +1589,7 @@ export default function App() {
           />
           <SyncWarningBanner sync={state.sync}/>
         </div>
-        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:
+        <main style={{flex:1,padding:'1rem',width:'100%',boxSizing:'border-box',margin:0}}>
           <div className="ss-grid">
             {order.map(id=>{
               const c = cards[id];
