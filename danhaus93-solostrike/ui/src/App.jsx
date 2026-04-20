@@ -181,15 +181,59 @@ function Header({ connected, status, onSettings, privateMode, minimalMode }) {
   );
 }
 
-// ── Ticker (memoized — never re-renders after props are set, no flicker) ──────
+// ── Ticker (GPU compositor layer, isolated from parent repaints) ──────────────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   if (!enabled || !snapshotText) return null;
   return (
-    <div className="ss-hide-scrollbar" style={{ ...STRIP_FULL_WIDTH, background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
-      <div style={{ whiteSpace:'nowrap', animation:`ticker ${speedSec || DEFAULT_TICKER_SPEED}s linear infinite`, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block', willChange:'transform', transform:'translateZ(0)' }}>
-        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
+    <>
+      <style>{`
+        @keyframes ss-ticker-scroll {
+          0%   { transform: translate3d(0, 0, 0); }
+          100% { transform: translate3d(-50%, 0, 0); }
+        }
+        .ss-ticker-wrap {
+          position: relative;
+          width: 100%;
+          box-sizing: border-box;
+          max-width: 100%;
+          min-width: 0;
+          background: var(--bg-deep);
+          border-bottom: 1px solid var(--border);
+          overflow: hidden;
+          height: 26px;
+          display: flex;
+          align-items: center;
+          contain: layout paint style;
+          isolation: isolate;
+        }
+        .ss-ticker-track {
+          white-space: nowrap;
+          font-family: var(--fd);
+          font-size: 0.55rem;
+          letter-spacing: 0.15em;
+          color: var(--text-2);
+          text-transform: uppercase;
+          display: inline-flex;
+          animation-name: ss-ticker-scroll;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+          will-change: transform;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform: translate3d(0, 0, 0);
+        }
+        .ss-ticker-track > span {
+          display: inline-block;
+          padding-right: 3rem;
+        }
+      `}</style>
+      <div className="ss-ticker-wrap">
+        <div className="ss-ticker-track" style={{ animationDuration: `${speedSec || DEFAULT_TICKER_SPEED}s` }}>
+          <span>{snapshotText}</span>
+          <span>{snapshotText}</span>
+        </div>
       </div>
-    </div>
+    </>
   );
 });
 
