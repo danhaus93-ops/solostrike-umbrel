@@ -1,8 +1,11 @@
+// ============================================================
+// SoloStrike v1.3.0 — App.jsx (ticker speed + time/date + no marker)
+// ============================================================
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
 import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
-import { METRICS, METRIC_MAP, METRIC_CATEGORIES, MARKER_SYMBOLS, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS, DEFAULT_MARKER_SYMS, DEFAULT_MARKER_MS } from './metrics.js';
+import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 
 // ── Style tokens ──────────────────────────────────────────────────────────────
 const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
@@ -12,18 +15,19 @@ const label = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em'
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
-const LS_CARD_ORDER     = 'ss_card_order_v1';
-const LS_CURRENCY       = 'ss_currency_v1';
-const LS_ALIASES        = 'ss_worker_aliases_v1';
-const LS_NOTES          = 'ss_worker_notes_v1';
-const LS_OFFLINE_SEEN   = 'ss_offline_seen_v1';
-const LS_STRIP_METRICS  = 'ss_strip_metrics_v1';
-const LS_STRIP_CHUNK    = 'ss_strip_chunk_v1';
-const LS_STRIP_FADE     = 'ss_strip_fade_v1';
-const LS_STRIP_ENABLED  = 'ss_strip_enabled_v1';
-const LS_MARKER_SYMS    = 'ss_marker_syms_v1';
-const LS_MARKER_MS      = 'ss_marker_ms_v1';
-const LS_MARKER_ENABLED = 'ss_marker_enabled_v1';
+const LS_CARD_ORDER      = 'ss_card_order_v1';
+const LS_CURRENCY        = 'ss_currency_v1';
+const LS_ALIASES         = 'ss_worker_aliases_v1';
+const LS_NOTES           = 'ss_worker_notes_v1';
+const LS_OFFLINE_SEEN    = 'ss_offline_seen_v1';
+const LS_STRIP_METRICS   = 'ss_strip_metrics_v1';
+const LS_STRIP_CHUNK     = 'ss_strip_chunk_v1';
+const LS_STRIP_FADE      = 'ss_strip_fade_v1';
+const LS_STRIP_ENABLED   = 'ss_strip_enabled_v1';
+const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
+const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
+
+const DEFAULT_TICKER_SPEED = 30; // seconds per full loop
 
 function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
@@ -32,18 +36,16 @@ function saveNotes(n)  { try { localStorage.setItem(LS_NOTES, JSON.stringify(n))
 
 function loadStripMetrics() { try { const s = localStorage.getItem(LS_STRIP_METRICS); if (!s) return DEFAULT_STRIP_METRICS; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => METRIC_MAP[id]) : DEFAULT_STRIP_METRICS; } catch { return DEFAULT_STRIP_METRICS; } }
 function saveStripMetrics(list) { try { localStorage.setItem(LS_STRIP_METRICS, JSON.stringify(list)); } catch {} }
-function loadStripChunk()   { try { const n = parseInt(localStorage.getItem(LS_STRIP_CHUNK), 10); return Number.isFinite(n) && n>=1 && n<=8 ? n : DEFAULT_CHUNK_SIZE; } catch { return DEFAULT_CHUNK_SIZE; } }
-function saveStripChunk(n)  { try { localStorage.setItem(LS_STRIP_CHUNK, String(n)); } catch {} }
-function loadStripFade()    { try { const n = parseInt(localStorage.getItem(LS_STRIP_FADE), 10); return Number.isFinite(n) && n>=1000 && n<=20000 ? n : DEFAULT_FADE_MS; } catch { return DEFAULT_FADE_MS; } }
-function saveStripFade(n)   { try { localStorage.setItem(LS_STRIP_FADE, String(n)); } catch {} }
-function loadStripEnabled() { try { const v = localStorage.getItem(LS_STRIP_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
-function saveStripEnabled(v){ try { localStorage.setItem(LS_STRIP_ENABLED, String(!!v)); } catch {} }
-function loadMarkerSyms()   { try { const s = localStorage.getItem(LS_MARKER_SYMS); if (!s) return DEFAULT_MARKER_SYMS; const p = JSON.parse(s); return Array.isArray(p) && p.length ? p : DEFAULT_MARKER_SYMS; } catch { return DEFAULT_MARKER_SYMS; } }
-function saveMarkerSyms(list){ try { localStorage.setItem(LS_MARKER_SYMS, JSON.stringify(list)); } catch {} }
-function loadMarkerMs()     { try { const n = parseInt(localStorage.getItem(LS_MARKER_MS), 10); return Number.isFinite(n) && n>=1000 && n<=15000 ? n : DEFAULT_MARKER_MS; } catch { return DEFAULT_MARKER_MS; } }
-function saveMarkerMs(n)    { try { localStorage.setItem(LS_MARKER_MS, String(n)); } catch {} }
-function loadMarkerEnabled(){ try { const v = localStorage.getItem(LS_MARKER_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
-function saveMarkerEnabled(v){ try { localStorage.setItem(LS_MARKER_ENABLED, String(!!v)); } catch {} }
+function loadStripChunk()    { try { const n = parseInt(localStorage.getItem(LS_STRIP_CHUNK), 10); return Number.isFinite(n) && n>=1 && n<=8 ? n : DEFAULT_CHUNK_SIZE; } catch { return DEFAULT_CHUNK_SIZE; } }
+function saveStripChunk(n)   { try { localStorage.setItem(LS_STRIP_CHUNK, String(n)); } catch {} }
+function loadStripFade()     { try { const n = parseInt(localStorage.getItem(LS_STRIP_FADE), 10); return Number.isFinite(n) && n>=1000 && n<=20000 ? n : DEFAULT_FADE_MS; } catch { return DEFAULT_FADE_MS; } }
+function saveStripFade(n)    { try { localStorage.setItem(LS_STRIP_FADE, String(n)); } catch {} }
+function loadStripEnabled()  { try { const v = localStorage.getItem(LS_STRIP_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
+function saveStripEnabled(v) { try { localStorage.setItem(LS_STRIP_ENABLED, String(!!v)); } catch {} }
+function loadTickerEnabled() { try { const v = localStorage.getItem(LS_TICKER_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
+function saveTickerEnabled(v){ try { localStorage.setItem(LS_TICKER_ENABLED, String(!!v)); } catch {} }
+function loadTickerSpeed()   { try { const n = parseInt(localStorage.getItem(LS_TICKER_SPEED), 10); return Number.isFinite(n) && n>=10 && n<=120 ? n : DEFAULT_TICKER_SPEED; } catch { return DEFAULT_TICKER_SPEED; } }
+function saveTickerSpeed(n)  { try { localStorage.setItem(LS_TICKER_SPEED, String(n)); } catch {} }
 
 function stripAddr(fullName) {
   if (!fullName || typeof fullName !== 'string') return fullName || '';
@@ -93,39 +95,64 @@ function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, childre
   );
 }
 
+// ── Live clock hook ───────────────────────────────────────────────────────────
+function useNow(refreshMs = 30000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), refreshMs);
+    return () => clearInterval(id);
+  }, [refreshMs]);
+  return now;
+}
+function fmtClockTime(d) {
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+function fmtClockDate(d) {
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ uptime, connected, status, onSettings, privateMode }) {
+function Header({ connected, status, onSettings, privateMode }) {
+  const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
   return (
-    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 1rem', height:52, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', minWidth:0, overflow:'hidden' }}>
-        <span style={{ fontSize:18, color:'var(--amber)', filter:'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
-        <span style={{ fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, letterSpacing:'0.08em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
-        <div style={{ width:1, height:18, background:'var(--border)', flexShrink:0 }}/>
-        <div style={{ display:'flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.15em', textTransform:'uppercase', flexShrink:0 }}>
+    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.75rem', height:58, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', minWidth:0, overflow:'hidden', flex:1 }}>
+        <span style={{ fontSize:16, color:'var(--amber)', filter:'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
+        <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
+        <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
+        <div style={{ display:'flex', alignItems:'center', gap:4, fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', flexShrink:0 }}>
           <div style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
           <span style={{ color:st.c }}>{st.t}</span>
         </div>
         {privateMode && (
-          <>
-            <div style={{ width:1, height:18, background:'var(--border)', flexShrink:0 }}/>
-            <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:4, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.15em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>🔒 PRIVATE</span>
-          </>
+          <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
         )}
       </div>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-2)', letterSpacing:'0.08em', flexShrink:0 }}>
-        <span>UP {fmtUptime(uptime)}</span>
-        <div style={{ width:1, height:14, background:'var(--border)' }}/>
-        <span style={{ color: connected?'var(--cyan)':'var(--text-2)' }}>{connected?'● LIVE':'○ RECONN'}</span>
-        <button onClick={onSettings} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:16, padding:'4px 8px' }}>⚙</button>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', flexShrink:0 }}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:1, fontFamily:'var(--fd)' }}>
+          <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:'0.58rem', letterSpacing:'0.12em', color: connected?'var(--cyan)':'var(--text-2)' }}>
+            <span style={{ width:5, height:5, borderRadius:'50%', background: connected?'var(--cyan)':'var(--text-2)', boxShadow: connected?'0 0 6px var(--cyan)':'none' }}/>
+            {connected?'LIVE':'RECONN'}
+          </span>
+          <span style={{ fontSize:'0.56rem', letterSpacing:'0.06em', color:'var(--text-2)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+            {fmtClockTime(now)} · {fmtClockDate(now)}
+          </span>
+        </div>
+        <button onClick={onSettings} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:18, padding:'4px 6px', flexShrink:0 }}>⚙</button>
       </div>
     </header>
   );
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
-function Ticker({ state }) {
+function Ticker({ state, enabled, speedSec }) {
   const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
   const luckVal = state.luck?.luck;
   const items = [
@@ -140,9 +167,10 @@ function Ticker({ state }) {
     state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
   ].filter(Boolean);
   const t = items.join('   ·   ');
+  if (!enabled) return null;
   return (
     <div className="ss-hide-scrollbar" style={{ ...STRIP_FULL_WIDTH, background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
-      <div style={{ whiteSpace:'nowrap', animation:'ticker 30s linear infinite', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block' }}>
+      <div style={{ whiteSpace:'nowrap', animation:`ticker ${speedSec || DEFAULT_TICKER_SPEED}s linear infinite`, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block' }}>
         {t}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{t}
       </div>
     </div>
@@ -348,32 +376,10 @@ function OfflineToasts({ workers, aliases }) {
   );
 }
 
-// ── Animated chart marker hook ────────────────────────────────────────────────
-function useAnimatedSymbol(symbols, intervalMs) {
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
-  useEffect(() => {
-    if (!symbols || symbols.length <= 1) return;
-    const fadeDuration = 300;
-    const holdDuration = Math.max(800, (intervalMs || DEFAULT_MARKER_MS) - fadeDuration * 2);
-    const id = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => {
-        setIdx(i => (i + 1) % symbols.length);
-        setVisible(true);
-      }, fadeDuration);
-    }, holdDuration + fadeDuration);
-    return () => clearInterval(id);
-  }, [symbols, intervalMs]);
-  const current = (symbols && symbols.length) ? symbols[idx % symbols.length] : '₿';
-  return { symbol: current, visible };
-}
-
 // ── Hashrate chart ────────────────────────────────────────────────────────────
-function HashrateChart({ history, current, averages, markerEnabled, markerSyms, markerMs }) {
+function HashrateChart({ history, current, averages }) {
   const data = (history||[]).map(p=>({hr: p.hr, ts: p.ts}));
   const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
-  const latest = data.length ? data[data.length - 1] : null;
   const [p0, p1] = fmtHr(current).split(' ');
   const avgRow = [
     ['1m',  averages?.hr1m],
@@ -382,8 +388,6 @@ function HashrateChart({ history, current, averages, markerEnabled, markerSyms, 
     ['24h', averages?.hr24h],
     ['7d',  averages?.hr7d],
   ].filter(([,v]) => v != null && v > 0);
-
-  const animState = useAnimatedSymbol(markerSyms || DEFAULT_MARKER_SYMS, markerMs || DEFAULT_MARKER_MS);
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
@@ -426,18 +430,6 @@ function HashrateChart({ history, current, averages, markerEnabled, markerSyms, 
               );
             }}/>
             <Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
-            {markerEnabled && latest && latest.ts != null && (
-              <ReferenceDot x={latest.ts} y={latest.hr} r={0} isFront={true}
-                shape={(props) => {
-                  const { cx, cy } = props;
-                  if (cx == null || cy == null) return null;
-                  return (
-                    <g style={{filter:'drop-shadow(0 0 10px rgba(245,166,35,0.95)) drop-shadow(0 0 4px rgba(245,166,35,0.7))', opacity: animState.visible ? 1 : 0, transition:'opacity 0.3s ease'}}>
-                      <text x={cx} y={cy+6} textAnchor="middle" fontSize="20" fontWeight="700" fill="#F5A623" fontFamily="var(--fm)">{animState.symbol}</text>
-                    </g>
-                  );
-                }}/>
-            )}
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -949,7 +941,7 @@ function SetupScreen({ onComplete }) {
 }
 
 // ── Settings modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, markerSettings, onMarkerSettingsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange }) {
   const [tab, setTab] = useState('main');
   const [addr,setAddr]=useState('');
   const [poolName,setPoolName]=useState(currentConfig?.poolName||'SoloStrike');
@@ -999,7 +991,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {error&&<div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'1rem'}}>⚠ {error}</div>}
 
         {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
-        {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} markerSettings={markerSettings} onMarkerSettingsChange={onMarkerSettingsChange}/>}
+        {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}/>}
         {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
         {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
         {tab==='hooks' && <WebhooksTab />}
@@ -1033,7 +1025,7 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
 }
 
 // ── DisplayTab ────────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMarkerSettingsChange }) {
+function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange }) {
   const toggleMetric = (id) => {
     const next = stripSettings.metrics.includes(id) ? stripSettings.metrics.filter(x => x !== id) : [...stripSettings.metrics, id];
     onStripSettingsChange({ ...stripSettings, metrics: next });
@@ -1048,11 +1040,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMa
     next[idx] = next[swap];
     next[swap] = tmp;
     onStripSettingsChange({ ...stripSettings, metrics: next });
-  };
-  const toggleSymbol = (sym) => {
-    const next = markerSettings.symbols.includes(sym) ? markerSettings.symbols.filter(x => x !== sym) : [...markerSettings.symbols, sym];
-    if (!next.length) return;
-    onMarkerSettingsChange({ ...markerSettings, symbols: next });
   };
 
   const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem', marginTop:'1rem' };
@@ -1118,38 +1105,29 @@ function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMa
       <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
         style={{width:'100%', accentColor:'var(--amber)'}}/>
 
-      <div style={sectionTitle}>▸ Chart Marker</div>
+      <div style={sectionTitle}>▸ Scrolling Ticker</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Show symbol on chart</span>
-        <button onClick={()=>onMarkerSettingsChange({ ...markerSettings, enabled: !markerSettings.enabled })}
-          style={{width:40, height:22, borderRadius:11, background: markerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-          <div style={{position:'absolute', top:1, left: markerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: markerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Show scrolling ticker</span>
+        <button onClick={()=>onTickerSettingsChange({ ...tickerSettings, enabled: !tickerSettings.enabled })}
+          style={{width:40, height:22, borderRadius:11, background: tickerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
+          <div style={{position:'absolute', top:1, left: tickerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: tickerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
         </button>
       </div>
 
-      {markerSettings.enabled && (
+      {tickerSettings.enabled && (
         <>
-          <div style={rowLabel}>Symbols (tap to toggle, at least 1)</div>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:6}}>
-            {MARKER_SYMBOLS.map(sym => {
-              const on = markerSettings.symbols.includes(sym);
-              return (
-                <button key={sym} onClick={()=>toggleSymbol(sym)}
-                  style={{padding:'0.6rem', background: on?'var(--bg-raised)':'transparent', border:`1px solid ${on?'var(--border-hot)':'var(--border)'}`, color:on?'var(--amber)':'var(--text-2)', fontSize:20, cursor:'pointer', borderRadius:4}}>
-                  {sym}
-                </button>
-              );
-            })}
+          <div style={{...rowLabel, marginTop:'0.5rem'}}>
+            Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
+            <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
+              ({tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
+            </span>
           </div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-            Selected: <span style={{color:'var(--amber)'}}>{markerSettings.symbols.length}</span> symbol{markerSettings.symbols.length===1?'':'s'}
-            {markerSettings.symbols.length===1 && ' · no rotation (static)'}
-          </div>
-
-          <div style={{...rowLabel, marginTop:'0.9rem'}}>Symbol rotation: <span style={{color:'var(--amber)'}}>{(markerSettings.intervalMs/1000).toFixed(1)}s</span></div>
-          <input type="range" min="1500" max="10000" step="500" value={markerSettings.intervalMs} onChange={e=>onMarkerSettingsChange({ ...markerSettings, intervalMs: parseInt(e.target.value,10) })}
+          <input type="range" min="10" max="90" step="5" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
             style={{width:'100%', accentColor:'var(--amber)'}}/>
+          <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--fm)', fontSize:'0.52rem', color:'var(--text-3)', marginTop:2}}>
+            <span>fast</span><span>slow</span>
+          </div>
         </>
       )}
 
@@ -1494,10 +1472,9 @@ export default function App() {
     chunkSize: loadStripChunk(),
     fadeMs: loadStripFade(),
   }));
-  const [markerSettings, setMarkerSettings] = useState(() => ({
-    enabled: loadMarkerEnabled(),
-    symbols: loadMarkerSyms(),
-    intervalMs: loadMarkerMs(),
+  const [tickerSettings, setTickerSettings] = useState(() => ({
+    enabled: loadTickerEnabled(),
+    speedSec: loadTickerSpeed(),
   }));
 
   const handleStripSettingsChange = (next) => {
@@ -1507,11 +1484,10 @@ export default function App() {
     saveStripChunk(next.chunkSize);
     saveStripFade(next.fadeMs);
   };
-  const handleMarkerSettingsChange = (next) => {
-    setMarkerSettings(next);
-    saveMarkerEnabled(next.enabled);
-    saveMarkerSyms(next.symbols);
-    saveMarkerMs(next.intervalMs);
+  const handleTickerSettingsChange = (next) => {
+    setTickerSettings(next);
+    saveTickerEnabled(next.enabled);
+    saveTickerSpeed(next.speedSec);
   };
 
   useEffect(()=>{ if(blockAlert) setDismissedAlert(false); }, [blockAlert]);
@@ -1550,7 +1526,7 @@ export default function App() {
   if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
 
   const cards = {
-    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current} averages={state.hashrate?.averages} markerEnabled={markerSettings.enabled} markerSyms={markerSettings.symbols} markerMs={markerSettings.intervalMs}/> },
+    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current} averages={state.hashrate?.averages}/> },
     workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
     network:    { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
     node:       { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
@@ -1568,8 +1544,8 @@ export default function App() {
     <>
       <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflow:'hidden'}}>
         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
-          <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
-          <Ticker state={state}/>
+          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
+          <Ticker state={state} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
           <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>
           <CustomizableTopStrip
             state={state}
@@ -1613,8 +1589,8 @@ export default function App() {
         onAliasesChange={handleAliasesChange}
         stripSettings={stripSettings}
         onStripSettingsChange={handleStripSettingsChange}
-        markerSettings={markerSettings}
-        onMarkerSettingsChange={handleMarkerSettingsChange}
+        tickerSettings={tickerSettings}
+        onTickerSettingsChange={handleTickerSettingsChange}
       />}
       {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
       <OfflineToasts workers={state.workers} aliases={aliases}/>
