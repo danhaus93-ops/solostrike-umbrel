@@ -577,7 +577,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                 </div>
                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1, flexShrink:0}}>
                   <span style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)'}}>
-                    <span style={{color:'var(--green)'}}>{fmtDiff(workAccepted)}</span>/<span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span>
+                    <span style={{color:'var(--green)'}}>{fmtDiff(workAccepted)}</span>{workRejected>0 && <>/<span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span></>}
                   </span>
                   {w.bestshare>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--amber)'}}>best {fmtDiff(w.bestshare)}</span>}
                 </div>
@@ -805,9 +805,9 @@ function ShareStats({ shares, hashrate, bestshare }) {
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Work Accepted</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',marginTop:6}}>
-            <span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected
+            {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected</>}
             {stale>0 && <> · <span style={{color:'var(--amber)'}}>{fmtDiff(stale)}</span> stale</>}
-            {workAccepted>0 && <> · <span style={{color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span> accept</>}
+            {workAccepted>0 && workRejected>0 && <> · <span style={{color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span> accept</>}
           </div>
         </div>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
@@ -1011,7 +1011,6 @@ function SetupScreen({ onComplete }) {
     </div>
   );
 }
-
 // ── Settings modal ────────────────────────────────────────────────────────────
 function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
   const [tab, setTab] = useState('main');
@@ -1518,17 +1517,21 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
             <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
             <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Live Diff</div><div style={{...heroVal,color:'var(--cyan)'}}>{fmtDiff(w.diff||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
             <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
 
           <div style={section}>
             <div style={secTitle}>▸ Shares</div>
             <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:workRej?'var(--red)':'var(--text-1)'}}>{fmtDiff(workRej)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>
+            {workRej > 0 && (
+              <>
+                <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
+              </>
+            )}
+            {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
+            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
             <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
           </div>
 
@@ -1541,7 +1544,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           <div style={section}>
             <div style={secTitle}>▸ Health</div>
             <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>
+            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
             <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
           </div>
 
