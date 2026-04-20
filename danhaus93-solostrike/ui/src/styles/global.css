@@ -52,3 +52,10 @@ button{touch-action:manipulation}
 html { overflow-x: hidden; width: 100%; max-width: 100vw; }
 body { overflow-x: hidden; width: 100%; max-width: 100vw; position: relative; }
 #root { overflow-x: hidden; width: 100%; max-width: 100vw; }
+
+/* Prevent grid items from forcing horizontal overflow when children (like recharts) compute wide */
+.ss-grid { min-width: 0; max-width: 100%; }
+.ss-grid > * { min-width: 0; max-width: 100%; overflow: hidden; }
+.ss-card { min-width: 0; max-width: 100%; }
+.recharts-responsive-container { max-width: 100% !important; }
+.recharts-wrapper { max-width: 100% !important; }
