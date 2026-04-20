@@ -9,6 +9,8 @@ const { startStatusPoller }             = require('./status-poller');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress, rowsToCsv }  = require('./validators');
 
+const VERSION = '1.3.0';
+
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
   const ctrl = new AbortController();
@@ -24,12 +26,14 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '32kb' }));
 const server = http.createServer(app);
-const wss    = new WebSocket.Server({ server });
+const wss    = new WebSocket.Server({ server, maxPayload: 64 * 1024 });
+const MAX_WS_CLIENTS = 50;
 
 const CONFIG_DIR     = process.env.CONFIG_DIR        || '/app/config';
 const CKPOOL_LOG_DIR = process.env.CKPOOL_LOG_DIR    || '/var/log/ckpool';
 const CKPOOL_CFG_DIR = process.env.CKPOOL_CONFIG_DIR || '/etc/ckpool';
 const CONFIG_FILE    = path.join(CONFIG_DIR, 'solostrike.json');
+const PERSIST_FILE   = path.join(CONFIG_DIR, 'persist.json');
 const CKPOOL_CONF    = path.join(CKPOOL_CFG_DIR, 'ckpool.conf');
 
 const RPC_HOST = process.env.BITCOIN_RPC_HOST || '10.21.21.8';
@@ -51,10 +55,8 @@ const UPDATE_INTERVAL  = parseInt(process.env.UPDATE_INTERVAL  || '20',    10);
 const STRATUM_PORT     = parseInt(process.env.STRATUM_PORT     || '3333',  10);
 const ZMQ_HASHBLOCK    = process.env.BITCOIN_ZMQ_HASHBLOCK     || null;
 
-// Default external mempool source (used when privateMode is OFF)
 const MEMPOOL_API_URL     = process.env.MEMPOOL_API_URL     || 'https://mempool.space/api';
 const MEMPOOL_PUBLIC      = process.env.MEMPOOL_PUBLIC_URL  || 'https://mempool.space';
-// Local Umbrel Mempool app endpoint — used when privateMode is ON and the app is installed
 const LOCAL_MEMPOOL_URL   = process.env.LOCAL_MEMPOOL_API_URL || 'http://mempool_app_proxy_1:3006/api';
 
 const SOLO_POOL_SLUGS = new Set([
@@ -72,7 +74,27 @@ function isSoloBlock(block) {
   return false;
 }
 
+// ── RPC with circuit breaker ─────────────────────────────────────────────────
+const rpcBreaker = {
+  consecutiveFailures: 0,
+  nextAllowed: 0,
+  nextBackoffMs: 5000,
+};
+function rpcOk() {
+  rpcBreaker.consecutiveFailures = 0;
+  rpcBreaker.nextBackoffMs = 5000;
+  rpcBreaker.nextAllowed = 0;
+}
+function rpcFail() {
+  rpcBreaker.consecutiveFailures += 1;
+  if (rpcBreaker.consecutiveFailures >= 3) {
+    const backoff = Math.min(5 * 60 * 1000, rpcBreaker.nextBackoffMs);
+    rpcBreaker.nextAllowed = Date.now() + backoff;
+    rpcBreaker.nextBackoffMs = Math.min(5 * 60 * 1000, rpcBreaker.nextBackoffMs * 2);
+  }
+}
 async function rpc(method, params = []) {
+  if (Date.now() < rpcBreaker.nextAllowed) return null; // breaker open
   const auth = Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64');
   try {
     const res = await fetchWithTimeout(`http://${RPC_HOST}:${RPC_PORT}`, {
@@ -81,15 +103,18 @@ async function rpc(method, params = []) {
       body: JSON.stringify({ jsonrpc: '1.0', id: 'ss', method, params }),
       timeout: 5000,
     });
+    if (!res.ok) { rpcFail(); return null; }
     const j = await res.json();
+    rpcOk();
     return j.result;
   } catch (e) {
-    console.error(`[RPC] ${method} failed`);
+    rpcFail();
+    if (rpcBreaker.consecutiveFailures <= 3) console.error(`[RPC] ${method} failed: ${e.message}`);
     return null;
   }
 }
 
-// Default cfg — privateMode false by default, everything works like before.
+// ── State ────────────────────────────────────────────────────────────────────
 let cfg = {
   payoutAddress: null,
   poolName: 'SoloStrike',
@@ -123,7 +148,7 @@ let state = {
 const PRIVATE   = () => cfg.privateMode === true;
 const MEMPOOL_BASE = () => PRIVATE() ? LOCAL_MEMPOOL_URL : MEMPOOL_API_URL;
 
-console.log(`[SoloStrike API] privateMode=${cfg.privateMode}, default external mempool: ${MEMPOOL_API_URL}`);
+console.log(`[SoloStrike API v${VERSION}] booting. privateMode default: ${cfg.privateMode}`);
 
 async function loadCfg() {
   try {
@@ -141,10 +166,45 @@ async function loadCfg() {
   }
 }
 async function saveCfg() {
-  await fs.ensureDir(CONFIG_DIR);
-  await fs.writeJson(CONFIG_FILE, cfg, { spaces: 2 });
-  state.privateMode = cfg.privateMode;
+  try {
+    await fs.ensureDir(CONFIG_DIR);
+    await fs.writeJson(CONFIG_FILE, cfg, { spaces: 2 });
+    state.privateMode = cfg.privateMode;
+  } catch (e) { console.error('[Cfg] save failed:', e.message); }
 }
+
+// Persist critical state — blocks, luck integral, hashrate history — across crashes
+async function loadPersist() {
+  try {
+    if (await fs.pathExists(PERSIST_FILE)) {
+      const p = await fs.readJson(PERSIST_FILE);
+      if (Array.isArray(p.blocks))               state.blocks = p.blocks.slice(0, 50);
+      if (p._avgState && typeof p._avgState === 'object') state._avgState = { ...p._avgState, lastTs: Date.now() };
+      if (Array.isArray(p.history))              state.hashrate.history = p.history.slice(-1440);
+      if (Number.isFinite(p.bestshareAll))       state.bestshare = Math.max(state.bestshare, p.bestshareAll);
+      console.log(`[Persist] restored: ${state.blocks.length} blocks, ${state.hashrate.history.length} history points`);
+    }
+  } catch (e) { console.error('[Persist] load failed:', e.message); }
+}
+let persistTimer = null;
+function schedulePersist() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(async () => {
+    persistTimer = null;
+    try {
+      await fs.writeJson(PERSIST_FILE, {
+        savedAt: Date.now(),
+        version: VERSION,
+        blocks: state.blocks,
+        _avgState: state._avgState,
+        history: state.hashrate.history,
+        bestshareAll: state.bestshare,
+      });
+    } catch (e) { console.error('[Persist] save failed:', e.message); }
+  }, 5000);
+}
+// Also save every 2 minutes regardless (catches history updates without triggers)
+setInterval(schedulePersist, 2 * 60 * 1000);
 
 async function writeCkpoolConf(address) {
   const conf = {
@@ -165,15 +225,38 @@ async function writeCkpoolConf(address) {
   console.log(`[API] ckpool config written (startdiff=${START_DIFFICULTY}, mindiff=${MIN_DIFFICULTY}, zmq=${ZMQ_HASHBLOCK ? 'on' : 'off'}) address=${address}`);
 }
 
-const RE_BLOCK = /BLOCK FOUND.*height[:\s]+(\d+).*hash[:\s]+([a-f0-9]+)/i;
+// ── Block detection — multiple patterns for ckpool format tolerance ─────────
+const BLOCK_PATTERNS = [
+  /BLOCK FOUND.*height[:\s]+(\d+).*hash[:\s]+([a-f0-9]+)/i,
+  /SOLVED.*height[:\s]+(\d+).*hash[:\s]+([a-f0-9]+)/i,
+  /Block\s+(\d+)\s+.*found.*([a-f0-9]{64})/i,
+  /block\s+(\d+)\s+confirmed.*([a-f0-9]{64})/i,
+];
+const seenBlocks = new Set();
 function parseLine(line) {
-  if (RE_BLOCK.test(line)) {
-    const m = line.match(RE_BLOCK);
-    const b = { height: parseInt(m[1]), hash: m[2], ts: Date.now() };
-    state.blocks.unshift(b);
-    if (state.blocks.length > 50) state.blocks.pop();
-    broadcast({ type: 'BLOCK_FOUND', data: b });
-    triggerWebhooks('block_found', b);
+  for (const pat of BLOCK_PATTERNS) {
+    const m = line.match(pat);
+    if (m) {
+      const height = parseInt(m[1], 10);
+      const hash = m[2].toLowerCase();
+      const dedupeKey = `${height}:${hash}`;
+      if (seenBlocks.has(dedupeKey)) return;
+      seenBlocks.add(dedupeKey);
+      if (seenBlocks.size > 500) {
+        // cap the dedupe set; drop oldest by rebuilding
+        const arr = Array.from(seenBlocks).slice(-200);
+        seenBlocks.clear();
+        arr.forEach(k => seenBlocks.add(k));
+      }
+      const b = { height, hash, ts: Date.now() };
+      state.blocks.unshift(b);
+      if (state.blocks.length > 50) state.blocks.pop();
+      broadcast({ type: 'BLOCK_FOUND', data: b });
+      triggerWebhooks('block_found', b);
+      schedulePersist();
+      console.log(`[BLOCK] Found #${height} ${hash}`);
+      return;
+    }
   }
 }
 
@@ -231,7 +314,6 @@ async function pollNetwork() {
     state.sync.progress = chain.verificationprogress != null ? chain.verificationprogress : 1;
     state.sync.headers  = chain.headers || 0;
     state.sync.blocks   = chain.blocks  || 0;
-    // Warn if IBD, or >200 blocks behind headers, or verificationprogress < 0.9999
     state.sync.warn = state.sync.ibd
       || (state.sync.headers - state.sync.blocks > 200)
       || (state.sync.progress < 0.9999);
@@ -265,7 +347,6 @@ async function pollMempool() {
       fetchWithTimeout(`${url}/v1/blocks`,                { timeout: 8000 }).catch(() => null),
     ]);
 
-    // Track whether local mempool (when in private mode) is reachable
     const anyOk = [feesRes, mempoolRes, diffRes, blocksRes].some(r => r && r.ok);
     if (PRIVATE()) state.localMempoolReachable = anyOk;
 
@@ -310,11 +391,7 @@ async function pollMempool() {
 setInterval(pollMempool, 30000);
 
 async function pollPrices() {
-  // Private mode: skip external price feed entirely.
-  if (PRIVATE()) {
-    state.prices = {};
-    return;
-  }
+  if (PRIVATE()) { state.prices = {}; return; }
   try {
     const res = await fetchWithTimeout(`${MEMPOOL_PUBLIC}/api/v1/prices`, { timeout: 6000 });
     if (!res.ok) return;
@@ -324,40 +401,59 @@ async function pollPrices() {
 }
 setInterval(pollPrices, 60000);
 
-// ── Webhooks ──────────────────────────────────────────────────────────────────
-async function triggerWebhooks(event, payload) {
+// ── Webhooks — parallel dispatch with 3-attempt retry ────────────────────────
+async function deliverOne(h, body, event, attempt = 1) {
+  try {
+    const r = await fetchWithTimeout(h.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': `SoloStrike/${VERSION}` },
+      body,
+      timeout: 5000,
+    });
+    if (!r.ok && r.status >= 500 && attempt < 3) {
+      const delay = 2000 * attempt;
+      setTimeout(() => deliverOne(h, body, event, attempt + 1), delay);
+    }
+  } catch (e) {
+    if (attempt < 3) {
+      const delay = 2000 * attempt;
+      setTimeout(() => deliverOne(h, body, event, attempt + 1), delay);
+    } else {
+      console.error(`[Webhook] ${h.name || h.url} (${event}) failed after 3 attempts: ${e.message}`);
+    }
+  }
+}
+function triggerWebhooks(event, payload) {
   const hooks = (cfg.webhooks || []).filter(h => h.enabled !== false && Array.isArray(h.events) && h.events.includes(event));
   if (!hooks.length) return;
   const body = JSON.stringify({ event, at: new Date().toISOString(), source: 'solostrike', payload });
-  for (const h of hooks) {
-    if (typeof h.url !== 'string' || !/^https?:\/\//i.test(h.url)) continue;
-    try {
-      await fetchWithTimeout(h.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'SoloStrike/1.3.0' },
-        body,
-        timeout: 5000,
-      });
-    } catch (e) {
-      console.error(`[Webhook] ${h.url} failed: ${e.message}`);
-    }
-  }
+  hooks.forEach(h => {
+    if (typeof h.url !== 'string' || !/^https?:\/\//i.test(h.url)) return;
+    deliverOne(h, body, event);
+  });
 }
 
 function broadcast(msg) {
   const data = JSON.stringify(msg);
-  wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(data); });
+  wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) { try { c.send(data); } catch {} } });
 }
 setInterval(() => {
   broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
 }, 5000);
 
 function heartbeat() { this.isAlive = true; }
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Hard cap on concurrent WebSocket connections
+  if (wss.clients.size > MAX_WS_CLIENTS) {
+    ws.close(1008, 'too many connections');
+    return;
+  }
   ws.isAlive = true;
   ws.on('pong', heartbeat);
-  ws.send(JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state) }));
-  ws.send(JSON.stringify({ type: 'CONFIG',       data: cfgPublic() }));
+  try {
+    ws.send(JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state) }));
+    ws.send(JSON.stringify({ type: 'CONFIG',       data: cfgPublic() }));
+  } catch {}
 });
 setInterval(() => {
   wss.clients.forEach(ws => {
@@ -402,7 +498,15 @@ function cfgPublic() {
 // ==============================================================================
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfgPublic()));
-app.get('/api/health', (req, res) => res.json({ ok: true, uptime: Date.now() - state.uptime, version: '1.3.0', privateMode: cfg.privateMode }));
+app.get('/api/health', (req, res) => res.json({
+  ok: true,
+  uptime: Date.now() - state.uptime,
+  version: VERSION,
+  privateMode: cfg.privateMode,
+  nodeConnected: state.nodeInfo.connected,
+  workersOnline: Object.values(state.workers).filter(w => w.status !== 'offline').length,
+  blocksFound: state.blocks.length,
+}));
 app.get('/api/prices', (req, res) => res.json(state.prices || {}));
 
 app.get('/api/public/summary', rateLimit, (req, res) => {
@@ -427,7 +531,6 @@ app.get('/api/public/workers', rateLimit, (req, res) => {
   })));
 });
 
-// Prometheus text exposition — /metrics
 app.get('/metrics', (req, res) => {
   const s = transformState(state);
   const lines = [];
@@ -465,7 +568,6 @@ app.get('/metrics', (req, res) => {
   res.send(lines.join('\n') + '\n');
 });
 
-// Webhooks CRUD
 app.get('/api/webhooks', (req, res) => {
   res.json((cfg.webhooks || []).map(h => ({ id: h.id, name: h.name, url: h.url, events: h.events, enabled: h.enabled !== false })));
 });
@@ -506,7 +608,7 @@ app.get('/api/export/workers.csv', rateLimit, (req, res) => {
   const s = transformState(state);
   const rows = [
     ['# generated_at_utc', new Date().toISOString()],
-    ['# solostrike_version', '1.3.0'],
+    ['# solostrike_version', VERSION],
     ['workername','miner_type','hashrate_hps','work_accepted','rejected','bestshare','difficulty','status','health','last_seen_iso'],
   ];
   (s.workers || []).forEach(w => {
@@ -523,7 +625,7 @@ app.get('/api/export/workers.csv', rateLimit, (req, res) => {
 app.get('/api/export/blocks.csv', rateLimit, (req, res) => {
   const rows = [
     ['# generated_at_utc', new Date().toISOString()],
-    ['# solostrike_version', '1.3.0'],
+    ['# solostrike_version', VERSION],
     ['height','hash','found_at_iso'],
   ];
   (state.blocks || []).forEach(b => {
@@ -560,7 +662,6 @@ async function handleSettings(req, res) {
     if (poolName && typeof poolName === 'string') cfg.poolName = poolName.trim().slice(0, 32);
     if (typeof privateMode === 'boolean') {
       cfg.privateMode = privateMode;
-      // When toggled, reset caches so old data doesn't linger
       if (privateMode) {
         state.prices = {};
         state.localMempoolReachable = false;
@@ -570,7 +671,6 @@ async function handleSettings(req, res) {
     await saveCfg();
     if (payoutAddress) await writeCkpoolConf(cfg.payoutAddress);
     broadcast({ type: 'CONFIG', data: cfgPublic() });
-    // Kick polls so state updates fast after mode change
     pollMempool();
     pollPrices();
     res.json({ ok: true, cfg: cfgPublic() });
@@ -581,8 +681,38 @@ async function handleSettings(req, res) {
 app.post('/api/settings', handleSettings);
 app.post('/api/config',   handleSettings);
 
+// ── Graceful shutdown ────────────────────────────────────────────────────────
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[Shutdown] received ${signal}, flushing state…`);
+  try {
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
+    await fs.writeJson(PERSIST_FILE, {
+      savedAt: Date.now(),
+      version: VERSION,
+      blocks: state.blocks,
+      _avgState: state._avgState,
+      history: state.hashrate.history,
+      bestshareAll: state.bestshare,
+    });
+    console.log('[Shutdown] state flushed to disk');
+  } catch (e) {
+    console.error('[Shutdown] flush failed:', e.message);
+  }
+  try {
+    wss.clients.forEach(ws => { try { ws.close(1001, 'server shutting down'); } catch {} });
+    server.close();
+  } catch {}
+  setTimeout(() => process.exit(0), 500);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+
 async function boot() {
   await loadCfg();
+  await loadPersist();
   if (cfg.payoutAddress) await writeCkpoolConf(cfg.payoutAddress);
   pollNetwork();
   pollMempool();
@@ -591,7 +721,7 @@ async function boot() {
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
   const PORT = 3001;
-  server.listen(PORT, () => console.log(`[SoloStrike API v1.3.0] Listening on :${PORT} (privateMode=${cfg.privateMode})`));
+  server.listen(PORT, () => console.log(`[SoloStrike API v${VERSION}] Listening on :${PORT} (privateMode=${cfg.privateMode})`));
 }
 
 boot();
