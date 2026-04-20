@@ -181,7 +181,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode }) {
   );
 }
 
-// ── Ticker (JS rAF animation — immune to any CSS/layout reflow restarts) ──────
+// ── Ticker (JS rAF animation — immune to CSS/layout reflow restarts) ─────────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const trackRef = useRef(null);
   const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
@@ -1622,7 +1622,7 @@ export default function App() {
   // Ticker snapshot — captured ONCE when first data batch arrives, never updated
   const [tickerSnapshot, setTickerSnapshot] = useState('');
   useEffect(() => {
-    if (tickerSnapshot) return; // already frozen
+    if (tickerSnapshot) return;
     const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
     if (!hasData) return;
     const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
@@ -1706,18 +1706,15 @@ export default function App() {
     recent:     { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
   };
 
-  // Effective visible card set: Minimal Mode overrides user choice
   const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
-
-  // Effective strip settings: Minimal Mode forces off
   const tickerVisible        = !minimalMode && tickerSettings.enabled;
   const latestBlockVisible   = !minimalMode;
   const customStripVisible   = !minimalMode && stripSettings.enabled;
 
   return (
     <>
-      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflow:'hidden'}}>
-         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgb(6,7,8)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
+      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflowX:'hidden'}}>
+        <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
           <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode}/>
           <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
           {latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
@@ -1733,7 +1730,7 @@ export default function App() {
           />
           <SyncWarningBanner sync={state.sync}/>
         </div>
-        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflow:'hidden'}}>
+        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflowX:'hidden'}}>
           <div className="ss-grid" style={{minWidth:0,maxWidth:'100%'}}>
             {order.map(id=>{
               if (!effectiveVisibleCards.includes(id)) return null;
