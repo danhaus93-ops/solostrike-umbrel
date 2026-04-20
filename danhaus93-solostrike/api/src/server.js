@@ -47,14 +47,16 @@ if (!RPC_PASS) {
   process.exit(1);
 }
 
-const POOL_SIGNATURE   = process.env.POOL_SIGNATURE   || 'SoloStrike/';
-const START_DIFFICULTY = parseInt(process.env.START_DIFFICULTY || '10000', 10);
-const MIN_DIFFICULTY   = parseInt(process.env.MIN_DIFFICULTY   || '1',     10);
-const MAX_DIFFICULTY   = parseInt(process.env.MAX_DIFFICULTY   || '0',     10);
-const BLOCKPOLL        = parseInt(process.env.BLOCKPOLL        || '50',    10);
-const UPDATE_INTERVAL  = parseInt(process.env.UPDATE_INTERVAL  || '20',    10);
-const STRATUM_PORT     = parseInt(process.env.STRATUM_PORT     || '3333',  10);
-const ZMQ_HASHBLOCK    = process.env.BITCOIN_ZMQ_HASHBLOCK     || null;
+const POOL_SIGNATURE      = process.env.POOL_SIGNATURE      || 'SoloStrike/';
+const START_DIFFICULTY    = parseInt(process.env.START_DIFFICULTY    || '10000', 10);
+const MIN_DIFFICULTY      = parseInt(process.env.MIN_DIFFICULTY      || '1',     10);
+const MAX_DIFFICULTY      = parseInt(process.env.MAX_DIFFICULTY      || '0',     10);
+const BLOCKPOLL           = parseInt(process.env.BLOCKPOLL           || '50',    10);
+const UPDATE_INTERVAL     = parseInt(process.env.UPDATE_INTERVAL     || '20',    10);
+const STRATUM_PORT        = parseInt(process.env.STRATUM_PORT        || '3333',  10);
+const STRATUM_PORT_HOBBY  = parseInt(process.env.STRATUM_PORT_HOBBY  || '3334',  10);
+const HOBBY_STARTDIFF     = parseInt(process.env.HOBBY_STARTDIFF     || '100',   10);
+const ZMQ_HASHBLOCK       = process.env.BITCOIN_ZMQ_HASHBLOCK        || null;
 
 const MEMPOOL_API_URL     = process.env.MEMPOOL_API_URL     || 'https://mempool.space/api';
 const MEMPOOL_PUBLIC      = process.env.MEMPOOL_PUBLIC_URL  || 'https://mempool.space';
@@ -95,7 +97,7 @@ function rpcFail() {
   }
 }
 async function rpc(method, params = []) {
-  if (Date.now() < rpcBreaker.nextAllowed) return null; // breaker open
+  if (Date.now() < rpcBreaker.nextAllowed) return null;
   const auth = Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64');
   try {
     const res = await fetchWithTimeout(`http://${RPC_HOST}:${RPC_PORT}`, {
@@ -174,7 +176,6 @@ async function saveCfg() {
   } catch (e) { console.error('[Cfg] save failed:', e.message); }
 }
 
-// Persist critical state — blocks, luck integral, hashrate history — across crashes
 async function loadPersist() {
   try {
     if (await fs.pathExists(PERSIST_FILE)) {
@@ -182,10 +183,9 @@ async function loadPersist() {
       if (Array.isArray(p.blocks))               state.blocks = p.blocks.slice(0, 50);
       if (p._avgState && typeof p._avgState === 'object') state._avgState = { ...p._avgState, lastTs: Date.now() };
       if (Array.isArray(p.history))              state.hashrate.history = p.history.slice(-1440);
-            if (Array.isArray(p.week))                 state.hashrate.week    = p.week.slice(-10080);
-
+      if (Array.isArray(p.week))                 state.hashrate.week    = p.week.slice(-10080);
       if (Number.isFinite(p.bestshareAll))       state.bestshare = Math.max(state.bestshare, p.bestshareAll);
-      console.log(`[Persist] restored: ${state.blocks.length} blocks, ${state.hashrate.history.length} history points`);
+      console.log(`[Persist] restored: ${state.blocks.length} blocks, ${state.hashrate.history.length} history points, ${state.hashrate.week.length} week points`);
     }
   } catch (e) { console.error('[Persist] load failed:', e.message); }
 }
@@ -201,13 +201,12 @@ function schedulePersist() {
         blocks: state.blocks,
         _avgState: state._avgState,
         history: state.hashrate.history,
-                week: state.hashrate.week,
+        week: state.hashrate.week,
         bestshareAll: state.bestshare,
       });
     } catch (e) { console.error('[Persist] save failed:', e.message); }
   }, 5000);
 }
-// Also save every 2 minutes regardless (catches history updates without triggers)
 setInterval(schedulePersist, 2 * 60 * 1000);
 
 async function writeCkpoolConf(address) {
@@ -219,14 +218,20 @@ async function writeCkpoolConf(address) {
     btcaddress: address, btcsig: POOL_SIGNATURE,
     blockpoll: BLOCKPOLL, nonce1length: 4, nonce2length: 8,
     update_interval: UPDATE_INTERVAL, version_mask: '1fffe000',
-    logdir: '/var/log/ckpool', serverurl: [`0.0.0.0:${STRATUM_PORT}`],
-    mindiff: MIN_DIFFICULTY, startdiff: START_DIFFICULTY, maxdiff: MAX_DIFFICULTY,
+    logdir: '/var/log/ckpool',
+    serverurl: [
+      `0.0.0.0:${STRATUM_PORT}`,         // 3333 — ASIC port (S19/S21, Whatsminer)
+      `0.0.0.0:${STRATUM_PORT_HOBBY}`,   // 3334 — Hobby port (BitAxe, NerdQaxe++)
+    ],
+    mindiff: MIN_DIFFICULTY,
+    startdiff: START_DIFFICULTY,
+    maxdiff: MAX_DIFFICULTY,
     solo: true,
   };
   if (ZMQ_HASHBLOCK) conf.zmqblock = ZMQ_HASHBLOCK;
   await fs.ensureDir(CKPOOL_CFG_DIR);
   await fs.writeJson(CKPOOL_CONF, conf, { spaces: 2 });
-  console.log(`[API] ckpool config written (startdiff=${START_DIFFICULTY}, mindiff=${MIN_DIFFICULTY}, zmq=${ZMQ_HASHBLOCK ? 'on' : 'off'}) address=${address}`);
+  console.log(`[API] ckpool config written (ports ${STRATUM_PORT}/${STRATUM_PORT_HOBBY}, startdiff=${START_DIFFICULTY}, mindiff=${MIN_DIFFICULTY}, zmq=${ZMQ_HASHBLOCK ? 'on' : 'off'}) address=${address}`);
 }
 
 // ── Block detection — multiple patterns for ckpool format tolerance ─────────
@@ -247,7 +252,6 @@ function parseLine(line) {
       if (seenBlocks.has(dedupeKey)) return;
       seenBlocks.add(dedupeKey);
       if (seenBlocks.size > 500) {
-        // cap the dedupe set; drop oldest by rebuilding
         const arr = Array.from(seenBlocks).slice(-200);
         seenBlocks.clear();
         arr.forEach(k => seenBlocks.add(k));
@@ -284,7 +288,6 @@ function watchLogs() {
   chokidar.watch(logFile, { usePolling: true, interval: 1000 }).on('change', read).on('add', read);
 }
 
-// Worker online/offline transition detection — fires webhooks on change
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000;
   Object.values(state.workers).forEach(w => {
@@ -447,7 +450,6 @@ setInterval(() => {
 
 function heartbeat() { this.isAlive = true; }
 wss.on('connection', (ws, req) => {
-  // Hard cap on concurrent WebSocket connections
   if (wss.clients.size > MAX_WS_CLIENTS) {
     ws.close(1008, 'too many connections');
     return;
@@ -699,7 +701,7 @@ async function shutdown(signal) {
       blocks: state.blocks,
       _avgState: state._avgState,
       history: state.hashrate.history,
-            week: state.hashrate.week,
+      week: state.hashrate.week,
       bestshareAll: state.bestshare,
     });
     console.log('[Shutdown] state flushed to disk');
@@ -725,7 +727,6 @@ async function boot() {
   watchLogs();
   startUaTailer({ configDir: CONFIG_DIR, logDir: CKPOOL_LOG_DIR });
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
-
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
   const PORT = 3001;
   server.listen(PORT, () => console.log(`[SoloStrike API v${VERSION}] Listening on :${PORT} (privateMode=${cfg.privateMode})`));
