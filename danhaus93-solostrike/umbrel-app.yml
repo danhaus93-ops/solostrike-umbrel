@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.3.3"
+version: "1.3.4"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -23,13 +23,19 @@ description: >-
 
   • 🔒 Private Mode — fully local operation, zero external API calls when enabled
 
-  • Real-time hashrate waveform with 24h history, axis labels, and peak tracking
+  • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
 
-  • Sticky header cluster — pool status, ticker, latest block, and sync warnings always visible
+  • Closest Calls leaderboard — historical top 10 best-diff shares across your fleet
+
+  • Daily hashrate snapshots — 90 days of avg/peak history
+
+  • Sticky header cluster — pool status, ticker, latest block, sync warnings, ZMQ indicator
 
   • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
 
   • Worker search, miner rename aliases, per-worker last-share timestamps
+
+  • Click miner IP to open its web UI in a new tab
 
   • Worker offline toast notifications — catch outages the moment they happen
 
@@ -55,7 +61,7 @@ description: >-
 
   • CSV export for workers and found blocks
 
-  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc. on block found or worker offline/online
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc.
 
   • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
 
@@ -70,29 +76,33 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.3.3 — ZMQ status indicator.
+  v1.3.4 — Closest Calls + Snapshots + Miner IP links.
 
 
   NEW:
 
-  • Small ZMQ badge in the header showing Bitcoin Core ZMQ connection health.
-  🟢 = active and heard a block recently, 🟡 IDLE = configured but quiet
-  (normal between blocks), ⚪ OFF = using RPC polling only
+  • Closest Calls card — pool-wide historical leaderboard of the top 10
+  highest-difficulty shares ever submitted, across all workers and all time.
+  Persisted across restarts. Who came closest to a block?
 
-  • Prometheus /metrics now exposes solostrike_zmq_enabled for dashboards
+  • Daily snapshots — automatic UTC midnight rollup of avg/peak hashrate,
+  work done, and blocks found. 90 days retained. Available at /api/snapshots
 
-  • /api/health response includes full zmq object for monitoring
+  • Miner IP capture — pool now captures each miner's IP from ckpool auth logs
 
-
-  CARRIED FORWARD FROM v1.3.2:
-
-  • Dual stratum ports: 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
-
-  • Worker detail modal displays both stratum URLs with copy buttons
+  • Worker Detail Modal shows the miner's IP address as a clickable link that
+  opens the miner's web dashboard (BitAxe AxeOS, Antminer control panel, etc.)
+  in a new tab
 
 
-  This is a pure additive update — no breaking changes, existing configs and
-  data carry over intact.
+  CARRIED FORWARD FROM v1.3.3:
+
+  • ZMQ status badge in header (🟢 active / 🟡 idle / ⚪ off)
+
+  • Dual stratum ports 3333 (ASIC) + 3334 (hobby miners)
+
+
+  Pure additive update. No breaking changes, no config migrations required.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
