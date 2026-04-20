@@ -241,12 +241,15 @@ function OfflineToasts({ workers, aliases }) {
   );
 }
 
-// ── Hashrate chart — WITH Y-AXIS LABELS + GRID + PEAK LINE ───────────────────
+// ── Hashrate chart — labels, grid, and ₿ peak marker ─────────────────────────
 function HashrateChart({ history, current }) {
   const data = (history||[]).map(p=>({hr: p.hr, ts: p.ts}));
-  const peak = useMemo(() => Math.max(current || 0, ...(history||[]).map(p => p.hr || 0)), [history, current]);
+  const peakPoint = useMemo(() => {
+    if (!data.length) return null;
+    return data.reduce((best, p) => (p.hr > (best?.hr || 0) ? p : best), data[0]);
+  }, [data]);
+  const peak = peakPoint?.hr || current || 0;
   const [p0, p1] = fmtHr(current).split(' ');
-  // Build tick formatter — strip trailing zeros for tighter mobile display
   const tickFmt = (v) => {
     if (v == null) return '';
     const s = fmtHr(v);
@@ -261,8 +264,8 @@ function HashrateChart({ history, current }) {
       <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:'1.25rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
       </div>
-      <ResponsiveContainer width="100%" height={160}>
-        <AreaChart data={data} margin={{top:6,right:4,left:0,bottom:4}}>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={data} margin={{top:24,right:6,left:0,bottom:8}}>
           <defs>
             <linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#F5A623" stopOpacity={0.28}/>
@@ -273,12 +276,14 @@ function HashrateChart({ history, current }) {
           <XAxis hide dataKey="ts"/>
           <YAxis
             orientation="right"
-            domain={[0, (dataMax)=>Math.max(dataMax, peak)*1.05]}
+            domain={[0, (dataMax)=>Math.max(dataMax, peak) * 1.18]}
             tick={{ fill:'var(--text-3)', fontFamily:'var(--fm)', fontSize:10 }}
             tickFormatter={tickFmt}
             axisLine={false}
             tickLine={false}
-            width={58}
+            tickCount={5}
+            width={64}
+            tickMargin={6}
           />
           <Tooltip content={({active,payload})=>{
             if(!active||!payload?.length) return null;
@@ -290,10 +295,25 @@ function HashrateChart({ history, current }) {
               </div>
             );
           }}/>
-          {peak > 0 && (
-            <ReferenceLine y={peak} stroke="#F5A623" strokeDasharray="4 4" strokeOpacity={0.35} label={{ value:'PEAK', position:'insideTopRight', fill:'var(--amber-dim, #b37a1a)', fontSize:9, fontFamily:'var(--fd)', letterSpacing:'0.1em' }}/>
-          )}
           <Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
+          {peakPoint && peakPoint.ts != null && (
+            <ReferenceDot
+              x={peakPoint.ts}
+              y={peakPoint.hr}
+              r={0}
+              isFront={true}
+              shape={(props) => {
+                const { cx, cy } = props;
+                if (cx == null || cy == null) return null;
+                return (
+                  <g style={{filter:'drop-shadow(0 0 6px rgba(245,166,35,0.7))'}}>
+                    <circle cx={cx} cy={cy} r={10} fill="rgba(6,7,8,0.9)" stroke="#F5A623" strokeWidth="1.5"/>
+                    <text x={cx} y={cy+4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#F5A623" fontFamily="var(--fm)">₿</text>
+                  </g>
+                );
+              }}
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>
