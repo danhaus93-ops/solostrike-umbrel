@@ -177,7 +177,7 @@ function tailFile(filepath, onLine) {
 
 function startUaTailer({ configDir, logDir }) {
   loadMeta(configDir);
-  const poolLog = path.join(logDir, 'pool', 'pool.log');
+  const poolLog = path.join(logDir, 'ckpool.log');
   const tailer = tailFile(poolLog, (line) => {
     const parsed = parseLine(line);
     if (parsed) recordMeta(parsed.workername, parsed.userAgent);
