@@ -1,6 +1,5 @@
-// metrics.js — Customizable Top Strip + Ticker metric registry
-// Each metric defines how to read it from state + how to render it.
-// Both the sticky Top Strip and the scrolling Ticker pull from this same list.
+// metrics.js — Customizable Top Strip metric registry
+// Each metric defines how to read it from state + how to render it
 import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtPct, fmtBtc, fmtFiat, fmtUptime, timeAgo, fmtAgoShort, fmtDurationMs } from ‘./utils.js’;
 
 // Helpers used by some metrics
@@ -75,7 +74,7 @@ return sum / w.length;
 }
 
 // ── THE REGISTRY ─────────────────────────────────────────────────────────────
-// Each entry: { id, label, category, color, render(state, aliases, currency, uptime) }
+// Each entry: { id, label, category, color, render(state, currency, uptime) }
 // render() returns { value: string, prefix?: string }
 export const METRICS = [
 // ── PERFORMANCE ──
@@ -175,7 +174,7 @@ return { prefix: ‘LUCK’, value: fmtPct(l, 1) };
 } },
 
 // ── NETWORK ──
-{ id: ‘next_block_prize’, label: ‘Next Block Prize (BTC + Fiat)’, category: ‘Network’, color: ‘var(–amber)’,
+{ id: ‘next_block_prize’, label: ‘Next Block Prize’, category: ‘Network’, color: ‘var(–amber)’,
 render: (s, aliases, currency) => {
 const br = s.blockReward;
 const price = s.prices?.[currency || ‘USD’];
@@ -205,17 +204,17 @@ return { prefix: ‘BTC’, value: price ? fmtFiat(price, currency || ‘USD’)
 } },
 { id: ‘mempool_txs’, label: ‘Mempool TXs’, category: ‘Network’, color: ‘var(–text-1)’,
 render: (s) => ({ prefix: ‘MEMPOOL’, value: `${fmtNum(s.nodeInfo?.mempoolCount || 0)} TX` }) },
+{ id: ‘priority_fee’, label: ‘Priority Fee’, category: ‘Network’, color: ‘var(–amber)’,
+render: (s) => {
+const f = s.mempool?.feeRate;
+return { prefix: ‘FEE’, value: f != null ? `${f} sat/vB` : ‘—’ };
+} },
 { id: ‘mempool_fees_total’, label: ‘Mempool Fees Total’, category: ‘Network’, color: ‘var(–amber)’,
 render: (s) => {
 const btc = s.mempool?.totalFeesBtc;
 if (btc == null) return { prefix: ‘MP FEES’, value: ‘—’ };
 if (btc <= 0)    return { prefix: ‘MP FEES’, value: ‘0 BTC’ };
 return { prefix: ‘MP FEES’, value: fmtBtc(btc, 3) };
-} },
-{ id: ‘priority_fee’, label: ‘Priority Fee’, category: ‘Network’, color: ‘var(–amber)’,
-render: (s) => {
-const f = s.mempool?.feeRate;
-return { prefix: ‘FEE’, value: f != null ? `${f} sat/vB` : ‘—’ };
 } },
 { id: ‘time_since_block’, label: ‘Time Since Last Block’, category: ‘Network’, color: ‘var(–text-1)’,
 render: (s) => {
@@ -295,16 +294,14 @@ export const METRIC_CATEGORIES = [‘Performance’, ‘Workers’, ‘Odds’, 
 // Available chart marker symbols
 export const MARKER_SYMBOLS = [‘₿’, ‘⛏’, ‘💎’, ‘⚡’, ‘🎯’, ‘🔥’, ‘🚀’, ‘🎰’, ‘☠️’, ‘🟠’];
 
-// ── STRIP DEFAULTS ───────────────────────────────────────────────────────────
+// Defaults
 export const DEFAULT_STRIP_METRICS = [‘pool_hashrate’, ‘next_block_prize’, ‘accept_rate’, ‘worker_health’, ‘node_sync’, ‘hashrate_trend’];
 export const DEFAULT_CHUNK_SIZE   = 2;
 export const DEFAULT_FADE_MS      = 5000;
 export const DEFAULT_MARKER_SYMS  = [‘₿’, ‘⛏’, ‘💎’];
 export const DEFAULT_MARKER_MS    = 4000;
 
-// ── TICKER DEFAULTS ──────────────────────────────────────────────────────────
-// Live, metric-driven scrolling ticker. Default is a “market + mining” mix
-// geared for at-a-glance scanning.
+// Ticker defaults — live metric-driven scrolling ticker shares the METRICS registry.
 export const DEFAULT_TICKER_METRICS = [
 ‘btc_price’,
 ‘block_reward_btc’,
@@ -318,7 +315,5 @@ export const DEFAULT_TICKER_METRICS = [
 ‘retarget_eta’,
 ‘halving’,
 ];
-
-// Separators user can pick between for the scrolling ticker.
 export const TICKER_SEPARATORS = [’·’, ‘—’, ‘|’];
 export const DEFAULT_TICKER_SEPARATOR = ‘·’;
