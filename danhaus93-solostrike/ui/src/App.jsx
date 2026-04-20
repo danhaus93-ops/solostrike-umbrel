@@ -12,17 +12,18 @@ const label = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em'
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
-const LS_CARD_ORDER    = 'ss_card_order_v1';
-const LS_CURRENCY      = 'ss_currency_v1';
-const LS_ALIASES       = 'ss_worker_aliases_v1';
-const LS_NOTES         = 'ss_worker_notes_v1';
-const LS_OFFLINE_SEEN  = 'ss_offline_seen_v1';
-const LS_STRIP_METRICS = 'ss_strip_metrics_v1';
-const LS_STRIP_CHUNK   = 'ss_strip_chunk_v1';
-const LS_STRIP_FADE    = 'ss_strip_fade_v1';
-const LS_STRIP_ENABLED = 'ss_strip_enabled_v1';
-const LS_MARKER_SYMS   = 'ss_marker_syms_v1';
-const LS_MARKER_MS     = 'ss_marker_ms_v1';
+const LS_CARD_ORDER     = 'ss_card_order_v1';
+const LS_CURRENCY       = 'ss_currency_v1';
+const LS_ALIASES        = 'ss_worker_aliases_v1';
+const LS_NOTES          = 'ss_worker_notes_v1';
+const LS_OFFLINE_SEEN   = 'ss_offline_seen_v1';
+const LS_STRIP_METRICS  = 'ss_strip_metrics_v1';
+const LS_STRIP_CHUNK    = 'ss_strip_chunk_v1';
+const LS_STRIP_FADE     = 'ss_strip_fade_v1';
+const LS_STRIP_ENABLED  = 'ss_strip_enabled_v1';
+const LS_MARKER_SYMS    = 'ss_marker_syms_v1';
+const LS_MARKER_MS      = 'ss_marker_ms_v1';
+const LS_MARKER_ENABLED = 'ss_marker_enabled_v1';
 
 function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
@@ -41,8 +42,9 @@ function loadMarkerSyms()   { try { const s = localStorage.getItem(LS_MARKER_SYM
 function saveMarkerSyms(list){ try { localStorage.setItem(LS_MARKER_SYMS, JSON.stringify(list)); } catch {} }
 function loadMarkerMs()     { try { const n = parseInt(localStorage.getItem(LS_MARKER_MS), 10); return Number.isFinite(n) && n>=1000 && n<=15000 ? n : DEFAULT_MARKER_MS; } catch { return DEFAULT_MARKER_MS; } }
 function saveMarkerMs(n)    { try { localStorage.setItem(LS_MARKER_MS, String(n)); } catch {} }
+function loadMarkerEnabled(){ try { const v = localStorage.getItem(LS_MARKER_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
+function saveMarkerEnabled(v){ try { localStorage.setItem(LS_MARKER_ENABLED, String(!!v)); } catch {} }
 
-// Strip BTC address prefix. "bc1q...wgsk.S19XP" -> "S19XP"
 function stripAddr(fullName) {
   if (!fullName || typeof fullName !== 'string') return fullName || '';
   const dot = fullName.indexOf('.');
@@ -72,8 +74,8 @@ function parseClient(subversion) {
 const BTC_ADDR_RE = /^(bc1[a-z0-9]{6,87}|tb1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
 function isValidBtcAddress(a){ if(!a||typeof a!=='string')return false; const t=a.trim(); return t.length>=26&&t.length<=90&&BTC_ADDR_RE.test(t); }
 
-// ── Full-width strip wrapper style — used by all sticky strips ────────────────
-const STRIP_FULL_WIDTH = { width:'100%', boxSizing:'border-box', maxWidth:'100%' , minWidth:0 };
+// Width lockdown shared by every sticky strip
+const STRIP_FULL_WIDTH = { width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0 };
 
 // ── DraggableCard ─────────────────────────────────────────────────────────────
 function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, children, spanTwo }) {
@@ -96,23 +98,23 @@ function Header({ uptime, connected, status, onSettings, privateMode }) {
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
   return (
-    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 1rem', height:52, borderBottom:'1px solid var(--border)', gap:'0.5rem' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', minWidth:0 }}>
-        <span style={{ fontSize:18, color:'var(--amber)', filter:'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation:'pulse 3s ease-in-out infinite' }}>⛏</span>
-        <span style={{ fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, letterSpacing:'0.08em', color:'var(--amber)', textTransform:'uppercase' }}>SoloStrike</span>
-        <div style={{ width:1, height:18, background:'var(--border)' }}/>
-        <div style={{ display:'flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.15em', textTransform:'uppercase' }}>
+    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 1rem', height:52, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', minWidth:0, overflow:'hidden' }}>
+        <span style={{ fontSize:18, color:'var(--amber)', filter:'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
+        <span style={{ fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, letterSpacing:'0.08em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
+        <div style={{ width:1, height:18, background:'var(--border)', flexShrink:0 }}/>
+        <div style={{ display:'flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.15em', textTransform:'uppercase', flexShrink:0 }}>
           <div style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
           <span style={{ color:st.c }}>{st.t}</span>
         </div>
         {privateMode && (
           <>
-            <div style={{ width:1, height:18, background:'var(--border)' }}/>
-            <span title="Private Mode — no external calls" style={{ display:'inline-flex', alignItems:'center', gap:4, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.15em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite' }}>🔒 PRIVATE</span>
+            <div style={{ width:1, height:18, background:'var(--border)', flexShrink:0 }}/>
+            <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:4, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.15em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>🔒 PRIVATE</span>
           </>
         )}
       </div>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-2)', letterSpacing:'0.08em' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-2)', letterSpacing:'0.08em', flexShrink:0 }}>
         <span>UP {fmtUptime(uptime)}</span>
         <div style={{ width:1, height:14, background:'var(--border)' }}/>
         <span style={{ color: connected?'var(--cyan)':'var(--text-2)' }}>{connected?'● LIVE':'○ RECONN'}</span>
@@ -122,7 +124,7 @@ function Header({ uptime, connected, status, onSettings, privateMode }) {
   );
 }
 
-// ── Ticker (width-fixed) ──────────────────────────────────────────────────────
+// ── Ticker ────────────────────────────────────────────────────────────────────
 function Ticker({ state }) {
   const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
   const luckVal = state.luck?.luck;
@@ -147,7 +149,7 @@ function Ticker({ state }) {
   );
 }
 
-// ── Latest Block strip (width-fixed) ──────────────────────────────────────────
+// ── Latest Block strip ────────────────────────────────────────────────────────
 function LatestBlockStrip({ netBlocks, blockReward }) {
   const latest = netBlocks?.[0];
   if (!latest) return null;
@@ -163,25 +165,25 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
       textTransform:'uppercase',
       overflowX:'auto', whiteSpace:'nowrap',
     }}>
-      <span style={{color:'var(--amber)', fontWeight:700}}>⛏ LATEST BLOCK</span>
-      <span style={{color:'var(--text-2)'}}>·</span>
-      <span style={{color:'var(--cyan)', fontFamily:'var(--fm)', fontWeight:700}}>#{fmtNum(latest.height)}</span>
-      <span style={{color:'var(--text-2)'}}>·</span>
-      <span style={{color: latest.isSolo?'var(--amber)':'var(--text-1)', fontWeight:600}}>
+      <span style={{color:'var(--amber)', fontWeight:700, flexShrink:0}}>⛏ LATEST BLOCK</span>
+      <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
+      <span style={{color:'var(--cyan)', fontFamily:'var(--fm)', fontWeight:700, flexShrink:0}}>#{fmtNum(latest.height)}</span>
+      <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
+      <span style={{color: latest.isSolo?'var(--amber)':'var(--text-1)', fontWeight:600, flexShrink:0}}>
         {latest.pool}{latest.isSolo && <span style={{marginLeft:6, fontSize:'0.52rem', border:'1px solid var(--amber)', padding:'1px 4px'}}>SOLO</span>}
       </span>
-      <span style={{color:'var(--text-2)'}}>·</span>
-      <span style={{color:'var(--text-1)', fontFamily:'var(--fm)'}}>{blockTimeAgo(latest.timestamp)}</span>
+      <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
+      <span style={{color:'var(--text-1)', fontFamily:'var(--fm)', flexShrink:0}}>{blockTimeAgo(latest.timestamp)}</span>
       {rewardBtc && (<>
-        <span style={{color:'var(--text-2)'}}>·</span>
-        <span style={{color:'var(--green)', fontFamily:'var(--fm)'}}>{rewardBtc.toFixed(3)} BTC</span>
+        <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
+        <span style={{color:'var(--green)', fontFamily:'var(--fm)', flexShrink:0}}>{rewardBtc.toFixed(3)} BTC</span>
       </>)}
-      <a href={`https://mempool.space/block/${latest.id}`} target="_blank" rel="noopener noreferrer" style={{marginLeft:'auto', color:'var(--text-2)', fontSize:13, fontFamily:'var(--fm)'}}>↗</a>
+      <a href={`https://mempool.space/block/${latest.id}`} target="_blank" rel="noopener noreferrer" style={{marginLeft:'auto', color:'var(--text-2)', fontSize:13, fontFamily:'var(--fm)', flexShrink:0}}>↗</a>
     </div>
   );
 }
 
-// ── Customizable Top Strip — user picks metrics, chunks crossfade ────────────
+// ── Customizable Top Strip ────────────────────────────────────────────────────
 function CustomizableTopStrip({ state, aliases, currency, uptime, enabled, metricIds, chunkSize, fadeMs }) {
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -240,8 +242,8 @@ function CustomizableTopStrip({ state, aliases, currency, uptime, enabled, metri
       }} className="ss-hide-scrollbar">
         {currentGroup.map((m, i) => {
           const out = m.render(state, aliases, currency, uptime) || {};
-          const value = out.value ?? '—';
-          const prefix = out.prefix ?? m.label.toUpperCase();
+          const value = out.value != null ? out.value : '—';
+          const prefix = out.prefix != null ? out.prefix : m.label.toUpperCase();
           return (
             <React.Fragment key={m.id}>
               {i > 0 && <span style={{color:'var(--text-3)'}}>·</span>}
@@ -270,7 +272,7 @@ function CustomizableTopStrip({ state, aliases, currency, uptime, enabled, metri
   );
 }
 
-// ── Sync warning banner (width-fixed) ─────────────────────────────────────────
+// ── Sync warning banner ───────────────────────────────────────────────────────
 function SyncWarningBanner({ sync }) {
   if (!sync?.warn) return null;
   const pct = (sync.progress || 0) * 100;
@@ -287,14 +289,14 @@ function SyncWarningBanner({ sync }) {
       boxShadow:'inset 0 -1px 0 rgba(255,59,59,0.2)',
       overflowX:'auto', whiteSpace:'nowrap',
     }}>
-      <span style={{fontWeight:700, animation:'pulse 2s ease-in-out infinite'}}>⚠ BITCOIN CORE SYNCING</span>
-      <span style={{color:'var(--text-2)'}}>·</span>
-      <span style={{color:'var(--text-1)', fontFamily:'var(--fm)'}}>{pct.toFixed(2)}% verified</span>
+      <span style={{fontWeight:700, animation:'pulse 2s ease-in-out infinite', flexShrink:0}}>⚠ BITCOIN CORE SYNCING</span>
+      <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
+      <span style={{color:'var(--text-1)', fontFamily:'var(--fm)', flexShrink:0}}>{pct.toFixed(2)}% verified</span>
       {behind > 0 && <>
-        <span style={{color:'var(--text-2)'}}>·</span>
-        <span style={{color:'var(--text-1)', fontFamily:'var(--fm)'}}>{fmtNum(behind)} blocks behind headers</span>
+        <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
+        <span style={{color:'var(--text-1)', fontFamily:'var(--fm)', flexShrink:0}}>{fmtNum(behind)} blocks behind</span>
       </>}
-      <span style={{color:'var(--text-3)', marginLeft:'auto', fontSize:'0.55rem'}}>Mined blocks may be stale until synced</span>
+      <span style={{color:'var(--text-3)', marginLeft:'auto', fontSize:'0.55rem', flexShrink:0}}>Mined blocks may be stale</span>
     </div>
   );
 }
@@ -346,7 +348,7 @@ function OfflineToasts({ workers, aliases }) {
   );
 }
 
-// ── Animated chart marker (₿ ↔ ⛏ ↔ 💎 rotation) ──────────────────────────────
+// ── Animated chart marker hook ────────────────────────────────────────────────
 function useAnimatedSymbol(symbols, intervalMs) {
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -367,8 +369,8 @@ function useAnimatedSymbol(symbols, intervalMs) {
   return { symbol: current, visible };
 }
 
-// ── Hashrate chart (with animated marker) ─────────────────────────────────────
-function HashrateChart({ history, current, averages, markerSyms, markerMs }) {
+// ── Hashrate chart ────────────────────────────────────────────────────────────
+function HashrateChart({ history, current, averages, markerEnabled, markerSyms, markerMs }) {
   const data = (history||[]).map(p=>({hr: p.hr, ts: p.ts}));
   const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
   const latest = data.length ? data[data.length - 1] : null;
@@ -381,10 +383,10 @@ function HashrateChart({ history, current, averages, markerSyms, markerMs }) {
     ['7d',  averages?.hr7d],
   ].filter(([,v]) => v != null && v > 0);
 
-  const { symbol, visible: symVisible } = useAnimatedSymbol(markerSyms || DEFAULT_MARKER_SYMS, markerMs || DEFAULT_MARKER_MS);
+  const animState = useAnimatedSymbol(markerSyms || DEFAULT_MARKER_SYMS, markerMs || DEFAULT_MARKER_MS);
 
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Pool Hashrate — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>PEAK {fmtHr(peak)}</span>}
@@ -402,42 +404,43 @@ function HashrateChart({ history, current, averages, markerSyms, markerMs }) {
           ))}
         </div>
       )}
-      <ResponsiveContainer width="100%" height={140}>
-        <AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
-          <defs>
-            <linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#F5A623" stopOpacity={0.28}/>
-              <stop offset="95%" stopColor="#F5A623" stopOpacity={0.02}/>
-            </linearGradient>
-          </defs>
-          <XAxis hide dataKey="ts"/>
-          <YAxis hide domain={[0, (dataMax)=>Math.max(dataMax, peak)*1.15]}/>
-          <Tooltip content={({active,payload})=>{
-            if(!active||!payload?.length) return null;
-            const p = payload[0].payload;
-            return (
-              <div style={{background:'var(--bg-elevated, #1a1b1e)',border:'1px solid var(--border-hot, rgba(245,166,35,0.4))',padding:'5px 10px',fontSize:'0.7rem',fontFamily:'var(--fm)'}}>
-                <div style={{color:'var(--amber)',fontWeight:600}}>{fmtHr(p.hr)}</div>
-                <div style={{color:'var(--text-2)',fontSize:'0.6rem',marginTop:2}}>{timeAgo(p.ts)}</div>
-              </div>
-            );
-          }}/>
-          <Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
-          {latest && latest.ts != null && (
-            <ReferenceDot x={latest.ts} y={latest.hr} r={0} isFront={true}
-              shape={(props) => {
-                const { cx, cy } = props;
-                if (cx == null || cy == null) return null;
-                return (
-                  <g style={{filter:'drop-shadow(0 0 8px rgba(245,166,35,0.8))', opacity: symVisible ? 1 : 0, transition:'opacity 0.3s ease'}}>
-                    <circle cx={cx} cy={cy} r={11} fill="rgba(6,7,8,0.95)" stroke="#F5A623" strokeWidth="1.5"/>
-                    <text x={cx} y={cy+4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#F5A623" fontFamily="var(--fm)">{symbol}</text>
-                  </g>
-                );
-              }}/>
-          )}
-        </AreaChart>
-      </ResponsiveContainer>
+      <div style={{width:'100%', maxWidth:'100%', overflow:'hidden', minWidth:0}}>
+        <ResponsiveContainer width="100%" height={140}>
+          <AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
+            <defs>
+              <linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#F5A623" stopOpacity={0.28}/>
+                <stop offset="95%" stopColor="#F5A623" stopOpacity={0.02}/>
+              </linearGradient>
+            </defs>
+            <XAxis hide dataKey="ts"/>
+            <YAxis hide domain={[0, (dataMax)=>Math.max(dataMax, peak)*1.15]}/>
+            <Tooltip content={({active,payload})=>{
+              if(!active||!payload?.length) return null;
+              const p = payload[0].payload;
+              return (
+                <div style={{background:'var(--bg-elevated, #1a1b1e)',border:'1px solid var(--border-hot, rgba(245,166,35,0.4))',padding:'5px 10px',fontSize:'0.7rem',fontFamily:'var(--fm)'}}>
+                  <div style={{color:'var(--amber)',fontWeight:600}}>{fmtHr(p.hr)}</div>
+                  <div style={{color:'var(--text-2)',fontSize:'0.6rem',marginTop:2}}>{timeAgo(p.ts)}</div>
+                </div>
+              );
+            }}/>
+            <Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
+            {markerEnabled && latest && latest.ts != null && (
+              <ReferenceDot x={latest.ts} y={latest.hr} r={0} isFront={true}
+                shape={(props) => {
+                  const { cx, cy } = props;
+                  if (cx == null || cy == null) return null;
+                  return (
+                    <g style={{filter:'drop-shadow(0 0 10px rgba(245,166,35,0.95)) drop-shadow(0 0 4px rgba(245,166,35,0.7))', opacity: animState.visible ? 1 : 0, transition:'opacity 0.3s ease'}}>
+                      <text x={cx} y={cy+6} textAnchor="middle" fontSize="20" fontWeight="700" fill="#F5A623" fontFamily="var(--fm)">{animState.symbol}</text>
+                    </g>
+                  );
+                }}/>
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -460,7 +463,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
   const online = sorted.filter(w=>w.status!=='offline').length;
 
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Connected Workers</span>
         <span style={{color:'var(--amber)'}}>{online}/{sorted.length} online</span>
@@ -470,7 +473,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
           <span style={{position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'var(--text-2)', pointerEvents:'none'}}>🔍</span>
           <input type="text" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Filter workers by name or miner type…"
             spellCheck={false} autoCorrect="off" autoCapitalize="off"
-            style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.6rem 0.5rem 2rem',outline:'none'}}/>
+            style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.6rem 0.5rem 2rem',outline:'none',boxSizing:'border-box'}}/>
           {query && <button onClick={()=>setQuery('')} style={{position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:14, padding:'4px 6px'}}>✕</button>}
         </div>
       )}
@@ -491,7 +494,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
             const disp = displayName(w.name, aliases);
             const lastShareAgo = w.lastSeen ? fmtAgoShort(w.lastSeen) : '—';
             return(
-              <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s'}}
+              <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s', minWidth:0, overflow:'hidden'}}
                 onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-raised)'}>
                 <div title={w.health||'unknown'} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 6px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
                 <span title={w.minerType||'Unknown'} style={{fontSize:13,color:on?'var(--cyan)':'var(--text-3)',width:16,textAlign:'center',flexShrink:0}}>{icon}</span>
@@ -508,13 +511,13 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                     {w.diff>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',whiteSpace:'nowrap'}}>diff {fmtDiff(w.diff)}</span>}
                   </div>
                 </div>
-                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1, flexShrink:0}}>
                   <span style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)'}}>
                     <span style={{color:'var(--green)'}}>{fmtDiff(workAccepted)}</span>/<span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span>
                   </span>
                   {w.bestshare>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--amber)'}}>best {fmtDiff(w.bestshare)}</span>}
                 </div>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:600,color:on?'var(--amber)':'var(--text-2)',minWidth:72,textAlign:'right'}}>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:600,color:on?'var(--amber)':'var(--text-2)',minWidth:64,textAlign:'right', flexShrink:0}}>
                   {on?fmtHr(w.hashrate):'offline'}
                 </span>
               </div>
@@ -526,12 +529,12 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
   );
 }
 
-// ── Bitcoin Network (Next Block Prize) ────────────────────────────────────────
+// ── Bitcoin Network ───────────────────────────────────────────────────────────
 function NetworkStats({ network, blockReward, mempool, prices, currency, privateMode }) {
   const price = prices?.[currency];
   const rewardUsd = price && blockReward ? blockReward.totalBtc * price : null;
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Bitcoin Network</div>
       {[['Block Height', fmtNum(network?.height), 'var(--text-1)'],
         ['Difficulty', fmtDiff(network?.difficulty), 'var(--text-1)'],
@@ -585,7 +588,7 @@ function BitcoinNodePanel({ nodeInfo }) {
   const connected = ni.connected;
   const relayStr = ni.relayFee != null ? `${(ni.relayFee * 1e5).toFixed(2)} sat/vB` : '—';
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Bitcoin Node</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, color: connected?'var(--green)':'var(--red)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>
@@ -614,13 +617,13 @@ function BitcoinNodePanel({ nodeInfo }) {
   );
 }
 
-// ── Odds (daily + weekly + monthly) ──────────────────────────────────────────
+// ── Odds ──────────────────────────────────────────────────────────────────────
 function OddsDisplay({ odds, hashrate, netHashrate }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0 } = odds||{};
   const R=48, C=2*Math.PI*R;
   const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Block Probability</div>
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.875rem'}}>
         <div style={{position:'relative',width:110,height:110,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -653,14 +656,14 @@ function OddsDisplay({ odds, hashrate, netHashrate }) {
   );
 }
 
-// ── Luck ─────────────────────────────────────────────────────────────────────
+// ── Luck ──────────────────────────────────────────────────────────────────────
 function LuckGauge({ luck }) {
   const { progress=0, blocksExpected=0, blocksFound=0, luck: luckVal=null } = luck||{};
   const visualPct = Math.min(300, progress);
   const w = Math.min(100, visualPct/3);
   const barColor = luckVal==null ? 'var(--amber)' : (luckVal>=100 ? 'var(--green)' : luckVal>=50 ? 'var(--amber)' : 'var(--red)');
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Luck — Since Pool Start</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{textAlign:'center',padding:'0.6rem 0'}}>
@@ -694,7 +697,7 @@ function RetargetPanel({ retarget }) {
   const changeColor = difficultyChange>=0 ? 'var(--red)' : 'var(--green)';
   const pct = Math.max(0, Math.min(100, progressPercent));
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Difficulty Retarget</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
         <div style={{textAlign:'center',padding:'0.25rem 0'}}>
@@ -718,7 +721,7 @@ function RetargetPanel({ retarget }) {
   );
 }
 
-// ── Share stats ──────────────────────────────────────────────────────────────
+// ── Share stats ───────────────────────────────────────────────────────────────
 function ShareStats({ shares, hashrate, bestshare }) {
   const s = shares || {};
   const workAccepted = s.accepted || 0;
@@ -728,7 +731,7 @@ function ShareStats({ shares, hashrate, bestshare }) {
   const acceptRate = ((workAccepted / total) * 100).toFixed(2);
   const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Share Stats</span>
         <a href="/api/export/workers.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>
@@ -759,7 +762,7 @@ function ShareStats({ shares, hashrate, bestshare }) {
 function BestShareLeaderboard({ workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Leaderboard — Best Difficulties</div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Keep mining ⛏</span></div>
@@ -769,11 +772,11 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
             const on = w.status !== 'offline';
             const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
             return (
-              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`,opacity:on?1:0.55}}>
+              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:3}}>
-                  <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:20}}>#{i+1}</span>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:20, flexShrink:0}}>#{i+1}</span>
                   <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
-                  <span style={{fontFamily:'var(--fd)',fontSize:'0.82rem',fontWeight:700,color:i===0?'var(--amber)':'var(--cyan)'}}>{fmtDiff(w.bestshare || 0)}</span>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.82rem',fontWeight:700,color:i===0?'var(--amber)':'var(--cyan)', flexShrink:0}}>{fmtDiff(w.bestshare || 0)}</span>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:25,fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)'}}>
                   <div title={w.health||'unknown'} style={{width:6,height:6,borderRadius:'50%',background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 4px ${healthC}`:'none',flexShrink:0}}/>
@@ -800,21 +803,21 @@ function TopFindersPanel({ topFinders, netBlocks }) {
   if (!list.length) return null;
   const maxCount = list[0]?.count || 1;
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Top Pool Finders — Last {totalSample} Blocks</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
         {list.map((p,i)=>{
           const pct = (p.count/maxCount)*100;
           const color = p.isSolo ? 'var(--amber)' : (i===0 ? 'var(--cyan)' : 'var(--text-1)');
           return (
-            <div key={p.name} style={{padding:'0.5rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(0,255,209,0.2)':'var(--border)'}`,position:'relative',overflow:'hidden'}}>
+            <div key={p.name} style={{padding:'0.5rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(0,255,209,0.2)':'var(--border)'}`,position:'relative',overflow:'hidden', minWidth:0}}>
               <div style={{position:'absolute',inset:0,width:`${pct}%`,background:p.isSolo?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)',transition:'width 0.6s ease'}}/>
               <div style={{position:'relative',display:'flex',alignItems:'center',gap:'0.6rem'}}>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--cyan)':'var(--text-2)',width:18}}>#{i+1}</span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--cyan)':'var(--text-2)',width:18, flexShrink:0}}>#{i+1}</span>
                 <div style={{flex:1,minWidth:0,fontFamily:'var(--fd)',fontSize:'0.72rem',color,letterSpacing:'0.05em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textTransform:'uppercase'}}>
                   {p.name}{p.isSolo && <span style={{fontSize:'0.5rem',color:'var(--amber)',marginLeft:6,border:'1px solid var(--amber)',padding:'0 4px'}}>SOLO</span>}
                 </div>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color}}>{p.count}</span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color, flexShrink:0}}>{p.count}</span>
               </div>
             </div>
           );
@@ -827,7 +830,7 @@ function TopFindersPanel({ topFinders, netBlocks }) {
 // ── Block feed ────────────────────────────────────────────────────────────────
 function BlockFeed({ blocks, blockAlert }) {
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Blocks Found — {(blocks||[]).length} total</span>
         {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>}
@@ -837,14 +840,14 @@ function BlockFeed({ blocks, blockAlert }) {
       ):(
         <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',maxHeight:240,overflowY:'auto'}}>
           {blocks.map((b,i)=>(
-            <div key={b.hash} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.7rem 1rem',background:'var(--bg-raised)',border:`1px solid ${blockAlert&&i===0?'var(--green)':'rgba(57,255,106,0.15)'}`,animation:blockAlert&&i===0?'blockBoom 0.6s ease':'none'}}>
-              <span style={{fontSize:16}}>💎</span>
+            <div key={b.hash} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.7rem 1rem',background:'var(--bg-raised)',border:`1px solid ${blockAlert&&i===0?'var(--green)':'rgba(57,255,106,0.15)'}`,animation:blockAlert&&i===0?'blockBoom 0.6s ease':'none', minWidth:0}}>
+              <span style={{fontSize:16, flexShrink:0}}>💎</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:'var(--green)'}}>#{fmtNum(b.height)}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.hash?.slice(0,24)}…</div>
               </div>
               <span style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',flexShrink:0}}>{timeAgo(b.ts)}</span>
-              <a href={`https://mempool.space/block/${b.hash}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--text-2)',fontSize:12}}>↗</a>
+              <a href={`https://mempool.space/block/${b.hash}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--text-2)',fontSize:12, flexShrink:0}}>↗</a>
             </div>
           ))}
         </div>
@@ -858,11 +861,11 @@ function RecentBlocksPanel({ netBlocks }) {
   const list = netBlocks || [];
   if (!list.length) return null;
   return (
-    <div style={card} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Recent Network Blocks — Solo Winners ⚡</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',maxHeight:300,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
-          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none'}}>
+          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none', minWidth:0}}>
             <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -934,7 +937,7 @@ function SetupScreen({ onComplete }) {
         </div>
         <p style={{fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'2rem'}}>Initial Setup — Enter Payout Address</p>
         <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem'}}>Bitcoin Payout Address</label>
-        <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${error?'rgba(255,59,59,0.5)':addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.82rem',padding:'0.75rem 1rem',outline:'none'}}
+        <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${error?'rgba(255,59,59,0.5)':addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.82rem',padding:'0.75rem 1rem',outline:'none',boxSizing:'border-box'}}
           type="text" placeholder="bc1q… or 1… or 3…" value={addr} onChange={e=>{setAddr(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&submit()} spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
         {error&&<div style={{background:'rgba(255,59,59,0.08)',border:'1px solid rgba(255,59,59,0.3)',padding:'0.6rem 0.875rem',fontSize:'0.75rem',color:'var(--red)',marginTop:'0.75rem'}}>⚠ {error}</div>}
         <button onClick={submit} disabled={loading} style={{width:'100%',marginTop:'1.5rem',padding:'0.875rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,letterSpacing:'0.15em',textTransform:'uppercase',cursor:'pointer',opacity:loading?0.6:1}}>
@@ -945,7 +948,7 @@ function SetupScreen({ onComplete }) {
   );
 }
 
-// ── Settings modal (5 tabs now) ───────────────────────────────────────────────
+// ── Settings modal ────────────────────────────────────────────────────────────
 function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, markerSettings, onMarkerSettingsChange }) {
   const [tab, setTab] = useState('main');
   const [addr,setAddr]=useState('');
@@ -995,10 +998,10 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {saved&&<div style={{background:'rgba(57,255,106,0.06)',border:'1px solid rgba(57,255,106,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--green)',marginBottom:'1rem'}}>✓ Saved</div>}
         {error&&<div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'1rem'}}>⚠ {error}</div>}
 
-        {tab==='main' && <MainTab {...{addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,onResetLayout,submit,saved,loading}}/>}
+        {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
         {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} markerSettings={markerSettings} onMarkerSettingsChange={onMarkerSettingsChange}/>}
-        {tab==='privacy' && <PrivacyTab {...{privateMode,setPrivateMode,submit,saved,loading}}/>}
-        {tab==='aliases' && <AliasesTab {...{workers,aliases,onAliasesChange}}/>}
+        {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
+        {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
         {tab==='hooks' && <WebhooksTab />}
       </div>
     </div>
@@ -1011,13 +1014,13 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
     <>
       <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem'}}>New Payout Address</label>
       <div style={{position:'relative'}}>
-        <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 2.5rem 0.7rem 0.875rem',outline:'none'}} type={show?'text':'password'} placeholder="Leave blank to keep current" value={addr} onChange={e=>setAddr(e.target.value)} spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
+        <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 2.5rem 0.7rem 0.875rem',outline:'none',boxSizing:'border-box'}} type={show?'text':'password'} placeholder="Leave blank to keep current" value={addr} onChange={e=>setAddr(e.target.value)} spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
         <button onClick={()=>setShow(v=>!v)} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:12}}>{show?'🙈':'👁'}</button>
       </div>
       <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem',marginTop:'1rem'}}>Pool Name</label>
-      <input style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none'}} maxLength={32} value={poolName} onChange={e=>setPoolName(e.target.value)}/>
+      <input style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none',boxSizing:'border-box'}} maxLength={32} value={poolName} onChange={e=>setPoolName(e.target.value)}/>
       <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem',marginTop:'1rem'}}>BTC Price Currency</label>
-      <select value={currency} onChange={e=>onCurrencyChange(e.target.value)} style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none'}}>
+      <select value={currency} onChange={e=>onCurrencyChange(e.target.value)} style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none',boxSizing:'border-box'}}>
         {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
       </select>
       <div style={{height:1,background:'var(--border)',margin:'1.25rem 0'}}/>
@@ -1029,27 +1032,27 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
   );
 }
 
-// ── DisplayTab (NEW) — customize top strip + chart marker ────────────────────
+// ── DisplayTab ────────────────────────────────────────────────────────────────
 function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMarkerSettingsChange }) {
-  const s = stripSettings;
-  const m = markerSettings;
   const toggleMetric = (id) => {
-    const next = s.metrics.includes(id) ? s.metrics.filter(x => x !== id) : [...s.metrics, id];
-    onStripSettingsChange({ ...s, metrics: next });
+    const next = stripSettings.metrics.includes(id) ? stripSettings.metrics.filter(x => x !== id) : [...stripSettings.metrics, id];
+    onStripSettingsChange({ ...stripSettings, metrics: next });
   };
   const moveMetric = (id, dir) => {
-    const idx = s.metrics.indexOf(id);
+    const idx = stripSettings.metrics.indexOf(id);
     if (idx < 0) return;
     const swap = idx + dir;
-    if (swap < 0 || swap >= s.metrics.length) return;
-    const next = [...s.metrics];
-    [next[idx], next[swap]] = [next[swap], next[idx]];
-    onStripSettingsChange({ ...s, metrics: next });
+    if (swap < 0 || swap >= stripSettings.metrics.length) return;
+    const next = [...stripSettings.metrics];
+    const tmp = next[idx];
+    next[idx] = next[swap];
+    next[swap] = tmp;
+    onStripSettingsChange({ ...stripSettings, metrics: next });
   };
   const toggleSymbol = (sym) => {
-    const next = m.symbols.includes(sym) ? m.symbols.filter(x => x !== sym) : [...m.symbols, sym];
-    if (!next.length) return; // keep at least one
-    onMarkerSettingsChange({ ...m, symbols: next });
+    const next = markerSettings.symbols.includes(sym) ? markerSettings.symbols.filter(x => x !== sym) : [...markerSettings.symbols, sym];
+    if (!next.length) return;
+    onMarkerSettingsChange({ ...markerSettings, symbols: next });
   };
 
   const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem', marginTop:'1rem' };
@@ -1063,9 +1066,9 @@ function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMa
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
         <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable top strip</span>
-        <button onClick={()=>onStripSettingsChange({ ...s, enabled: !s.enabled })}
-          style={{width:40, height:22, borderRadius:11, background: s.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-          <div style={{position:'absolute', top:1, left: s.enabled?20:2, width:18, height:18, borderRadius:'50%', background: s.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        <button onClick={()=>onStripSettingsChange({ ...stripSettings, enabled: !stripSettings.enabled })}
+          style={{width:40, height:22, borderRadius:11, background: stripSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
+          <div style={{position:'absolute', top:1, left: stripSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: stripSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
         </button>
       </div>
 
@@ -1074,9 +1077,9 @@ function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMa
         {METRIC_CATEGORIES.map(cat => (
           <div key={cat}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
-            {METRICS.filter(m => m.category === cat).map(metric => {
-              const on = s.metrics.includes(metric.id);
-              const order = on ? s.metrics.indexOf(metric.id) : -1;
+            {METRICS.filter(metric => metric.category === cat).map(metric => {
+              const on = stripSettings.metrics.includes(metric.id);
+              const order = on ? stripSettings.metrics.indexOf(metric.id) : -1;
               return (
                 <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
                   <button onClick={()=>toggleMetric(metric.id)}
@@ -1088,7 +1091,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMa
                     <>
                       <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
                       <button onClick={()=>moveMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
-                      <button onClick={()=>moveMetric(metric.id, +1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
+                      <button onClick={()=>moveMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
                     </>
                   )}
                 </div>
@@ -1098,44 +1101,57 @@ function DisplayTab({ stripSettings, onStripSettingsChange, markerSettings, onMa
         ))}
       </div>
       <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Selected: <span style={{color:'var(--amber)'}}>{s.metrics.length}</span> metric{s.metrics.length===1?'':'s'}
+        Selected: <span style={{color:'var(--amber)'}}>{stripSettings.metrics.length}</span> metric{stripSettings.metrics.length===1?'':'s'}
       </div>
 
       <div style={{...rowLabel, marginTop:'0.9rem'}}>Show how many at a time (fade between groups)</div>
       <div style={{display:'flex', gap:6}}>
         {[1,2,3,4].map(n => (
-          <button key={n} onClick={()=>onStripSettingsChange({ ...s, chunkSize: n })}
-            style={{flex:1, padding:'0.55rem', background: s.chunkSize===n?'var(--bg-raised)':'transparent', border:`1px solid ${s.chunkSize===n?'var(--border-hot)':'var(--border)'}`, color: s.chunkSize===n?'var(--amber)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, cursor:'pointer'}}>
+          <button key={n} onClick={()=>onStripSettingsChange({ ...stripSettings, chunkSize: n })}
+            style={{flex:1, padding:'0.55rem', background: stripSettings.chunkSize===n?'var(--bg-raised)':'transparent', border:`1px solid ${stripSettings.chunkSize===n?'var(--border-hot)':'var(--border)'}`, color: stripSettings.chunkSize===n?'var(--amber)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, cursor:'pointer'}}>
             {n}
           </button>
         ))}
       </div>
 
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>Fade interval: <span style={{color:'var(--amber)'}}>{(s.fadeMs/1000).toFixed(1)}s</span></div>
-      <input type="range" min="2000" max="15000" step="500" value={s.fadeMs} onChange={e=>onStripSettingsChange({ ...s, fadeMs: parseInt(e.target.value,10) })}
+      <div style={{...rowLabel, marginTop:'0.9rem'}}>Fade interval: <span style={{color:'var(--amber)'}}>{(stripSettings.fadeMs/1000).toFixed(1)}s</span></div>
+      <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
         style={{width:'100%', accentColor:'var(--amber)'}}/>
 
       <div style={sectionTitle}>▸ Chart Marker</div>
-      <div style={rowLabel}>Symbols (tap to toggle, at least 1)</div>
-      <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:6}}>
-        {MARKER_SYMBOLS.map(sym => {
-          const on = m.symbols.includes(sym);
-          return (
-            <button key={sym} onClick={()=>toggleSymbol(sym)}
-              style={{padding:'0.6rem', background: on?'var(--bg-raised)':'transparent', border:`1px solid ${on?'var(--border-hot)':'var(--border)'}`, color:on?'var(--amber)':'var(--text-2)', fontSize:20, cursor:'pointer', borderRadius:4}}>
-              {sym}
-            </button>
-          );
-        })}
-      </div>
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Selected: <span style={{color:'var(--amber)'}}>{m.symbols.length}</span> symbol{m.symbols.length===1?'':'s'}
-        {m.symbols.length===1 && ' · no rotation (static)'}
+
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Show symbol on chart</span>
+        <button onClick={()=>onMarkerSettingsChange({ ...markerSettings, enabled: !markerSettings.enabled })}
+          style={{width:40, height:22, borderRadius:11, background: markerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
+          <div style={{position:'absolute', top:1, left: markerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: markerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
       </div>
 
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>Symbol rotation: <span style={{color:'var(--amber)'}}>{(m.intervalMs/1000).toFixed(1)}s</span></div>
-      <input type="range" min="1500" max="10000" step="500" value={m.intervalMs} onChange={e=>onMarkerSettingsChange({ ...m, intervalMs: parseInt(e.target.value,10) })}
-        style={{width:'100%', accentColor:'var(--amber)'}}/>
+      {markerSettings.enabled && (
+        <>
+          <div style={rowLabel}>Symbols (tap to toggle, at least 1)</div>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:6}}>
+            {MARKER_SYMBOLS.map(sym => {
+              const on = markerSettings.symbols.includes(sym);
+              return (
+                <button key={sym} onClick={()=>toggleSymbol(sym)}
+                  style={{padding:'0.6rem', background: on?'var(--bg-raised)':'transparent', border:`1px solid ${on?'var(--border-hot)':'var(--border)'}`, color:on?'var(--amber)':'var(--text-2)', fontSize:20, cursor:'pointer', borderRadius:4}}>
+                  {sym}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
+            Selected: <span style={{color:'var(--amber)'}}>{markerSettings.symbols.length}</span> symbol{markerSettings.symbols.length===1?'':'s'}
+            {markerSettings.symbols.length===1 && ' · no rotation (static)'}
+          </div>
+
+          <div style={{...rowLabel, marginTop:'0.9rem'}}>Symbol rotation: <span style={{color:'var(--amber)'}}>{(markerSettings.intervalMs/1000).toFixed(1)}s</span></div>
+          <input type="range" min="1500" max="10000" step="500" value={markerSettings.intervalMs} onChange={e=>onMarkerSettingsChange({ ...markerSettings, intervalMs: parseInt(e.target.value,10) })}
+            style={{width:'100%', accentColor:'var(--amber)'}}/>
+        </>
+      )}
 
       <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1rem', textAlign:'center', lineHeight:1.4}}>
         Changes save automatically and persist on this device
@@ -1155,16 +1171,12 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
           </button>
         </div>
         <p style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-2)',lineHeight:1.5,margin:0}}>
-          When enabled, SoloStrike stops all external API calls. No mempool.space, no price feeds.
-          All data comes from your own Bitcoin Core and (if installed) your Umbrel Mempool app.
-          Features requiring external data (BTC price, network block feed) will gracefully hide.
+          When enabled, SoloStrike stops all external API calls. No mempool.space, no price feeds. All data comes from your own Bitcoin Core and (if installed) your Umbrel Mempool app.
         </p>
         <div style={{marginTop:'0.8rem',padding:'0.6rem',background:privateMode?'rgba(0,255,209,0.06)':'rgba(245,166,35,0.06)',border:`1px solid ${privateMode?'rgba(0,255,209,0.25)':'rgba(245,166,35,0.25)'}`}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:privateMode?'var(--cyan)':'var(--amber)',marginBottom:4}}>Current state</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)'}}>
-            {privateMode
-              ? 'Outbound calls: NONE. Your pool leaks zero metadata about mining activity.'
-              : 'Outbound calls: mempool.space (fees, blocks, prices). Convenient but not airgapped.'}
+            {privateMode ? 'Outbound calls: NONE. Your pool leaks zero metadata.' : 'Outbound calls: mempool.space (fees, blocks, prices).'}
           </div>
         </div>
       </div>
@@ -1194,7 +1206,7 @@ function AliasesTab({workers, aliases, onAliasesChange}) {
           <div key={w.name} style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.75rem'}}>
             <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{w.name}</div>
             <input type="text" value={localAliases[w.name] || ''} placeholder={stripAddr(w.name)} onChange={e=>updateAlias(w.name, e.target.value)} maxLength={32}
-              style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',padding:'0.5rem 0.7rem',outline:'none'}}/>
+              style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
           </div>
         ))}
       </div>
@@ -1242,7 +1254,7 @@ function WebhooksTab() {
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.url}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--cyan)',letterSpacing:'0.08em',textTransform:'uppercase',marginTop:2}}>{(h.events||[]).map(e=>EVENT_LABELS[e]||e).join(' · ')}</div>
               </div>
-              <button onClick={()=>del(h.id)} style={{background:'none',border:'1px solid rgba(255,59,59,0.4)',color:'var(--red)',padding:'4px 8px',cursor:'pointer',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em'}}>✕ REMOVE</button>
+              <button onClick={()=>del(h.id)} style={{background:'none',border:'1px solid rgba(255,59,59,0.4)',color:'var(--red)',padding:'4px 8px',cursor:'pointer',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em'}}>✕</button>
             </div>
           ))}
         </div>
@@ -1250,9 +1262,9 @@ function WebhooksTab() {
       <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.8rem',display:'flex',flexDirection:'column',gap:'0.5rem'}}>
         <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)'}}>Add Webhook</div>
         <input type="text" value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Name (e.g. Discord)" maxLength={50}
-          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.7rem',outline:'none'}}/>
+          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
         <input type="text" value={newUrl} onChange={e=>setNewUrl(e.target.value)} placeholder="https://discord.com/api/webhooks/..." spellCheck={false} autoCorrect="off" autoCapitalize="off"
-          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.72rem',padding:'0.5rem 0.7rem',outline:'none'}}/>
+          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.72rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
           {Object.keys(EVENT_LABELS).map(ev => (
             <button key={ev} onClick={()=>toggleEvent(ev)}
@@ -1305,14 +1317,14 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
   const stratumUrl = `stratum+tcp://${host}:3333`;
 
-  const copy = async (val, label) => {
+  const copy = async (val, lbl) => {
     try {
       await navigator.clipboard.writeText(val);
-      setCopied(label); setTimeout(() => setCopied(''), 2000);
+      setCopied(lbl); setTimeout(() => setCopied(''), 2000);
     } catch {
       const ta = document.createElement('textarea');
       ta.value = val; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); setCopied(label); setTimeout(()=>setCopied(''),2000); } catch {}
+      try { document.execCommand('copy'); setCopied(lbl); setTimeout(()=>setCopied(''),2000); } catch {}
       document.body.removeChild(ta);
     }
   };
@@ -1331,21 +1343,12 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
     const rows = [
       ['# generated_at_utc', new Date().toISOString()],
       ['# worker', w.name],
-      ['# display_name', aliases[w.name] || stripAddr(w.name)],
       ['field','value'],
       ['hashrate_hps', w.hashrate || 0],
       ['current_difficulty', w.diff || 0],
       ['best_share', Math.round(w.bestshare || 0)],
       ['work_accepted', work],
       ['work_rejected', workRej],
-      ['accept_rate_pct', acceptRate],
-      ['raw_shares', raw],
-      ['raw_rejected', rawRej],
-      ['miner_type', w.minerType || ''],
-      ['miner_vendor', w.minerVendor || ''],
-      ['status', w.status || ''],
-      ['health', w.health || ''],
-      ['last_seen_iso', w.lastSeen ? new Date(w.lastSeen).toISOString() : ''],
     ];
     const csv = rows.map(r => r.map(v => {
       const s = String(v == null ? '' : v);
@@ -1361,7 +1364,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   };
 
   const section = { marginBottom:'1rem' };
-  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
   const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
   const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
   const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'65%' };
@@ -1370,7 +1373,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)', lineHeight:1 };
   const btn = { padding:'0.55rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', flex:1, minWidth:'48%' };
   const btnDisabled = { ...btn, color:'var(--text-3)', cursor:'not-allowed', opacity:0.5 };
-  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none' };
+  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none', boxSizing:'border-box' };
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -1402,7 +1405,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           </div>
 
           <div style={section}>
-            <div style={sectionTitle}>▸ Shares</div>
+            <div style={secTitle}>▸ Shares</div>
             <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
             <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:workRej?'var(--red)':'var(--text-1)'}}>{fmtDiff(workRej)}</span></div>
             <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
@@ -1412,36 +1415,27 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           </div>
 
           <div style={section}>
-            <div style={sectionTitle}>▸ Connection</div>
+            <div style={secTitle}>▸ Connection</div>
             <div style={kvRow}><span style={kvLabel}>Stratum URL</span><span style={{...kvVal,fontSize:'0.68rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Worker IP</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.workerip || '— (v1.4)'}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Client</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.useragent || '— (v1.4)'}</span></div>
           </div>
 
           <div style={section}>
-            <div style={sectionTitle}>▸ Health</div>
+            <div style={secTitle}>▸ Health</div>
             <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
             <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>
             <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
           </div>
 
           <div style={section}>
-            <div style={sectionTitle}>▸ Options</div>
+            <div style={secTitle}>▸ Options</div>
             <div style={{marginBottom:'0.6rem'}}>
               <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
               <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Shows as alias everywhere in the UI</div>
             </div>
             <div style={{marginBottom:'0.6rem'}}>
               <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
               <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Saved to this device only, never leaves the app</div>
-            </div>
-            <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Target Difficulty</div>
-              <input type="text" value="auto" disabled style={{...inputStyle,opacity:0.5,cursor:'not-allowed'}}/>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Override vardiff — available in v1.4</div>
             </div>
             {dirty && (
               <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
@@ -1449,13 +1443,12 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           </div>
 
           <div style={section}>
-            <div style={sectionTitle}>▸ Actions</div>
+            <div style={secTitle}>▸ Actions</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
               <button onClick={()=>copy(stratumUrl,'stratum')} style={btn}>{copied==='stratum'?'✓ Copied':'Copy Stratum URL'}</button>
               <button onClick={()=>copy(w.name,'name')}       style={btn}>{copied==='name'?'✓ Copied':'Copy Workername'}</button>
               <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
-              <button disabled title="Available in v1.4" style={btnDisabled}>Reset Stats</button>
-              <button disabled title="Available in v1.4" style={{...btnDisabled,flex:'1 1 100%'}}>Kick &amp; Reconnect</button>
+              <button disabled style={btnDisabled}>Reset Stats</button>
             </div>
           </div>
         </div>
@@ -1490,12 +1483,11 @@ export default function App() {
   const [order, setOrder] = useState(loadOrder);
   const [currency, setCurrency] = useState(loadCurrency);
   const [draggedId, setDraggedId] = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
+  const [, setDragOverId] = useState(null);
   const [aliases, setAliases] = useState(loadAliases);
   const [notes, setNotes] = useState(loadNotes);
   const [selectedWorker, setSelectedWorker] = useState(null);
 
-  // Strip + marker settings
   const [stripSettings, setStripSettings] = useState(() => ({
     enabled: loadStripEnabled(),
     metrics: loadStripMetrics(),
@@ -1503,6 +1495,7 @@ export default function App() {
     fadeMs: loadStripFade(),
   }));
   const [markerSettings, setMarkerSettings] = useState(() => ({
+    enabled: loadMarkerEnabled(),
     symbols: loadMarkerSyms(),
     intervalMs: loadMarkerMs(),
   }));
@@ -1516,6 +1509,7 @@ export default function App() {
   };
   const handleMarkerSettingsChange = (next) => {
     setMarkerSettings(next);
+    saveMarkerEnabled(next.enabled);
     saveMarkerSyms(next.symbols);
     saveMarkerMs(next.intervalMs);
   };
@@ -1532,7 +1526,7 @@ export default function App() {
   const handleNotesChange = (n) => { setNotes(n); saveNotes(n); };
 
   const onDragStart = (id) => setDraggedId(id);
-  const onDragOver  = (id) => { if (id !== dragOverId) setDragOverId(id); };
+  const onDragOver  = (id) => setDragOverId(id);
   const onDrop      = (targetId) => {
     if (!draggedId || draggedId === targetId) { setDraggedId(null); setDragOverId(null); return; }
     const next = [...order];
@@ -1556,7 +1550,7 @@ export default function App() {
   if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
 
   const cards = {
-    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current} averages={state.hashrate?.averages} markerSyms={markerSettings.symbols} markerMs={markerSettings.intervalMs}/> },
+    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} current={state.hashrate?.current} averages={state.hashrate?.averages} markerEnabled={markerSettings.enabled} markerSyms={markerSettings.symbols} markerMs={markerSettings.intervalMs}/> },
     workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
     network:    { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
     node:       { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
@@ -1572,8 +1566,8 @@ export default function App() {
 
   return (
     <>
-      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%'}}>
-        <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', boxSizing:'border-box' }}>
+      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflow:'hidden'}}>
+        <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
           <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
           <Ticker state={state}/>
           <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>
@@ -1589,8 +1583,8 @@ export default function App() {
           />
           <SyncWarningBanner sync={state.sync}/>
         </div>
-        <main style={{flex:1,padding:'1rem',width:'100%',boxSizing:'border-box',margin:0}}>
-          <div className="ss-grid">
+        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflow:'hidden'}}>
+          <div className="ss-grid" style={{minWidth:0,maxWidth:'100%'}}>
             {order.map(id=>{
               const c = cards[id];
               if (!c || !c.el) return null;
@@ -1602,7 +1596,7 @@ export default function App() {
             })}
           </div>
         </main>
-        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap'}}>
+        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
           <span>SoloStrike v1.3.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}</span>
           <span>Stratum · Port <span style={{color:'var(--cyan)'}}>3333</span></span>
         </footer>
