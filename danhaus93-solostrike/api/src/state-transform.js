@@ -69,6 +69,7 @@ function transformState(state) {
     localMempoolReachable: state.localMempoolReachable || false,
     topFinders:           computeTopFinders(state),
     blockReward:          computeBlockReward(state),
+    snapshots:            state.snapshots || { daily: [], closestCalls: [], lastRollupDate: null },
   };
 }
 
