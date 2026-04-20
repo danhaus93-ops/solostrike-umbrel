@@ -243,7 +243,7 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
         willChange:'transform',
         transform:'translate3d(0,0,0)',
       }}>
-        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
+        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       </div>
     </div>
   );
