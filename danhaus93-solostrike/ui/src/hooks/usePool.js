@@ -13,6 +13,7 @@ const DEF = {
   retarget:  null,
   netBlocks: [],
   mempool:   { feeRate:null, size:null, unconfirmedCount:null },
+  privateMode: false,
   uptime:    Date.now(),
 };
 
@@ -38,17 +39,25 @@ export function usePool() {
     ws.onmessage = e => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'STATE_UPDATE') setState(p => ({ ...p, ...msg.data }));
+        if (msg.type === 'STATE_UPDATE') {
+          setState(p => ({ ...p, ...msg.data }));
+        }
         else if (msg.type === 'BLOCK_FOUND') {
           setBlockAlert(msg.data);
           setTimeout(() => setBlockAlert(null), 8000);
         }
-        else if (msg.type === 'CONFIG') setState(p => ({ ...p, config: { ...p.config, ...msg.data } }));
+        else if (msg.type === 'CONFIG') {
+          // Merge privateMode to top-level so header badge + cards read it consistently
+          setState(p => ({
+            ...p,
+            config: { ...p.config, ...msg.data },
+            privateMode: msg.data.privateMode === true,
+          }));
+        }
       } catch {}
     };
     ws.onclose = () => {
       setConnected(false);
-      // Exponential backoff: 3s, 6s, 12s, 24s, capped at 30s
       const delay = Math.min(30000, 3000 * Math.pow(2, retryCount.current));
       retryCount.current = Math.min(4, retryCount.current + 1);
       retryRef.current = setTimeout(connect, delay);
