@@ -1,12 +1,19 @@
 function computeOdds(state) {
   const poolHR = state.hashrate?.current || 0;
   const netHR  = state.network?.hashrate || 0;
-  if (!poolHR || !netHR) return { perBlock: 0, expectedDays: null, perDay: 0 };
+  if (!poolHR || !netHR) {
+    return { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0 };
+  }
   const perBlock     = poolHR / netHR;
   const blocksPerDay = 144;
-  const perDay       = 1 - Math.pow(1 - perBlock, blocksPerDay);
+  const blocksPerWk  = 144 * 7;
+  const blocksPerMo  = 144 * 30;
+  const notFind = 1 - perBlock;
+  const perDay   = 1 - Math.pow(notFind, blocksPerDay);
+  const perWeek  = 1 - Math.pow(notFind, blocksPerWk);
+  const perMonth = 1 - Math.pow(notFind, blocksPerMo);
   const expectedDays = (1 / perBlock) / blocksPerDay;
-  return { perBlock, expectedDays, perDay };
+  return { perBlock, expectedDays, perDay, perWeek, perMonth };
 }
 
 function computeLuck(state) {
@@ -48,17 +55,20 @@ function computeBlockReward(state) {
 }
 
 function transformState(state) {
-  const { _avgState, workers, ...rest } = state;
+  const { _avgState, _workerLastStatus, workers, ...rest } = state;
   return {
     ...rest,
-    workers:     Object.values(workers || {}),
-    odds:        computeOdds(state),
-    luck:        computeLuck(state),
-    retarget:    state.retarget  || null,
-    netBlocks:   state.netBlocks || [],
-    nodeInfo:    state.nodeInfo  || null,
-    topFinders:  computeTopFinders(state),
-    blockReward: computeBlockReward(state),
+    workers:              Object.values(workers || {}),
+    odds:                 computeOdds(state),
+    luck:                 computeLuck(state),
+    retarget:             state.retarget  || null,
+    netBlocks:            state.netBlocks || [],
+    nodeInfo:             state.nodeInfo  || null,
+    sync:                 state.sync      || null,
+    privateMode:          state.privateMode || false,
+    localMempoolReachable: state.localMempoolReachable || false,
+    topFinders:           computeTopFinders(state),
+    blockReward:          computeBlockReward(state),
   };
 }
 
