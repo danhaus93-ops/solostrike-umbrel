@@ -1,6 +1,3 @@
-// ============================================================
-// SoloStrike v1.3.0 — App.jsx (ticker speed + time/date + no marker)
-// ============================================================
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
@@ -44,7 +41,7 @@ function loadStripEnabled()  { try { const v = localStorage.getItem(LS_STRIP_ENA
 function saveStripEnabled(v) { try { localStorage.setItem(LS_STRIP_ENABLED, String(!!v)); } catch {} }
 function loadTickerEnabled() { try { const v = localStorage.getItem(LS_TICKER_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveTickerEnabled(v){ try { localStorage.setItem(LS_TICKER_ENABLED, String(!!v)); } catch {} }
-function loadTickerSpeed()   { try { const n = parseInt(localStorage.getItem(LS_TICKER_SPEED), 10); return Number.isFinite(n) && n>=10 && n<=120 ? n : DEFAULT_TICKER_SPEED; } catch { return DEFAULT_TICKER_SPEED; } }
+function loadTickerSpeed()   { try { const n = parseInt(localStorage.getItem(LS_TICKER_SPEED), 10); return Number.isFinite(n) && n>=3 && n<=120 ? n : DEFAULT_TICKER_SPEED; } catch { return DEFAULT_TICKER_SPEED; } }
 function saveTickerSpeed(n)  { try { localStorage.setItem(LS_TICKER_SPEED, String(n)); } catch {} }
 
 function stripAddr(fullName) {
@@ -95,7 +92,7 @@ function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, childre
   );
 }
 
-// ── Live clock hook ───────────────────────────────────────────────────────────
+// ── Live clock hook (auto-uses device local timezone) ─────────────────────────
 function useNow(refreshMs = 30000) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -113,36 +110,45 @@ function fmtClockTime(d) {
 }
 function fmtClockDate(d) {
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
+  const days   = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ connected, status, onSettings, privateMode }) {
+function Header({ uptime, connected, status, onSettings, privateMode }) {
   const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
   return (
-    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.75rem', height:58, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
+    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.75rem', minHeight:64, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', minWidth:0, overflow:'hidden', flex:1 }}>
         <span style={{ fontSize:16, color:'var(--amber)', filter:'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
         <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
-        <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
-        <div style={{ display:'flex', alignItems:'center', gap:4, fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', flexShrink:0 }}>
-          <div style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
-          <span style={{ color:st.c }}>{st.t}</span>
+        <div style={{ width:1, height:28, background:'var(--border)', flexShrink:0 }}/>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, flexShrink:0, fontFamily:'var(--fd)' }}>
+          <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase' }}>
+            <span style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
+            <span style={{ color:st.c }}>{st.t}</span>
+          </span>
+          <span style={{ fontSize:'0.54rem', letterSpacing:'0.06em', color:'var(--text-2)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+            UP {fmtUptime(uptime)}
+          </span>
         </div>
         {privateMode && (
           <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
         )}
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', flexShrink:0 }}>
-        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:1, fontFamily:'var(--fd)' }}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2, fontFamily:'var(--fd)' }}>
           <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:'0.58rem', letterSpacing:'0.12em', color: connected?'var(--cyan)':'var(--text-2)' }}>
             <span style={{ width:5, height:5, borderRadius:'50%', background: connected?'var(--cyan)':'var(--text-2)', boxShadow: connected?'0 0 6px var(--cyan)':'none' }}/>
             {connected?'LIVE':'RECONN'}
           </span>
-          <span style={{ fontSize:'0.56rem', letterSpacing:'0.06em', color:'var(--text-2)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
-            {fmtClockTime(now)} · {fmtClockDate(now)}
+          <span style={{ fontSize:'0.52rem', letterSpacing:'0.04em', color:'var(--text-2)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+            {fmtClockTime(now)}
+          </span>
+          <span style={{ fontSize:'0.48rem', letterSpacing:'0.08em', color:'var(--text-3)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+            {fmtClockDate(now)}
           </span>
         </div>
         <button onClick={onSettings} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:18, padding:'4px 6px', flexShrink:0 }}>⚙</button>
@@ -151,23 +157,31 @@ function Header({ connected, status, onSettings, privateMode }) {
   );
 }
 
-// ── Ticker ────────────────────────────────────────────────────────────────────
+// ── Ticker (static — snapshots first data, never refreshes) ───────────────────
 function Ticker({ state, enabled, speedSec }) {
-  const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
-  const luckVal = state.luck?.luck;
-  const items = [
-    `WORKERS ${online}/${(state.workers||[]).length}`,
-    `HEIGHT ${fmtNum(state.network?.height)}`,
-    `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
-    `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
-    `WORK ${fmtDiff(state.shares?.accepted || 0)}`,
-    `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
-    `BEST ${fmtDiff(state.bestshare||0)}`,
-    luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
-    state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
-  ].filter(Boolean);
-  const t = items.join('   ·   ');
+  const snapshotRef = useRef(null);
+  const hasDataReady = (state.workers || []).length > 0 || state.network?.height > 0;
+
+  if (!snapshotRef.current && hasDataReady) {
+    const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
+    const luckVal = state.luck?.luck;
+    const items = [
+      `WORKERS ${online}/${(state.workers||[]).length}`,
+      `HEIGHT ${fmtNum(state.network?.height)}`,
+      `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
+      `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
+      `WORK ${fmtDiff(state.shares?.accepted || 0)}`,
+      `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
+      `BEST ${fmtDiff(state.bestshare||0)}`,
+      luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
+      state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
+    ].filter(Boolean);
+    snapshotRef.current = items.join('   ·   ');
+  }
+
   if (!enabled) return null;
+  const t = snapshotRef.current || 'LOADING…';
+
   return (
     <div className="ss-hide-scrollbar" style={{ ...STRIP_FULL_WIDTH, background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
       <div style={{ whiteSpace:'nowrap', animation:`ticker ${speedSec || DEFAULT_TICKER_SPEED}s linear infinite`, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block' }}>
@@ -1120,13 +1134,16 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
           <div style={{...rowLabel, marginTop:'0.5rem'}}>
             Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
             <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
-              ({tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
+              ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
             </span>
           </div>
-          <input type="range" min="10" max="90" step="5" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
+          <input type="range" min="3" max="90" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
             style={{width:'100%', accentColor:'var(--amber)'}}/>
           <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--fm)', fontSize:'0.52rem', color:'var(--text-3)', marginTop:2}}>
-            <span>fast</span><span>slow</span>
+            <span>very fast</span><span>slow</span>
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
+            Ticker data is static — values snapshot once on load and don't refresh while scrolling.
           </div>
         </>
       )}
@@ -1544,7 +1561,7 @@ export default function App() {
     <>
       <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflow:'hidden'}}>
         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
-          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
+          <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
           <Ticker state={state} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
           <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>
           <CustomizableTopStrip
