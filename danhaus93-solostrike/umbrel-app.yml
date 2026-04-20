@@ -3,7 +3,6 @@ id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
 version: "1.3.2"
-releaseNotes: "Fix docker-compose syntax. Adds second stratum port 3334 for hobby miners (BitAxe, NerdQaxe++)."
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -68,6 +67,17 @@ description: >-
 
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
+releaseNotes: >-
+  v1.3.2 — Dual stratum ports.
+
+
+  • NEW: Port 3334 for hobby miners (BitAxe, NerdQaxe++) alongside port 3333 for ASICs
+
+  • Worker detail modal now displays both stratum URLs with copy buttons
+
+  • Fixes a docker-compose.yml syntax error that broke v1.3.1 installs
+
+  • All P1 UA miner detection and P2A hashrate averages + 7-day buffer from 1.3.1 carry forward
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
@@ -84,48 +94,3 @@ defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
 icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
-releaseNotes: >-
-  V1.3.0 — Private Mode + Operator Console release.
-
-
-  THE HEADLINE:
-
-
-  🔒 Private Mode — flip one toggle in Settings to cut off ALL outbound API
-  calls. No mempool.space, no price feeds. Perfect airgapped operation. Auto-
-  detects Umbrel Mempool app if installed and uses it for local data.
-  Features requiring external data gracefully hide. The first truly airgapped-
-  capable solo pool on Umbrel.
-
-
-  OPERATOR CONSOLE:
-
-
-  • Sticky header cluster — Header, ticker, Latest Block strip, and sync warnings
-  stay pinned at the top while content scrolls behind with a blur effect
-
-  • Bitcoin Core sync warning banner — red alert when your node is behind so
-  you never mine on stale templates unaware
-
-  • Worker offline toasts — amber toast notifications when a miner disconnects,
-  with last-share timestamp and miner type
-
-  • Miner rename aliases — rename .S19XP to "Main Rig" etc., saved per-device
-
-  • Last-share timestamp per worker (4s, 2m, 1h format)
-
-  • Webhooks — new /api/webhooks CRUD endpoint, POST block_found /
-  worker_offline / worker_online events to any URL (Discord, Telegram, ntfy.sh,
-  Home Assistant, custom bots)
-
-  • Prometheus /metrics endpoint for Grafana and Home Assistant integration
-
-  • Daily, weekly, AND monthly block odds in the Block Probability card
-
-  • 24-hour hashrate history with Y-axis labels, grid lines, and peak reference
-
-  • Bitcoin Core sync status exposed in state.sync (ibd, progress, behind count)
-
-
-  All features are OFF by default and opt-in — upgrading from 1.2.3 changes
-  nothing until you flip the Private Mode switch or add your first webhook.
