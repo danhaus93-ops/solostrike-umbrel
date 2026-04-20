@@ -27,11 +27,9 @@ function applyMinerDetection(wk, workername) {
   wk.minerVendor = result.vendor;
   wk.minerSource = result.source;
   wk.userAgent   = ua;
+  wk.ip          = meta?.ip || null;
 }
 
-// ── Rolling averages over history ring buffer ────────────────────────────────
-// history is an array of { ts, hr } points. Already capped at 1440 (24h).
-// For 7d we also need longer retention, so we maintain a secondary sparse buffer.
 function computeAverage(history, windowMs) {
   if (!Array.isArray(history) || !history.length) return 0;
   const now = Date.now();
@@ -52,13 +50,12 @@ function startStatusPoller(state, broadcast, logDir) {
   const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
   const HISTORY_INTERVAL_MS = 60 * 1000;
-  const HISTORY_MAX_POINTS  = 1440;       // 24h at 1min resolution
-  const WEEK_MAX_POINTS     = 10080;      // 7d at 1min resolution (same cadence)
-  const WEEK_INTERVAL_MS    = 60 * 1000;  // 1-min sample kept separately for 7d span
+  const HISTORY_MAX_POINTS  = 1440;       // 24h at 1min
+  const WEEK_MAX_POINTS     = 10080;      // 7d at 1min
+  const WEEK_INTERVAL_MS    = 60 * 1000;
   let lastHistoryPush = 0;
   let lastWeekPush = 0;
 
-  // Ensure the week ring exists on state for persistence
   if (!Array.isArray(state.hashrate.week)) state.hashrate.week = [];
   if (!state.hashrate.averages) state.hashrate.averages = {};
 
@@ -109,7 +106,6 @@ function startStatusPoller(state, broadcast, logDir) {
 
             const now = Date.now();
 
-            // 24h ring buffer (1-min cadence)
             if (now - lastHistoryPush >= HISTORY_INTERVAL_MS) {
               state.hashrate.history.push({ ts: now, hr });
               if (state.hashrate.history.length > HISTORY_MAX_POINTS) {
@@ -118,7 +114,6 @@ function startStatusPoller(state, broadcast, logDir) {
               lastHistoryPush = now;
             }
 
-            // 7d ring buffer (1-min cadence, 10080 points)
             if (now - lastWeekPush >= WEEK_INTERVAL_MS) {
               state.hashrate.week.push({ ts: now, hr });
               if (state.hashrate.week.length > WEEK_MAX_POINTS) {
@@ -127,7 +122,6 @@ function startStatusPoller(state, broadcast, logDir) {
               lastWeekPush = now;
             }
 
-            // Recompute averages every poll
             refreshAverages();
 
             state.shares.accepted      = shares.accepted      || 0;
@@ -165,6 +159,7 @@ function startStatusPoller(state, broadcast, logDir) {
                   bestshare: 0,
                   minerType: null, minerIcon: '▪', minerVendor: null,
                   minerSource: 'unknown', userAgent: null,
+                  ip: null,
                   health: 'green',
                 };
                 applyMinerDetection(state.workers[key], key);
@@ -174,7 +169,7 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.hashrate5m     = parseHashrate(w.hashrate5m);
               wk.hashrate1h     = parseHashrate(w.hashrate1hr);
               wk.hashrate24h    = parseHashrate(w.hashrate1d);
-              wk.hashrate7d    = parseHashrate(w.hashrate7d);
+              wk.hashrate7d     = parseHashrate(w.hashrate7d);
               wk.shares         = w.shares         || 0;
               wk.rejected       = w.rejected       || wk.rejected || 0;
               wk.sharesCount    = w.sharesCount    || w.shares_count   || 0;
@@ -186,12 +181,11 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
 
-              if (!wk.minerType || wk.minerSource !== 'user-agent') {
-                const prevSource = wk.minerSource;
-                applyMinerDetection(wk, key);
-                if (wk.minerSource === 'user-agent' && prevSource !== 'user-agent') {
-                  console.log(`[StatusPoller] Upgraded ${key} to UA-based detection: ${wk.minerType}`);
-                }
+              // refresh miner detection + IP on every poll — cheap and keeps IP fresh
+              const prevSource = wk.minerSource;
+              applyMinerDetection(wk, key);
+              if (wk.minerSource === 'user-agent' && prevSource !== 'user-agent') {
+                console.log(`[StatusPoller] Upgraded ${key} to UA-based detection: ${wk.minerType}`);
               }
             }
           } catch (e) {}
@@ -207,7 +201,7 @@ function startStatusPoller(state, broadcast, logDir) {
 
   setInterval(poll, 5000);
   poll();
-  console.log(`[StatusPoller] Started (poll 5s, keep ${HISTORY_MAX_POINTS}pts/24h + ${WEEK_MAX_POINTS}pts/7d, averages computed live)`);
+  console.log(`[StatusPoller] Started (poll 5s, keep ${HISTORY_MAX_POINTS}pts/24h + ${WEEK_MAX_POINTS}pts/7d)`);
 }
 
 module.exports = { startStatusPoller };
