@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.3.2"
+version: "1.3.3"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -61,23 +61,38 @@ description: >-
 
   • Public read-only API — share your pool stats externally
 
-  • ZMQ block notifications, smart vardiff (BitAxes to PH/s rentals on same port)
+  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
 
   • Works with any Stratum V1 miner — one-time setup, miners connect automatically
 
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.3.2 — Dual stratum ports.
+  v1.3.3 — ZMQ status indicator.
 
 
-  • NEW: Port 3334 for hobby miners (BitAxe, NerdQaxe++) alongside port 3333 for ASICs
+  NEW:
 
-  • Worker detail modal now displays both stratum URLs with copy buttons
+  • Small ZMQ badge in the header showing Bitcoin Core ZMQ connection health.
+  🟢 = active and heard a block recently, 🟡 IDLE = configured but quiet
+  (normal between blocks), ⚪ OFF = using RPC polling only
 
-  • Fixes a docker-compose.yml syntax error that broke v1.3.1 installs
+  • Prometheus /metrics now exposes solostrike_zmq_enabled for dashboards
 
-  • All P1 UA miner detection and P2A hashrate averages + 7-day buffer from 1.3.1 carry forward
+  • /api/health response includes full zmq object for monitoring
+
+
+  CARRIED FORWARD FROM v1.3.2:
+
+  • Dual stratum ports: 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • Worker detail modal displays both stratum URLs with copy buttons
+
+
+  This is a pure additive update — no breaking changes, existing configs and
+  data carry over intact.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
