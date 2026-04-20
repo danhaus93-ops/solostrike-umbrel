@@ -8,7 +8,7 @@ services:
 
   ckpool:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a
-    restart: on-failure
+    restart: unless-stopped
     stop_grace_period: 1m
     command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
     ports:
@@ -31,10 +31,16 @@ services:
 
   api:
     image: ghcr.io/danhaus93-ops/solostrike-api:latest
-    restart: on-failure
+    restart: unless-stopped
     stop_grace_period: 30s
     depends_on:
       - ckpool
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--timeout=5", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - ${APP_DATA_DIR}/data/ckpool/logs:/var/log/ckpool:ro
       - ${APP_DATA_DIR}/data/ckpool/config:/etc/ckpool
@@ -49,8 +55,6 @@ services:
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
       - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
       - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
-      # MEMPOOL_API_URL intentionally unset — server.js defaults to https://mempool.space/api
-      # Install the Umbrel Mempool app AND set MEMPOOL_API_URL here to keep data fully local.
       - POOL_SIGNATURE=SoloStrike/
       - START_DIFFICULTY=10000
       - MIN_DIFFICULTY=1
@@ -61,6 +65,6 @@ services:
 
   ui:
     image: ghcr.io/danhaus93-ops/solostrike-ui:latest
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
       - api
