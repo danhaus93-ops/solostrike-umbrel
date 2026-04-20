@@ -9,8 +9,15 @@ const { startStatusPoller }             = require('./status-poller');
 const { startUaTailer }                 = require('./ua-tailer');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress, rowsToCsv }  = require('./validators');
+const {
+  loadSnapshots,
+  saveSnapshots,
+  startSnapshotScheduler,
+  MAX_DAILY_SNAPSHOTS,
+  MAX_CLOSEST_CALLS,
+} = require('./snapshots');
 
-const VERSION = '1.3.3';
+const VERSION = '1.3.4';
 
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
@@ -145,6 +152,7 @@ let state = {
   totalWorkers: 0,
   totalUsers: 0,
   zmq: { enabled: false, endpoint: null, lastBlockHeardAt: null },
+  snapshots: { daily: [], closestCalls: [], lastRollupDate: null },
   _avgState: null,
   _workerLastStatus: {},
 };
@@ -522,8 +530,25 @@ app.get('/api/health', (req, res) => res.json({
   workersOnline: Object.values(state.workers).filter(w => w.status !== 'offline').length,
   blocksFound: state.blocks.length,
   zmq: state.zmq,
+  snapshots: {
+    dailyCount:         state.snapshots.daily.length,
+    closestCallsCount:  state.snapshots.closestCalls.length,
+    lastRollupDate:     state.snapshots.lastRollupDate,
+  },
 }));
 app.get('/api/prices', (req, res) => res.json(state.prices || {}));
+
+app.get('/api/snapshots', rateLimit, (req, res) => {
+  res.json({
+    daily:          state.snapshots.daily || [],
+    closestCalls:   state.snapshots.closestCalls || [],
+    lastRollupDate: state.snapshots.lastRollupDate,
+    limits: {
+      maxDaily:         MAX_DAILY_SNAPSHOTS,
+      maxClosestCalls:  MAX_CLOSEST_CALLS,
+    },
+  });
+});
 
 app.get('/api/public/summary', rateLimit, (req, res) => {
   const s = transformState(state);
@@ -575,6 +600,8 @@ app.get('/metrics', (req, res) => {
   add('solostrike_mempool_txs',              'Mempool transaction count',                       'gauge',   s.nodeInfo?.mempoolCount || 0);
   add('solostrike_mempool_bytes',            'Mempool size in bytes',                           'gauge',   s.nodeInfo?.mempoolBytes || 0);
   add('solostrike_zmq_enabled',              '1 if ZMQ hashblock notifications configured',     'gauge',   s.zmq?.enabled ? 1 : 0);
+  add('solostrike_daily_snapshots_count',    'Number of persisted daily snapshots',             'gauge',   (s.snapshots?.daily || []).length);
+  add('solostrike_closest_calls_count',      'Number of entries in closest-calls leaderboard',  'gauge',   (s.snapshots?.closestCalls || []).length);
   (s.workers || []).forEach(w => {
     const safe = (w.name || '').replace(/[^a-zA-Z0-9_.]/g, '_');
     lines.push(`solostrike_worker_hashrate_hps{worker="${safe}",miner="${w.minerType || 'Unknown'}"} ${w.hashrate || 0}`);
@@ -626,13 +653,14 @@ app.get('/api/export/workers.csv', rateLimit, (req, res) => {
   const rows = [
     ['# generated_at_utc', new Date().toISOString()],
     ['# solostrike_version', VERSION],
-    ['workername','miner_type','hashrate_hps','work_accepted','rejected','bestshare','difficulty','status','health','last_seen_iso'],
+    ['workername','miner_type','hashrate_hps','work_accepted','rejected','bestshare','difficulty','status','health','ip','last_seen_iso'],
   ];
   (s.workers || []).forEach(w => {
     rows.push([
       w.name, w.minerType || '', w.hashrate || 0,
       Math.round(w.shares || 0), Math.round(w.rejected || 0),
       Math.round(w.bestshare || 0), w.diff || 0, w.status || '', w.health || '',
+      w.ip || '',
       new Date(w.lastSeen || 0).toISOString(),
     ]);
   });
@@ -649,6 +677,23 @@ app.get('/api/export/blocks.csv', rateLimit, (req, res) => {
     rows.push([b.height, b.hash, new Date(b.ts).toISOString()]);
   });
   sendCsv(res, `solostrike-blocks-${Date.now()}.csv`, rows);
+});
+
+app.get('/api/export/snapshots.csv', rateLimit, (req, res) => {
+  const rows = [
+    ['# generated_at_utc', new Date().toISOString()],
+    ['# solostrike_version', VERSION],
+    ['date','avg_hashrate_hps','peak_hashrate_hps','current_hashrate_hps','work_accepted','work_rejected','best_share','blocks_found','workers_total','workers_online'],
+  ];
+  (state.snapshots?.daily || []).forEach(s => {
+    rows.push([
+      s.date, s.avgHashrate || 0, s.peakHashrate || 0, s.currentHashrate || 0,
+      Math.round(s.workAccepted || 0), Math.round(s.workRejected || 0),
+      Math.round(s.bestShare || 0), s.blocksFound || 0,
+      s.workersTotal || 0, s.workersOnline || 0,
+    ]);
+  });
+  sendCsv(res, `solostrike-snapshots-${Date.now()}.csv`, rows);
 });
 
 app.post('/api/setup', async (req, res) => {
@@ -715,6 +760,7 @@ async function shutdown(signal) {
       week: state.hashrate.week,
       bestshareAll: state.bestshare,
     });
+    await saveSnapshots(CONFIG_DIR, state.snapshots);
     console.log('[Shutdown] state flushed to disk');
   } catch (e) {
     console.error('[Shutdown] flush failed:', e.message);
@@ -731,6 +777,8 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 async function boot() {
   await loadCfg();
   await loadPersist();
+  state.snapshots = await loadSnapshots(CONFIG_DIR);
+  console.log(`[Snapshots] loaded: ${state.snapshots.daily.length} daily, ${state.snapshots.closestCalls.length} closest calls`);
   if (cfg.payoutAddress) await writeCkpoolConf(cfg.payoutAddress);
   pollNetwork();
   pollMempool();
@@ -738,6 +786,7 @@ async function boot() {
   watchLogs();
   startUaTailer({ configDir: CONFIG_DIR, logDir: CKPOOL_LOG_DIR });
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
+  startSnapshotScheduler({ state, snapshots: state.snapshots, configDir: CONFIG_DIR });
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
   const PORT = 3001;
   server.listen(PORT, () => console.log(`[SoloStrike API v${VERSION}] Listening on :${PORT} (privateMode=${cfg.privateMode})`));
