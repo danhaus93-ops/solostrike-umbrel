@@ -1589,7 +1589,7 @@ export default function App() {
           />
           <SyncWarningBanner sync={state.sync}/>
         </div>
-        <main style={{flex:1,padding:'1rem',maxWidth:1400,margin:'0 auto',width:'100%',boxSizing:'border-box'}}>
+        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:
           <div className="ss-grid">
             {order.map(id=>{
               const c = cards[id];
