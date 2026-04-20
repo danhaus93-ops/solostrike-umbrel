@@ -1,0 +1,151 @@
+manifestVersion: 1
+id: danhaus93-solostrike
+category: bitcoin
+name: SoloStrike
+version: "1.3.5"
+tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
+description: >-
+  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
+  dashboard.
+
+
+  Connect your ASICs directly to your own Bitcoin node and keep 100% of every
+  block you find — no pool fees, no custody risk, no middleman.
+
+
+  v1.3.0 introduces Private Mode — toggle one switch and the entire app goes
+  airgapped. No mempool.space calls, no price feeds, no outbound traffic of
+  any kind. Your mining activity is yours alone.
+
+
+  Features:
+
+  • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
+
+  • Closest Calls leaderboard — historical top 10 best-diff shares across your fleet
+
+  • Daily hashrate snapshots — 90 days of avg/peak history
+
+  • Sticky header cluster — pool status, ticker, latest block, sync warnings, ZMQ indicator
+
+  • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
+
+  • Worker search, miner rename aliases, per-worker last-share timestamps
+
+  • Click miner IP to open its web UI in a new tab
+
+  • Worker offline toast notifications — catch outages the moment they happen
+
+  • Bitcoin Core sync warning banner when your node falls behind
+
+  • Bitcoin Node panel — Core version, total/in/out peers, relay fee, mempool size
+
+  • Block probability — daily, weekly, and monthly odds + expected time to block
+
+  • Luck gauge, difficulty retarget countdown, Top Pool Finders leaderboard
+
+  • Latest Block hero strip — most recently mined block, pool, and reward
+
+  • Recent network blocks feed with solo-winner highlighting
+
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
+
+  • Drag-and-drop card reordering — layout persists per-device
+
+  • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
+
+  • Leaderboard table — worker, miner type, hashrate, best diff, status
+
+  • CSV export for workers and found blocks
+
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc.
+
+  • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
+
+  • Public read-only API — share your pool stats externally
+
+  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
+
+  • Works with any Stratum V1 miner — one-time setup, miners connect automatically
+
+
+  100% self-custody. Truly zero fees. Your node, your rules, your blocks.
+releaseNotes: >-
+  v1.3.5 — Live Customizable Ticker + Display Polish.
+
+
+  THE BIG ONE — Scrolling Ticker is now fully customizable and LIVE:
+
+  • Pick which metrics show in the ticker — same registry as the Top Strip,
+  one shared vocabulary, zero duplication. Toggle any of 30+ metrics on/off.
+
+  • Reorder ticker metrics with ↑/↓, same UX as the Top Strip picker.
+
+  • Choose your separator between items — middle dot (·), em-dash (—),
+  or pipe (|).
+
+  • Values now update live as the ticker scrolls. Previously the ticker
+  captured a snapshot once on page load and never refreshed — that's gone.
+  BTC price, fees, luck, hashrate, etc. all tick in real time.
+
+
+  NEW METRICS in the registry (available to both Top Strip and Ticker):
+
+  • Block Reward (BTC) — subsidy + fees as BTC only
+
+  • Block Reward (Fiat) — same value in your chosen currency
+
+  • Mempool Fees Total — unconfirmed fee sum sitting in mempool, in BTC
+
+  • Expected Block — days to statistically expected block find
+
+  • Luck — cumulative session luck %
+
+  • Retarget ETA — blocks remaining + projected difficulty change %
+
+  • Halving Countdown (blocks) — blocks-until view alongside Days-to-Halving
+
+  • Workers Online — online/total workers, compact
+
+
+  POLISH:
+
+  • Orange ₿ replaces the pickaxe in the Latest Block strip — cleaner
+  Bitcoin mark at a glance.
+
+  • Header time and date now render in amber to match the SoloStrike title —
+  much easier to read at a glance.
+
+  • Card drag handles (≡) switched from near-black to amber so they're
+  actually visible on mobile.
+
+
+  Default ticker (you can tweak any of it):
+  BTC Price · Block Reward (BTC) · Block Reward (Fiat) · Priority Fee ·
+  Pool Hashrate · Workers Online · Blocks Found · Expected Block · Luck ·
+  Retarget ETA · Halving In.
+
+
+  Pure additive update. No breaking changes, no config migrations required.
+  Existing Top Strip selections and card layouts are preserved.
+developer: danhaus93-ops
+website: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
+repo: https://github.com/danhaus93-ops/solostrike-umbrel
+support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
+port: 1234
+gallery:
+  - 1.png
+  - 2.png
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: danhaus93-ops
+submission: https://github.com/danhaus93-ops/solostrike-umbrel
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
