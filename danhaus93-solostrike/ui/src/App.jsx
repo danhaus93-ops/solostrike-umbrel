@@ -23,8 +23,30 @@ const LS_STRIP_FADE      = 'ss_strip_fade_v1';
 const LS_STRIP_ENABLED   = 'ss_strip_enabled_v1';
 const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
 const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
+const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
+const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 
-const DEFAULT_TICKER_SPEED = 30; // seconds per full loop
+const DEFAULT_TICKER_SPEED = 30;
+
+// Card identity + presets ─────────────────────────────────────────────────────
+const ALL_CARDS = [
+  { id:'hashrate',   label:'Pool Hashrate' },
+  { id:'workers',    label:'Connected Workers' },
+  { id:'network',    label:'Bitcoin Network' },
+  { id:'node',       label:'Bitcoin Node' },
+  { id:'odds',       label:'Block Probability' },
+  { id:'luck',       label:'Luck Gauge' },
+  { id:'retarget',   label:'Difficulty Retarget' },
+  { id:'shares',     label:'Share Stats' },
+  { id:'best',       label:'Leaderboard' },
+  { id:'blocks',     label:'Blocks Found' },
+  { id:'topfinders', label:'Top Pool Finders' },
+  { id:'recent',     label:'Recent Network Blocks' },
+];
+const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
+const MINIMAL_PRESET  = ['hashrate', 'workers', 'blocks'];
+const DEFAULT_PRESET  = ['hashrate', 'workers', 'network', 'shares', 'best', 'blocks'];
+const EVERYTHING_PRESET = [...ALL_CARD_IDS];
 
 function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
@@ -43,6 +65,10 @@ function loadTickerEnabled() { try { const v = localStorage.getItem(LS_TICKER_EN
 function saveTickerEnabled(v){ try { localStorage.setItem(LS_TICKER_ENABLED, String(!!v)); } catch {} }
 function loadTickerSpeed()   { try { const n = parseInt(localStorage.getItem(LS_TICKER_SPEED), 10); return Number.isFinite(n) && n>=3 && n<=120 ? n : DEFAULT_TICKER_SPEED; } catch { return DEFAULT_TICKER_SPEED; } }
 function saveTickerSpeed(n)  { try { localStorage.setItem(LS_TICKER_SPEED, String(n)); } catch {} }
+function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === 'true'; } catch { return false; } }
+function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
+function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
+function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
 
 function stripAddr(fullName) {
   if (!fullName || typeof fullName !== 'string') return fullName || '';
@@ -73,7 +99,6 @@ function parseClient(subversion) {
 const BTC_ADDR_RE = /^(bc1[a-z0-9]{6,87}|tb1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
 function isValidBtcAddress(a){ if(!a||typeof a!=='string')return false; const t=a.trim(); return t.length>=26&&t.length<=90&&BTC_ADDR_RE.test(t); }
 
-// Width lockdown shared by every sticky strip
 const STRIP_FULL_WIDTH = { width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0 };
 
 // ── DraggableCard ─────────────────────────────────────────────────────────────
@@ -92,7 +117,7 @@ function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, childre
   );
 }
 
-// ── Live clock hook (auto-uses device local timezone) ─────────────────────────
+// ── Live clock hook (uses device local timezone) ──────────────────────────────
 function useNow(refreshMs = 30000) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -115,27 +140,26 @@ function fmtClockDate(d) {
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ uptime, connected, status, onSettings, privateMode }) {
+function Header({ connected, status, onSettings, privateMode, minimalMode }) {
   const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
   return (
-    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.75rem', minHeight:64, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
+    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.75rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', minWidth:0, overflow:'hidden', flex:1 }}>
-        <span style={{ fontSize:16, color:'var(--amber)', filter:'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation:'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
+        <span style={{ fontSize:16, color:'var(--amber)', filter: minimalMode?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: minimalMode?'none':'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
         <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
-        <div style={{ width:1, height:28, background:'var(--border)', flexShrink:0 }}/>
-        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2, flexShrink:0, fontFamily:'var(--fd)' }}>
-          <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase' }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
-            <span style={{ color:st.c }}>{st.t}</span>
-          </span>
-          <span style={{ fontSize:'0.54rem', letterSpacing:'0.06em', color:'var(--text-2)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
-            UP {fmtUptime(uptime)}
-          </span>
-        </div>
-        {privateMode && (
-          <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
+        {!minimalMode && (
+          <>
+            <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
+            <div style={{ display:'flex', alignItems:'center', gap:4, fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', flexShrink:0 }}>
+              <div style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
+              <span style={{ color:st.c }}>{st.t}</span>
+            </div>
+            {privateMode && (
+              <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
+            )}
+          </>
         )}
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', flexShrink:0 }}>
@@ -157,35 +181,13 @@ function Header({ uptime, connected, status, onSettings, privateMode }) {
   );
 }
 
-// ── Ticker (static — snapshots first data, never refreshes) ───────────────────
-function Ticker({ state, enabled, speedSec }) {
-  const snapshotRef = useRef(null);
-  const hasDataReady = (state.workers || []).length > 0 || state.network?.height > 0;
-
-  if (!snapshotRef.current && hasDataReady) {
-    const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
-    const luckVal = state.luck?.luck;
-    const items = [
-      `WORKERS ${online}/${(state.workers||[]).length}`,
-      `HEIGHT ${fmtNum(state.network?.height)}`,
-      `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
-      `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
-      `WORK ${fmtDiff(state.shares?.accepted || 0)}`,
-      `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
-      `BEST ${fmtDiff(state.bestshare||0)}`,
-      luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
-      state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
-    ].filter(Boolean);
-    snapshotRef.current = items.join('   ·   ');
-  }
-
-  if (!enabled) return null;
-  const t = snapshotRef.current || 'LOADING…';
-
+// ── Ticker (reads a stable snapshot prop — data never mutates) ────────────────
+function Ticker({ snapshotText, enabled, speedSec }) {
+  if (!enabled || !snapshotText) return null;
   return (
     <div className="ss-hide-scrollbar" style={{ ...STRIP_FULL_WIDTH, background:'var(--bg-deep)', borderBottom:'1px solid var(--border)', overflow:'hidden', height:26, display:'flex', alignItems:'center' }}>
       <div style={{ whiteSpace:'nowrap', animation:`ticker ${speedSec || DEFAULT_TICKER_SPEED}s linear infinite`, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-2)', textTransform:'uppercase', display:'inline-block' }}>
-        {t}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{t}
+        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}
       </div>
     </div>
   );
@@ -955,7 +957,7 @@ function SetupScreen({ onComplete }) {
 }
 
 // ── Settings modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
   const [tab, setTab] = useState('main');
   const [addr,setAddr]=useState('');
   const [poolName,setPoolName]=useState(currentConfig?.poolName||'SoloStrike');
@@ -1005,7 +1007,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {error&&<div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'1rem'}}>⚠ {error}</div>}
 
         {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
-        {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}/>}
+        {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange} minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange} visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>}
         {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
         {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
         {tab==='hooks' && <WebhooksTab />}
@@ -1039,7 +1041,7 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
 }
 
 // ── DisplayTab ────────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange }) {
+function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
   const toggleMetric = (id) => {
     const next = stripSettings.metrics.includes(id) ? stripSettings.metrics.filter(x => x !== id) : [...stripSettings.metrics, id];
     onStripSettingsChange({ ...stripSettings, metrics: next });
@@ -1055,6 +1057,11 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
     next[swap] = tmp;
     onStripSettingsChange({ ...stripSettings, metrics: next });
   };
+  const toggleCard = (id) => {
+    const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
+    onVisibleCardsChange(next);
+  };
+  const applyPreset = (preset) => onVisibleCardsChange([...preset]);
 
   const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem', marginTop:'1rem' };
   const firstSectionTitle = { ...sectionTitle, marginTop:0 };
@@ -1063,7 +1070,66 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
   return (
     <>
-      <div style={firstSectionTitle}>▸ Top Strip</div>
+      {/* Minimal Mode master toggle */}
+      <div style={firstSectionTitle}>▸ Minimal Mode</div>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: minimalMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: minimalMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>Bare Bones UI</div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
+            Hides ticker, block strips, status dot, and shows only Hashrate + Workers + Blocks cards.
+          </div>
+        </div>
+        <button onClick={()=>onMinimalModeChange(!minimalMode)}
+          style={{width:46, height:26, borderRadius:13, background: minimalMode?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
+          <div style={{position:'absolute', top:2, left: minimalMode?22:2, width:20, height:20, borderRadius:'50%', background: minimalMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
+      </div>
+      {minimalMode && (
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
+          🔇 Minimal Mode is on — settings below are overridden until you turn it off.
+        </div>
+      )}
+
+      {/* Dashboard Cards */}
+      <div style={sectionTitle}>▸ Dashboard Cards</div>
+
+      <div style={rowLabel}>Quick presets</div>
+      <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
+        <button onClick={()=>applyPreset(MINIMAL_PRESET)}
+          style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
+          Minimal (3)
+        </button>
+        <button onClick={()=>applyPreset(DEFAULT_PRESET)}
+          style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border-hot)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
+          Default (6)
+        </button>
+        <button onClick={()=>applyPreset(EVERYTHING_PRESET)}
+          style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
+          Everything ({EVERYTHING_PRESET.length})
+        </button>
+      </div>
+
+      <div style={rowLabel}>Individual cards (tap to toggle)</div>
+      <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
+        {ALL_CARDS.map(c => {
+          const on = visibleCards.includes(c.id);
+          return (
+            <div key={c.id} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+              <button onClick={()=>toggleCard(c.id)}
+                style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
+                {on?'✓':''}
+              </button>
+              <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.78rem', color: on?'var(--text-1)':'var(--text-2)'}}>{c.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
+        Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
+      </div>
+
+      {/* Top Strip */}
+      <div style={sectionTitle}>▸ Top Strip</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
         <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable top strip</span>
@@ -1119,6 +1185,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
         style={{width:'100%', accentColor:'var(--amber)'}}/>
 
+      {/* Ticker */}
       <div style={sectionTitle}>▸ Scrolling Ticker</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
@@ -1143,7 +1210,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
             <span>very fast</span><span>slow</span>
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
-            Ticker data is static — values snapshot once on load and don't refresh while scrolling.
+            Ticker data is static — values are captured once on page load and never change while scrolling.
           </div>
         </>
       )}
@@ -1493,6 +1560,30 @@ export default function App() {
     enabled: loadTickerEnabled(),
     speedSec: loadTickerSpeed(),
   }));
+  const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
+  const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
+
+  // Ticker snapshot — captured ONCE when first data batch arrives, never updated
+  const [tickerSnapshot, setTickerSnapshot] = useState('');
+  useEffect(() => {
+    if (tickerSnapshot) return; // already frozen
+    const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
+    if (!hasData) return;
+    const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
+    const luckVal = state.luck?.luck;
+    const items = [
+      `WORKERS ${online}/${(state.workers||[]).length}`,
+      `HEIGHT ${fmtNum(state.network?.height)}`,
+      `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
+      `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
+      `WORK ${fmtDiff(state.shares?.accepted || 0)}`,
+      `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
+      `BEST ${fmtDiff(state.bestshare||0)}`,
+      luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
+      state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
+    ].filter(Boolean);
+    setTickerSnapshot(items.join('   ·   '));
+  }, [state, tickerSnapshot]);
 
   const handleStripSettingsChange = (next) => {
     setStripSettings(next);
@@ -1506,6 +1597,8 @@ export default function App() {
     saveTickerEnabled(next.enabled);
     saveTickerSpeed(next.speedSec);
   };
+  const handleMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
+  const handleVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   useEffect(()=>{ if(blockAlert) setDismissedAlert(false); }, [blockAlert]);
 
@@ -1557,19 +1650,27 @@ export default function App() {
     recent:     { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
   };
 
+  // Effective visible card set: Minimal Mode overrides user choice
+  const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
+
+  // Effective strip settings: Minimal Mode forces off
+  const tickerVisible        = !minimalMode && tickerSettings.enabled;
+  const latestBlockVisible   = !minimalMode;
+  const customStripVisible   = !minimalMode && stripSettings.enabled;
+
   return (
     <>
       <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflow:'hidden'}}>
         <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
-          <Header uptime={state.uptime} connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode}/>
-          <Ticker state={state} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
-          <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>
+          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode}/>
+          <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
+          {latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
           <CustomizableTopStrip
             state={state}
             aliases={aliases}
             currency={currency}
             uptime={state.uptime}
-            enabled={stripSettings.enabled}
+            enabled={customStripVisible}
             metricIds={stripSettings.metrics}
             chunkSize={stripSettings.chunkSize}
             fadeMs={stripSettings.fadeMs}
@@ -1579,6 +1680,7 @@ export default function App() {
         <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflow:'hidden'}}>
           <div className="ss-grid" style={{minWidth:0,maxWidth:'100%'}}>
             {order.map(id=>{
+              if (!effectiveVisibleCards.includes(id)) return null;
               const c = cards[id];
               if (!c || !c.el) return null;
               return (
@@ -1590,7 +1692,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.3.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}</span>
+          <span>SoloStrike v1.3.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <span>Stratum · Port <span style={{color:'var(--cyan)'}}>3333</span></span>
         </footer>
       </div>
@@ -1608,6 +1710,10 @@ export default function App() {
         onStripSettingsChange={handleStripSettingsChange}
         tickerSettings={tickerSettings}
         onTickerSettingsChange={handleTickerSettingsChange}
+        minimalMode={minimalMode}
+        onMinimalModeChange={handleMinimalModeChange}
+        visibleCards={visibleCards}
+        onVisibleCardsChange={handleVisibleCardsChange}
       />}
       {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
       <OfflineToasts workers={state.workers} aliases={aliases}/>
