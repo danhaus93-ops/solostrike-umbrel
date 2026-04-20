@@ -28,7 +28,6 @@ const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 
 const DEFAULT_TICKER_SPEED = 30;
 
-// Card identity + presets ─────────────────────────────────────────────────────
 const ALL_CARDS = [
   { id:'hashrate',   label:'Pool Hashrate' },
   { id:'workers',    label:'Connected Workers' },
@@ -448,7 +447,8 @@ function OfflineToasts({ workers, aliases }) {
   );
 }
 
-function HashrateChart({ history, week, current, averages, minimalMode }) {
+// ── Hashrate chart (1H/6H/24H/7D range selector + smoothing) ────────────────
+function HashrateChart({ history, week, current }) {
   const [range, setRange] = useState('1h');
 
   const windowMs = { '1h': 60*60*1000, '6h': 6*60*60*1000, '24h': 24*60*60*1000, '7d': 7*24*60*60*1000 }[range];
@@ -467,16 +467,6 @@ function HashrateChart({ history, week, current, averages, minimalMode }) {
   const data = smoothed;
   const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
   const [p0, p1] = fmtHr(current).split(' ');
-
-  const avgRow = [
-    ['1m',  averages?.hr1m],
-    ['5m',  averages?.hr5m],
-    ['1h',  averages?.hr1h],
-    ['24h', averages?.hr24h],
-    ['7d',  averages?.hr7d],
-  ].filter(([,v]) => v != null && v > 0);
-
-  const showAverages = !minimalMode && avgRow.length > 0;
 
   const rangeBtn = (key, label) => (
     <button key={key} onClick={() => setRange(key)}
@@ -498,7 +488,7 @@ function HashrateChart({ history, week, current, averages, minimalMode }) {
         <span>▸ Pool Hashrate — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>PEAK {fmtHr(peak)}</span>}
       </div>
-      <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom: showAverages ? '0.6rem' : '0.8rem' }}>
+      <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:'0.8rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
       </div>
       <div style={{display:'flex', gap:4, marginBottom:'0.6rem', justifyContent:'flex-end'}}>
@@ -1038,6 +1028,7 @@ function SetupScreen({ onComplete }) {
     </div>
   );
 }
+
 // ── Settings modal ────────────────────────────────────────────────────────────
 function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
   const [tab, setTab] = useState('main');
@@ -1152,7 +1143,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
   return (
     <>
-      {/* Minimal Mode master toggle */}
       <div style={firstSectionTitle}>▸ Minimal Mode</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: minimalMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
@@ -1172,7 +1162,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </div>
       )}
 
-      {/* Dashboard Cards */}
       <div style={sectionTitle}>▸ Dashboard Cards</div>
 
       <div style={rowLabel}>Quick presets</div>
@@ -1210,7 +1199,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
       </div>
 
-      {/* Top Strip */}
       <div style={sectionTitle}>▸ Top Strip</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
@@ -1267,7 +1255,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
         style={{width:'100%', accentColor:'var(--amber)'}}/>
 
-      {/* Ticker */}
       <div style={sectionTitle}>▸ Scrolling Ticker</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
@@ -1427,7 +1414,7 @@ function WebhooksTab() {
   );
 }
 
-// ── Worker Detail Modal ───────────────────────────────────────────────────────
+// ── Worker Detail Modal (P3a dual-port display) ──────────────────────────────
 function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
@@ -1459,7 +1446,8 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   })();
 
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
-  const stratumUrl = `stratum+tcp://${host}:3333`;
+  const stratumUrl      = `stratum+tcp://${host}:3333`;
+  const stratumUrlHobby = `stratum+tcp://${host}:3334`;
 
   const copy = async (val, lbl) => {
     try {
@@ -1564,7 +1552,8 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 
           <div style={section}>
             <div style={secTitle}>▸ Connection</div>
-            <div style={kvRow}><span style={kvLabel}>Stratum URL</span><span style={{...kvVal,fontSize:'0.68rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
             <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
           </div>
 
@@ -1593,8 +1582,9 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           <div style={section}>
             <div style={secTitle}>▸ Actions</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button onClick={()=>copy(stratumUrl,'stratum')} style={btn}>{copied==='stratum'?'✓ Copied':'Copy Stratum URL'}</button>
-              <button onClick={()=>copy(w.name,'name')}       style={btn}>{copied==='name'?'✓ Copied':'Copy Workername'}</button>
+              <button onClick={()=>copy(stratumUrl,'asic')}      style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
+              <button onClick={()=>copy(stratumUrlHobby,'hobby')} style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
+              <button onClick={()=>copy(w.name,'name')}           style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
               <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
               <button disabled style={btnDisabled}>Reset Stats</button>
             </div>
@@ -1605,7 +1595,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   );
 }
 
-// ── Card order ────────────────────────────────────────────────────────────────
+// ── Card order + currency helpers ─────────────────────────────────────────────
 const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'blocks', 'topfinders', 'recent'];
 function loadOrder() {
   try {
@@ -1721,7 +1711,7 @@ export default function App() {
   if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
 
   const cards = {
-    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current} averages={state.hashrate?.averages} minimalMode={minimalMode}/> },
+    hashrate:   { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
     workers:    { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
     network:    { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
     node:       { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
@@ -1775,7 +1765,7 @@ export default function App() {
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
           <span>SoloStrike v1.3.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
-          <span>Stratum · Port <span style={{color:'var(--cyan)'}}>3333</span></span>
+          <span>Ports <span style={{color:'var(--cyan)'}}>3333</span> · <span style={{color:'var(--cyan)'}}>3334</span></span>
         </footer>
       </div>
       {showSettings&&<SettingsModal
