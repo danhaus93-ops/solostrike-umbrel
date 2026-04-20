@@ -20,6 +20,11 @@ function loadAliases() {
   try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; }
 }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
+const LS_NOTES = 'ss_worker_notes_v1';
+function loadNotes() {
+  try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; }
+}
+function saveNotes(n) { try { localStorage.setItem(LS_NOTES, JSON.stringify(n)); } catch {} }
 
 // Strip BTC address prefix. "bc1q...wgsk.S19XP" -> "S19XP"
 function stripAddr(fullName) {
@@ -321,7 +326,7 @@ function HashrateChart({ history, current }) {
 }
 
 // ── Worker grid ───────────────────────────────────────────────────────────────
-function WorkerGrid({ workers, aliases }) {
+function WorkerGrid({ workers, aliases, onWorkerClick }) {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
   const sorted = [...(workers||[])].sort(
@@ -369,8 +374,8 @@ function WorkerGrid({ workers, aliases }) {
             const disp = displayName(w.name, aliases);
             const lastShareAgo = w.lastSeen ? fmtAgoShort(w.lastSeen) : '—';
             return(
-              <div key={w.name} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45}}>
-                <div title={w.health||'unknown'} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 6px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+            <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.6rem 0.875rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s'}} onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-
+              <div title={w.health||'unknown'} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 6px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
                 <span title={w.minerType||'Unknown'} style={{fontSize:13,color:on?'var(--cyan)':'var(--text-3)',width:16,textAlign:'center',flexShrink:0}}>{icon}</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:'var(--fm)',fontSize:'0.82rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500}} title={w.name}>
@@ -792,6 +797,210 @@ function BlockAlert({ block, onDismiss }) {
       </div>
     </div>
   </>);
+}
+
+// ── Worker Detail Modal ───────────────────────────────────────────────────────
+function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
+  const [copied, setCopied] = useState('');
+  const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
+  const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setAliasVal(aliases[worker.name] || '');
+    setNoteVal(notes[worker.name] || '');
+    setDirty(false);
+  }, [worker.name, aliases, notes]);
+
+  const w = worker;
+  const on = w.status !== 'offline';
+  const raw = w.sharesCount || 0;
+  const rawRej = w.rejectedCount || 0;
+  const work = w.shares || 0;
+  const workRej = w.rejected || 0;
+  const totalWork = work + workRej || 1;
+  const acceptRate = ((work / totalWork) * 100).toFixed(2);
+  const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
+  const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
+  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
+  const freshness = (() => {
+    const age = Date.now() - (w.lastSeen || 0);
+    if (age < 2*60*1000) return 'fresh (<2m)';
+    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
+    return `offline (${Math.floor(age/60000)}m)`;
+  })();
+
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
+  const stratumUrl = `stratum+tcp://${host}:3333`;
+
+  const copy = async (val, label) => {
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopied(label);
+      setTimeout(() => setCopied(''), 2000);
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = val; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); setCopied(label); setTimeout(()=>setCopied(''),2000); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
+
+  const save = () => {
+    const nextA = { ...aliases };
+    if (!aliasVal.trim()) delete nextA[w.name]; else nextA[w.name] = aliasVal.trim().slice(0, 32);
+    onAliasesChange(nextA);
+    const nextN = { ...notes };
+    if (!noteVal.trim()) delete nextN[w.name]; else nextN[w.name] = noteVal.trim().slice(0, 200);
+    onNotesChange(nextN);
+    setDirty(false);
+  };
+
+  const exportCsv = () => {
+    const rows = [
+      ['# generated_at_utc', new Date().toISOString()],
+      ['# worker', w.name],
+      ['# display_name', aliases[w.name] || stripAddr(w.name)],
+      ['field','value'],
+      ['hashrate_hps', w.hashrate || 0],
+      ['current_difficulty', w.diff || 0],
+      ['best_share', Math.round(w.bestshare || 0)],
+      ['work_accepted', work],
+      ['work_rejected', workRej],
+      ['accept_rate_pct', acceptRate],
+      ['raw_shares', raw],
+      ['raw_rejected', rawRej],
+      ['miner_type', w.minerType || ''],
+      ['miner_vendor', w.minerVendor || ''],
+      ['status', w.status || ''],
+      ['health', w.health || ''],
+      ['last_seen_iso', w.lastSeen ? new Date(w.lastSeen).toISOString() : ''],
+    ];
+    const csv = rows.map(r => r.map(v => {
+      const s = String(v == null ? '' : v);
+      if (/[,"\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+      return s;
+    }).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `solostrike-worker-${stripAddr(w.name).replace(/[^A-Za-z0-9]/g,'_')}-${Date.now()}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  };
+
+  const section = { marginBottom:'1rem' };
+  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
+  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'65%' };
+  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
+  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
+  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)', lineHeight:1 };
+  const btn = { padding:'0.55rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', flex:1, minWidth:'48%' };
+  const btnDisabled = { ...btn, color:'var(--text-3)', cursor:'not-allowed', opacity:0.5 };
+  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none' };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
+        {/* Header band */}
+        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem'}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:4}}>
+              <span style={{fontSize:16,color:'var(--cyan)'}}>{w.minerIcon || '▪'}</span>
+              <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
+            </div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
+              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
+            </div>
+            <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+              <span style={{color:on?'var(--green)':'var(--red)'}}>{on?'ONLINE':'OFFLINE'}</span>
+              <span style={{color:'var(--text-3)',marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):'—'}</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px',flexShrink:0}}>✕</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem'}}>
+          {/* Hero stats */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
+            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Live Diff</div><div style={{...heroVal,color:'var(--cyan)'}}>{fmtDiff(w.diff||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
+          </div>
+
+          {/* Shares section */}
+          <div style={section}>
+            <div style={sectionTitle}>▸ Shares</div>
+            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:workRej?'var(--red)':'var(--text-1)'}}>{fmtDiff(workRej)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
+          </div>
+
+          {/* Connection section */}
+          <div style={section}>
+            <div style={sectionTitle}>▸ Connection</div>
+            <div style={kvRow}><span style={kvLabel}>Stratum URL</span><span style={{...kvVal,fontSize:'0.68rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Worker IP</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.workerip || '— (v1.4)'}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Client</span><span style={{...kvVal,color:'var(--text-3)'}}>{w.useragent || '— (v1.4)'}</span></div>
+          </div>
+
+          {/* Health section */}
+          <div style={section}>
+            <div style={sectionTitle}>▸ Health</div>
+            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
+          </div>
+
+          {/* Options section */}
+          <div style={section}>
+            <div style={sectionTitle}>▸ Options</div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
+              <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32}
+                onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Shows as alias everywhere in the UI</div>
+            </div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
+              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200}
+                onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Saved to this device only, never leaves the app</div>
+            </div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Target Difficulty</div>
+              <input type="text" value="auto" disabled style={{...inputStyle,opacity:0.5,cursor:'not-allowed'}}/>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:3}}>Override vardiff — available in v1.4</div>
+            </div>
+            {dirty && (
+              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div style={section}>
+            <div style={sectionTitle}>▸ Actions</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              <button onClick={()=>copy(stratumUrl,'stratum')} style={btn}>{copied==='stratum'?'✓ Copied':'Copy Stratum URL'}</button>
+              <button onClick={()=>copy(w.name,'name')}       style={btn}>{copied==='name'?'✓ Copied':'Copy Workername'}</button>
+              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
+              <button disabled title="Available in v1.4" style={btnDisabled}>Reset Stats</button>
+              <button disabled title="Available in v1.4" style={{...btnDisabled,flex:'1 1 100%'}}>Kick &amp; Reconnect</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Setup screen ──────────────────────────────────────────────────────────────
