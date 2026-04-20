@@ -5,7 +5,6 @@ export function fmtHr(hps) {
   return`${v<10?v.toFixed(2):v<100?v.toFixed(1):v.toFixed(0)} ${u[i]}`;
 }
 
-// GoBrrr-style compact difficulty: "2.79 G", "1.60 T", "52.20 M"
 export function fmtDiff(d){
   if(!d)return'0';
   if(d>=1e15)return`${(d/1e15).toFixed(2)} P`;
@@ -15,10 +14,10 @@ export function fmtDiff(d){
   if(d>=1e3)return`${(d/1e3).toFixed(2)} K`;
   return d.toFixed(0);
 }
-// Alias for contexts where we want to be explicit
 export const fmtDiffCompact = fmtDiff;
 
 export function fmtNum(n){return new Intl.NumberFormat().format(Math.round(n||0));}
+
 export function fmtUptime(ts){
   const s=Math.floor((Date.now()-ts)/1000),d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);
   return d>0?`${d}d ${h}h ${m}m`:h>0?`${h}h ${m}m`:`${m}m`;
@@ -34,6 +33,15 @@ export function timeAgo(ts){
   const s=Math.floor((Date.now()-ts)/1000);
   if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;
   if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;
+}
+// Compact version without "ago" suffix — used in dense worker rows
+export function fmtAgoShort(ts){
+  if(!ts) return '—';
+  const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60)return`${s}s`;
+  if(s<3600)return`${Math.floor(s/60)}m`;
+  if(s<86400)return`${Math.floor(s/3600)}h`;
+  return`${Math.floor(s/86400)}d`;
 }
 export function fmtPct(x, digits=2){
   if(x==null||isNaN(x))return'—';
@@ -63,7 +71,6 @@ export function blockTimeAgo(unixTs){
   return timeAgo(unixTs*1000);
 }
 
-// Currency formatter for BTC price display
 const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', GBP:'£', CAD:'C$', CHF:'Fr', AUD:'A$', JPY:'¥' };
 export function fmtFiat(amount, currency='USD'){
   if(amount==null||isNaN(amount))return'—';
