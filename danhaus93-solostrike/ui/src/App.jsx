@@ -110,6 +110,7 @@ function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, childre
       onDrop={e=>{e.preventDefault(); onDrop(id);}}
     >
       <span className="ss-drag-handle" draggable
+        style={{color:'var(--amber)'}}
         onDragStart={e=>{ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain', id);}catch{} onDragStart(id); }}
         title="Drag to reorder">≡</span>
       {children}
@@ -197,10 +198,10 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
             <span style={{ width:5, height:5, borderRadius:'50%', background: connected?'var(--cyan)':'var(--text-2)', boxShadow: connected?'0 0 6px var(--cyan)':'none' }}/>
             {connected?'LIVE':'RECONN'}
           </span>
-          <span style={{ fontSize:'0.52rem', letterSpacing:'0.04em', color:'var(--text-2)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:'0.52rem', letterSpacing:'0.04em', color:'var(--amber)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
             {fmtClockTime(now)}
           </span>
-          <span style={{ fontSize:'0.48rem', letterSpacing:'0.08em', color:'var(--text-3)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:'0.48rem', letterSpacing:'0.08em', color:'var(--amber)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
             {fmtClockDate(now)}
           </span>
         </div>
@@ -1306,15 +1307,15 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       </div>
 
       <div style={rowLabel}>Metrics (tap to toggle, ↑↓ to reorder)</div>
-      <div style={{display:'flex', flexDirection:'column', gap:6}}>
+      <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
         {METRIC_CATEGORIES.map(cat => (
           <div key={cat}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--text-3)', marginBottom:3, paddingBottom:2, borderBottom:'1px dashed var(--border)'}}>{cat}</div>
-            {METRICS.filter(m => m.category === cat).map(metric => {
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
+            {METRICS.filter(metric => metric.category === cat).map(metric => {
               const on = stripSettings.metrics.includes(metric.id);
-              const order = stripSettings.metrics.indexOf(metric.id);
+              const order = on ? stripSettings.metrics.indexOf(metric.id) : -1;
               return (
-                <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'4px 6px', borderBottom:'1px solid rgba(255,255,255,0.02)'}}>
+                <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
                   <button onClick={()=>toggleMetric(metric.id)}
                     style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
                     {on?'✓':''}
@@ -1893,7 +1894,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.3.5 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.3.7 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <span>Ports <span style={{color:'var(--cyan)'}}>3333</span> · <span style={{color:'var(--cyan)'}}>3334</span></span>
         </footer>
       </div>
