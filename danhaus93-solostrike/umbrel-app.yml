@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.3.8"
+version: "1.3.9"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,18 +76,37 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.3.8 — Branding polish.
+  v1.3.9 — BTC badge + fully customizable ticker.
 
 
   CHANGES:
 
-  • Latest Block strip now leads with the Bitcoin ₿ symbol instead of the
-  pickaxe (the pickaxe still lives in the Setup screen where it belongs)
+  • Latest Block strip now opens with a proper orange-on-black Bitcoin ₿ badge
+  (canonical Bitcoin orange #F7931A in a black circle) — stands out better
+  against the deep-mine palette
 
-  • New GitHub icon link in the footer — tap to view the source repo at
-  github.com/danhaus93-ops/solostrike-umbrel
+  • The scrolling ticker is now fully customizable under Settings → Display.
+  Pick any combination of 29 metrics across 6 categories (Performance,
+  Workers, Odds, Network, Infrastructure, Session). Reorder them with ↑↓.
 
-  • Footer version bumped to v1.3.8
+  • One-tap "Match Top Strip" button copies your top-strip selection into
+  the ticker, so you don't have to configure both twice if you want them
+  identical
+
+  • Ticker metrics live in their own scrollable list, matching the Top Strip
+  metrics list pattern
+
+  • Ticker rebuilds whenever you change your metric selection — no more
+  hardcoded stats
+
+  • Footer version bumped to v1.3.9
+
+
+  CARRIED FORWARD FROM v1.3.8:
+
+  • Latest Block strip leads with the Bitcoin ₿ symbol
+
+  • GitHub icon link in the footer
 
 
   CARRIED FORWARD FROM v1.3.7:
