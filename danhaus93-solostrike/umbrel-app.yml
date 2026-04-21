@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.3.4"
+version: "1.3.5"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,10 +76,24 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.3.4 — Closest Calls + Snapshots + Miner IP links.
+  v1.3.5 — Housekeeping release.
 
 
-  NEW:
+  CHANGES:
+
+  • Removed unused placeholder "Reset Stats" button from the Worker Detail modal
+  (it was disabled and non-functional)
+
+  • Removed dead duplicate TopStrip component file that was never imported
+  (active strip lives in App.jsx and is unaffected)
+
+  • Footer version bumped to v1.3.5
+
+
+  No new features, no breaking changes, no config migrations. Pure cleanup.
+
+
+  CARRIED FORWARD FROM v1.3.4:
 
   • Closest Calls card — pool-wide historical leaderboard of the top 10
   highest-difficulty shares ever submitted, across all workers and all time.
@@ -100,9 +114,6 @@ releaseNotes: >-
   • ZMQ status badge in header (🟢 active / 🟡 idle / ⚪ off)
 
   • Dual stratum ports 3333 (ASIC) + 3334 (hobby miners)
-
-
-  Pure additive update. No breaking changes, no config migrations required.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
