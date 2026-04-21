@@ -1,6 +1,18 @@
 // metrics.js — Customizable Top Strip metric registry
 // Each metric defines how to read it from state + how to render it
-import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtPct, fmtBtc, fmtFiat, fmtUptime, timeAgo, fmtAgoShort, fmtDurationMs } from ‘./utils.js’;
+import {
+fmtHr,
+fmtDiff,
+fmtNum,
+fmtOdds,
+fmtPct,
+fmtBtc,
+fmtFiat,
+fmtUptime,
+timeAgo,
+fmtAgoShort,
+fmtDurationMs
+} from ‘./utils.js’;
 
 // Helpers used by some metrics
 function workerHealthBreakdown(workers) {
