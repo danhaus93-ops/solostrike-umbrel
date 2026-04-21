@@ -303,12 +303,14 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
         <span style={{
           display:'inline-flex', alignItems:'center', justifyContent:'center',
           width:20, height:20, borderRadius:'50%',
-          background:'#000', color:'#F7931A',
+          background:'#000', color:'var(--btc-orange)',
           fontWeight:700, fontSize:'0.8rem', lineHeight:1,
-          border:'1px solid #F7931A',
-          boxShadow:'0 0 8px rgba(247,147,26,0.45)',
+          border:'1px solid var(--btc-orange)',
+          boxShadow:'0 0 8px var(--btc-orange-glow)',
           flexShrink:0,
-        }}>₿</span>
+        }}>
+          <span style={{transform:'translate(1px, 1px)', display:'inline-block'}}>₿</span>
+        </span>
         <span style={{color:'var(--amber)', fontWeight:700}}>LATEST BLOCK</span>
       </span>
       <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
@@ -1449,7 +1451,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
             <span>very fast</span><span>slow</span>
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
-            Ticker values refresh whenever you change your metric selection. While scrolling, values stay fixed to prevent animation jitter.
+            Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.
           </div>
         </>
       )}
@@ -1843,14 +1845,14 @@ export default function App() {
   const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
 
   const [tickerSnapshot, setTickerSnapshot] = useState('');
-  const tickerMetricsKeyRef = useRef('');
+  const [tickerTick, setTickerTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTickerTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => {
     const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
     if (!hasData) return;
-    const metricsKey = (tickerSettings.metrics || []).join(',');
-    // Only rebuild if metric selection changed, or no snapshot yet
-    if (tickerSnapshot && metricsKey === tickerMetricsKeyRef.current) return;
-    tickerMetricsKeyRef.current = metricsKey;
     const selected = (tickerSettings.metrics || []).map(id => METRIC_MAP[id]).filter(Boolean);
     if (!selected.length) { setTickerSnapshot(''); return; }
     const items = selected.map(m => {
@@ -1860,7 +1862,7 @@ export default function App() {
       return `${prefix} ${value}`;
     });
     setTickerSnapshot(items.join('   ·   '));
-  }, [state, aliases, currency, tickerSettings.metrics, tickerSnapshot]);
+  }, [state, aliases, currency, tickerSettings.metrics, tickerTick]);
 
   const handleStripSettingsChange = (next) => {
     setStripSettings(next);
@@ -1968,7 +1970,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.3.9 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.4.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
