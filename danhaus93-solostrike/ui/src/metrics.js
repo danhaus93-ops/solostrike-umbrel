@@ -1,8 +1,6 @@
-// metrics.js — Customizable Top Strip metric registry
-// Each metric defines how to read it from state + how to render it
+// metrics.js — Customizable Top Strip + Ticker metric registry (v1.3.5)
 import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtPct, fmtBtc, fmtFiat, fmtUptime, timeAgo, fmtAgoShort, fmtDurationMs } from './utils.js';
 
-// Helpers used by some metrics
 function workerHealthBreakdown(workers) {
   const w = workers || [];
   let g = 0, a = 0, r = 0;
@@ -34,7 +32,7 @@ function stabilityIndex(history) {
   const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
   if (!mean) return null;
   const variance = vals.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / vals.length;
-  const cv = Math.sqrt(variance) / mean; // coefficient of variation
+  const cv = Math.sqrt(variance) / mean;
   return cv;
 }
 
@@ -53,6 +51,12 @@ function daysUntilHalving(currentHeight) {
   return Math.round(minutesLeft / 60 / 24);
 }
 
+function blocksUntilHalving(currentHeight) {
+  if (!currentHeight) return null;
+  const nextHalvingHeight = Math.ceil(currentHeight / 210000) * 210000;
+  return nextHalvingHeight - currentHeight;
+}
+
 function topWorker(workers) {
   const w = (workers || []).filter(x => x.status !== 'offline');
   if (!w.length) return null;
@@ -67,11 +71,8 @@ function avgLastShareAge(workers) {
   return sum / w.length;
 }
 
-// ── THE REGISTRY ─────────────────────────────────────────────────────────────
-// Each entry: { id, label, category, color, render(state, currency, uptime) }
-// render() returns { value: string, prefix?: string }
 export const METRICS = [
-  // ── PERFORMANCE ──
+  // ─── Performance ─────────────────────────────────────────
   { id: 'pool_hashrate', label: 'Pool Hashrate', category: 'Performance', color: 'var(--amber)',
     render: (s) => ({ prefix: 'POOL', value: fmtHr(s.hashrate?.current) }) },
   { id: 'hashrate_trend', label: 'Hashrate Trend', category: 'Performance', color: 'var(--cyan)',
@@ -99,14 +100,20 @@ export const METRICS = [
       const hr = s.hashrate?.current || 0;
       return { prefix: 'SHARES/M', value: hr>0 ? (hr/4294967296*60).toFixed(1) : '0' };
     } },
-  { id: 'best_share_today', label: 'Best Today', category: 'Performance', color: 'var(--amber)',
-    render: (s) => ({ prefix: 'BEST (ALL)', value: fmtDiff(s.bestshare || 0) }) },
+  { id: 'best_share_today', label: 'Best Difficulty', category: 'Performance', color: 'var(--amber)',
+    render: (s) => ({ prefix: 'BEST', value: fmtDiff(s.bestshare || 0) }) },
 
-  // ── WORKERS ──
+  // ─── Workers ─────────────────────────────────────────
   { id: 'worker_health', label: 'Worker Health', category: 'Workers', color: 'var(--text-1)',
     render: (s) => {
       const h = workerHealthBreakdown(s.workers);
       return { prefix: 'WORKERS', value: `🟢${h.green} 🟡${h.amber} 🔴${h.red}` };
+    } },
+  { id: 'workers_online', label: 'Workers Online', category: 'Workers', color: 'var(--green)',
+    render: (s) => {
+      const total = (s.workers || []).length;
+      const on = (s.workers || []).filter(w => w.status !== 'offline').length;
+      return { prefix: 'ONLINE', value: `${on}/${total}` };
     } },
   { id: 'workers_offline', label: 'Workers Offline', category: 'Workers', color: 'var(--red)',
     render: (s) => {
@@ -127,7 +134,7 @@ export const METRICS = [
       return { prefix: 'TOP', value: `${name} ${fmtHr(w.hashrate)}` };
     } },
 
-  // ── ODDS / LUCK ──
+  // ─── Odds ─────────────────────────────────────────
   { id: 'per_day', label: 'Per Day Odds', category: 'Odds', color: 'var(--text-1)',
     render: (s) => {
       const p = s.odds?.perDay;
@@ -149,8 +156,16 @@ export const METRICS = [
       if (!pool || !net) return { prefix: 'POOL SHARE', value: '—' };
       return { prefix: 'POOL SHARE', value: `${((pool/net)*100).toExponential(2)}%` };
     } },
+  { id: 'expected_block', label: 'Expected Block', category: 'Odds', color: 'var(--amber)',
+    render: (s) => ({ prefix: 'EXPECTED', value: fmtOdds(s.odds?.expectedDays) }) },
+  { id: 'luck_current', label: 'Luck (current)', category: 'Odds', color: 'var(--amber)',
+    render: (s) => {
+      const l = s.luck?.luck;
+      if (l == null) return { prefix: 'LUCK', value: '—' };
+      return { prefix: 'LUCK', value: fmtPct(l, 1) };
+    } },
 
-  // ── NETWORK ──
+  // ─── Network ─────────────────────────────────────────
   { id: 'next_block_prize', label: 'Next Block Prize', category: 'Network', color: 'var(--amber)',
     render: (s, aliases, currency) => {
       const br = s.blockReward;
@@ -159,14 +174,39 @@ export const METRICS = [
       const fiat = price ? ` · ${fmtFiat(br.totalBtc * price, currency || 'USD')}` : '';
       return { prefix: '🏆 PRIZE', value: `${fmtBtc(br.totalBtc, 3)}${fiat}` };
     } },
+  { id: 'block_reward_btc', label: 'Block Reward (BTC)', category: 'Network', color: 'var(--amber)',
+    render: (s) => {
+      const br = s.blockReward;
+      if (!br) return { prefix: 'REWARD', value: '—' };
+      return { prefix: 'REWARD', value: fmtBtc(br.totalBtc, 4) };
+    } },
+  { id: 'block_reward_fiat', label: 'Block Reward (fiat)', category: 'Network', color: 'var(--green)',
+    render: (s, aliases, currency) => {
+      const br = s.blockReward;
+      const price = s.prices?.[currency || 'USD'];
+      if (!br || !price) return { prefix: 'REWARD $', value: '—' };
+      return { prefix: 'REWARD $', value: fmtFiat(br.totalBtc * price, currency || 'USD') };
+    } },
   { id: 'btc_price', label: 'BTC Price', category: 'Network', color: 'var(--cyan)',
     render: (s, aliases, currency) => {
       const price = s.prices?.[currency || 'USD'];
       if (s.privateMode) return { prefix: 'BTC', value: '🔒 hidden' };
       return { prefix: 'BTC', value: price ? fmtFiat(price, currency || 'USD') : '—' };
     } },
+  { id: 'block_height', label: 'Block Height', category: 'Network', color: 'var(--text-1)',
+    render: (s) => ({ prefix: 'HEIGHT', value: fmtNum(s.network?.height) }) },
+  { id: 'net_difficulty', label: 'Net Difficulty', category: 'Network', color: 'var(--text-1)',
+    render: (s) => ({ prefix: 'DIFF', value: fmtDiff(s.network?.difficulty) }) },
+  { id: 'net_hashrate', label: 'Net Hashrate', category: 'Network', color: 'var(--cyan)',
+    render: (s) => ({ prefix: 'NET HR', value: fmtHr(s.network?.hashrate) }) },
   { id: 'mempool_txs', label: 'Mempool TXs', category: 'Network', color: 'var(--text-1)',
     render: (s) => ({ prefix: 'MEMPOOL', value: `${fmtNum(s.nodeInfo?.mempoolCount || 0)} TX` }) },
+  { id: 'mempool_fees', label: 'Mempool Fees Total', category: 'Network', color: 'var(--amber)',
+    render: (s) => {
+      const v = s.mempool?.totalFeesBtc;
+      if (v == null) return { prefix: 'MP FEES', value: '—' };
+      return { prefix: 'MP FEES', value: fmtBtc(v, 2) };
+    } },
   { id: 'priority_fee', label: 'Priority Fee', category: 'Network', color: 'var(--amber)',
     render: (s) => {
       const f = s.mempool?.feeRate;
@@ -184,13 +224,25 @@ export const METRICS = [
       const color = c === 'HIGH' ? '🔴' : c === 'MEDIUM' ? '🟡' : c === 'LOW' ? '🟢' : '—';
       return { prefix: 'CONGESTION', value: c ? `${color} ${c}` : '—' };
     } },
+  { id: 'retarget_eta', label: 'Retarget ETA', category: 'Network', color: 'var(--cyan)',
+    render: (s) => {
+      if (!s.retarget) return { prefix: 'RETARGET', value: '—' };
+      const { remainingBlocks, difficultyChange } = s.retarget;
+      const sign = difficultyChange >= 0 ? '+' : '';
+      return { prefix: 'RETARGET', value: `${remainingBlocks}B · ${sign}${(difficultyChange||0).toFixed(1)}%` };
+    } },
   { id: 'halving', label: 'Days to Halving', category: 'Network', color: 'var(--amber)',
     render: (s) => {
       const d = daysUntilHalving(s.network?.height);
       return { prefix: 'HALVING IN', value: d ? `${fmtNum(d)}d` : '—' };
     } },
+  { id: 'halving_blocks', label: 'Blocks to Halving', category: 'Network', color: 'var(--amber)',
+    render: (s) => {
+      const b = blocksUntilHalving(s.network?.height);
+      return { prefix: 'HALVING', value: b ? `${fmtNum(b)} blocks` : '—' };
+    } },
 
-  // ── INFRASTRUCTURE ──
+  // ─── Infrastructure ─────────────────────────────────────────
   { id: 'node_sync', label: 'Node Sync %', category: 'Infrastructure', color: 'var(--green)',
     render: (s) => {
       const p = s.sync?.progress;
@@ -213,7 +265,7 @@ export const METRICS = [
       return { prefix: '📡 STRATUM', value: `stratum+tcp://${host}:3333` };
     } },
 
-  // ── SESSION ──
+  // ─── Session ─────────────────────────────────────────
   { id: 'pool_uptime', label: 'Pool Uptime', category: 'Session', color: 'var(--text-1)',
     render: (s, aliases, currency, uptime) => ({
       prefix: 'UPTIME', value: uptime ? fmtUptime(uptime) : '—'
@@ -222,23 +274,19 @@ export const METRICS = [
     render: (s) => ({ prefix: 'BLOCKS FOUND', value: `${(s.blocks || []).length}` }) },
   { id: 'sats_earned', label: 'Satoshis Earned', category: 'Session', color: 'var(--amber)',
     render: (s) => {
-      const total = (s.blocks || []).length * 3.125; // rough, each block = ~3.125 BTC subsidy
+      const total = (s.blocks || []).length * 3.125;
       if (!total) return { prefix: 'EARNED', value: '0 sat' };
       return { prefix: 'EARNED', value: fmtBtc(total, 3) };
     } },
+  { id: 'work_accepted', label: 'Work Accepted', category: 'Session', color: 'var(--green)',
+    render: (s) => ({ prefix: 'WORK', value: fmtDiff(s.shares?.accepted || 0) }) },
 ];
 
-// Map for quick lookup by id
 export const METRIC_MAP = Object.fromEntries(METRICS.map(m => [m.id, m]));
-
-// Category order for the settings UI
 export const METRIC_CATEGORIES = ['Performance', 'Workers', 'Odds', 'Network', 'Infrastructure', 'Session'];
-
-// Available chart marker symbols
 export const MARKER_SYMBOLS = ['₿', '⛏', '💎', '⚡', '🎯', '🔥', '🚀', '🎰', '☠️', '🟠'];
-
-// Defaults
 export const DEFAULT_STRIP_METRICS = ['pool_hashrate', 'next_block_prize', 'accept_rate', 'worker_health', 'node_sync', 'hashrate_trend'];
+export const DEFAULT_TICKER_METRICS = ['btc_price', 'next_block_prize', 'priority_fee', 'pool_hashrate', 'worker_health', 'blocks_found_total', 'expected_block', 'luck_current', 'retarget_eta', 'halving'];
 export const DEFAULT_CHUNK_SIZE   = 2;
 export const DEFAULT_FADE_MS      = 5000;
 export const DEFAULT_MARKER_SYMS  = ['₿', '⛏', '💎'];
