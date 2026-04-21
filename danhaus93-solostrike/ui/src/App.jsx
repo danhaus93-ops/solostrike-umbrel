@@ -23,10 +23,12 @@ const LS_STRIP_FADE      = 'ss_strip_fade_v1';
 const LS_STRIP_ENABLED   = 'ss_strip_enabled_v1';
 const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
 const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
+const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 
 const DEFAULT_TICKER_SPEED = 30;
+const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'worker_health', 'accept_rate', 'next_block_prize', 'btc_price', 'time_since_block', 'halving', 'blocks_found_total'];
 
 const ALL_CARDS = [
   { id:'hashrate',      label:'Pool Hashrate' },
@@ -65,6 +67,8 @@ function loadTickerEnabled() { try { const v = localStorage.getItem(LS_TICKER_EN
 function saveTickerEnabled(v){ try { localStorage.setItem(LS_TICKER_ENABLED, String(!!v)); } catch {} }
 function loadTickerSpeed()   { try { const n = parseInt(localStorage.getItem(LS_TICKER_SPEED), 10); return Number.isFinite(n) && n>=3 && n<=120 ? n : DEFAULT_TICKER_SPEED; } catch { return DEFAULT_TICKER_SPEED; } }
 function saveTickerSpeed(n)  { try { localStorage.setItem(LS_TICKER_SPEED, String(n)); } catch {} }
+function loadTickerMetrics() { try { const s = localStorage.getItem(LS_TICKER_METRICS); if (!s) return DEFAULT_TICKER_METRICS; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => METRIC_MAP[id]) : DEFAULT_TICKER_METRICS; } catch { return DEFAULT_TICKER_METRICS; } }
+function saveTickerMetrics(list) { try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(list)); } catch {} }
 function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === 'true'; } catch { return false; } }
 function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
 function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
@@ -295,7 +299,18 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
       textTransform:'uppercase',
       overflowX:'auto', whiteSpace:'nowrap',
     }}>
-      <span style={{color:'var(--amber)', fontWeight:700, flexShrink:0}}>₿ LATEST BLOCK</span>
+      <span style={{display:'inline-flex', alignItems:'center', gap:6, flexShrink:0}}>
+        <span style={{
+          display:'inline-flex', alignItems:'center', justifyContent:'center',
+          width:20, height:20, borderRadius:'50%',
+          background:'#000', color:'#F7931A',
+          fontWeight:700, fontSize:'0.8rem', lineHeight:1,
+          border:'1px solid #F7931A',
+          boxShadow:'0 0 8px rgba(247,147,26,0.45)',
+          flexShrink:0,
+        }}>₿</span>
+        <span style={{color:'var(--amber)', fontWeight:700}}>LATEST BLOCK</span>
+      </span>
       <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
       <span style={{color:'var(--cyan)', fontFamily:'var(--fm)', fontWeight:700, flexShrink:0}}>#{fmtNum(latest.height)}</span>
       <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
@@ -1233,6 +1248,25 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
   };
   const applyPreset = (preset) => onVisibleCardsChange([...preset]);
 
+  const toggleTickerMetric = (id) => {
+    const current = tickerSettings.metrics || [];
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
+    onTickerSettingsChange({ ...tickerSettings, metrics: next });
+  };
+  const moveTickerMetric = (id, dir) => {
+    const current = tickerSettings.metrics || [];
+    const idx = current.indexOf(id);
+    if (idx < 0) return;
+    const swap = idx + dir;
+    if (swap < 0 || swap >= current.length) return;
+    const next = [...current];
+    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
+    onTickerSettingsChange({ ...tickerSettings, metrics: next });
+  };
+  const matchTickerToStrip = () => {
+    onTickerSettingsChange({ ...tickerSettings, metrics: [...(stripSettings.metrics || [])] });
+  };
+
   const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem', marginTop:'1rem' };
   const firstSectionTitle = { ...sectionTitle, marginTop:0 };
   const rowLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:6 };
@@ -1364,7 +1398,46 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
       {tickerSettings.enabled && (
         <>
-          <div style={{...rowLabel, marginTop:'0.5rem'}}>
+          <div style={{...rowLabel, marginTop:'0.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6}}>
+            <span>Ticker metrics (tap to toggle, ↑↓ to reorder)</span>
+            <button onClick={matchTickerToStrip}
+              title="Copy top strip selection into ticker"
+              style={{padding:'3px 7px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer'}}>
+              ⤴ Match Top Strip
+            </button>
+          </div>
+          <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
+            {METRIC_CATEGORIES.map(cat => (
+              <div key={cat}>
+                <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
+                {METRICS.filter(metric => metric.category === cat).map(metric => {
+                  const on = (tickerSettings.metrics || []).includes(metric.id);
+                  const order = on ? tickerSettings.metrics.indexOf(metric.id) : -1;
+                  return (
+                    <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                      <button onClick={()=>toggleTickerMetric(metric.id)}
+                        style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
+                        {on?'✓':''}
+                      </button>
+                      <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
+                      {on && (
+                        <>
+                          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
+                          <button onClick={()=>moveTickerMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
+                          <button onClick={()=>moveTickerMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
+            Selected: <span style={{color:'var(--amber)'}}>{(tickerSettings.metrics || []).length}</span> metric{(tickerSettings.metrics || []).length===1?'':'s'}
+          </div>
+
+          <div style={{...rowLabel, marginTop:'0.9rem'}}>
             Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
             <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
               ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
@@ -1376,7 +1449,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
             <span>very fast</span><span>slow</span>
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
-            Ticker data is static — values are captured once on page load and never change while scrolling.
+            Ticker values refresh whenever you change your metric selection. While scrolling, values stay fixed to prevent animation jitter.
           </div>
         </>
       )}
@@ -1764,30 +1837,30 @@ export default function App() {
   const [tickerSettings, setTickerSettings] = useState(() => ({
     enabled: loadTickerEnabled(),
     speedSec: loadTickerSpeed(),
+    metrics: loadTickerMetrics(),
   }));
   const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
   const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
 
   const [tickerSnapshot, setTickerSnapshot] = useState('');
+  const tickerMetricsKeyRef = useRef('');
   useEffect(() => {
-    if (tickerSnapshot) return;
     const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
     if (!hasData) return;
-    const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
-    const luckVal = state.luck?.luck;
-    const items = [
-      `WORKERS ${online}/${(state.workers||[]).length}`,
-      `HEIGHT ${fmtNum(state.network?.height)}`,
-      `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
-      `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
-      `WORK ${fmtDiff(state.shares?.accepted || 0)}`,
-      `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
-      `BEST ${fmtDiff(state.bestshare||0)}`,
-      luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
-      state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
-    ].filter(Boolean);
+    const metricsKey = (tickerSettings.metrics || []).join(',');
+    // Only rebuild if metric selection changed, or no snapshot yet
+    if (tickerSnapshot && metricsKey === tickerMetricsKeyRef.current) return;
+    tickerMetricsKeyRef.current = metricsKey;
+    const selected = (tickerSettings.metrics || []).map(id => METRIC_MAP[id]).filter(Boolean);
+    if (!selected.length) { setTickerSnapshot(''); return; }
+    const items = selected.map(m => {
+      const out = m.render(state, aliases, currency, state.uptime) || {};
+      const value = out.value != null ? out.value : '—';
+      const prefix = out.prefix != null ? out.prefix : m.label.toUpperCase();
+      return `${prefix} ${value}`;
+    });
     setTickerSnapshot(items.join('   ·   '));
-  }, [state, tickerSnapshot]);
+  }, [state, aliases, currency, tickerSettings.metrics, tickerSnapshot]);
 
   const handleStripSettingsChange = (next) => {
     setStripSettings(next);
@@ -1800,6 +1873,7 @@ export default function App() {
     setTickerSettings(next);
     saveTickerEnabled(next.enabled);
     saveTickerSpeed(next.speedSec);
+    saveTickerMetrics(next.metrics);
   };
   const handleMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
   const handleVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
@@ -1894,7 +1968,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.3.8 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.3.9 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
