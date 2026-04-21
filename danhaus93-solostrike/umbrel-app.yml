@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.3.6"
+version: "1.3.8"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,22 +76,30 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.3.6 — Regression fix for v1.3.5 Settings UI.
+  v1.3.8 — Branding polish.
 
 
-  FIXES:
+  CHANGES:
+
+  • Latest Block strip now leads with the Bitcoin ₿ symbol instead of the
+  pickaxe (the pickaxe still lives in the Setup screen where it belongs)
+
+  • New GitHub icon link in the footer — tap to view the source repo at
+  github.com/danhaus93-ops/solostrike-umbrel
+
+  • Footer version bumped to v1.3.8
+
+
+  CARRIED FORWARD FROM v1.3.7:
+
+  • Clock time and date in the header render in amber
+
+  • Card drag handle (≡) renders in amber
+
+
+  CARRIED FORWARD FROM v1.3.6:
 
   • Restored the inner scroll box on the Display settings "Metrics" list
-  (was accidentally regressed in v1.3.5 packaging — metrics list now fits
-  in a fixed 220px scrollable container again instead of making the whole
-  Settings modal massively long)
-
-  • Restored correct spacing and padding on metric rows and category headers
-
-  • Footer version bumped to v1.3.6
-
-
-  No behavioral changes beyond restoring the intended v1.3.4 scroll layout.
 
 
   CARRIED FORWARD FROM v1.3.5:
