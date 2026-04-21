@@ -1461,4 +1461,473 @@ function WebhooksTab() {
     try {
       const r = await fetch('/api/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name:newName || 'Webhook', url:newUrl.trim(), events:newEvents }) });
       if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || 'Add failed'); }
-      setNewUrl(​​​​​​​​​​​​​​​​
+      setNewUrl(''); setNewName(''); setNewEvents(['block_found']);
+      await load();
+    } catch(e){ setErr(e.message); } finally { setBusy(false); }
+  };
+  const del = async (id) => { await fetch(`/api/webhooks/${id}`, { method:'DELETE' }); await load(); };
+  const EVENT_LABELS = { block_found:'Block Found', worker_offline:'Worker Offline', worker_online:'Worker Online' };
+  const toggleEvent = (ev) => setNewEvents(list => list.includes(ev) ? list.filter(x=>x!==ev) : [...list, ev]);
+  return (
+    <>
+      <p style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'0.75rem'}}>
+        POST JSON events to any URL. Use with Discord webhooks, Telegram bots, ntfy.sh topics, Home Assistant, etc.
+      </p>
+      {hooks.length > 0 && (
+        <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',marginBottom:'1rem'}}>
+          {hooks.map(h => (
+            <div key={h.id} style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.55rem 0.7rem',display:'flex',alignItems:'center',gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',color:'var(--text-1)',fontWeight:600}}>{h.name}</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.url}</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--cyan)',letterSpacing:'0.08em',textTransform:'uppercase',marginTop:2}}>{(h.events||[]).map(e=>EVENT_LABELS[e]||e).join(' · ')}</div>
+              </div>
+              <button onClick={()=>del(h.id)} style={{background:'none',border:'1px solid rgba(255,59,59,0.4)',color:'var(--red)',padding:'4px 8px',cursor:'pointer',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em'}}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.8rem',display:'flex',flexDirection:'column',gap:'0.5rem'}}>
+        <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)'}}>Add Webhook</div>
+        <input type="text" value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Name (e.g. Discord)" maxLength={50}
+          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
+        <input type="text" value={newUrl} onChange={e=>setNewUrl(e.target.value)} placeholder="https://discord.com/api/webhooks/..." spellCheck={false} autoCorrect="off" autoCapitalize="off"
+          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.72rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          {Object.keys(EVENT_LABELS).map(ev => (
+            <button key={ev} onClick={()=>toggleEvent(ev)}
+              style={{padding:'0.35rem 0.6rem',background:newEvents.includes(ev)?'var(--bg-raised)':'transparent',border:`1px solid ${newEvents.includes(ev)?'var(--cyan)':'var(--border)'}`,color:newEvents.includes(ev)?'var(--cyan)':'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer'}}>
+              {EVENT_LABELS[ev]}
+            </button>
+          ))}
+        </div>
+        {err && <div style={{fontSize:'0.7rem',color:'var(--red)'}}>⚠ {err}</div>}
+        <button onClick={add} disabled={busy || !newUrl.trim() || !newEvents.length}
+          style={{padding:'0.55rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer',opacity:(busy||!newUrl.trim()||!newEvents.length)?0.5:1}}>
+          {busy?'ADDING…':'+ ADD WEBHOOK'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── Worker Detail Modal — NOW WITH CLICKABLE IP LINK ─────────────────────────
+function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
+  const [copied, setCopied] = useState('');
+  const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
+  const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setAliasVal(aliases[worker.name] || '');
+    setNoteVal(notes[worker.name] || '');
+    setDirty(false);
+  }, [worker.name, aliases, notes]);
+
+  const w = worker;
+  const on = w.status !== 'offline';
+  const raw = w.sharesCount || 0;
+  const rawRej = w.rejectedCount || 0;
+  const work = w.shares || 0;
+  const workRej = w.rejected || 0;
+  const totalWork = work + workRej || 1;
+  const acceptRate = ((work / totalWork) * 100).toFixed(2);
+  const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
+  const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
+  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
+  const freshness = (() => {
+    const age = Date.now() - (w.lastSeen || 0);
+    if (age < 2*60*1000) return 'fresh (<2m)';
+    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
+    return `offline (${Math.floor(age/60000)}m)`;
+  })();
+
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
+  const stratumUrl      = `stratum+tcp://${host}:3333`;
+  const stratumUrlHobby = `stratum+tcp://${host}:3334`;
+  const minerUrl        = w.ip ? `http://${w.ip}` : null;
+
+  const copy = async (val, lbl) => {
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopied(lbl); setTimeout(() => setCopied(''), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = val; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); setCopied(lbl); setTimeout(()=>setCopied(''),2000); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
+
+  const save = () => {
+    const nextA = { ...aliases };
+    if (!aliasVal.trim()) delete nextA[w.name]; else nextA[w.name] = aliasVal.trim().slice(0, 32);
+    onAliasesChange(nextA);
+    const nextN = { ...notes };
+    if (!noteVal.trim()) delete nextN[w.name]; else nextN[w.name] = noteVal.trim().slice(0, 200);
+    onNotesChange(nextN);
+    setDirty(false);
+  };
+
+  const exportCsv = () => {
+    const rows = [
+      ['# generated_at_utc', new Date().toISOString()],
+      ['# worker', w.name],
+      ['field','value'],
+      ['hashrate_hps', w.hashrate || 0],
+      ['current_difficulty', w.diff || 0],
+      ['best_share', Math.round(w.bestshare || 0)],
+      ['work_accepted', work],
+      ['work_rejected', workRej],
+      ['ip', w.ip || ''],
+    ];
+    const csv = rows.map(r => r.map(v => {
+      const s = String(v == null ? '' : v);
+      if (/[,"\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+      return s;
+    }).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `solostrike-worker-${stripAddr(w.name).replace(/[^A-Za-z0-9]/g,'_')}-${Date.now()}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  };
+
+  const section = { marginBottom:'1rem' };
+  const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
+  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'65%' };
+  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
+  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
+  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)', lineHeight:1 };
+  const btn = { padding:'0.55rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', flex:1, minWidth:'48%' };
+  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none', boxSizing:'border-box' };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
+        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem'}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:4}}>
+              <span style={{fontSize:16,color:'var(--cyan)'}}>{w.minerIcon || '▪'}</span>
+              <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
+            </div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
+              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
+            </div>
+            <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+              <span style={{color:on?'var(--green)':'var(--red)'}}>{on?'ONLINE':'OFFLINE'}</span>
+              <span style={{color:'var(--text-3)',marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):'—'}</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px',flexShrink:0}}>✕</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
+            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
+          </div>
+
+          {/* NEW: Prominent Miner Web UI link if we have an IP */}
+          {minerUrl && (
+            <div style={{...section, marginBottom:'1.25rem'}}>
+              <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
+                display:'flex', alignItems:'center', gap:'0.7rem',
+                padding:'0.8rem 1rem',
+                background:'linear-gradient(90deg, rgba(0,255,209,0.1) 0%, rgba(0,255,209,0.02) 100%)',
+                border:'1px solid rgba(0,255,209,0.35)',
+                textDecoration:'none', cursor:'pointer',
+                boxShadow:'0 0 12px rgba(0,255,209,0.08)',
+              }}>
+                <span style={{fontSize:22, flexShrink:0}}>🌐</span>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>OPEN MINER WEB UI</div>
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{minerUrl}</div>
+                </div>
+                <span style={{color:'var(--cyan)', fontSize:16, fontFamily:'var(--fm)', flexShrink:0}}>↗</span>
+              </a>
+            </div>
+          )}
+
+          <div style={section}>
+            <div style={secTitle}>▸ Shares</div>
+            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
+            {workRej > 0 && (
+              <>
+                <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
+              </>
+            )}
+            {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
+            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
+            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
+          </div>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Connection</div>
+            <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
+            <div style={kvRow}>
+              <span style={kvLabel}>Miner IP</span>
+              {w.ip ? (
+                <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{...kvVal, color:'var(--cyan)', textDecoration:'underline', cursor:'pointer', fontWeight:600}}>
+                  {w.ip} ↗
+                </a>
+              ) : (
+                <span style={{...kvVal, color:'var(--text-3)'}}>— <span style={{fontSize:'0.6rem'}}>(waiting for auth)</span></span>
+              )}
+            </div>
+            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
+          </div>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Health</div>
+            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
+            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
+            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
+          </div>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Options</div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
+              <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
+            </div>
+            <div style={{marginBottom:'0.6rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
+              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
+            </div>
+            {dirty && (
+              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
+            )}
+          </div>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Actions</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
+              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
+              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?'✓ Copied':'Copy Miner IP'}</button>}
+              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
+              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Card order + currency helpers ─────────────────────────────────────────────
+const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'closestcalls', 'blocks', 'topfinders', 'recent'];
+function loadOrder() {
+  try {
+    const saved = localStorage.getItem(LS_CARD_ORDER);
+    if (!saved) return DEFAULT_ORDER;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return DEFAULT_ORDER;
+    const merged = [...parsed];
+    DEFAULT_ORDER.forEach(k => { if (!merged.includes(k)) merged.push(k); });
+    return merged.filter(k => DEFAULT_ORDER.includes(k));
+  } catch { return DEFAULT_ORDER; }
+}
+function saveOrder(order) { try { localStorage.setItem(LS_CARD_ORDER, JSON.stringify(order)); } catch {} }
+function loadCurrency() { try { return localStorage.getItem(LS_CURRENCY) || 'USD'; } catch { return 'USD'; } }
+function saveCurrency(c) { try { localStorage.setItem(LS_CURRENCY, c); } catch {} }
+
+// ── App ───────────────────────────────────────────────────────────────────────
+export default function App() {
+  const { state, connected, blockAlert, saveConfig, getConfig } = usePool();
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsCfg, setSettingsCfg] = useState(null);
+  const [dismissedAlert, setDismissedAlert] = useState(false);
+  const [order, setOrder] = useState(loadOrder);
+  const [currency, setCurrency] = useState(loadCurrency);
+  const [draggedId, setDraggedId] = useState(null);
+  const [, setDragOverId] = useState(null);
+  const [aliases, setAliases] = useState(loadAliases);
+  const [notes, setNotes] = useState(loadNotes);
+  const [selectedWorker, setSelectedWorker] = useState(null);
+
+  const [stripSettings, setStripSettings] = useState(() => ({
+    enabled: loadStripEnabled(),
+    metrics: loadStripMetrics(),
+    chunkSize: loadStripChunk(),
+    fadeMs: loadStripFade(),
+  }));
+  const [tickerSettings, setTickerSettings] = useState(() => ({
+    enabled: loadTickerEnabled(),
+    speedSec: loadTickerSpeed(),
+  }));
+  const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
+  const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
+
+  const [tickerSnapshot, setTickerSnapshot] = useState('');
+  useEffect(() => {
+    if (tickerSnapshot) return;
+    const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
+    if (!hasData) return;
+    const online = (state.workers||[]).filter(w=>w.status!=='offline').length;
+    const luckVal = state.luck?.luck;
+    const items = [
+      `WORKERS ${online}/${(state.workers||[]).length}`,
+      `HEIGHT ${fmtNum(state.network?.height)}`,
+      `DIFFICULTY ${fmtDiff(state.network?.difficulty)}`,
+      `NET HASHRATE ${fmtHr(state.network?.hashrate)}`,
+      `WORK ${fmtDiff(state.shares?.accepted || 0)}`,
+      `EXPECTED ${fmtOdds(state.odds?.expectedDays)}`,
+      `BEST ${fmtDiff(state.bestshare||0)}`,
+      luckVal!=null ? `LUCK ${fmtPct(luckVal,1)}` : null,
+      state.retarget ? `RETARGET ${state.retarget.remainingBlocks}B (${fmtPct(state.retarget.difficultyChange,2)})` : null,
+    ].filter(Boolean);
+    setTickerSnapshot(items.join('   ·   '));
+  }, [state, tickerSnapshot]);
+
+  const handleStripSettingsChange = (next) => {
+    setStripSettings(next);
+    saveStripEnabled(next.enabled);
+    saveStripMetrics(next.metrics);
+    saveStripChunk(next.chunkSize);
+    saveStripFade(next.fadeMs);
+  };
+  const handleTickerSettingsChange = (next) => {
+    setTickerSettings(next);
+    saveTickerEnabled(next.enabled);
+    saveTickerSpeed(next.speedSec);
+  };
+  const handleMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
+  const handleVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
+
+  useEffect(()=>{ if(blockAlert) setDismissedAlert(false); }, [blockAlert]);
+
+  const openSettings = async () => {
+    try { const c=await getConfig(); setSettingsCfg(c); } catch {}
+    setShowSettings(true);
+  };
+  const handleCurrencyChange = (c) => { setCurrency(c); saveCurrency(c); };
+  const handleResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
+  const handleAliasesChange = (a) => { setAliases(a); saveAliases(a); };
+  const handleNotesChange = (n) => { setNotes(n); saveNotes(n); };
+
+  const onDragStart = (id) => setDraggedId(id);
+  const onDragOver  = (id) => setDragOverId(id);
+  const onDrop      = (targetId) => {
+    if (!draggedId || draggedId === targetId) { setDraggedId(null); setDragOverId(null); return; }
+    const next = [...order];
+    const from = next.indexOf(draggedId);
+    const to   = next.indexOf(targetId);
+    if (from < 0 || to < 0) { setDraggedId(null); setDragOverId(null); return; }
+    next.splice(from, 1); next.splice(to, 0, draggedId);
+    setOrder(next); saveOrder(next); setDraggedId(null); setDragOverId(null);
+  };
+  useEffect(() => {
+    const endDrag = () => { setDraggedId(null); setDragOverId(null); };
+    window.addEventListener('dragend', endDrag);
+    return () => window.removeEventListener('dragend', endDrag);
+  }, []);
+
+  if (state.status==='loading') return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.2em',color:'var(--text-2)',textTransform:'uppercase',animation:'pulse 1.5s ease-in-out infinite'}}>
+      Connecting to pool…
+    </div>
+  );
+  if (state.status==='no_address'||state.status==='setup') return <SetupScreen onComplete={()=>window.location.reload()}/>;
+
+  const cards = {
+    hashrate:     { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
+    workers:      { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
+    network:      { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
+    node:         { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
+    odds:         { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
+    luck:         { spanTwo:false, el:<LuckGauge luck={state.luck}/> },
+    retarget:     { spanTwo:false, el:<RetargetPanel retarget={state.retarget}/> },
+    shares:       { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare}/> },
+    best:         { spanTwo:false, el:<BestShareLeaderboard workers={state.workers} poolBest={state.bestshare} aliases={aliases}/> },
+    closestcalls: { spanTwo:false, el:<ClosestCallsPanel closestCalls={state.snapshots?.closestCalls} aliases={aliases}/> },
+    blocks:       { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
+    topfinders:   { spanTwo:false, el:<TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/> },
+    recent:       { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
+  };
+
+  const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
+  const tickerVisible        = !minimalMode && tickerSettings.enabled;
+  const latestBlockVisible   = !minimalMode;
+  const customStripVisible   = !minimalMode && stripSettings.enabled;
+
+  return (
+    <>
+      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflowX:'clip'}}>
+        <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
+          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode} zmq={state.zmq}/>
+          <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
+          {latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
+          <CustomizableTopStrip
+            state={state}
+            aliases={aliases}
+            currency={currency}
+            uptime={state.uptime}
+            enabled={customStripVisible}
+            metricIds={stripSettings.metrics}
+            chunkSize={stripSettings.chunkSize}
+            fadeMs={stripSettings.fadeMs}
+          />
+          <SyncWarningBanner sync={state.sync}/>
+        </div>
+        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflowX:'clip'}}>
+          <div className="ss-grid" style={{minWidth:0,maxWidth:'100%'}}>
+            {order.map(id=>{
+              if (!effectiveVisibleCards.includes(id)) return null;
+              const c = cards[id];
+              if (!c || !c.el) return null;
+              return (
+                <DraggableCard key={id} id={id} spanTwo={c.spanTwo} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} draggedId={draggedId}>
+                  {c.el}
+                </DraggableCard>
+              );
+            })}
+          </div>
+        </main>
+        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
+          <span>SoloStrike v1.3.8 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+          </a>
+          <span>Ports <span style={{color:'var(--cyan)'}}>3333</span> · <span style={{color:'var(--cyan)'}}>3334</span></span>
+        </footer>
+      </div>
+      {showSettings&&<SettingsModal
+        onClose={()=>setShowSettings(false)}
+        saveConfig={saveConfig}
+        currentConfig={settingsCfg}
+        currency={currency}
+        onCurrencyChange={handleCurrencyChange}
+        onResetLayout={handleResetLayout}
+        workers={state.workers}
+        aliases={aliases}
+        onAliasesChange={handleAliasesChange}
+        stripSettings={stripSettings}
+        onStripSettingsChange={handleStripSettingsChange}
+        tickerSettings={tickerSettings}
+        onTickerSettingsChange={handleTickerSettingsChange}
+        minimalMode={minimalMode}
+        onMinimalModeChange={handleMinimalModeChange}
+        visibleCards={visibleCards}
+        onVisibleCardsChange={handleVisibleCardsChange}
+      />}
+      {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
+      <OfflineToasts workers={state.workers} aliases={aliases}/>
+      {selectedWorker && (() => {
+        const live = (state.workers || []).find(w => w.name === selectedWorker.name) || selectedWorker;
+        return <WorkerDetailModal worker={live} onClose={()=>setSelectedWorker(null)} aliases={aliases} onAliasesChange={handleAliasesChange} notes={notes} onNotesChange={handleNotesChange}/>;
+      })()}
+    </>
+  );
+}
