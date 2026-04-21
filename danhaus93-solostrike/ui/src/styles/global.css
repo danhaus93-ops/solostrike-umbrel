@@ -1,6 +1,7 @@
 :root {
   --bg-void:#060708;--bg-deep:#0b0d0f;--bg-surface:#101316;--bg-raised:#161b20;--bg-elevated:#1c2129;
   --amber:#F5A623;--amber-hot:#FF7A00;--amber-dim:#6B4710;
+  --btc-orange:#F7931A;--btc-orange-glow:rgba(247,147,26,0.45);
   --cyan:#00FFD1;--red:#FF3B3B;--green:#39FF6A;
   --text-1:#EAD9C0;--text-2:#6B6050;--text-3:#302C27;
   --border:rgba(245,166,35,0.1);--border-hot:rgba(245,166,35,0.35);
