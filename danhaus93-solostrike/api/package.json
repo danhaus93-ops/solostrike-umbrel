@@ -1,0 +1,14 @@
+{
+  "name": "solostrike-api",
+  "version": "1.3.0",
+  "main": "src/server.js",
+  "scripts": { "start": "node src/server.js" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "cors": "^2.8.5",
+    "chokidar": "^3.6.0",
+    "fs-extra": "^11.2.0"
+  }
+}
