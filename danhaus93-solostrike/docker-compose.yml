@@ -70,3 +70,11 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+
+  widget-server:
+    image: ghcr.io/danhaus93-ops/solostrike-widget-server:latest
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      - SOLOSTRIKE_API_URL=http://api:3001
