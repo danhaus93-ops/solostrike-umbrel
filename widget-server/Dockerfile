@@ -1,28 +1,28 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: Compile the Bun app into a static binary for the target platform
-FROM oven/bun:1.2 AS builder
-ARG TARGETPLATFORM
-WORKDIR /build
+# Single-stage: use the official Bun slim image as both build and runtime.
+# On native arm64 runners this gives us a native arm64 bun; on amd64 runners,
+# a native amd64 bun. No cross-compilation required.
+FROM oven/bun:1-slim
 
-# Install deps (no lockfile required — we have no runtime deps anyway)
+WORKDIR /app
+
+# Copy manifest first for layer caching
 COPY package.json ./
-RUN bun install || true
 
-# Copy source
+# No runtime deps in this server, but running install creates an empty
+# node_modules so bun can resolve types cleanly. Ignore failures since
+# @types/bun is a dev dep only and the runtime doesn't need it.
+RUN bun install --production || true
+
+# Copy the rest of the source
 COPY . .
 
-# Select the correct Bun compile target based on Docker buildx platform
-RUN set -ex; \
-    case "$TARGETPLATFORM" in \
-      "linux/amd64") BUN_TARGET="bun-linux-x64-modern" ;; \
-      "linux/arm64") BUN_TARGET="bun-linux-arm64" ;; \
-      *) echo "Unsupported platform: $TARGETPLATFORM" && exit 1 ;; \
-    esac; \
-    bun build ./index.ts --compile --target=$BUN_TARGET --outfile=/build/server
-
-# Stage 2: Minimal distroless runtime
-FROM gcr.io/distroless/base-debian12
-COPY --from=builder /build/server /server
+# The widget server listens on 3000 internally
 EXPOSE 3000
-ENTRYPOINT ["/server"]
+
+# Drop the default root user provided by the bun image
+USER bun
+
+# Run directly with bun — no compile step needed
+CMD ["bun", "run", "index.ts"]
