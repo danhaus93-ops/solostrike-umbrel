@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.4.0"
+version: "1.5.0"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,72 +76,31 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.4.0 — Parity & Polish: multi-arch builds, centered BTC badge, live ticker.
+  v1.5.0 — umbrelOS Widget! See your pool stats from the home screen.
 
 
-  CHANGES:
+  NEW:
 
-  • Docker images are now built for BOTH linux/amd64 AND linux/arm64
-  architectures. SoloStrike now runs natively on Raspberry Pi (any umbrelOS
-  ARM64 device) in addition to Umbrel Home and other x86-64 hardware. If
-  you're on a Pi, the update should install cleanly for the first time.
+  • 🖥️ umbrelOS HOME SCREEN WIDGET — SoloStrike now ships with a native
+  4-stat widget you can pin to your umbrelOS home screen. Shows Pool
+  Hashrate, Connected Workers, Blocks Found, and Best Difficulty at a
+  glance, refreshing every 10 seconds.
 
-  • The orange Bitcoin ₿ badge in the Latest Block strip now sits perfectly
-  centered in its disc. Previously the glyph drifted up and to the left due
-  to the font metrics of the ₿ character — now corrected with a 1px optical
-  nudge so it lines up cleanly with the orange ring.
-
-  • The scrolling ticker now refreshes its values every 30 seconds instead
-  of staying frozen at page load. Hashrate, block prize, congestion, and all
-  other ticker metrics now reflect current state without requiring a reload.
-
-  • Added --btc-orange and --btc-orange-glow CSS custom properties so future
-  Bitcoin-branded touches stay consistent with the canonical #F7931A
-  Bitcoin orange. Internal refactor; no visual change.
-
-  • Footer version bumped to v1.4.0
+  • The widget runs as a tiny separate service so it never interferes with
+  the main pool or dashboard.
 
 
-  CARRIED FORWARD FROM v1.3.9:
+  FIXED:
 
-  • Orange-on-black Bitcoin ₿ badge on the Latest Block strip
-
-  • Fully customizable scrolling ticker — 29 metrics across 6 categories
-
-  • "Match Top Strip" one-tap button to mirror your top-strip selection
-
-  • Ticker rebuilds when you change your metric selection
+  • The orange Bitcoin ₿ glyph in the Latest Block strip is now properly
+  centered.
 
 
-  CARRIED FORWARD FROM v1.3.8:
+  CARRIED FORWARD FROM v1.4.0:
 
-  • Latest Block strip leads with the Bitcoin ₿ symbol
+  • Multi-arch Docker images (linux/amd64 + linux/arm64)
 
-  • GitHub icon link in the footer
-
-
-  CARRIED FORWARD FROM v1.3.7:
-
-  • Clock time and date in the header render in amber
-
-  • Card drag handle (≡) renders in amber
-
-
-  CARRIED FORWARD FROM v1.3.4:
-
-  • Closest Calls card — pool-wide historical leaderboard of the top 10
-  highest-difficulty shares ever submitted
-
-  • Daily snapshots — automatic UTC midnight rollup, 90 days retained
-
-  • Miner IP capture with clickable link to each miner's web UI
-
-
-  CARRIED FORWARD FROM v1.3.3:
-
-  • ZMQ status badge in header (🟢 active / 🟡 idle / ⚪ off)
-
-  • Dual stratum ports 3333 (ASIC) + 3334 (hobby miners)
+  • Live-refreshing scrolling ticker
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
@@ -157,4 +116,23 @@ defaultUsername: ""
 defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
+widgets:
+  - id: "stats"
+    type: "four-stats"
+    refresh: "10s"
+    endpoint: "widget-server:3000/widgets/pool"
+    link: ""
+    example:
+      type: "four-stats"
+      link: ""
+      items:
+        - title: "Pool Hashrate"
+          text: "542.8"
+          subtext: "GH/s"
+        - title: "Workers"
+          text: "3"
+        - title: "Blocks Found"
+          text: "0"
+        - title: "Best Diff"
+          text: "1.2B"
 icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
