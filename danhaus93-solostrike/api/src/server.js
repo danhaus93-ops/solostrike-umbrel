@@ -66,11 +66,11 @@ const state = {
   status: 'loading',
   privateMode: false,
   minimalMode: false,
-  workers: [],
+  workers: {},
   blocks: [],
   closestCalls: [],
   bestshare: 0,
-  hashrate: { current:0, hour:0, day:0, week:0 },
+  hashrate: { current:0, hour:0, day:0, history: [], week: [], averages: {} },
   hashrateHistory: [],
   network: { height:0, hashrate:0, difficulty:0 },
   latestBlock: null,
@@ -78,8 +78,9 @@ const state = {
   prices: {},
   netBlocks: [],
   topFinders: [],
-  snapshots: { daily: [] },
+  snapshots: { daily: [], closestCalls: [], lastRollupDate: null },
   bitcoind: { synced:false, progress:0 },
+  shares: { accepted: 0, rejected: 0, acceptedCount: 0, rejectedCount: 0, stale: 0, sps1m: 0 },
   uptime: 0,
   totalWorkers: 0,
   zmq: { enabled:false, lastBlockHeardAt:null, endpoint:null },
@@ -181,9 +182,12 @@ async function btcRpc(method, params = []) {
 
 async function pollBitcoind() {
   try {
+    state.uptime = Math.floor((Date.now() - bootTime) / 1000);
+
     const info = await btcRpc('getblockchaininfo');
     if (!info) {
       state.nodeInfo = { connected: false, subversion: '', peers: 0, peersIn: 0, peersOut: 0, relayFee: 0, mempoolCount: 0, mempoolBytes: 0 };
+      state.sync = null;
       return;
     }
     state.bitcoind.synced = info.initialblockdownload === false;
@@ -191,10 +195,23 @@ async function pollBitcoind() {
     state.network.height = info.blocks || 0;
     state.network.difficulty = info.difficulty || 0;
 
+    const headers   = info.headers || info.blocks || 0;
+    const blocksN   = info.blocks || 0;
+    const progress  = info.verificationprogress || 0;
+    const behind    = Math.max(0, headers - blocksN);
+    const warn      = !state.bitcoind.synced || behind > 0 || progress < 0.9999;
+    state.sync = {
+      synced: state.bitcoind.synced,
+      progress,
+      headers,
+      blocks: blocksN,
+      behind,
+      warn,
+    };
+
     const hashinfo = await btcRpc('getnetworkhashps', []);
     if (hashinfo) state.network.hashrate = hashinfo;
 
-    // Node info for Bitcoin Node panel (v1.5.5+)
     const netinfo   = await btcRpc('getnetworkinfo') || {};
     const meminfo   = await btcRpc('getmempoolinfo') || {};
     const peerinfo  = await btcRpc('getpeerinfo')   || [];
@@ -209,7 +226,6 @@ async function pollBitcoind() {
       mempoolBytes: meminfo.bytes || 0,
     };
 
-    // Latest block
     const lbHash = info.bestblockhash;
     if (lbHash) {
       const b = await btcRpc('getblock', [lbHash, 1]);
@@ -389,7 +405,6 @@ app.get('/api/version', (req, res) => res.json({
   uptimeSeconds: Math.floor((Date.now() - bootTime)/1000),
 }));
 
-// Umbrel widget endpoint (four-stats type for compatibility with Umbrel Home widget system)
 app.get('/widget/stats', (req, res) => {
   const formatHashrate = (hps) => {
     if (!hps || hps < 0 || !Number.isFinite(hps)) return { text: '0', subtext: 'H/s' };
@@ -398,8 +413,7 @@ app.get('/widget/stats', (req, res) => {
     while (val >= 1000 && unit < units.length - 1) { val /= 1000; unit++; }
     return { text: val.toFixed(1), subtext: units[unit] };
   };
-
-    const formatCompact = (n) => {
+  const formatCompact = (n) => {
     if (!n || n < 0 || !Number.isFinite(n)) return '0';
     if (n < 1000) return Math.round(n).toString();
     if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
@@ -434,9 +448,6 @@ app.get('/widget/stats', (req, res) => {
   }
 });
 
-// Live stratum port health (v1.5.4+)
-// Returns health status for all stratum ports, refreshed every 30s by background poller.
-// Frontend uses this to color-code port numbers in the footer.
 app.get('/api/stratum-health', (req, res) => {
   res.json(getStratumHealth());
 });
@@ -463,7 +474,6 @@ app.get('/metrics', (req, res) => {
   res.set('content-type', 'text/plain; version=0.0.4').send(lines.join('\n') + '\n');
 });
 
-// Webhooks
 app.get('/api/webhooks', (req, res) => {
   res.json({ hooks: (state.webhooks || []).map(h => ({ id:h.id, name:h.name, url:h.url, events:h.events })) });
 });
@@ -488,7 +498,6 @@ app.post('/api/webhooks', async (req, res) => {
   res.json({ hooks: (state.webhooks || []).map(h => ({ id:h.id, name:h.name, url:h.url, events:h.events })) });
 });
 
-// CSV exports
 app.get('/api/export/workers.csv', rateLimit, (req, res) => {
   const s = transformState(state);
   const rows = (s.workers||[]).map(w => ({
@@ -523,7 +532,6 @@ app.get('/api/export/snapshots.csv', rateLimit, (req, res) => {
   res.set('content-type', 'text/csv').send(rowsToCsv(rows));
 });
 
-// Setup endpoint (accepts payoutAddress + poolName)
 app.post('/api/setup', async (req, res) => {
   const { payoutAddress, poolName, privateMode } = req.body || {};
   const addr = (payoutAddress || '').trim();
@@ -573,7 +581,6 @@ const handleSettings = async (req, res) => {
   if (b.poolName !== undefined) cfg.poolName = (b.poolName || 'SoloStrike').trim() || 'SoloStrike';
   if (b.privateMode !== undefined) { cfg.privateMode = !!b.privateMode; state.privateMode = cfg.privateMode; }
   await saveConfigDisk(cfg);
-  // Broadcast config change to all connected clients (v1.5.5+)
   broadcast({ type: 'CONFIG', data: { poolName: cfg.poolName || 'SoloStrike', privateMode: !!cfg.privateMode, hasAddress: !!cfg.payoutAddress } });
   res.json({ ok: true });
 };
@@ -590,7 +597,6 @@ async function boot() {
   if (persist.webhooks) state.webhooks = persist.webhooks;
   state.privateMode = !!cfg.privateMode;
 
-  // Main polls
   setInterval(pollBitcoind, 15000);
   setInterval(pollMempool,  60000);
   setInterval(pollBlocks,   120000);
@@ -612,4 +618,3 @@ async function boot() {
 }
 
 boot();
-      
