@@ -81,7 +81,7 @@ const state = {
   snapshots: { daily: [], closestCalls: [], lastRollupDate: null },
   bitcoind: { synced:false, progress:0 },
   shares: { accepted: 0, rejected: 0, acceptedCount: 0, rejectedCount: 0, stale: 0, sps1m: 0 },
-  uptime: 0,
+  uptime: Date.now(),
   totalWorkers: 0,
   zmq: { enabled:false, lastBlockHeardAt:null, endpoint:null },
   webhooks: [],
@@ -182,7 +182,7 @@ async function btcRpc(method, params = []) {
 
 async function pollBitcoind() {
   try {
-    state.uptime = Math.floor((Date.now() - bootTime) / 1000);
+    state.uptime = bootTime;
 
     const info = await btcRpc('getblockchaininfo');
     if (!info) {
