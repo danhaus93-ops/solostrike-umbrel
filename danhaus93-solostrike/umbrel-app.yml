@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.5.1"
+version: "1.5.2"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,35 +76,79 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.5.0 — umbrelOS Widget! See your pool stats from the home screen.
+  v1.5.2 — 5-step Onboarding Wizard for first-time setup.
 
 
   NEW:
 
-  • 🖥️ umbrelOS HOME SCREEN WIDGET — SoloStrike now ships with a native
-  4-stat widget you can pin to your umbrelOS home screen. Shows Pool
-  Hashrate, Connected Workers, Blocks Found, and Best Difficulty at a
-  glance, refreshing every 10 seconds.
+  • 🧭 GUIDED ONBOARDING WIZARD — First-time installers now walk through
+  a 5-step setup flow instead of seeing a single bare input field.
+  Step 1 welcomes you with key value props. Step 2 collects your payout
+  address with clear validation. Step 3 shows stratum URLs with scannable
+  QR codes for both ASIC port (3333) and hobby port (3334). Step 4 watches
+  in real-time for your first miner to connect and celebrates when it does.
+  Step 5 tours you through the dashboard's headline features.
 
-  • The widget runs as a tiny separate service so it never interferes with
-  the main pool or dashboard.
+  • 📱 SCANNABLE STRATUM QR CODES — Point your miner's web UI camera (if
+  it has one) at the QR code to auto-fill the stratum URL. Works great
+  with BitAxe and NerdQaxe web interfaces.
+
+  • ✅ AUTO-DETECT FIRST CONNECTION — The wizard polls the pool API every
+  three seconds and confirms the moment your first worker starts
+  submitting shares. Big green checkmark, worker name shown.
 
 
-  FIXED:
+  POLISH:
 
-  • The orange Bitcoin ₿ glyph in the Latest Block strip is now properly
-  centered.
+  • "Skip Setup" available on every wizard step for power users.
+
+  • Wizard only appears once per browser (localStorage-gated). Anyone
+  already running SoloStrike on v1.5.0 or v1.5.1 won't be interrupted.
+
+
+  CARRIED FORWARD FROM v1.5.1:
+
+  • 📱 Progressive Web App support — "Add to Home Screen" creates a real
+  standalone app icon with full-screen experience on iOS and Android.
+
+  • 🏷️ Branded coinbase tag: "/SoloStrike on Umbrel/" stamps any block your
+  pool finds permanently on the Bitcoin blockchain.
+
+
+  CARRIED FORWARD FROM v1.5.0:
+
+  • 🖥️ umbrelOS home screen widget showing Pool Hashrate, Workers, Blocks
+  Found, and Best Difficulty. Refreshes every 10 seconds.
 
 
   CARRIED FORWARD FROM v1.4.0:
 
-  • Multi-arch Docker images (linux/amd64 + linux/arm64)
+  • Multi-arch Docker images (linux/amd64 + linux/arm64) — runs natively on
+  Raspberry Pi, Umbrel Home, and other x86-64 hardware.
 
-  • Live-refreshing scrolling ticker
+  • Live-refreshing scrolling ticker.
+
+
+  CARRIED FORWARD FROM v1.3.9:
+
+  • Orange-on-black Bitcoin ₿ badge on the Latest Block strip.
+
+  • Fully customizable scrolling ticker — 29 metrics across 6 categories.
+
+
+  CARRIED FORWARD FROM v1.3.4:
+
+  • Closest Calls card — pool-wide historical leaderboard of the top 10
+  highest-difficulty shares ever submitted.
+
+  • Miner IP capture with clickable link to each miner's web UI.
+
+
+  CARRIED FORWARD FROM v1.3.3:
+
+  • ZMQ status badge in header, dual stratum ports 3333/3334.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
-dependencies:
-  - bitcoin
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
@@ -116,6 +160,8 @@ defaultUsername: ""
 defaultPassword: ""
 submitter: danhaus93-ops
 submission: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
 widgets:
   - id: "stats"
     type: "four-stats"
