@@ -689,1048 +689,797 @@ function BlocksCard({ state, fmtBestShareCompact }) {
   );
 }
 
+
 // ── Top Pool Finders ──────────────────────────────────────────────────────────
 function TopFindersPanel({ topFinders, netBlocks }) {
-const list = topFinders || [];
-const totalSample = (netBlocks||[]).length;
-if (!list.length) return null;
-const maxCount = list[0]?.count || 1;
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Top Pool Finders — Last {totalSample} Blocks</div>
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.35rem’}}>
-{list.map((p,i)=>{
-const pct = (p.count/maxCount)*100;
-const color = p.isSolo ? ‘var(–amber)’ : (i===0 ? ‘var(–cyan)’ : ‘var(–text-1)’);
-return (
-<div key={p.name} style={{padding:‘0.5rem 0.8rem’,background:‘var(–bg-raised)’,border:`1px solid ${i===0?'rgba(0,255,209,0.2)':'var(--border)'}`,position:‘relative’,overflow:‘hidden’, minWidth:0}}>
-<div style={{position:‘absolute’,inset:0,width:`${pct}%`,background:p.isSolo?‘rgba(245,166,35,0.06)’:‘rgba(0,255,209,0.04)’,transition:‘width 0.6s ease’}}/>
-<div style={{position:‘relative’,display:‘flex’,alignItems:‘center’,gap:‘0.6rem’}}>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.65rem’,fontWeight:700,color:i===0?‘var(–cyan)’:‘var(–text-2)’,width:18, flexShrink:0}}>#{i+1}</span>
-<div style={{flex:1,minWidth:0,fontFamily:‘var(–fd)’,fontSize:‘0.72rem’,color,letterSpacing:‘0.05em’,overflow:‘hidden’,textOverflow:‘ellipsis’,whiteSpace:‘nowrap’,textTransform:‘uppercase’}}>
-{p.name}{p.isSolo && <span style={{fontSize:‘0.5rem’,color:‘var(–amber)’,marginLeft:6,border:‘1px solid var(–amber)’,padding:‘0 4px’}}>SOLO</span>}
-</div>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.85rem’,fontWeight:700,color, flexShrink:0}}>{p.count}</span>
-</div>
-</div>
-);
-})}
-</div>
-</div>
-);
+  const list = topFinders || [];
+  const totalSample = (netBlocks||[]).length;
+  if (!list.length) return null;
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem'}}>
+        <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase'}}>TOP POOLS</span>
+        <span style={{color:'var(--text-3)',fontSize:'0.6rem',fontFamily:'var(--fd)',letterSpacing:'0.08em'}}>LAST {totalSample} BLOCKS</span>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:3}}>
+        {list.map((f,i)=>(
+          <div key={f.pool} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 7px',border:'1px solid var(--border)',borderRadius:3}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--text-3)',letterSpacing:'0.08em',width:24}}>#{i+1}</span>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',color:'var(--text-1)'}}>{f.pool}</span>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <span style={{color:'var(--text-3)',fontSize:'0.62rem',fontFamily:'var(--fm)'}}>{f.count}</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--amber)',fontWeight:700,minWidth:42,textAlign:'right'}}>{(f.pct||0).toFixed(1)}%</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-// ── Block feed ────────────────────────────────────────────────────────────────
-function BlockFeed({ blocks, blockAlert }) {
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={{…cardTitle,display:‘flex’,justifyContent:‘space-between’,alignItems:‘center’}}>
-<span>▸ Blocks Found — {(blocks||[]).length} total</span>
-{(blocks||[]).length>0 && <a href=”/api/export/blocks.csv” download style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.1em’,color:‘var(–cyan)’,textDecoration:‘none’,border:‘1px solid var(–border)’,padding:‘2px 6px’,background:‘var(–bg-raised)’}}>⬇ CSV</a>}
-</div>
-{!(blocks||[]).length?(
-<div style={{textAlign:‘center’,padding:‘1.5rem’,border:‘1px dashed var(–border)’,color:‘var(–text-2)’,fontSize:‘0.75rem’,fontFamily:‘var(–fd)’}}>No blocks found yet.<br/><span style={{color:‘var(–amber)’,fontSize:‘0.68rem’}}>Keep mining ⛏</span></div>
-):(
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.4rem’,maxHeight:240,overflowY:‘auto’}}>
-{blocks.map((b,i)=>(
-<div key={b.hash} style={{display:‘flex’,alignItems:‘center’,gap:‘0.75rem’,padding:‘0.7rem 1rem’,background:‘var(–bg-raised)’,border:`1px solid ${blockAlert&&i===0?'var(--green)':'rgba(57,255,106,0.15)'}`,animation:blockAlert&&i===0?‘blockBoom 0.6s ease’:‘none’, minWidth:0}}>
-<span style={{fontSize:16, flexShrink:0}}>💎</span>
-<div style={{flex:1,minWidth:0}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.88rem’,fontWeight:600,color:‘var(–green)’}}>#{fmtNum(b.height)}</div>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.6rem’,color:‘var(–text-2)’,overflow:‘hidden’,textOverflow:‘ellipsis’,whiteSpace:‘nowrap’}}>{b.hash?.slice(0,24)}…</div>
-</div>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.62rem’,color:‘var(–text-2)’,flexShrink:0}}>{timeAgo(b.ts)}</span>
-<a href={`https://mempool.space/block/${b.hash}`} target=”_blank” rel=“noopener noreferrer” style={{color:‘var(–text-2)’,fontSize:12, flexShrink:0}}>↗</a>
-</div>
-))}
-</div>
-)}
-</div>
-);
-}
-
-// ── Recent network blocks ─────────────────────────────────────────────────────
-function RecentBlocksPanel({ netBlocks }) {
-const list = netBlocks || [];
-if (!list.length) return null;
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Recent Network Blocks — Solo Winners ⚡</div>
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.35rem’,maxHeight:300,overflowY:‘auto’}}>
-{list.slice(0,15).map(b=>(
-<div key={b.id} style={{display:‘flex’,alignItems:‘center’,gap:‘0.6rem’,padding:‘0.55rem 0.8rem’,background:‘var(–bg-raised)’,border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?‘0 0 10px rgba(245,166,35,0.12)’:‘none’, minWidth:0}}>
-<span style={{fontSize:13,color:b.isSolo?‘var(–amber)’:‘var(–text-3)’,flexShrink:0}}>{b.isSolo?‘⚡’:‘▪’}</span>
-<div style={{flex:1,minWidth:0}}>
-<div style={{display:‘flex’,alignItems:‘center’,gap:8}}>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.78rem’,fontWeight:600,color:b.isSolo?‘var(–amber)’:‘var(–text-1)’}}>#{fmtNum(b.height)}</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.58rem’,letterSpacing:‘0.1em’,color:b.isSolo?‘var(–amber)’:‘var(–text-2)’,textTransform:‘uppercase’}}>{b.pool}</span>
-{b.isSolo && <span style={{fontFamily:‘var(–fd)’,fontSize:‘0.52rem’,color:‘var(–amber)’,border:‘1px solid var(–amber)’,padding:‘1px 5px’,letterSpacing:‘0.12em’}}>SOLO</span>}
-</div>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.58rem’,color:‘var(–text-3)’,marginTop:2}}>
-{fmtNum(b.tx_count||0)} tx · {blockTimeAgo(b.timestamp)}
-{b.reward!=null && <> · <span style={{color:‘var(–cyan)’}}>{fmtSats(b.reward)}</span></>}
-</div>
-</div>
-<a href={`https://mempool.space/block/${b.id}`} target=”_blank” rel=“noopener noreferrer” style={{color:‘var(–text-2)’,fontSize:12,flexShrink:0}}>↗</a>
-</div>
-))}
-</div>
-</div>
-);
-}
-
-// ── Confetti + BlockAlert ─────────────────────────────────────────────────────
-function Confetti() {
-const ref = useRef(null);
-useEffect(()=>{
-const canvas=ref.current; if(!canvas)return;
-const ctx=canvas.getContext(‘2d’); canvas.width=window.innerWidth; canvas.height=window.innerHeight;
-const colors=[’#F5A623’,’#00FFD1’,’#39FF6A’,’#FF7A00’,’#fff’];
-const pts=Array.from({length:150},()=>({x:Math.random()*canvas.width,y:-10,vy:3+Math.random()*5,vx:(Math.random()-.5)*4,s:3+Math.random()*6,c:colors[Math.floor(Math.random()*colors.length)],r:Math.random()*360,rv:(Math.random()-.5)*8,op:1}));
-let frame; const draw=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); let alive=false;
-pts.forEach(p=>{p.y+=p.vy;p.x+=p.vx;p.r+=p.rv;p.op-=0.007; if(p.y<canvas.height&&p.op>0)alive=true;
-ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r*Math.PI/180);ctx.globalAlpha=Math.max(0,p.op);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.5);ctx.restore();});
-if(alive)frame=requestAnimationFrame(draw);};
-frame=requestAnimationFrame(draw); return()=>cancelAnimationFrame(frame);
-},[]);
-return <canvas ref={ref} style={{position:‘fixed’,inset:0,width:‘100%’,height:‘100%’,pointerEvents:‘none’,zIndex:299}}/>;
-}
-function BlockAlert({ block, onDismiss }) {
-if(!block) return null;
-return(<>
-<Confetti/>
-<div style={{position:‘fixed’,inset:0,display:‘flex’,alignItems:‘center’,justifyContent:‘center’,zIndex:300,pointerEvents:‘none’}}>
-<div onClick={onDismiss} style={{background:‘var(–bg-surface)’,border:‘2px solid var(–green)’,padding:‘2.5rem 4rem’,textAlign:‘center’,boxShadow:‘0 0 60px rgba(57,255,106,0.4)’,animation:‘blockBoom 0.5s ease’,pointerEvents:‘auto’,cursor:‘pointer’}}>
-<div style={{fontSize:‘3.5rem’,marginBottom:‘0.5rem’}}>💎</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.7rem’,letterSpacing:‘0.3em’,textTransform:‘uppercase’,color:‘var(–green)’,marginBottom:‘0.25rem’}}>⚡ BLOCK FOUND ⚡</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘2.8rem’,fontWeight:700,color:’#fff’,textShadow:‘0 0 24px rgba(57,255,106,0.6)’}}>#{fmtNum(block.height)}</div>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.65rem’,color:‘var(–text-2)’,marginTop:‘0.4rem’}}>{block.hash?.slice(0,20)}…</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,color:‘var(–text-3)’,marginTop:‘1rem’,letterSpacing:‘0.1em’}}>TAP TO DISMISS</div>
-</div>
-</div>
-</>);
-}
-
-// ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onComplete }) {
-const [addr,setAddr]=useState(’’); const [loading,setLoading]=useState(false); const [error,setError]=useState(’’);
-const submit = async () => {
-if(!addr.trim()){setError(‘Please enter a Bitcoin address.’);return;}
-if(!isValidBtcAddress(addr)){setError(“That doesn’t look like a valid Bitcoin address.”);return;}
-setLoading(true);setError(’’);
-try{ const r=await fetch(’/api/setup’,{method:‘POST’,headers:{‘Content-Type’:‘application/json’},body:JSON.stringify({payoutAddress:addr.trim()})}); const d=await r.json(); if(!r.ok){setError(d.error||‘Invalid address.’);return;} onComplete(); }
-catch{setError(‘Cannot reach pool API.’);} finally{setLoading(false);}
-};
-return (
-<div style={{position:‘fixed’,inset:0,background:‘var(–bg-void)’,display:‘flex’,alignItems:‘center’,justifyContent:‘center’,zIndex:100,padding:‘1rem’}}>
-<div style={{width:‘100%’,maxWidth:500,background:‘var(–bg-surface)’,border:‘1px solid var(–border-hot)’,padding:‘2rem’,boxShadow:‘var(–glow-a)’}}>
-<div style={{display:‘flex’,alignItems:‘center’,gap:‘0.75rem’,marginBottom:‘0.5rem’}}>
-<span style={{fontSize:22,color:‘var(–amber)’}}>⛏</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘1.6rem’,fontWeight:700,color:‘var(–amber)’,letterSpacing:‘0.08em’}}>SOLOSTRIKE</span>
-</div>
-<p style={{fontFamily:‘var(–fd)’,fontSize:‘0.65rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:‘2rem’}}>Initial Setup — Enter Payout Address</p>
-<label style={{display:‘block’,fontFamily:‘var(–fd)’,fontSize:‘0.62rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:‘0.4rem’}}>Bitcoin Payout Address</label>
-<input style={{width:‘100%’,background:‘var(–bg-deep)’,border:`1px solid ${error?'rgba(255,59,59,0.5)':addr?'var(--border-hot)':'var(--border)'}`,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.82rem’,padding:‘0.75rem 1rem’,outline:‘none’,boxSizing:‘border-box’}}
-type=“text” placeholder=“bc1q… or 1… or 3…” value={addr} onChange={e=>{setAddr(e.target.value);setError(’’);}} onKeyDown={e=>e.key===‘Enter’&&submit()} spellCheck={false} autoCorrect=“off” autoCapitalize=“off”/>
-{error&&<div style={{background:‘rgba(255,59,59,0.08)’,border:‘1px solid rgba(255,59,59,0.3)’,padding:‘0.6rem 0.875rem’,fontSize:‘0.75rem’,color:‘var(–red)’,marginTop:‘0.75rem’}}>⚠ {error}</div>}
-<button onClick={submit} disabled={loading} style={{width:‘100%’,marginTop:‘1.5rem’,padding:‘0.875rem’,background:‘var(–amber)’,color:’#000’,border:‘none’,fontFamily:‘var(–fd)’,fontSize:‘0.85rem’,fontWeight:700,letterSpacing:‘0.15em’,textTransform:‘uppercase’,cursor:‘pointer’,opacity:loading?0.6:1}}>
-{loading?‘SAVING…’:‘START MINING →’}
-</button>
-</div>
-</div>
-);
-}
-
-// ── Settings modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
-const [tab, setTab] = useState(‘main’);
-const [addr,setAddr]=useState(’’);
-const [poolName,setPoolName]=useState(currentConfig?.poolName||‘SoloStrike’);
-const [privateMode, setPrivateMode] = useState(!!currentConfig?.privateMode);
-const [loading,setLoading]=useState(false);
-const [saved,setSaved]=useState(false);
-const [error,setError]=useState(’’);
-
-useEffect(() => {
-setPrivateMode(!!currentConfig?.privateMode);
-setPoolName(currentConfig?.poolName || ‘SoloStrike’);
-}, [currentConfig]);
-
-const submit = async () => {
-setLoading(true);setError(’’);setSaved(false);
-try{
-const p = { poolName, privateMode };
-const trimmed=addr.trim();
-if(trimmed){ if(!isValidBtcAddress(trimmed)){setError(“That doesn’t look like a valid Bitcoin address.”);setLoading(false);return;} p.payoutAddress=trimmed; }
-await saveConfig(p); setSaved(true); setAddr(’’); setTimeout(()=>setSaved(false),3000);
-} catch(e){setError(e.message);} finally{setLoading(false);}
-};
-
-const tabStyle = (active) => ({
-padding:‘0.5rem 0.55rem’, background:active?‘var(–bg-raised)’:‘transparent’,
-border:‘1px solid’, borderColor:active?‘var(–border-hot)’:‘var(–border)’,
-color:active?‘var(–amber)’:‘var(–text-2)’,
-fontFamily:‘var(–fd)’, fontSize:‘0.55rem’, letterSpacing:‘0.1em’,
-textTransform:‘uppercase’, cursor:‘pointer’, flex:1, textAlign:‘center’,
-});
-
-return (
-<div style={{position:‘fixed’,inset:0,background:‘rgba(6,7,8,0.88)’,backdropFilter:‘blur(4px)’,display:‘flex’,alignItems:‘center’,justifyContent:‘center’,zIndex:200,padding:‘1rem’}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-<div style={{width:‘100%’,maxWidth:500,background:‘var(–bg-surface)’,border:‘1px solid var(–border-hot)’,padding:‘1.5rem’,boxShadow:‘var(–glow-a)’,maxHeight:‘92vh’,overflowY:‘auto’}}>
-<div style={{display:‘flex’,justifyContent:‘space-between’,alignItems:‘center’,marginBottom:‘1rem’}}>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.85rem’,fontWeight:600,letterSpacing:‘0.1em’,textTransform:‘uppercase’,color:‘var(–amber)’}}>⚙ Settings</span>
-<button onClick={onClose} style={{background:‘none’,border:‘none’,color:‘var(–text-2)’,cursor:‘pointer’,fontSize:18}}>✕</button>
-</div>
-<div style={{display:‘flex’,gap:3,marginBottom:‘1rem’,flexWrap:‘wrap’}}>
-<button onClick={()=>setTab(‘main’)}     style={tabStyle(tab===‘main’)}>Main</button>
-<button onClick={()=>setTab(‘display’)}  style={tabStyle(tab===‘display’)}>Display</button>
-<button onClick={()=>setTab(‘privacy’)}  style={tabStyle(tab===‘privacy’)}>Privacy</button>
-<button onClick={()=>setTab(‘aliases’)}  style={tabStyle(tab===‘aliases’)}>Names</button>
-<button onClick={()=>setTab(‘hooks’)}    style={tabStyle(tab===‘hooks’)}>Webhooks</button>
-</div>
-{saved&&<div style={{background:‘rgba(57,255,106,0.06)’,border:‘1px solid rgba(57,255,106,0.2)’,padding:‘0.5rem 0.75rem’,fontSize:‘0.72rem’,color:‘var(–green)’,marginBottom:‘1rem’}}>✓ Saved</div>}
-{error&&<div style={{background:‘rgba(255,59,59,0.06)’,border:‘1px solid rgba(255,59,59,0.2)’,padding:‘0.5rem 0.75rem’,fontSize:‘0.72rem’,color:‘var(–red)’,marginBottom:‘1rem’}}>⚠ {error}</div>}
-
-```
-    {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
-    {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange} minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange} visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>}
-    {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
-    {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
-    {tab==='hooks' && <WebhooksTab />}
-  </div>
-</div>
-```
-
-);
-}
-
-function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,onResetLayout,submit,saved,loading}) {
-const [show,setShow]=useState(false);
-return (
-<>
-<label style={{display:‘block’,fontFamily:‘var(–fd)’,fontSize:‘0.6rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:‘0.4rem’}}>New Payout Address</label>
-<div style={{position:‘relative’}}>
-<input style={{width:‘100%’,background:‘var(–bg-deep)’,border:`1px solid ${addr?'var(--border-hot)':'var(--border)'}`,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.8rem’,padding:‘0.7rem 2.5rem 0.7rem 0.875rem’,outline:‘none’,boxSizing:‘border-box’}} type={show?‘text’:‘password’} placeholder=“Leave blank to keep current” value={addr} onChange={e=>setAddr(e.target.value)} spellCheck={false} autoCorrect=“off” autoCapitalize=“off”/>
-<button onClick={()=>setShow(v=>!v)} style={{position:‘absolute’,right:8,top:‘50%’,transform:‘translateY(-50%)’,background:‘none’,border:‘none’,color:‘var(–text-2)’,cursor:‘pointer’,fontSize:12}}>{show?‘🙈’:‘👁’}</button>
-</div>
-<label style={{display:‘block’,fontFamily:‘var(–fd)’,fontSize:‘0.6rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:‘0.4rem’,marginTop:‘1rem’}}>Pool Name</label>
-<input style={{width:‘100%’,background:‘var(–bg-deep)’,border:‘1px solid var(–border)’,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.8rem’,padding:‘0.7rem 0.875rem’,outline:‘none’,boxSizing:‘border-box’}} maxLength={32} value={poolName} onChange={e=>setPoolName(e.target.value)}/>
-<label style={{display:‘block’,fontFamily:‘var(–fd)’,fontSize:‘0.6rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:‘0.4rem’,marginTop:‘1rem’}}>BTC Price Currency</label>
-<select value={currency} onChange={e=>onCurrencyChange(e.target.value)} style={{width:‘100%’,background:‘var(–bg-deep)’,border:‘1px solid var(–border)’,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.8rem’,padding:‘0.7rem 0.875rem’,outline:‘none’,boxSizing:‘border-box’}}>
-{CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-</select>
-<div style={{height:1,background:‘var(–border)’,margin:‘1.25rem 0’}}/>
-<button onClick={onResetLayout} style={{width:‘100%’,padding:‘0.6rem’,background:‘var(–bg-raised)’,color:‘var(–text-2)’,border:‘1px solid var(–border)’,fontFamily:‘var(–fd)’,fontSize:‘0.7rem’,fontWeight:600,letterSpacing:‘0.1em’,textTransform:‘uppercase’,cursor:‘pointer’,marginBottom:‘0.75rem’}}>↺ Reset Card Layout</button>
-<button onClick={submit} disabled={loading} style={{width:‘100%’,padding:‘0.75rem’,background:saved?‘var(–green)’:‘var(–amber)’,color:’#000’,border:‘none’,fontFamily:‘var(–fd)’,fontSize:‘0.8rem’,fontWeight:700,letterSpacing:‘0.12em’,textTransform:‘uppercase’,cursor:‘pointer’,opacity:loading?0.6:1}}>
-{loading?‘SAVING…’:saved?‘✓ SAVED’:‘SAVE SETTINGS’}
-</button>
-</>
-);
-}
-
-// ── DisplayTab ────────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
-const toggleMetric = (id) => {
-const next = stripSettings.metrics.includes(id) ? stripSettings.metrics.filter(x => x !== id) : […stripSettings.metrics, id];
-onStripSettingsChange({ …stripSettings, metrics: next });
-};
-const moveMetric = (id, dir) => {
-const idx = stripSettings.metrics.indexOf(id);
-if (idx < 0) return;
-const swap = idx + dir;
-if (swap < 0 || swap >= stripSettings.metrics.length) return;
-const next = […stripSettings.metrics];
-const tmp = next[idx];
-next[idx] = next[swap];
-next[swap] = tmp;
-onStripSettingsChange({ …stripSettings, metrics: next });
-};
-const toggleCard = (id) => {
-const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : […visibleCards, id];
-onVisibleCardsChange(next);
-};
-const applyPreset = (preset) => onVisibleCardsChange([…preset]);
-
-const toggleTickerMetric = (id) => {
-const current = tickerSettings.metrics || [];
-const next = current.includes(id) ? current.filter(x => x !== id) : […current, id];
-onTickerSettingsChange({ …tickerSettings, metrics: next });
-};
-const moveTickerMetric = (id, dir) => {
-const current = tickerSettings.metrics || [];
-const idx = current.indexOf(id);
-if (idx < 0) return;
-const swap = idx + dir;
-if (swap < 0 || swap >= current.length) return;
-const next = […current];
-const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
-onTickerSettingsChange({ …tickerSettings, metrics: next });
-};
-const matchTickerToStrip = () => {
-onTickerSettingsChange({ …tickerSettings, metrics: […(stripSettings.metrics || [])] });
-};
-
-const sectionTitle = { fontFamily:‘var(–fd)’, fontSize:‘0.62rem’, letterSpacing:‘0.15em’, textTransform:‘uppercase’, color:‘var(–amber)’, marginBottom:‘0.5rem’, marginTop:‘1rem’ };
-const firstSectionTitle = { …sectionTitle, marginTop:0 };
-const rowLabel = { fontFamily:‘var(–fd)’, fontSize:‘0.58rem’, letterSpacing:‘0.1em’, textTransform:‘uppercase’, color:‘var(–text-2)’, marginBottom:6 };
-const btnBase = { padding:‘4px 8px’, fontFamily:‘var(–fd)’, fontSize:‘0.55rem’, letterSpacing:‘0.08em’, textTransform:‘uppercase’, cursor:‘pointer’, border:‘1px solid var(–border)’, background:‘var(–bg-raised)’, color:‘var(–text-2)’ };
-
-return (
-<>
-<div style={firstSectionTitle}>▸ Minimal Mode</div>
-<div style={{display:‘flex’, alignItems:‘center’, gap:‘0.75rem’, marginBottom:‘0.5rem’, padding:‘0.75rem 0.8rem’, background: minimalMode?‘rgba(0,255,209,0.06)’:‘var(–bg-raised)’, border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
-<div style={{flex:1}}>
-<div style={{fontFamily:‘var(–fd)’, fontSize:‘0.78rem’, color: minimalMode?‘var(–cyan)’:‘var(–text-1)’, fontWeight:700, letterSpacing:‘0.08em’, textTransform:‘uppercase’}}>Bare Bones UI</div>
-<div style={{fontFamily:‘var(–fm)’, fontSize:‘0.62rem’, color:‘var(–text-2)’, marginTop:3, lineHeight:1.4}}>
-Hides ticker, block strips, status dot, and shows only Hashrate + Workers + Blocks cards.
-</div>
-</div>
-<button onClick={()=>onMinimalModeChange(!minimalMode)}
-style={{width:46, height:26, borderRadius:13, background: minimalMode?‘var(–cyan)’:‘var(–bg-deep)’, border:‘1px solid var(–border)’, position:‘relative’, cursor:‘pointer’, flexShrink:0}}>
-<div style={{position:‘absolute’, top:2, left: minimalMode?22:2, width:20, height:20, borderRadius:‘50%’, background: minimalMode?’#000’:‘var(–text-2)’, transition:‘left 0.2s’}}/>
-</button>
-</div>
-{minimalMode && (
-<div style={{fontFamily:‘var(–fm)’, fontSize:‘0.6rem’, color:‘var(–cyan)’, marginBottom:‘0.5rem’, padding:‘0.4rem 0.6rem’, background:‘rgba(0,255,209,0.04)’, border:‘1px dashed rgba(0,255,209,0.2)’}}>
-🔇 Minimal Mode is on — settings below are overridden until you turn it off.
-</div>
-)}
-
-```
-  <div style={sectionTitle}>▸ Dashboard Cards</div>
-
-  <div style={rowLabel}>Quick presets</div>
-  <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
-    <button onClick={()=>applyPreset(MINIMAL_PRESET)}
-      style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
-      Minimal (3)
-    </button>
-    <button onClick={()=>applyPreset(DEFAULT_PRESET)}
-      style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border-hot)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
-      Default ({DEFAULT_PRESET.length})
-    </button>
-    <button onClick={()=>applyPreset(EVERYTHING_PRESET)}
-      style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
-      Everything ({EVERYTHING_PRESET.length})
-    </button>
-  </div>
-
-  <div style={rowLabel}>Individual cards (tap to toggle)</div>
-  <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-    {ALL_CARDS.map(c => {
-      const on = visibleCards.includes(c.id);
-      return (
-        <div key={c.id} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-          <button onClick={()=>toggleCard(c.id)}
-            style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
-            {on?'✓':''}
-          </button>
-          <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.78rem', color: on?'var(--text-1)':'var(--text-2)'}}>{c.label}</span>
+// ── Network card ─────────────────────────────────────────────────────────────
+function NetworkCard({ state, fmtHashrate, fmtBestShareCompact }) {
+  const n = state.network || {};
+  const b = state.bitcoind || {};
+  const blockAgo = state.latestBlock?.timestamp ? Math.floor((Date.now() - state.latestBlock.timestamp)/1000) : 0;
+  const fmtAgo = (s) => {
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s ago`;
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m ago`;
+  };
+  return (
+    <div>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:'0.5rem'}}>NETWORK</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem 0.7rem',fontFamily:'var(--fm)',fontSize:'0.72rem'}}>
+        <div>
+          <div style={{color:'var(--text-3)',fontSize:'0.58rem',letterSpacing:'0.1em',marginBottom:2}}>HASHRATE</div>
+          <div style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(n.hashrate||0)}</div>
         </div>
-      );
-    })}
-  </div>
-  <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-    Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
-  </div>
+        <div>
+          <div style={{color:'var(--text-3)',fontSize:'0.58rem',letterSpacing:'0.1em',marginBottom:2}}>DIFFICULTY</div>
+          <div style={{color:'var(--text-1)'}}>{fmtBestShareCompact(n.difficulty||0)}</div>
+        </div>
+        <div>
+          <div style={{color:'var(--text-3)',fontSize:'0.58rem',letterSpacing:'0.1em',marginBottom:2}}>HEIGHT</div>
+          <div style={{color:'var(--text-1)'}}>{(n.height||0).toLocaleString()}</div>
+        </div>
+        <div>
+          <div style={{color:'var(--text-3)',fontSize:'0.58rem',letterSpacing:'0.1em',marginBottom:2}}>BLOCK AGE</div>
+          <div style={{color:'var(--text-1)'}}>{blockAgo > 0 ? fmtAgo(blockAgo) : '—'}</div>
+        </div>
+        <div style={{gridColumn:'1 / -1',marginTop:4,paddingTop:6,borderTop:'1px solid var(--border)'}}>
+          <div style={{color:'var(--text-3)',fontSize:'0.58rem',letterSpacing:'0.1em',marginBottom:2}}>NODE</div>
+          <div style={{color:b.synced?'var(--green)':'var(--amber)',fontSize:'0.68rem'}}>{b.synced ? 'SYNCED' : `SYNCING (${((b.progress||0)*100).toFixed(2)}%)`}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  <div style={sectionTitle}>▸ Top Strip</div>
-
-  <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-    <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable top strip</span>
-    <button onClick={()=>onStripSettingsChange({ ...stripSettings, enabled: !stripSettings.enabled })}
-      style={{width:40, height:22, borderRadius:11, background: stripSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-      <div style={{position:'absolute', top:1, left: stripSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: stripSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-    </button>
-  </div>
-
-  <div style={rowLabel}>Metrics (tap to toggle, ↑↓ to reorder)</div>
-  <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-    {METRIC_CATEGORIES.map(cat => (
-      <div key={cat}>
-        <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
-        {METRICS.filter(metric => metric.category === cat).map(metric => {
-          const on = stripSettings.metrics.includes(metric.id);
-          const order = on ? stripSettings.metrics.indexOf(metric.id) : -1;
+// ── Snapshots card ───────────────────────────────────────────────────────────
+function SnapshotsCard({ state, fmtHashrate }) {
+  const snaps = state.snapshots?.daily || [];
+  if (!snaps.length) {
+    return <div style={{color:'var(--text-3)',padding:'1rem 0',textAlign:'center',fontSize:'0.72rem'}}>No daily snapshots yet. First one rolls at midnight UTC.</div>;
+  }
+  const maxAvg = Math.max(...snaps.map(s=>s.avg||0), 1);
+  return (
+    <div>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:'0.5rem'}}>DAILY SNAPSHOTS</div>
+      <div style={{display:'flex',flexDirection:'column',gap:2}}>
+        {snaps.slice(-14).reverse().map(s=>{
+          const d = new Date(s.date);
+          const label = `${d.getMonth()+1}/${d.getDate()}`;
+          const pct = maxAvg > 0 ? (s.avg / maxAvg) * 100 : 0;
           return (
-            <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-              <button onClick={()=>toggleMetric(metric.id)}
-                style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
-                {on?'✓':''}
-              </button>
-              <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
-              {on && (
-                <>
-                  <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
-                  <button onClick={()=>moveMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
-                  <button onClick={()=>moveMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
-                </>
-              )}
+            <div key={s.date} style={{display:'flex',alignItems:'center',gap:6,fontFamily:'var(--fm)',fontSize:'0.65rem'}}>
+              <span style={{color:'var(--text-3)',width:36,flexShrink:0}}>{label}</span>
+              <div style={{flex:1,height:12,background:'var(--bg-2)',borderRadius:2,overflow:'hidden'}}>
+                <div style={{width:`${pct}%`,height:'100%',background:'var(--amber)',opacity:0.7}}/>
+              </div>
+              <span style={{color:'var(--amber)',fontWeight:700,minWidth:56,textAlign:'right',fontSize:'0.62rem'}}>{fmtHashrate(s.avg||0)}</span>
             </div>
           );
         })}
       </div>
-    ))}
-  </div>
-  <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-    Selected: <span style={{color:'var(--amber)'}}>{stripSettings.metrics.length}</span> metric{stripSettings.metrics.length===1?'':'s'}
-  </div>
+    </div>
+  );
+}
 
-  <div style={{...rowLabel, marginTop:'0.9rem'}}>Show how many at a time (fade between groups)</div>
-  <div style={{display:'flex', gap:6}}>
-    {[1,2,3,4].map(n => (
-      <button key={n} onClick={()=>onStripSettingsChange({ ...stripSettings, chunkSize: n })}
-        style={{flex:1, padding:'0.55rem', background: stripSettings.chunkSize===n?'var(--bg-raised)':'transparent', border:`1px solid ${stripSettings.chunkSize===n?'var(--border-hot)':'var(--border)'}`, color: stripSettings.chunkSize===n?'var(--amber)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, cursor:'pointer'}}>
-        {n}
-      </button>
-    ))}
-  </div>
+// ── Prices card ──────────────────────────────────────────────────────────────
+function PricesCard({ state, currency }) {
+  const p = state.prices || {};
+  const price = p[currency.toLowerCase()] || 0;
+  const symbols = { USD:'$', EUR:'€', GBP:'£', JPY:'¥', CAD:'C$', AUD:'A$' };
+  const sym = symbols[currency] || '$';
+  if (!price) {
+    return <div style={{color:'var(--text-3)',padding:'1rem 0',textAlign:'center',fontSize:'0.72rem'}}>Price feed unavailable.</div>;
+  }
+  return (
+    <div>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:'0.5rem'}}>BTC PRICE</div>
+      <div style={{fontFamily:'var(--fm)',fontSize:'1.3rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.03em'}}>{sym}{price.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.62rem',color:'var(--text-3)',letterSpacing:'0.1em',marginTop:2,textTransform:'uppercase'}}>{currency}</div>
+    </div>
+  );
+}
 
-  <div style={{...rowLabel, marginTop:'0.9rem'}}>Fade interval: <span style={{color:'var(--amber)'}}>{(stripSettings.fadeMs/1000).toFixed(1)}s</span></div>
-  <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
-    style={{width:'100%', accentColor:'var(--amber)'}}/>
+// ── Latest Block strip (full-width) ──────────────────────────────────────────
+function LatestBlockStrip({ state }) {
+  const lb = state.latestBlock;
+  if (!lb) return null;
+  const ts = lb.timestamp;
+  const ago = (() => {
+    const s = Math.floor((Date.now() - ts)/1000);
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    return `${Math.floor(s/3600)}h ago`;
+  })();
+  const reward = lb.reward != null ? `${lb.reward.toFixed(3)} BTC` : '';
+  return (
+    <div style={{
+      ...STRIP_FULL_WIDTH,
+      display:'flex',
+      alignItems:'center',
+      gap:'clamp(0.6rem, 2.5vw, 1.5rem)',
+      padding:'0.45rem 0.9rem',
+      background:'linear-gradient(180deg, rgba(245,166,35,0.06) 0%, transparent 100%)',
+      borderBottom:'1px solid var(--border)',
+      fontFamily:'var(--fd)',
+      fontSize:'0.66rem',
+      letterSpacing:'0.1em',
+      textTransform:'uppercase',
+      color:'var(--text-2)',
+      flexWrap:'wrap',
+    }}>
+      <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
+        <span style={{display:'inline-block', fontSize:18, color:'#F7931A', filter:'drop-shadow(0 0 6px rgba(247,147,26,0.5))', lineHeight:1}}>
+          <span style={{display:'inline-block', transform:'translate(1px, 1px)'}}>₿</span>
+        </span>
+        <span style={{color:'var(--amber)',fontWeight:700}}>LATEST BLOCK</span>
+      </span>
+      <span style={{color:'var(--text-3)'}}>·</span>
+      <span style={{fontFamily:'var(--fm)',color:'var(--cyan)',fontWeight:700}}>#{(lb.height||0).toLocaleString()}</span>
+      <span style={{color:'var(--text-3)'}}>·</span>
+      <span>{lb.miner || 'unknown'}</span>
+      <span style={{color:'var(--text-3)'}}>·</span>
+      <span>{ago}</span>
+      {reward && <>
+        <span style={{color:'var(--text-3)'}}>·</span>
+        <span style={{color:'var(--green)',fontFamily:'var(--fm)',fontWeight:700}}>{reward}</span>
+      </>}
+    </div>
+  );
+}
 
-  <div style={sectionTitle}>▸ Scrolling Ticker</div>
+// ── Draggable card wrapper ───────────────────────────────────────────────────
+function DraggableCard({ id, spanTwo, onDragStart, onDragOver, onDrop, draggedId, children }) {
+  const isDragging = draggedId === id;
+  return (
+    <div
+      draggable
+      onDragStart={(e)=>onDragStart(e, id)}
+      onDragOver={(e)=>onDragOver(e, id)}
+      onDrop={(e)=>onDrop(e, id)}
+      style={{
+        gridColumn: spanTwo ? 'span 2' : 'auto',
+        background:'var(--bg-1)',
+        border:'1px solid var(--border)',
+        borderRadius:6,
+        padding:'0.85rem 1rem',
+        opacity:isDragging?0.35:1,
+        cursor:'grab',
+        transition:'opacity 0.15s, transform 0.15s',
+      }}
+    >{children}</div>
+  );
+}
 
-  <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-    <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Show scrolling ticker</span>
-    <button onClick={()=>onTickerSettingsChange({ ...tickerSettings, enabled: !tickerSettings.enabled })}
-      style={{width:40, height:22, borderRadius:11, background: tickerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-      <div style={{position:'absolute', top:1, left: tickerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: tickerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-    </button>
-  </div>
-
-  {tickerSettings.enabled && (
-    <>
-      <div style={{...rowLabel, marginTop:'0.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6}}>
-        <span>Ticker metrics (tap to toggle, ↑↓ to reorder)</span>
-        <button onClick={matchTickerToStrip}
-          title="Copy top strip selection into ticker"
-          style={{padding:'3px 7px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer'}}>
-          ⤴ Match Top Strip
+// ── Setup wizard ─────────────────────────────────────────────────────────────
+function SetupWizard({ onSubmit }) {
+  const [addr,setAddr]=useState(''); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
+  const submit = async () => {
+    setError(''); setLoading(true);
+    try { await onSubmit(addr.trim()); }
+    catch(e){ setError(e.message || String(e)); setLoading(false); }
+  };
+  return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'calc(100vh - 120px)',padding:'1rem'}}>
+      <div style={{maxWidth:520,width:'100%',background:'var(--bg-1)',border:'1px solid var(--border)',borderRadius:8,padding:'2rem 1.5rem',textAlign:'center'}}>
+        <div style={{fontSize:36,color:'var(--amber)',filter:'drop-shadow(0 0 12px rgba(245,166,35,0.6))',marginBottom:8}}>⛏</div>
+        <div style={{fontFamily:'var(--fd)',fontSize:'1.2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:16}}>SOLOSTRIKE</div>
+        <p style={{color:'var(--text-2)',fontSize:'0.85rem',marginBottom:14,lineHeight:1.5}}>
+          Enter your Bitcoin payout address to begin.
+          Every block your fleet finds is sent here — 100% of the reward, no middleman.
+        </p>
+        <input
+          type="text"
+          value={addr}
+          onChange={e=>setAddr(e.target.value)}
+          placeholder="bc1q..."
+          style={{width:'100%',background:'var(--bg-2)',color:'var(--text-1)',border:'1px solid var(--border)',padding:'9px 11px',fontFamily:'var(--fm)',fontSize:'0.8rem',borderRadius:4,boxSizing:'border-box',marginBottom:14}}
+        />
+        {error && <div style={{color:'var(--red)',fontSize:'0.75rem',marginBottom:12}}>{error}</div>}
+        <button onClick={submit} disabled={loading||!addr.trim()} style={{background:loading||!addr.trim()?'var(--bg-2)':'var(--amber)',color:loading||!addr.trim()?'var(--text-3)':'var(--bg-0)',border:'none',padding:'10px 22px',fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,letterSpacing:'0.1em',cursor:loading||!addr.trim()?'not-allowed':'pointer',borderRadius:4,textTransform:'uppercase',width:'100%'}}>
+          {loading ? 'STARTING…' : 'START MINING'}
         </button>
       </div>
-      <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-        {METRIC_CATEGORIES.map(cat => (
-          <div key={cat}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
-            {METRICS.filter(metric => metric.category === cat).map(metric => {
-              const on = (tickerSettings.metrics || []).includes(metric.id);
-              const order = on ? tickerSettings.metrics.indexOf(metric.id) : -1;
-              return (
-                <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                  <button onClick={()=>toggleTickerMetric(metric.id)}
-                    style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
-                    {on?'✓':''}
-                  </button>
-                  <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
-                  {on && (
-                    <>
-                      <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
-                      <button onClick={()=>moveTickerMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
-                      <button onClick={()=>moveTickerMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Selected: <span style={{color:'var(--amber)'}}>{(tickerSettings.metrics || []).length}</span> metric{(tickerSettings.metrics || []).length===1?'':'s'}
-      </div>
-
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>
-        Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
-        <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
-          ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
-        </span>
-      </div>
-      <input type="range" min="3" max="90" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
-        style={{width:'100%', accentColor:'var(--amber)'}}/>
-      <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--fm)', fontSize:'0.52rem', color:'var(--text-3)', marginTop:2}}>
-        <span>very fast</span><span>slow</span>
-      </div>
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
-        Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.
-      </div>
-    </>
-  )}
-
-  <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1rem', textAlign:'center', lineHeight:1.4}}>
-    Changes save automatically and persist on this device
-  </div>
-</>
-```
-
-);
+    </div>
+  );
 }
 
-function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
-return (
-<>
-<div style={{background:‘var(–bg-deep)’,border:‘1px solid var(–border)’,padding:‘1rem’,marginBottom:‘1rem’}}>
-<div style={{display:‘flex’,alignItems:‘center’,justifyContent:‘space-between’,marginBottom:‘0.6rem’}}>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.8rem’,fontWeight:700,color:privateMode?‘var(–cyan)’:‘var(–text-1)’,letterSpacing:‘0.08em’,textTransform:‘uppercase’}}>🔒 Private Mode</span>
-<button onClick={()=>setPrivateMode(!privateMode)} style={{width:48,height:26,borderRadius:13,background:privateMode?‘var(–cyan)’:‘var(–bg-raised)’,border:‘1px solid var(–border)’,position:‘relative’,cursor:‘pointer’,transition:‘background 0.2s’}}>
-<div style={{position:‘absolute’,top:2,left:privateMode?24:2,width:20,height:20,borderRadius:‘50%’,background:privateMode?’#000’:‘var(–text-2)’,transition:‘left 0.2s’}}/>
-</button>
-</div>
-<p style={{fontFamily:‘var(–fm)’,fontSize:‘0.72rem’,color:‘var(–text-2)’,lineHeight:1.5,margin:0}}>
-When enabled, SoloStrike stops all external API calls. No mempool.space, no price feeds. All data comes from your own Bitcoin Core and (if installed) your Umbrel Mempool app.
-</p>
-<div style={{marginTop:‘0.8rem’,padding:‘0.6rem’,background:privateMode?‘rgba(0,255,209,0.06)’:‘rgba(245,166,35,0.06)’,border:`1px solid ${privateMode?'rgba(0,255,209,0.25)':'rgba(245,166,35,0.25)'}`}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.12em’,textTransform:‘uppercase’,color:privateMode?‘var(–cyan)’:‘var(–amber)’,marginBottom:4}}>Current state</div>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.7rem’,color:‘var(–text-1)’}}>
-{privateMode ? ‘Outbound calls: NONE. Your pool leaks zero metadata.’ : ‘Outbound calls: mempool.space (fees, blocks, prices).’}
-</div>
-</div>
-</div>
-<button onClick={submit} disabled={loading} style={{width:‘100%’,padding:‘0.75rem’,background:saved?‘var(–green)’:‘var(–amber)’,color:’#000’,border:‘none’,fontFamily:‘var(–fd)’,fontSize:‘0.8rem’,fontWeight:700,letterSpacing:‘0.12em’,textTransform:‘uppercase’,cursor:‘pointer’,opacity:loading?0.6:1}}>
-{loading?‘SAVING…’:saved?‘✓ SAVED’:‘APPLY PRIVATE MODE’}
-</button>
-</>
-);
-}
+// ── Settings modal ───────────────────────────────────────────────────────────
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
+  const [tab, setTab] = useState('main');
+  const [addr,setAddr]=useState('');
+  const [poolName,setPoolName]=useState(currentConfig?.poolName||'SoloStrike');
+  const [privateMode, setPrivateMode] = useState(!!currentConfig?.privateMode);
+  const [loading,setLoading]=useState(false);
+  const [saved,setSaved]=useState(false);
+  const [error,setError]=useState('');
 
-function AliasesTab({workers, aliases, onAliasesChange}) {
-const [localAliases, setLocalAliases] = useState(aliases || {});
-useEffect(()=>setLocalAliases(aliases||{}), [aliases]);
-const updateAlias = (name, val) => {
-const next = { …localAliases };
-if (!val.trim()) delete next[name]; else next[name] = val.trim().slice(0, 32);
-setLocalAliases(next);
-};
-const save = () => { onAliasesChange(localAliases); };
-return (
-<>
-<p style={{fontFamily:‘var(–fm)’,fontSize:‘0.7rem’,color:‘var(–text-2)’,lineHeight:1.5,marginBottom:‘0.75rem’}}>
-Rename workers in the UI (saved on this device). Leave blank to use the default suffix name.
-</p>
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.5rem’,maxHeight:‘50vh’,overflowY:‘auto’}}>
-{(workers||[]).map(w => (
-<div key={w.name} style={{background:‘var(–bg-raised)’,border:‘1px solid var(–border)’,padding:‘0.6rem 0.75rem’}}>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.65rem’,color:‘var(–text-3)’,marginBottom:4,overflow:‘hidden’,textOverflow:‘ellipsis’,whiteSpace:‘nowrap’}}>{w.name}</div>
-<input type=“text” value={localAliases[w.name] || ‘’} placeholder={stripAddr(w.name)} onChange={e=>updateAlias(w.name, e.target.value)} maxLength={32}
-style={{width:‘100%’,background:‘var(–bg-deep)’,border:‘1px solid var(–border)’,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,padding:‘0.5rem 0.7rem’,outline:‘none’,boxSizing:‘border-box’}}/>
-</div>
-))}
-</div>
-<button onClick={save} style={{width:‘100%’,marginTop:‘1rem’,padding:‘0.7rem’,background:‘var(–amber)’,color:’#000’,border:‘none’,fontFamily:‘var(–fd)’,fontSize:‘0.75rem’,fontWeight:700,letterSpacing:‘0.12em’,textTransform:‘uppercase’,cursor:‘pointer’}}>Save Aliases</button>
-</>
-);
-}
+  useEffect(() => {
+    setAddr(currentConfig?.payoutAddress || '');
+    setPoolName(currentConfig?.poolName || 'SoloStrike');
+    setPrivateMode(!!currentConfig?.privateMode);
+  }, [currentConfig]);
 
-function WebhooksTab() {
-const [hooks, setHooks] = useState([]);
-const [newUrl, setNewUrl] = useState(’’);
-const [newName, setNewName] = useState(’’);
-const [newEvents, setNewEvents] = useState([‘block_found’]);
-const [busy, setBusy] = useState(false);
-const [err, setErr] = useState(’’);
-const load = useCallback(async () => {
-try { const r = await fetch(’/api/webhooks’); setHooks(await r.json()); } catch {}
-}, []);
-useEffect(()=>{ load(); }, [load]);
-const add = async () => {
-setErr(’’);
-if (!/^https?:///i.test(newUrl.trim())) { setErr(‘URL must start with http:// or https://’); return; }
-setBusy(true);
-try {
-const r = await fetch(’/api/webhooks’, { method:‘POST’, headers:{‘Content-Type’:‘application/json’}, body:JSON.stringify({ name:newName || ‘Webhook’, url:newUrl.trim(), events:newEvents }) });
-if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || ‘Add failed’); }
-setNewUrl(’’); setNewName(’’); setNewEvents([‘block_found’]);
-await load();
-} catch(e){ setErr(e.message); } finally { setBusy(false); }
-};
-const del = async (id) => { await fetch(`/api/webhooks/${id}`, { method:‘DELETE’ }); await load(); };
-const EVENT_LABELS = { block_found:‘Block Found’, worker_offline:‘Worker Offline’, worker_online:‘Worker Online’ };
-const toggleEvent = (ev) => setNewEvents(list => list.includes(ev) ? list.filter(x=>x!==ev) : […list, ev]);
-return (
-<>
-<p style={{fontFamily:‘var(–fm)’,fontSize:‘0.7rem’,color:‘var(–text-2)’,lineHeight:1.5,marginBottom:‘0.75rem’}}>
-POST JSON events to any URL. Use with Discord webhooks, Telegram bots, ntfy.sh topics, Home Assistant, etc.
-</p>
-{hooks.length > 0 && (
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.4rem’,marginBottom:‘1rem’}}>
-{hooks.map(h => (
-<div key={h.id} style={{background:‘var(–bg-raised)’,border:‘1px solid var(–border)’,padding:‘0.55rem 0.7rem’,display:‘flex’,alignItems:‘center’,gap:8}}>
-<div style={{flex:1,minWidth:0}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.72rem’,color:‘var(–text-1)’,fontWeight:600}}>{h.name}</div>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.58rem’,color:‘var(–text-2)’,overflow:‘hidden’,textOverflow:‘ellipsis’,whiteSpace:‘nowrap’}}>{h.url}</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,color:‘var(–cyan)’,letterSpacing:‘0.08em’,textTransform:‘uppercase’,marginTop:2}}>{(h.events||[]).map(e=>EVENT_LABELS[e]||e).join(’ · ‘)}</div>
-</div>
-<button onClick={()=>del(h.id)} style={{background:‘none’,border:‘1px solid rgba(255,59,59,0.4)’,color:‘var(–red)’,padding:‘4px 8px’,cursor:‘pointer’,fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.1em’}}>✕</button>
-</div>
-))}
-</div>
-)}
-<div style={{background:‘var(–bg-deep)’,border:‘1px solid var(–border)’,padding:‘0.8rem’,display:‘flex’,flexDirection:‘column’,gap:‘0.5rem’}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.6rem’,letterSpacing:‘0.12em’,textTransform:‘uppercase’,color:‘var(–text-2)’}}>Add Webhook</div>
-<input type=“text” value={newName} onChange={e=>setNewName(e.target.value)} placeholder=“Name (e.g. Discord)” maxLength={50}
-style={{background:‘var(–bg-raised)’,border:‘1px solid var(–border)’,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.75rem’,padding:‘0.5rem 0.7rem’,outline:‘none’,boxSizing:‘border-box’}}/>
-<input type=“text” value={newUrl} onChange={e=>setNewUrl(e.target.value)} placeholder=“https://discord.com/api/webhooks/…” spellCheck={false} autoCorrect=“off” autoCapitalize=“off”
-style={{background:‘var(–bg-raised)’,border:‘1px solid var(–border)’,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.72rem’,padding:‘0.5rem 0.7rem’,outline:‘none’,boxSizing:‘border-box’}}/>
-<div style={{display:‘flex’,gap:4,flexWrap:‘wrap’}}>
-{Object.keys(EVENT_LABELS).map(ev => (
-<button key={ev} onClick={()=>toggleEvent(ev)}
-style={{padding:‘0.35rem 0.6rem’,background:newEvents.includes(ev)?‘var(–bg-raised)’:‘transparent’,border:`1px solid ${newEvents.includes(ev)?'var(--cyan)':'var(--border)'}`,color:newEvents.includes(ev)?‘var(–cyan)’:‘var(–text-2)’,fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.08em’,textTransform:‘uppercase’,cursor:‘pointer’}}>
-{EVENT_LABELS[ev]}
-</button>
-))}
-</div>
-{err && <div style={{fontSize:‘0.7rem’,color:‘var(–red)’}}>⚠ {err}</div>}
-<button onClick={add} disabled={busy || !newUrl.trim() || !newEvents.length}
-style={{padding:‘0.55rem’,background:‘var(–amber)’,color:’#000’,border:‘none’,fontFamily:‘var(–fd)’,fontSize:‘0.7rem’,fontWeight:700,letterSpacing:‘0.12em’,textTransform:‘uppercase’,cursor:‘pointer’,opacity:(busy||!newUrl.trim()||!newEvents.length)?0.5:1}}>
-{busy?‘ADDING…’:’+ ADD WEBHOOK’}
-</button>
-</div>
-</>
-);
-}
+  const submit = async () => {
+    setError(''); setLoading(true); setSaved(false);
+    try {
+      await saveConfig({ payoutAddress: addr.trim(), poolName: poolName.trim() || 'SoloStrike', privateMode });
+      setSaved(true);
+      setTimeout(()=>setSaved(false), 2500);
+    } catch(e){ setError(e.message || String(e)); }
+    finally { setLoading(false); }
+  };
 
-// ── Worker Detail Modal — NOW WITH CLICKABLE IP LINK ─────────────────────────
-function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
-const [copied, setCopied] = useState(’’);
-const [aliasVal, setAliasVal] = useState(aliases[worker.name] || ‘’);
-const [noteVal, setNoteVal] = useState(notes[worker.name] || ‘’);
-const [dirty, setDirty] = useState(false);
-
-useEffect(() => {
-setAliasVal(aliases[worker.name] || ‘’);
-setNoteVal(notes[worker.name] || ‘’);
-setDirty(false);
-}, [worker.name, aliases, notes]);
-
-const w = worker;
-const on = w.status !== ‘offline’;
-const raw = w.sharesCount || 0;
-const rawRej = w.rejectedCount || 0;
-const work = w.shares || 0;
-const workRej = w.rejected || 0;
-const totalWork = work + workRej || 1;
-const acceptRate = ((work / totalWork) * 100).toFixed(2);
-const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
-const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : ‘0’;
-const healthMap = { green:‘🟢 GREEN · fresh shares’, amber:‘🟡 AMBER · stale or rejects’, red:‘🔴 RED · offline or failing’ };
-const freshness = (() => {
-const age = Date.now() - (w.lastSeen || 0);
-if (age < 2*60*1000) return ‘fresh (<2m)’;
-if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
-return `offline (${Math.floor(age/60000)}m)`;
-})();
-
-const host = typeof window !== ‘undefined’ ? window.location.hostname : ‘umbrel.local’;
-const stratumUrl      = `stratum+tcp://${host}:3333`;
-const stratumUrlHobby = `stratum+tcp://${host}:3334`;
-const minerUrl        = w.ip ? `http://${w.ip}` : null;
-
-const copy = async (val, lbl) => {
-try {
-await navigator.clipboard.writeText(val);
-setCopied(lbl); setTimeout(() => setCopied(’’), 2000);
-} catch {
-const ta = document.createElement(‘textarea’);
-ta.value = val; document.body.appendChild(ta); ta.select();
-try { document.execCommand(‘copy’); setCopied(lbl); setTimeout(()=>setCopied(’’),2000); } catch {}
-document.body.removeChild(ta);
-}
-};
-
-const save = () => {
-const nextA = { …aliases };
-if (!aliasVal.trim()) delete nextA[w.name]; else nextA[w.name] = aliasVal.trim().slice(0, 32);
-onAliasesChange(nextA);
-const nextN = { …notes };
-if (!noteVal.trim()) delete nextN[w.name]; else nextN[w.name] = noteVal.trim().slice(0, 200);
-onNotesChange(nextN);
-setDirty(false);
-};
-
-const exportCsv = () => {
-const rows = [
-[’# generated_at_utc’, new Date().toISOString()],
-[’# worker’, w.name],
-[‘field’,‘value’],
-[‘hashrate_hps’, w.hashrate || 0],
-[‘current_difficulty’, w.diff || 0],
-[‘best_share’, Math.round(w.bestshare || 0)],
-[‘work_accepted’, work],
-[‘work_rejected’, workRej],
-[‘ip’, w.ip || ‘’],
-];
-const csv = rows.map(r => r.map(v => {
-const s = String(v == null ? ‘’ : v);
-if (/[,”\n\r]/.test(s)) return ‘”’ + s.replace(/”/g,’””’) + ‘”’;
-return s;
-}).join(’,’)).join(’\n’);
-const blob = new Blob([csv], { type: ‘text/csv’ });
-const url = URL.createObjectURL(blob);
-const a = document.createElement(‘a’);
-a.href = url; a.download = `solostrike-worker-${stripAddr(w.name).replace(/[^A-Za-z0-9]/g,'_')}-${Date.now()}.csv`;
-document.body.appendChild(a); a.click();
-setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-};
-
-const section = { marginBottom:‘1rem’ };
-const secTitle = { fontFamily:‘var(–fd)’, fontSize:‘0.55rem’, letterSpacing:‘0.2em’, textTransform:‘uppercase’, color:‘var(–amber)’, marginBottom:‘0.5rem’ };
-const kvRow = { display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’, padding:‘0.4rem 0.6rem’, background:‘var(–bg-raised)’, border:‘1px solid var(–border)’, marginBottom:3 };
-const kvLabel = { fontFamily:‘var(–fd)’, fontSize:‘0.58rem’, letterSpacing:‘0.1em’, textTransform:‘uppercase’, color:‘var(–text-2)’ };
-const kvVal = { fontFamily:‘var(–fm)’, fontSize:‘0.75rem’, color:‘var(–text-1)’, textAlign:‘right’, overflow:‘hidden’, textOverflow:‘ellipsis’, maxWidth:‘65%’ };
-const heroBox = { background:‘var(–bg-raised)’, border:‘1px solid var(–border)’, padding:‘0.7rem’, textAlign:‘center’ };
-const heroLbl = { fontFamily:‘var(–fd)’, fontSize:‘0.5rem’, letterSpacing:‘0.12em’, textTransform:‘uppercase’, color:‘var(–text-2)’, marginBottom:4 };
-const heroVal = { fontFamily:‘var(–fd)’, fontSize:‘1.1rem’, fontWeight:700, color:‘var(–amber)’, lineHeight:1 };
-const btn = { padding:‘0.55rem 0.7rem’, background:‘var(–bg-raised)’, border:‘1px solid var(–border)’, color:‘var(–text-1)’, fontFamily:‘var(–fd)’, fontSize:‘0.6rem’, letterSpacing:‘0.1em’, textTransform:‘uppercase’, cursor:‘pointer’, flex:1, minWidth:‘48%’ };
-const inputStyle = { width:‘100%’, background:‘var(–bg-deep)’, border:‘1px solid var(–border)’, color:‘var(–text-1)’, fontFamily:‘var(–fm)’, fontSize:‘0.78rem’, padding:‘0.55rem 0.7rem’, outline:‘none’, boxSizing:‘border-box’ };
-
-return (
-<div style={{position:‘fixed’,inset:0,background:‘rgba(6,7,8,0.88)’,backdropFilter:‘blur(4px)’,WebkitBackdropFilter:‘blur(4px)’,display:‘flex’,alignItems:‘center’,justifyContent:‘center’,zIndex:250,padding:‘0.75rem’}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-<div style={{width:‘100%’,maxWidth:560,background:‘var(–bg-surface)’,border:‘1px solid var(–border-hot)’,boxShadow:‘var(–glow-a)’,maxHeight:‘95vh’,overflowY:‘auto’}}>
-<div style={{padding:‘1rem 1.25rem’,borderBottom:‘1px solid var(–border)’,display:‘flex’,alignItems:‘flex-start’,justifyContent:‘space-between’,gap:‘0.75rem’}}>
-<div style={{flex:1,minWidth:0}}>
-<div style={{display:‘flex’,alignItems:‘center’,gap:‘0.5rem’,marginBottom:4}}>
-<span style={{fontSize:16,color:‘var(–cyan)’}}>{w.minerIcon || ‘▪’}</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘1.1rem’,fontWeight:700,color:‘var(–amber)’,letterSpacing:‘0.05em’}}>{displayName(w.name, aliases)}</span>
-</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.58rem’,letterSpacing:‘0.12em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:6}}>
-{w.minerType || ‘Unknown miner’}{w.minerVendor && ` · ${w.minerVendor}`}
-</div>
-<div style={{display:‘inline-flex’,alignItems:‘center’,gap:5,fontFamily:‘var(–fd)’,fontSize:‘0.58rem’,letterSpacing:‘0.12em’,textTransform:‘uppercase’}}>
-<span style={{width:6,height:6,borderRadius:‘50%’,background:on?‘var(–green)’:‘var(–red)’,boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?‘pulse 2s ease-in-out infinite’:‘none’}}/>
-<span style={{color:on?‘var(–green)’:‘var(–red)’}}>{on?‘ONLINE’:‘OFFLINE’}</span>
-<span style={{color:‘var(–text-3)’,marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):’—’}</span>
-</div>
-</div>
-<button onClick={onClose} style={{background:‘none’,border:‘none’,color:‘var(–text-2)’,cursor:‘pointer’,fontSize:22,padding:‘0 4px’,flexShrink:0}}>✕</button>
-</div>
-
-```
-    <div style={{padding:'1rem 1.25rem'}}>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
-        <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-        <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
-        <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
-        <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
-      </div>
-
-      {/* NEW: Prominent Miner Web UI link if we have an IP */}
-      {minerUrl && (
-        <div style={{...section, marginBottom:'1.25rem'}}>
-          <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
-            display:'flex', alignItems:'center', gap:'0.7rem',
-            padding:'0.8rem 1rem',
-            background:'linear-gradient(90deg, rgba(0,255,209,0.1) 0%, rgba(0,255,209,0.02) 100%)',
-            border:'1px solid rgba(0,255,209,0.35)',
-            textDecoration:'none', cursor:'pointer',
-            boxShadow:'0 0 12px rgba(0,255,209,0.08)',
-          }}>
-            <span style={{fontSize:22, flexShrink:0}}>🌐</span>
-            <div style={{flex:1, minWidth:0}}>
-              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>OPEN MINER WEB UI</div>
-              <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{minerUrl}</div>
-            </div>
-            <span style={{color:'var(--cyan)', fontSize:16, fontFamily:'var(--fm)', flexShrink:0}}>↗</span>
-          </a>
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:800,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-1)',border:'1px solid var(--border)',borderRadius:6,maxWidth:520,width:'100%',maxHeight:'calc(100vh - 40px)',overflowY:'auto',boxShadow:'0 16px 60px rgba(0,0,0,0.8)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 18px',borderBottom:'1px solid var(--border)',position:'sticky',top:0,background:'var(--bg-1)',zIndex:1}}>
+          <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase'}}>SETTINGS</span>
+          <button onClick={onClose} style={{background:'none',border:'1px solid var(--border)',color:'var(--text-2)',padding:'3px 9px',cursor:'pointer',borderRadius:3,fontSize:16,lineHeight:1}}>×</button>
         </div>
-      )}
-
-      <div style={section}>
-        <div style={secTitle}>▸ Shares</div>
-        <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
-        {workRej > 0 && (
-          <>
-            <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
-          </>
-        )}
-        {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
-        {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
-        <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
-      </div>
-
-      <div style={section}>
-        <div style={secTitle}>▸ Connection</div>
-        <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
-        <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
-        <div style={kvRow}>
-          <span style={kvLabel}>Miner IP</span>
-          {w.ip ? (
-            <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{...kvVal, color:'var(--cyan)', textDecoration:'underline', cursor:'pointer', fontWeight:600}}>
-              {w.ip} ↗
-            </a>
-          ) : (
-            <span style={{...kvVal, color:'var(--text-3)'}}>— <span style={{fontSize:'0.6rem'}}>(waiting for auth)</span></span>
-          )}
+        <div style={{display:'flex',gap:1,borderBottom:'1px solid var(--border)',background:'var(--bg-2)'}}>
+          {[['main','MAIN'],['display','DISPLAY'],['aliases','ALIASES'],['advanced','ADVANCED']].map(([k,l])=>(
+            <button key={k} onClick={()=>setTab(k)} style={{flex:1,background:tab===k?'var(--bg-1)':'transparent',color:tab===k?'var(--amber)':'var(--text-3)',border:'none',borderBottom:tab===k?'2px solid var(--amber)':'2px solid transparent',padding:'8px 6px',fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,letterSpacing:'0.1em',cursor:'pointer'}}>{l}</button>
+          ))}
         </div>
-        <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
-      </div>
-
-      <div style={section}>
-        <div style={secTitle}>▸ Health</div>
-        <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
-        {workRej > 0 && <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
-        <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
-      </div>
-
-      <div style={section}>
-        <div style={secTitle}>▸ Options</div>
-        <div style={{marginBottom:'0.6rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
-          <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
-        </div>
-        <div style={{marginBottom:'0.6rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
-          <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
-        </div>
-        {dirty && (
-          <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
-        )}
-      </div>
-
-      <div style={section}>
-        <div style={secTitle}>▸ Actions</div>
-        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-          <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
-          <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
-          {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?'✓ Copied':'Copy Miner IP'}</button>}
-          <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
-          <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
+        <div style={{padding:'16px 18px'}}>
+          {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
+          {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange} minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange} visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>}
+          {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
+          {tab==='advanced' && <AdvancedTab privateMode={privateMode} setPrivateMode={setPrivateMode} saveConfig={saveConfig} currentConfig={currentConfig}/>}
+          {error && <div style={{color:'var(--red)',fontSize:'0.75rem',marginTop:10}}>{error}</div>}
         </div>
       </div>
     </div>
-  </div>
-</div>
-```
-
-);
+  );
 }
 
-// ── Card order + currency helpers ─────────────────────────────────────────────
-const DEFAULT_ORDER = [‘hashrate’, ‘workers’, ‘network’, ‘node’, ‘odds’, ‘luck’, ‘retarget’, ‘shares’, ‘best’, ‘closestcalls’, ‘blocks’, ‘topfinders’, ‘recent’];
-function loadOrder() {
-try {
-const saved = localStorage.getItem(LS_CARD_ORDER);
-if (!saved) return DEFAULT_ORDER;
-const parsed = JSON.parse(saved);
-if (!Array.isArray(parsed)) return DEFAULT_ORDER;
-const merged = […parsed];
-DEFAULT_ORDER.forEach(k => { if (!merged.includes(k)) merged.push(k); });
-return merged.filter(k => DEFAULT_ORDER.includes(k));
-} catch { return DEFAULT_ORDER; }
+function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,onResetLayout,submit,saved,loading}) {
+  const [show,setShow]=useState(false);
+  return (
+    <>
+      <Field label="PAYOUT ADDRESS">
+        <input type="text" value={addr} onChange={e=>setAddr(e.target.value)} placeholder="bc1q..." style={F.inp}/>
+      </Field>
+      <Field label="POOL NAME">
+        <input type="text" value={poolName} onChange={e=>setPoolName(e.target.value)} style={F.inp}/>
+      </Field>
+      <Field label="CURRENCY">
+        <select value={currency} onChange={e=>onCurrencyChange(e.target.value)} style={F.inp}>
+          {['USD','EUR','GBP','JPY','CAD','AUD'].map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+      </Field>
+      <div style={{display:'flex',gap:8,marginTop:12}}>
+        <button onClick={submit} disabled={loading} style={{...F.btn, flex:1, background:saved?'var(--green)':'var(--amber)',color:'var(--bg-0)'}}>{loading?'SAVING…':(saved?'SAVED':'SAVE')}</button>
+        <button onClick={()=>{if(confirm('Reset card layout to default?'))onResetLayout();}} style={{...F.btn, background:'var(--bg-2)',color:'var(--text-2)',border:'1px solid var(--border)'}}>RESET LAYOUT</button>
+      </div>
+      {!show && <button onClick={()=>setShow(true)} style={{marginTop:14,background:'none',border:'none',color:'var(--text-3)',fontSize:'0.7rem',cursor:'pointer',fontFamily:'var(--fd)',letterSpacing:'0.08em'}}>SHOW STRATUM URL →</button>}
+      {show && <div style={{marginTop:12,padding:10,background:'var(--bg-2)',borderRadius:4,border:'1px solid var(--border)'}}>
+        <div style={{color:'var(--text-3)',fontSize:'0.62rem',letterSpacing:'0.1em',marginBottom:4,fontFamily:'var(--fd)'}}>STRATUM URL</div>
+        <div style={{color:'var(--cyan)',fontSize:'0.75rem',fontFamily:'var(--fm)',wordBreak:'break-all'}}>stratum+tcp://umbrel.local:3333</div>
+        <div style={{color:'var(--text-3)',fontSize:'0.68rem',marginTop:4,fontFamily:'var(--fm)'}}>user: worker_name · pass: x</div>
+      </div>}
+    </>
+  );
 }
-function saveOrder(order) { try { localStorage.setItem(LS_CARD_ORDER, JSON.stringify(order)); } catch {} }
-function loadCurrency() { try { return localStorage.getItem(LS_CURRENCY) || ‘USD’; } catch { return ‘USD’; } }
-function saveCurrency(c) { try { localStorage.setItem(LS_CURRENCY, c); } catch {} }
 
-// ── App ───────────────────────────────────────────────────────────────────────
+function DisplayTab({stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange}) {
+  return (
+    <>
+      <Field label="MINIMAL MODE">
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'var(--text-2)',cursor:'pointer'}}>
+          <input type="checkbox" checked={minimalMode} onChange={e=>onMinimalModeChange(e.target.checked)}/>
+          Hide header decorations
+        </label>
+      </Field>
+      <Field label="STAT STRIP">
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'var(--text-2)',cursor:'pointer',marginBottom:6}}>
+          <input type="checkbox" checked={stripSettings.enabled} onChange={e=>onStripSettingsChange({...stripSettings,enabled:e.target.checked})}/>
+          Show metrics rotation
+        </label>
+      </Field>
+      <Field label="TICKER">
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'var(--text-2)',cursor:'pointer'}}>
+          <input type="checkbox" checked={tickerSettings.enabled} onChange={e=>onTickerSettingsChange({...tickerSettings,enabled:e.target.checked})}/>
+          Show scrolling ticker
+        </label>
+      </Field>
+      <Field label="VISIBLE CARDS">
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          {DEFAULT_CARDS.map(c=>(
+            <label key={c} style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.72rem',color:'var(--text-2)',cursor:'pointer',textTransform:'uppercase',letterSpacing:'0.08em'}}>
+              <input type="checkbox" checked={visibleCards.includes(c)} onChange={e=>{
+                if (e.target.checked) onVisibleCardsChange([...visibleCards,c]);
+                else onVisibleCardsChange(visibleCards.filter(x=>x!==c));
+              }}/>
+              {c}
+            </label>
+          ))}
+        </div>
+      </Field>
+    </>
+  );
+}
+
+function AliasesTab({workers, aliases, onAliasesChange}) {
+  const [localAliases, setLocalAliases] = useState(aliases || {});
+  useEffect(()=>setLocalAliases(aliases||{}), [aliases]);
+  const setAlias = (name, value) => {
+    const next = { ...localAliases };
+    if (value && value !== name) next[name] = value;
+    else delete next[name];
+    setLocalAliases(next);
+    onAliasesChange(next);
+  };
+  const wlist = Array.isArray(workers) ? workers : [];
+  if (!wlist.length) return <div style={{color:'var(--text-3)',fontSize:'0.75rem',textAlign:'center',padding:'1rem'}}>No workers connected yet.</div>;
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+      {wlist.map(w=>(
+        <div key={w.name} style={{display:'flex',gap:8,alignItems:'center'}}>
+          <div style={{flex:1,minWidth:0,fontSize:'0.7rem',color:'var(--text-3)',fontFamily:'var(--fm)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{w.name}</div>
+          <input type="text" defaultValue={localAliases[w.name]||''} onBlur={e=>setAlias(w.name, e.target.value.trim())} placeholder="(alias)" style={{...F.inp, flex:1}}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdvancedTab({privateMode, setPrivateMode, saveConfig, currentConfig}) {
+  const [hooks, setHooks] = useState([]);
+  const [newUrl, setNewUrl] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEvents, setNewEvents] = useState(['block_found']);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(()=>{
+    fetch('/api/webhooks').then(r=>r.json()).then(d=>setHooks(d.hooks||[])).catch(()=>{});
+  },[]);
+
+  const savePrivate = async (v) => {
+    setPrivateMode(v);
+    try { await saveConfig({ ...currentConfig, privateMode: v }); } catch {}
+  };
+
+  const addHook = async () => {
+    if (!newUrl.trim()) return;
+    setBusy(true);
+    try {
+      const r = await fetch('/api/webhooks', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'add',name:newName.trim()||'webhook',url:newUrl.trim(),events:newEvents})});
+      const d = await r.json();
+      if (d.hooks) setHooks(d.hooks);
+      setNewUrl(''); setNewName('');
+    } catch(e){}
+    setBusy(false);
+  };
+
+  const removeHook = async (id) => {
+    try {
+      const r = await fetch('/api/webhooks', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({op:'remove',id})});
+      const d = await r.json();
+      if (d.hooks) setHooks(d.hooks);
+    } catch(e){}
+  };
+
+  return (
+    <>
+      <Field label="PRIVATE MODE">
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.75rem',color:'var(--text-2)',cursor:'pointer'}}>
+          <input type="checkbox" checked={privateMode} onChange={e=>savePrivate(e.target.checked)}/>
+          Disable all external API calls (airgapped)
+        </label>
+      </Field>
+      <Field label="WEBHOOKS">
+        {hooks.length === 0 && <div style={{color:'var(--text-3)',fontSize:'0.72rem',fontStyle:'italic'}}>No webhooks configured.</div>}
+        {hooks.map(h=>(
+          <div key={h.id} style={{display:'flex',gap:6,alignItems:'center',marginBottom:4,padding:6,background:'var(--bg-2)',borderRadius:3}}>
+            <div style={{flex:1,minWidth:0,fontSize:'0.68rem',color:'var(--text-2)',fontFamily:'var(--fm)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.name}: {h.url}</div>
+            <button onClick={()=>removeHook(h.id)} style={{...F.btn, padding:'3px 7px', background:'var(--bg-1)',color:'var(--red)',border:'1px solid var(--border)',fontSize:'0.6rem'}}>X</button>
+          </div>
+        ))}
+        <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:6}}>
+          <input type="text" value={newName} onChange={e=>setNewName(e.target.value)} placeholder="name" style={F.inp}/>
+          <input type="text" value={newUrl} onChange={e=>setNewUrl(e.target.value)} placeholder="https://..." style={F.inp}/>
+          <button onClick={addHook} disabled={busy||!newUrl.trim()} style={{...F.btn, background:'var(--amber)',color:'var(--bg-0)'}}>ADD WEBHOOK</button>
+        </div>
+      </Field>
+    </>
+  );
+}
+
+function Field({label, children}) {
+  return <div style={{marginBottom:12}}>
+    <div style={{fontFamily:'var(--fd)',fontSize:'0.62rem',color:'var(--text-3)',letterSpacing:'0.1em',marginBottom:5,textTransform:'uppercase'}}>{label}</div>
+    {children}
+  </div>;
+}
+
+const F = {
+  inp: {width:'100%',background:'var(--bg-2)',color:'var(--text-1)',border:'1px solid var(--border)',padding:'6px 10px',fontFamily:'var(--fd)',fontSize:'0.75rem',borderRadius:3,boxSizing:'border-box'},
+  btn: {padding:'7px 12px',fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,letterSpacing:'0.08em',cursor:'pointer',borderRadius:3,border:'none',textTransform:'uppercase'}
+};
+
+// ── Metric definitions for ticker + strip ────────────────────────────────────
+function fmtHashrateG(hps) {
+  if (!hps || hps < 0) return '0';
+  const units = ['H/s','KH/s','MH/s','GH/s','TH/s','PH/s','EH/s'];
+  let r = hps, i = 0;
+  while (r >= 1000 && i < units.length - 1) { r /= 1000; i++; }
+  return `${r.toFixed(2)} ${units[i]}`;
+}
+function fmtBestShareCompactG(n) {
+  if (!n || n < 0) return '0';
+  if (n < 1000) return Math.round(n).toString();
+  if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
+  if (n < 1e9) return (n / 1e6).toFixed(1) + 'M';
+  if (n < 1e12) return (n / 1e9).toFixed(1) + 'B';
+  return (n / 1e12).toFixed(1) + 'T';
+}
+const METRIC_MAP = {
+  hashrate:     { label: 'HR',       render: (s) => ({ value: fmtHashrateG(s.hashrate?.current || 0) }) },
+  btcPrice:     { label: 'BTC',      render: (s, _, currency) => {
+    const p = s.prices?.[currency.toLowerCase()] || 0;
+    const syms = { USD:'$', EUR:'€', GBP:'£', JPY:'¥', CAD:'C$', AUD:'A$' };
+    return { value: p ? `${syms[currency]||'$'}${Math.round(p).toLocaleString()}` : '—' };
+  }},
+  workersActive:{ label: 'ACTIVE',   render: (s) => {
+    const active = (s.workers||[]).filter(w => w.hashrate1m > 0).length;
+    const total = (s.workers||[]).length;
+    return { value: `${active}/${total}` };
+  }},
+  closestCall:  { label: 'BEST',     render: (s) => ({ value: fmtBestShareCompactG((s.closestCalls||[])[0]?.bestShare || 0) }) },
+  pendingBlock: { label: 'SHARES',   render: (s) => {
+    const totalShares = (s.workers||[]).reduce((acc, w) => acc + (w.shares||0), 0);
+    return { value: totalShares.toLocaleString() };
+  }},
+  lastBlockAgo: { label: 'BLOCK',    render: (s) => {
+    const ts = s.latestBlock?.timestamp;
+    if (!ts) return { value: '—' };
+    const sec = Math.floor((Date.now() - ts) / 1000);
+    if (sec < 60) return { value: `${sec}s` };
+    if (sec < 3600) return { value: `${Math.floor(sec/60)}m` };
+    return { value: `${Math.floor(sec/3600)}h` };
+  }},
+  feeRate:      { label: 'FEE',      render: (s) => ({ value: `${(s.mempool?.feeRate||0).toFixed(0)} sat/vB` }) },
+  mempool:      { label: 'MEMPOOL',  render: (s) => ({ value: `${((s.mempool?.count||0)/1000).toFixed(1)}K TX` }) },
+  uptime:       { label: 'UPTIME',   render: (s, _, __, uptimeSec) => {
+    if (!uptimeSec) return { value: '—' };
+    const d = Math.floor(uptimeSec/86400);
+    const h = Math.floor((uptimeSec%86400)/3600);
+    const m = Math.floor((uptimeSec%3600)/60);
+    if (d > 0) return { value: `${d}d ${h}h` };
+    if (h > 0) return { value: `${h}h ${m}m` };
+    return { value: `${m}m` };
+  }},
+  halving:      { label: 'HALVING',  render: (s) => {
+    const height = s.network?.height || 0;
+    const next = Math.ceil(height / 210000) * 210000;
+    const days = Math.floor((next - height) * 10 / 1440);
+    return { value: `${days}D` };
+  }},
+};
+
+// ── Pool socket hook ─────────────────────────────────────────────────────────
+function usePool() {
+  const [state, setState]         = useState({});
+  const [connected, setConnected] = useState(false);
+  const [blockAlert, setBlockAlert] = useState(null);
+  const wsRef = useRef(null);
+  const reconRef = useRef(0);
+
+  const loadState = useCallback(async () => {
+    try {
+      const r = await fetch(API_BASE + '/api/state');
+      if (r.ok) setState(await r.json());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    loadState();
+    const id = setInterval(loadState, 15000);
+    return () => clearInterval(id);
+  }, [loadState]);
+
+  useEffect(() => {
+    let alive = true;
+    const connect = () => {
+      if (!alive) return;
+      try {
+        const ws = new WebSocket(WS_URL);
+        wsRef.current = ws;
+        ws.onopen = () => { setConnected(true); reconRef.current = 0; };
+        ws.onclose = () => {
+          setConnected(false);
+          if (!alive) return;
+          reconRef.current = Math.min(reconRef.current + 1, 10);
+          const delay = Math.min(1000 * Math.pow(1.5, reconRef.current), 30000);
+          setTimeout(connect, delay);
+        };
+        ws.onerror = () => { try { ws.close(); } catch {} };
+        ws.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'state') setState(msg.data);
+            else if (msg.type === 'block_found') setBlockAlert(msg.data);
+          } catch {}
+        };
+      } catch {
+        setTimeout(connect, 3000);
+      }
+    };
+    connect();
+    return () => { alive = false; try { wsRef.current?.close(); } catch {} };
+  }, []);
+
+  const saveConfig = async (cfg) => {
+    const r = await fetch(API_BASE + '/api/setup', {
+      method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(cfg)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'save failed');
+    await loadState();
+  };
+
+  const getConfig = async () => {
+    const r = await fetch(API_BASE + '/api/config');
+    return await r.json();
+  };
+
+  return { state, connected, blockAlert, saveConfig, getConfig };
+}
+
+// ── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-const { state, connected, blockAlert, saveConfig, getConfig } = usePool();
-const [showSettings, setShowSettings] = useState(false);
-const [settingsCfg, setSettingsCfg] = useState(null);
-const [dismissedAlert, setDismissedAlert] = useState(false);
-const [order, setOrder] = useState(loadOrder);
-const [currency, setCurrency] = useState(loadCurrency);
-const [draggedId, setDraggedId] = useState(null);
-const [, setDragOverId] = useState(null);
-const [aliases, setAliases] = useState(loadAliases);
-const [notes, setNotes] = useState(loadNotes);
-const [selectedWorker, setSelectedWorker] = useState(null);
+  const { state, connected, blockAlert, saveConfig, getConfig } = usePool();
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsCfg, setSettingsCfg] = useState(null);
+  const [dismissedAlert, setDismissedAlert] = useState(false);
+  const [order, setOrder] = useState(loadOrder);
+  const [currency, setCurrency] = useState(loadCurrency);
+  const [draggedId, setDraggedId] = useState(null);
+  const [, setDragOverId] = useState(null);
+  const [aliases, setAliases] = useState(loadAliases);
+  const [notes, setNotes] = useState(loadNotes);
+  const [selectedWorker, setSelectedWorker] = useState(null);
 
-const [stripSettings, setStripSettings] = useState(() => ({
-enabled: loadStripEnabled(),
-metrics: loadStripMetrics(),
-chunkSize: loadStripChunk(),
-fadeMs: loadStripFade(),
-}));
-const [tickerSettings, setTickerSettings] = useState(() => ({
-enabled: loadTickerEnabled(),
-speedSec: loadTickerSpeed(),
-metrics: loadTickerMetrics(),
-}));
-const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
-const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
+  const [stripSettings, setStripSettings] = useState(() => ({
+    enabled: loadStripEnabled(),
+    metrics: loadStripMetrics(),
+    chunkSize: loadStripChunk(),
+    fadeMs: loadStripFade(),
+  }));
+  const [tickerSettings, setTickerSettings] = useState(() => ({
+    enabled: loadTickerEnabled(),
+    speedSec: loadTickerSpeed(),
+    metrics: loadTickerMetrics(),
+  }));
+  const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
+  const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
 
-const [tickerSnapshot, setTickerSnapshot] = useState(’’);
-const [tickerTick, setTickerTick] = useState(0);
-useEffect(() => {
-const id = setInterval(() => setTickerTick(t => t + 1), 30000);
-return () => clearInterval(id);
-}, []);
+  const [tickerSnapshot, setTickerSnapshot] = useState('');
+  const [tickerTick, setTickerTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTickerTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
 
-// Stratum port health — polls /api/stratum-health every 30s (v1.5.4+)
-const [stratumHealth, setStratumHealth] = useState({ ports: {} });
-useEffect(() => {
-let cancelled = false;
-async function fetchHealth() {
-try {
-const r = await fetch(’/api/stratum-health’, { cache: ‘no-store’ });
-if (!r.ok) return;
-const j = await r.json();
-if (!cancelled) setStratumHealth(j || { ports: {} });
-} catch (_) { /* network blip — keep last known state */ }
-}
-fetchHealth();
-const id = setInterval(fetchHealth, 30000);
-return () => { cancelled = true; clearInterval(id); };
-}, []);
-useEffect(() => {
-const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
-if (!hasData) return;
-const selected = (tickerSettings.metrics || []).map(id => METRIC_MAP[id]).filter(Boolean);
-if (!selected.length) { setTickerSnapshot(’’); return; }
-const items = selected.map(m => {
-const out = m.render(state, aliases, currency, state.uptime) || {};
-const value = out.value != null ? out.value : ‘—’;
-const prefix = out.prefix != null ? out.prefix : m.label.toUpperCase();
-return `${prefix} ${value}`;
-});
-setTickerSnapshot(items.join(’   ·   ’));
-}, [state, aliases, currency, tickerSettings.metrics, tickerTick]);
+  // Stratum port health — polls /api/stratum-health every 30s (v1.5.4+)
+  const [stratumHealth, setStratumHealth] = useState({ ports: {} });
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchHealth() {
+      try {
+        const r = await fetch('/api/stratum-health', { cache: 'no-store' });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled) setStratumHealth(j || { ports: {} });
+      } catch (_) { /* network blip — keep last known state */ }
+    }
+    fetchHealth();
+    const id = setInterval(fetchHealth, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  useEffect(() => {
+    const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
+    if (!hasData) return;
+    const selected = (tickerSettings.metrics || []).map(id => METRIC_MAP[id]).filter(Boolean);
+    if (!selected.length) { setTickerSnapshot(''); return; }
+    const items = selected.map(m => {
+      const out = m.render(state, aliases, currency, state.uptime) || {};
+      const value = out.value != null ? out.value : '—';
+      const prefix = out.prefix != null ? out.prefix : m.label.toUpperCase();
+      return `${prefix} ${value}`;
+    });
+    setTickerSnapshot(items.join('   ·   '));
+  }, [state, tickerSettings.metrics, aliases, currency, tickerTick]);
 
-const handleStripSettingsChange = (next) => {
-setStripSettings(next);
-saveStripEnabled(next.enabled);
-saveStripMetrics(next.metrics);
-saveStripChunk(next.chunkSize);
-saveStripFade(next.fadeMs);
-};
-const handleTickerSettingsChange = (next) => {
-setTickerSettings(next);
-saveTickerEnabled(next.enabled);
-saveTickerSpeed(next.speedSec);
-saveTickerMetrics(next.metrics);
-};
-const handleMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
-const handleVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
+  useEffect(() => { saveOrder(order); }, [order]);
+  useEffect(() => { saveCurrency(currency); }, [currency]);
+  useEffect(() => { saveAliases(aliases); }, [aliases]);
+  useEffect(() => { saveNotes(notes); }, [notes]);
+  useEffect(() => { saveStripEnabled(stripSettings.enabled); saveStripMetrics(stripSettings.metrics); saveStripChunk(stripSettings.chunkSize); saveStripFade(stripSettings.fadeMs); }, [stripSettings]);
+  useEffect(() => { saveTickerEnabled(tickerSettings.enabled); saveTickerSpeed(tickerSettings.speedSec); saveTickerMetrics(tickerSettings.metrics); }, [tickerSettings]);
+  useEffect(() => { saveMinimalMode(minimalMode); }, [minimalMode]);
+  useEffect(() => { saveVisibleCards(visibleCards); }, [visibleCards]);
 
-useEffect(()=>{ if(blockAlert) setDismissedAlert(false); }, [blockAlert]);
+  useEffect(() => {
+    if (showSettings) {
+      getConfig().then(setSettingsCfg);
+    }
+  }, [showSettings, getConfig]);
 
-const openSettings = async () => {
-try { const c=await getConfig(); setSettingsCfg(c); } catch {}
-setShowSettings(true);
-};
-const handleCurrencyChange = (c) => { setCurrency(c); saveCurrency(c); };
-const handleResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
-const handleAliasesChange = (a) => { setAliases(a); saveAliases(a); };
-const handleNotesChange = (n) => { setNotes(n); saveNotes(n); };
+  const effectiveVisibleCards = useMemo(() => {
+    const filtered = order.filter(id => visibleCards.includes(id));
+    const missing = visibleCards.filter(id => !filtered.includes(id));
+    return [...filtered, ...missing];
+  }, [order, visibleCards]);
 
-const onDragStart = (id) => setDraggedId(id);
-const onDragOver  = (id) => setDragOverId(id);
-const onDrop      = (targetId) => {
-if (!draggedId || draggedId === targetId) { setDraggedId(null); setDragOverId(null); return; }
-const next = […order];
-const from = next.indexOf(draggedId);
-const to   = next.indexOf(targetId);
-if (from < 0 || to < 0) { setDraggedId(null); setDragOverId(null); return; }
-next.splice(from, 1); next.splice(to, 0, draggedId);
-setOrder(next); saveOrder(next); setDraggedId(null); setDragOverId(null);
-};
-useEffect(() => {
-const endDrag = () => { setDraggedId(null); setDragOverId(null); };
-window.addEventListener(‘dragend’, endDrag);
-return () => window.removeEventListener(‘dragend’, endDrag);
-}, []);
+  const onDragStart = (e, id) => { setDraggedId(id); e.dataTransfer.effectAllowed = 'move'; };
+  const onDragOver = (e, id) => { e.preventDefault(); setDragOverId(id); };
+  const onDrop = (e, targetId) => {
+    e.preventDefault();
+    if (!draggedId || draggedId === targetId) { setDraggedId(null); return; }
+    const next = [...order];
+    const from = next.indexOf(draggedId);
+    const to = next.indexOf(targetId);
+    if (from < 0 || to < 0) { setDraggedId(null); return; }
+    next.splice(from, 1);
+    next.splice(to, 0, draggedId);
+    setOrder(next);
+    setDraggedId(null);
+  };
 
-if (state.status===‘loading’) return (
-<div style={{minHeight:‘100vh’,display:‘flex’,alignItems:‘center’,justifyContent:‘center’,fontFamily:‘var(–fd)’,fontSize:‘0.75rem’,letterSpacing:‘0.2em’,color:‘var(–text-2)’,textTransform:‘uppercase’,animation:‘pulse 1.5s ease-in-out infinite’}}>
-Connecting to pool…
-</div>
-);
-if (state.status===‘no_address’||state.status===‘setup’) {
-if (!hasCompletedWizard()) return <OnboardingWizard onComplete={()=>window.location.reload()}/>;
-return <SetupScreen onComplete={()=>window.location.reload()}/>;
-}
+  const handleCurrencyChange = (c) => setCurrency(c);
+  const handleResetLayout = () => setOrder(DEFAULT_CARDS);
+  const handleAliasesChange = (a) => setAliases(a);
+  const handleStripSettingsChange = (s) => setStripSettings(s);
+  const handleTickerSettingsChange = (s) => setTickerSettings(s);
 
-const cards = {
-hashrate:     { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
-workers:      { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
-network:      { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
-node:         { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
-odds:         { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
-luck:         { spanTwo:false, el:<LuckGauge luck={state.luck}/> },
-retarget:     { spanTwo:false, el:<RetargetPanel retarget={state.retarget}/> },
-shares:       { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare}/> },
-best:         { spanTwo:false, el:<BestShareLeaderboard workers={state.workers} poolBest={state.bestshare} aliases={aliases}/> },
-closestcalls: { spanTwo:false, el:<ClosestCallsPanel closestCalls={state.snapshots?.closestCalls} aliases={aliases}/> },
-blocks:       { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
-topfinders:   { spanTwo:false, el:<TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/> },
-recent:       { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
-};
+  const fmtHashrate = useCallback((hps) => {
+    if (!hps || hps < 0) return '0 H/s';
+    const units = ['H/s','KH/s','MH/s','GH/s','TH/s','PH/s','EH/s'];
+    let r = hps, i = 0;
+    while (r >= 1000 && i < units.length - 1) { r /= 1000; i++; }
+    return `${r.toFixed(2)} ${units[i]}`;
+  }, []);
 
-const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
-const tickerVisible        = !minimalMode && tickerSettings.enabled;
-const latestBlockVisible   = !minimalMode;
-const customStripVisible   = !minimalMode && stripSettings.enabled;
+  const fmtBestShareCompact = useCallback((n) => {
+    if (!n || n < 0) return '0';
+    if (n < 1000) return Math.round(n).toString();
+    if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
+    if (n < 1e9) return (n / 1e6).toFixed(1) + 'M';
+    if (n < 1e12) return (n / 1e9).toFixed(1) + 'B';
+    return (n / 1e12).toFixed(1) + 'T';
+  }, []);
 
-return (
-<>
-<div style={{minHeight:‘100vh’,display:‘flex’,flexDirection:‘column’,width:‘100%’,maxWidth:‘100%’,overflowX:‘clip’}}>
-<div style={{ position:‘sticky’, top:0, zIndex:50, background:‘rgba(6,7,8,0.92)’, backdropFilter:‘blur(10px)’, WebkitBackdropFilter:‘blur(10px)’, width:‘100%’, maxWidth:‘100%’, boxSizing:‘border-box’, overflow:‘hidden’ }}>
-<Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode} zmq={state.zmq}/>
-<Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
-{latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
-<CustomizableTopStrip
-state={state}
-aliases={aliases}
-currency={currency}
-uptime={state.uptime}
-enabled={customStripVisible}
-metricIds={stripSettings.metrics}
-chunkSize={stripSettings.chunkSize}
-fadeMs={stripSettings.fadeMs}
-/>
-<SyncWarningBanner sync={state.sync}/>
-</div>
-<main style={{flex:1,padding:‘1rem’,width:‘100%’,maxWidth:‘100%’,boxSizing:‘border-box’,margin:0,overflowX:‘clip’}}>
-<div className=“ss-grid” style={{minWidth:0,maxWidth:‘100%’}}>
-{order.map(id=>{
-if (!effectiveVisibleCards.includes(id)) return null;
-const c = cards[id];
-if (!c || !c.el) return null;
-return (
-<DraggableCard key={id} id={id} spanTwo={c.spanTwo} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} draggedId={draggedId}>
-{c.el}
-</DraggableCard>
-);
-})}
-</div>
-</main>
-<footer style={{borderTop:‘1px solid var(–border)’,padding:‘0.6rem 1rem’,display:‘flex’,justifyContent:‘space-between’,alignItems:‘center’,fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,color:‘var(–text-3)’,letterSpacing:‘0.08em’,textTransform:‘uppercase’,gap:‘0.5rem’,flexWrap:‘wrap’,width:‘100%’,maxWidth:‘100%’,boxSizing:‘border-box’}}>
-<span>SoloStrike v1.5.4 — ckpool-solo{state.privateMode && ’ · 🔒 PRIVATE’}{minimalMode && ’ · MIN’}</span>
-<a href=“https://github.com/danhaus93-ops/solostrike-umbrel” target=”_blank” rel=“noopener noreferrer” title=“View source on GitHub” style={{display:‘inline-flex’, alignItems:‘center’, justifyContent:‘center’, color:‘var(–text-2)’, textDecoration:‘none’, padding:‘2px 6px’, lineHeight:1, flexShrink:0}}>
-<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-</svg>
-</a>
-<span>Ports <PortLight health={stratumHealth} port="3333"/> · <PortLight health={stratumHealth} port="3334"/> · 🔒 <PortLight health={stratumHealth} port="4333"/></span>
-</footer>
-</div>
-{showSettings&&<SettingsModal
-onClose={()=>setShowSettings(false)}
-saveConfig={saveConfig}
-currentConfig={settingsCfg}
-currency={currency}
-onCurrencyChange={handleCurrencyChange}
-onResetLayout={handleResetLayout}
-workers={state.workers}
-aliases={aliases}
-onAliasesChange={handleAliasesChange}
-stripSettings={stripSettings}
-onStripSettingsChange={handleStripSettingsChange}
-tickerSettings={tickerSettings}
-onTickerSettingsChange={handleTickerSettingsChange}
-minimalMode={minimalMode}
-onMinimalModeChange={handleMinimalModeChange}
-visibleCards={visibleCards}
-onVisibleCardsChange={handleVisibleCardsChange}
-/>}
-{blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
-<OfflineToasts workers={state.workers} aliases={aliases}/>
-{selectedWorker && (() => {
-const live = (state.workers || []).find(w => w.name === selectedWorker.name) || selectedWorker;
-return <WorkerDetailModal worker={live} onClose={()=>setSelectedWorker(null)} aliases={aliases} onAliasesChange={handleAliasesChange} notes={notes} onNotesChange={handleNotesChange}/>;
-})()}
-</>
-);
+  const getStripValues = useCallback((chunk) => {
+    return chunk.map(id => {
+      const m = METRIC_MAP[id];
+      if (!m) return null;
+      const out = m.render(state, aliases, currency, state.uptime) || {};
+      return { label: m.label, value: out.value != null ? out.value : '—' };
+    }).filter(Boolean);
+  }, [state, aliases, currency]);
+
+  const needsSetup = state.status === 'no_address' || state.status === 'setup';
+
+  if (needsSetup) {
+    return (
+      <div className="app">
+        <Header connected={connected} status={state.status} onSettings={()=>setShowSettings(true)} privateMode={state.privateMode} minimalMode={minimalMode} zmq={state.zmq}/>
+        <SetupWizard onSubmit={async (addr)=>{ await saveConfig({ payoutAddress: addr, poolName: 'SoloStrike' }); }}/>
+        {showSettings && <SettingsModal
+          onClose={()=>setShowSettings(false)}
+          saveConfig={saveConfig}
+          currentConfig={settingsCfg}
+          currency={currency}
+          onCurrencyChange={handleCurrencyChange}
+          onResetLayout={handleResetLayout}
+          workers={state.workers}
+          aliases={aliases}
+          onAliasesChange={handleAliasesChange}
+          stripSettings={stripSettings}
+          onStripSettingsChange={handleStripSettingsChange}
+          tickerSettings={tickerSettings}
+          onTickerSettingsChange={handleTickerSettingsChange}
+          minimalMode={minimalMode}
+          onMinimalModeChange={setMinimalMode}
+          visibleCards={visibleCards}
+          onVisibleCardsChange={setVisibleCards}
+        />}
+      </div>
+    );
+  }
+
+  const cards = {
+    hashrate:  { el: <HashrateCard state={state} fmtHashrate={fmtHashrate}/>, spanTwo: true },
+    workers:   { el: <WorkersCard state={state} aliases={aliases} setAliases={setAliases} onSelect={setSelectedWorker} selectedWorker={selectedWorker} onClearSelection={()=>setSelectedWorker(null)} fmtHashrate={fmtHashrate}/>, spanTwo: false },
+    blocks:    { el: <BlocksCard state={state} fmtBestShareCompact={fmtBestShareCompact}/>, spanTwo: false },
+    finders:   { el: <TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/>, spanTwo: false },
+    closest:   { el: <ClosestCallsPanel closestCalls={state.closestCalls} aliases={aliases} fmtBestShareCompact={fmtBestShareCompact}/>, spanTwo: false },
+    network:   { el: <NetworkCard state={state} fmtHashrate={fmtHashrate} fmtBestShareCompact={fmtBestShareCompact}/>, spanTwo: false },
+    snapshots: { el: <SnapshotsCard state={state} fmtHashrate={fmtHashrate}/>, spanTwo: false },
+    prices:    { el: <PricesCard state={state} currency={currency}/>, spanTwo: false },
+  };
+
+  return (
+    <div className="app">
+      <ToastSystem blockAlert={blockAlert} workers={state.workers}/>
+      {selectedWorker && <WorkerDetailModal workerName={selectedWorker} onClose={()=>setSelectedWorker(null)} state={state} aliases={aliases} setAliases={setAliases} notes={notes} setNotes={setNotes} fmtHashrate={fmtHashrate}/>}
+      <Header connected={connected} status={state.status} onSettings={()=>setShowSettings(true)} privateMode={state.privateMode} minimalMode={minimalMode} zmq={state.zmq}/>
+      {!minimalMode && <Ticker snapshotText={tickerSnapshot} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>}
+      {!minimalMode && <StatStrip metrics={stripSettings.metrics} chunkSize={stripSettings.chunkSize} fadeMs={stripSettings.fadeMs} enabled={stripSettings.enabled} getValues={getStripValues}/>}
+      {!minimalMode && <LatestBlockStrip state={state}/>}
+      <div style={{width:'100%',maxWidth:'100%',overflow:'hidden',display:'flex',flexDirection:'column',minHeight:'calc(100vh - 120px)'}}>
+        <main style={{flex:1, padding:'1rem', width:'100%', boxSizing:'border-box'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2, 1fr)',gap:'0.85rem',alignItems:'start',maxWidth:'100%'}}>
+            {effectiveVisibleCards.map(id => {
+              if (!effectiveVisibleCards.includes(id)) return null;
+              const c = cards[id];
+              if (!c || !c.el) return null;
+              return (
+                <DraggableCard key={id} id={id} spanTwo={c.spanTwo} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} draggedId={draggedId}>
+                  {c.el}
+                </DraggableCard>
+              );
+            })}
+          </div>
+        </main>
+        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
+          <span>SoloStrike v1.5.4 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+          </a>
+          <span>Ports <PortLight health={stratumHealth} port="3333"/> · <PortLight health={stratumHealth} port="3334"/> · 🔒 <PortLight health={stratumHealth} port="4333"/></span>
+        </footer>
+      </div>
+      {showSettings&&<SettingsModal
+        onClose={()=>setShowSettings(false)}
+        saveConfig={saveConfig}
+        currentConfig={settingsCfg}
+        currency={currency}
+        onCurrencyChange={handleCurrencyChange}
+        onResetLayout={handleResetLayout}
+        workers={state.workers}
+        aliases={aliases}
+        onAliasesChange={handleAliasesChange}
+        stripSettings={stripSettings}
+        onStripSettingsChange={handleStripSettingsChange}
+        tickerSettings={tickerSettings}
+        onTickerSettingsChange={handleTickerSettingsChange}
+        minimalMode={minimalMode}
+        onMinimalModeChange={setMinimalMode}
+        visibleCards={visibleCards}
+        onVisibleCardsChange={setVisibleCards}
+      />}
+    </div>
+  );
 }
