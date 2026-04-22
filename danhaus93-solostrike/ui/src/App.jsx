@@ -178,9 +178,9 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
   const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
-  return (
-    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.75rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.5rem', overflow:'hidden' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', minWidth:0, overflow:'hidden', flex:1 }}>
+    return (
+    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.5rem 0.75rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.5rem', flexWrap:'wrap' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', minWidth:0, flex:'1 1 auto', flexWrap:'wrap' }}>
         <span style={{ fontSize:16, color:'var(--amber)', filter: minimalMode?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: minimalMode?'none':'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
         <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
         {!minimalMode && (
