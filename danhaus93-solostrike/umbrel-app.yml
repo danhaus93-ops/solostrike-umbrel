@@ -1,0 +1,206 @@
+manifestVersion: 1
+id: danhaus93-solostrike
+category: bitcoin
+name: SoloStrike
+version: "1.5.3"
+tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
+description: >-
+  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
+  dashboard.
+
+
+  Connect your ASICs directly to your own Bitcoin node and keep 100% of every
+  block you find — no pool fees, no custody risk, no middleman.
+
+
+  v1.3.0 introduces Private Mode — toggle one switch and the entire app goes
+  airgapped. No mempool.space calls, no price feeds, no outbound traffic of
+  any kind. Your mining activity is yours alone.
+
+
+  Features:
+
+  • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
+
+  • Closest Calls leaderboard — historical top 10 best-diff shares across your fleet
+
+  • Daily hashrate snapshots — 90 days of avg/peak history
+
+  • Sticky header cluster — pool status, ticker, latest block, sync warnings, ZMQ indicator
+
+  • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
+
+  • Worker search, miner rename aliases, per-worker last-share timestamps
+
+  • Click miner IP to open its web UI in a new tab
+
+  • Worker offline toast notifications — catch outages the moment they happen
+
+  • Bitcoin Core sync warning banner when your node falls behind
+
+  • Bitcoin Node panel — Core version, total/in/out peers, relay fee, mempool size
+
+  • Block probability — daily, weekly, and monthly odds + expected time to block
+
+  • Luck gauge, difficulty retarget countdown, Top Pool Finders leaderboard
+
+  • Latest Block hero strip — most recently mined block, pool, and reward
+
+  • Recent network blocks feed with solo-winner highlighting
+
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
+
+  • Drag-and-drop card reordering — layout persists per-device
+
+  • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
+
+  • Leaderboard table — worker, miner type, hashrate, best diff, status
+
+  • CSV export for workers and found blocks
+
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc.
+
+  • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
+
+  • Public read-only API — share your pool stats externally
+
+  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
+
+  • Works with any Stratum V1 miner — one-time setup, miners connect automatically
+
+
+  100% self-custody. Truly zero fees. Your node, your rules, your blocks.
+releaseNotes: >-
+  v1.5.3 — Security Hardening: TLS stratum + architecture consolidation.
+
+
+  NEW:
+
+  • 🔐 TLS STRATUM on port 4333 — secure, encrypted stratum mining alongside
+  the existing plaintext ports. Modern ASICs (Antminer S21, BitAxe Ultra,
+  Whatsminer M60/M66) support stratum+ssl:// URLs natively. Point them at
+  port 4333 for end-to-end TLS encryption of all share submissions and job
+  templates. Plaintext 3333 and 3334 remain available for legacy miners.
+
+  • 🔒 Self-signed TLS certificate auto-generates on first run and persists
+  in app-data across restarts. 10-year validity. No manual cert management
+  needed.
+
+  • 🏗️ ARCHITECTURE SIMPLIFIED — widget-server merged into the main api
+  container. One less container, one less Docker image, cleaner operation.
+  umbrelOS widget now served by the api directly at
+  /api/widget/four-stats.
+
+
+  CHANGED:
+
+  • Container count reduced from 5 to 5 (widget-server replaced by stunnel).
+
+  • CI build matrix simplified: 2 images (ui, api) + stunnel, down from 3.
+
+  • New stunnel sidecar service handles TLS termination — distroless-style
+  minimal Alpine image, drops to unprivileged user after cert generation.
+
+
+  SECURITY:
+
+  • Connections over WireGuard, Tailscale, or exposed networks can now use
+  port 4333 for encrypted stratum instead of exposing plaintext traffic.
+
+  • The existing plaintext ports remain available for older ASICs and
+  hobby miners without TLS support.
+
+  • Self-signed cert is fine for LAN and VPN use; the miners just need to
+  accept it once.
+
+
+  UPGRADE NOTE:
+
+  If your home-screen widget shows blank after update, remove and re-add it
+  from the umbrelOS "Edit widgets" screen — umbrelOS will re-register the
+  new endpoint.
+
+
+  CARRIED FORWARD FROM v1.5.2:
+
+  • 🧭 5-step guided onboarding wizard for first-time installers with
+  scannable stratum QR codes and auto-detection of first miner connection.
+
+
+  CARRIED FORWARD FROM v1.5.1:
+
+  • 📱 Progressive Web App support — "Add to Home Screen" for a standalone
+  app experience on iOS and Android.
+
+  • 🏷️ Branded coinbase tag "/SoloStrike on Umbrel/" on every block found.
+
+
+  CARRIED FORWARD FROM v1.5.0:
+
+  • 🖥️ umbrelOS home-screen widget showing Pool Hashrate, Workers, Blocks
+  Found, and Best Difficulty. Refreshes every 10 seconds.
+
+
+  CARRIED FORWARD FROM v1.4.0:
+
+  • Multi-arch Docker images (linux/amd64 + linux/arm64) — runs natively on
+  Raspberry Pi, Umbrel Home, and other x86-64 hardware.
+
+
+  CARRIED FORWARD FROM v1.3.4:
+
+  • Closest Calls card — pool-wide historical leaderboard of the top 10
+  highest-difficulty shares ever submitted.
+
+  • Miner IP capture with clickable link to each miner's web UI.
+
+
+  CARRIED FORWARD FROM v1.3.3:
+
+  • ZMQ status badge in header, dual stratum ports 3333/3334.
+
+
+  CARRIED FORWARD FROM v1.3.0:
+
+  • 🔒 Private Mode — toggle one switch and the entire app goes airgapped.
+  No mempool.space calls, no price feeds, no outbound traffic.
+developer: danhaus93-ops
+website: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
+repo: https://github.com/danhaus93-ops/solostrike-umbrel
+support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
+port: 1234
+gallery:
+  - 1.png
+  - 2.png
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: danhaus93-ops
+submission: https://github.com/danhaus93-ops/solostrike-umbrel
+widgets:
+  - id: "stats"
+    type: "four-stats"
+    refresh: "10s"
+    endpoint: "api:3001/api/widget/four-stats"
+    link: ""
+    example:
+      type: "four-stats"
+      link: ""
+      items:
+        - title: "Pool Hashrate"
+          text: "542.8"
+          subtext: "GH/s"
+        - title: "Workers"
+          text: "3"
+        - title: "Blocks Found"
+          text: "0"
+        - title: "Best Diff"
+          text: "1.2B"
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
