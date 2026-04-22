@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-const WS = `${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`;
+const WS = `${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/ws`;
 const DEF = {
   config:    { poolName:'SoloStrike', hasAddress:false },
   status:    'loading',
