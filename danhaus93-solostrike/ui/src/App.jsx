@@ -172,6 +172,35 @@ function ZmqBadge({ zmq }) {
   );
 }
 
+// ── PortLight — color-coded port number based on live stratum health ──────────
+function PortLight({ health, port }) {
+  const portData = health?.ports?.[port];
+  const status   = portData?.status;
+  let color, glow, title;
+  if (status === 'healthy') {
+    color = 'var(--green)';
+    glow  = color;
+    title = `Port ${port} — healthy${portData.latencyMs ? ` (${portData.latencyMs}ms)` : ''}`;
+  } else if (status === 'degraded') {
+    color = 'var(--amber)';
+    glow  = color;
+    title = `Port ${port} — degraded${portData.error ? ` (${portData.error})` : ''}`;
+  } else if (status === 'down') {
+    color = 'var(--red)';
+    glow  = color;
+    title = `Port ${port} — down${portData.error ? ` (${portData.error})` : ''}`;
+  } else {
+    color = 'var(--cyan)';
+    glow  = null;
+    title = `Port ${port} — checking...`;
+  }
+  return (
+    <span title={title} style={{ color, textShadow: glow ? `0 0 6px ${glow}` : 'none', transition:'color 0.3s, text-shadow 0.3s' }}>
+      {port}
+    </span>
+  );
+}
+
 // ── Header ────────────────────────────────────────────────────────────────────
 function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }) {
   const now = useNow(30000);
@@ -1018,6 +1047,7 @@ function TopFindersPanel({ topFinders, netBlocks }) {
   );
 }
 
+
 // ── Block feed ────────────────────────────────────────────────────────────────
 function BlockFeed({ blocks, blockAlert }) {
   return (
@@ -1087,46 +1117,39 @@ function Confetti() {
     const pts=Array.from({length:150},()=>({x:Math.random()*canvas.width,y:-10,vy:3+Math.random()*5,vx:(Math.random()-.5)*4,s:3+Math.random()*6,c:colors[Math.floor(Math.random()*colors.length)],r:Math.random()*360,rv:(Math.random()-.5)*8,op:1}));
     let frame; const draw=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); let alive=false;
       pts.forEach(p=>{p.y+=p.vy;p.x+=p.vx;p.r+=p.rv;p.op-=0.007; if(p.y<canvas.height&&p.op>0)alive=true;
-        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r*Math.PI/180);ctx.globalAlpha=Math.max(0,p.op);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.5);ctx.restore();});
-      if(alive)frame=requestAnimationFrame(draw);};
-    frame=requestAnimationFrame(draw); return()=>cancelAnimationFrame(frame);
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r*Math.PI/180);ctx.globalAlpha=Math.max(0,p.op);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s);ctx.restore();
+      }); if(alive)frame=requestAnimationFrame(draw); };
+    frame=requestAnimationFrame(draw); return ()=>cancelAnimationFrame(frame);
   },[]);
-  return <canvas ref={ref} style={{position:'fixed',inset:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:299}}/>;
+  return <canvas ref={ref} style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:500}}/>;
 }
-function BlockAlert({ block, onDismiss }) {
-  if(!block) return null;
-  return(<>
-    <Confetti/>
-    <div style={{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:300,pointerEvents:'none'}}>
-      <div onClick={onDismiss} style={{background:'var(--bg-surface)',border:'2px solid var(--green)',padding:'2.5rem 4rem',textAlign:'center',boxShadow:'0 0 60px rgba(57,255,106,0.4)',animation:'blockBoom 0.5s ease',pointerEvents:'auto',cursor:'pointer'}}>
-        <div style={{fontSize:'3.5rem',marginBottom:'0.5rem'}}>💎</div>
-        <div style={{fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.3em',textTransform:'uppercase',color:'var(--green)',marginBottom:'0.25rem'}}>⚡ BLOCK FOUND ⚡</div>
-        <div style={{fontFamily:'var(--fd)',fontSize:'2.8rem',fontWeight:700,color:'#fff',textShadow:'0 0 24px rgba(57,255,106,0.6)'}}>#{fmtNum(block.height)}</div>
-        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',marginTop:'0.4rem'}}>{block.hash?.slice(0,20)}…</div>
-        <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:'1rem',letterSpacing:'0.1em'}}>TAP TO DISMISS</div>
-      </div>
+function BlockAlert({ show, block, onDismiss }) {
+  useEffect(()=>{ if(show){const t=setTimeout(onDismiss,8000); return()=>clearTimeout(t);} },[show,onDismiss]);
+  if(!show||!block)return null;
+  return(
+    <div style={{position:'fixed',top:'8rem',left:'50%',transform:'translateX(-50%)',zIndex:300,background:'var(--bg-surface)',border:'2px solid var(--green)',padding:'1.5rem 2rem',boxShadow:'0 0 60px rgba(57,255,106,0.6)',animation:'fadeIn .5s ease',maxWidth:'90%'}}>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.2em',color:'var(--green)',textTransform:'uppercase',marginBottom:'0.5rem',textAlign:'center'}}>✦ BLOCK FOUND ✦</div>
+      <div style={{fontFamily:'var(--fd)',fontSize:'2.5rem',fontWeight:700,color:'var(--amber)',textAlign:'center',textShadow:'0 0 20px var(--amber)'}}>#{fmtNum(block.height)}</div>
+      <button onClick={onDismiss} style={{width:'100%',marginTop:'1rem',padding:'0.5rem',background:'transparent',border:'1px solid var(--green)',color:'var(--green)',fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.1em',cursor:'pointer'}}>DISMISS</button>
     </div>
-  </>);
+  );
 }
 
-// ── Setup screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onComplete }) {
-  const [addr,setAddr]=useState(''); const [loading,setLoading]=useState(false); const [error,setError]=useState('');
-  const submit = async () => {
-    if(!addr.trim()){setError('Please enter a Bitcoin address.');return;}
-    if(!isValidBtcAddress(addr)){setError("That doesn't look like a valid Bitcoin address.");return;}
-    setLoading(true);setError('');
-    try{ const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({payoutAddress:addr.trim()})}); const d=await r.json(); if(!r.ok){setError(d.error||'Invalid address.');return;} onComplete(); }
-    catch{setError('Cannot reach pool API.');} finally{setLoading(false);}
+// ── Setup form ────────────────────────────────────────────────────────────────
+function SetupForm({ saveConfig }) {
+  const [addr,setAddr]=useState(''); const [error,setError]=useState(''); const [loading,setLoading]=useState(false);
+  const submit=async()=>{
+    setError('');const t=addr.trim();
+    if(!t){setError('Address required');return;}
+    if(!isValidBtcAddress(t)){setError("That doesn't look like a valid Bitcoin address.");return;}
+    setLoading(true);
+    try{await saveConfig({payoutAddress:t});}catch(e){setError(e.message);}finally{setLoading(false);}
   };
   return (
-    <div style={{position:'fixed',inset:0,background:'var(--bg-void)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100,padding:'1rem'}}>
-      <div style={{width:'100%',maxWidth:500,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'2rem',boxShadow:'var(--glow-a)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:'0.5rem'}}>
-          <span style={{fontSize:22,color:'var(--amber)'}}>⛏</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'1.6rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.08em'}}>SOLOSTRIKE</span>
-        </div>
-        <p style={{fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'2rem'}}>Initial Setup — Enter Payout Address</p>
+    <div style={{minHeight:'80vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'2rem 1rem'}}>
+      <div style={{width:'100%',maxWidth:440,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'2rem'}}>
+        <h2 style={{fontFamily:'var(--fd)',fontSize:'1.2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:'0.5rem',textShadow:'var(--glow-a)'}}>⛏ SoloStrike Setup</h2>
+        <p style={{fontFamily:'var(--fd)',fontSize:'0.72rem',color:'var(--text-2)',marginBottom:'1.5rem',letterSpacing:'0.05em',lineHeight:1.6}}>Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.</p>
         <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem'}}>Bitcoin Payout Address</label>
         <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${error?'rgba(255,59,59,0.5)':addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.82rem',padding:'0.75rem 1rem',outline:'none',boxSizing:'border-box'}}
           type="text" placeholder="bc1q… or 1… or 3…" value={addr} onChange={e=>{setAddr(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&submit()} spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
@@ -1705,7 +1728,6 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
 
-          {/* NEW: Prominent Miner Web UI link if we have an IP */}
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
               <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
@@ -1846,6 +1868,23 @@ export default function App() {
     const id = setInterval(() => setTickerTick(t => t + 1), 30000);
     return () => clearInterval(id);
   }, []);
+
+  // Stratum port health — polls /api/stratum-health every 30s (v1.5.4+)
+  const [stratumHealth, setStratumHealth] = useState({ ports: {} });
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchHealth() {
+      try {
+        const r = await fetch('/api/stratum-health', { cache: 'no-store' });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled) setStratumHealth(j || { ports: {} });
+      } catch (_) { /* network blip — keep last known state */ }
+    }
+    fetchHealth();
+    const id = setInterval(fetchHealth, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
   useEffect(() => {
     const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
     if (!hasData) return;
@@ -1970,13 +2009,13 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.5.3 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.5.4 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
             </svg>
           </a>
-          <span>Ports <span style={{color:'var(--cyan)'}}>3333</span> · <span style={{color:'var(--cyan)'}}>3334</span> · <span style={{color:'var(--green)'}}>🔒 4333</span></span>
+          <span>Ports <PortLight health={stratumHealth} port="3333"/> · <PortLight health={stratumHealth} port="3334"/> · 🔒 <PortLight health={stratumHealth} port="4333"/></span>
         </footer>
       </div>
       {showSettings&&<SettingsModal
