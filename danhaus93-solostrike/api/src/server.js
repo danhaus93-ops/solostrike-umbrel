@@ -18,7 +18,7 @@ const {
 } = require('./snapshots');
 const { startStratumHealthPoller, getStratumHealth } = require('./stratum-health');
 
-const VERSION = '1.3.4';
+const VERSION = '1.5.4';
 
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
