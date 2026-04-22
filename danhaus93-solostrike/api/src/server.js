@@ -18,7 +18,7 @@ const {
 } = require('./snapshots');
 const { startStratumHealthPoller, getStratumHealth } = require('./stratum-health');
 
-const VERSION = '1.5.4';
+const VERSION = '1.5.5';
 
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
@@ -141,7 +141,8 @@ wss.on('connection', (ws, req) => {
     return;
   }
   wsClients++;
-  try { ws.send(JSON.stringify({ type:'state', data: transformState(state) })); } catch {}
+  try { ws.send(JSON.stringify({ type:'STATE_UPDATE', data: transformState(state) })); } catch {}
+  try { ws.send(JSON.stringify({ type:'CONFIG', data: { poolName: cfg.poolName || 'SoloStrike', privateMode: !!cfg.privateMode, hasAddress: !!cfg.payoutAddress } })); } catch {}
   ws.on('close', () => { wsClients--; });
 });
 
@@ -181,7 +182,10 @@ async function btcRpc(method, params = []) {
 async function pollBitcoind() {
   try {
     const info = await btcRpc('getblockchaininfo');
-    if (!info) return;
+    if (!info) {
+      state.nodeInfo = { connected: false, subversion: '', peers: 0, peersIn: 0, peersOut: 0, relayFee: 0, mempoolCount: 0, mempoolBytes: 0 };
+      return;
+    }
     state.bitcoind.synced = info.initialblockdownload === false;
     state.bitcoind.progress = info.verificationprogress || 0;
     state.network.height = info.blocks || 0;
@@ -189,6 +193,21 @@ async function pollBitcoind() {
 
     const hashinfo = await btcRpc('getnetworkhashps', []);
     if (hashinfo) state.network.hashrate = hashinfo;
+
+    // Node info for Bitcoin Node panel (v1.5.5+)
+    const netinfo   = await btcRpc('getnetworkinfo') || {};
+    const meminfo   = await btcRpc('getmempoolinfo') || {};
+    const peerinfo  = await btcRpc('getpeerinfo')   || [];
+    state.nodeInfo = {
+      connected: true,
+      subversion: netinfo.subversion || '',
+      peers: Array.isArray(peerinfo) ? peerinfo.length : 0,
+      peersIn:  Array.isArray(peerinfo) ? peerinfo.filter(p => p.inbound).length  : 0,
+      peersOut: Array.isArray(peerinfo) ? peerinfo.filter(p => !p.inbound).length : 0,
+      relayFee: netinfo.relayfee || 0,
+      mempoolCount: meminfo.size || 0,
+      mempoolBytes: meminfo.bytes || 0,
+    };
 
     // Latest block
     const lbHash = info.bestblockhash;
@@ -214,7 +233,9 @@ async function pollBitcoind() {
         };
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    state.nodeInfo = { connected: false, subversion: '', peers: 0, peersIn: 0, peersOut: 0, relayFee: 0, mempoolCount: 0, mempoolBytes: 0 };
+  }
 }
 
 function identifyMiner(coinbaseHex) {
@@ -228,174 +249,157 @@ function identifyMiner(coinbaseHex) {
       [/ViaBTC/i, 'ViaBTC'],
       [/Binance/i, 'Binance Pool'],
       [/Luxor/i, 'Luxor'],
+      [/MARA/i, 'Marathon'],
+      [/BTC\.com/i, 'BTC.com'],
+      [/SlushPool|braiins|bitcoin-solo/i, 'Braiins Pool'],
+      [/KuCoinPool/i, 'KuCoin Pool'],
       [/SBICrypto/i, 'SBI Crypto'],
-      [/SpiderPool/i, 'SpiderPool'],
-      [/Braiins|SlushPool/i, 'Braiins'],
-      [/MARA/i, 'MARA Pool'],
-      [/OCEAN/i, 'OCEAN'],
-      [/Public-Pool/i, 'Public Pool'],
-      [/SoloStrike/i, 'SoloStrike'],
-      [/Bassin/i, 'Bassin'],
-      [/NiceHash/i, 'NiceHash'],
-      [/secpool/i, 'SECPool'],
+      [/Ultimus/i, 'Ultimus Pool'],
+      [/SECPOOL/i, 'SECPOOL'],
+      [/MiningSquared/i, 'MiningSquared'],
       [/WhitePool/i, 'WhitePool'],
-      [/ULTIMUSPOOL/i, 'Ultimus'],
-      [/CKPool|ckpool/i, 'CKPool'],
+      [/Carbon/i, 'Carbon Negative'],
+      [/SoloStrike/i, 'SoloStrike (YOU!)'],
     ];
-    for (const [re, name] of sigs) { if (re.test(ascii)) return name; }
+    for (const [re, name] of sigs) if (re.test(ascii)) return name;
     return 'unknown';
   } catch { return 'unknown'; }
 }
 
 async function pollMempool() {
-  if (cfg.privateMode) return;
   try {
-    const r = await fetchWithTimeout('https://mempool.space/api/mempool', { timeout: 6000 });
-    if (!r.ok) return;
-    const j = await r.json();
-    state.mempool.count = j.count || 0;
-    state.mempool.feeRate = j.total_fee && j.count ? (j.total_fee / j.count) : 0;
-
-    const fr = await fetchWithTimeout('https://mempool.space/api/v1/fees/recommended', { timeout: 6000 });
-    if (fr.ok) {
-      const fj = await fr.json();
-      if (fj.halfHourFee) state.mempool.feeRate = fj.halfHourFee;
+    if (!state.privateMode) {
+      const r = await fetchWithTimeout('https://mempool.space/api/v1/fees/recommended', { timeout: 5000 });
+      if (r.ok) {
+        const j = await r.json();
+        state.mempool.feeRate = j.fastestFee || 0;
+      }
+    }
+    const info = await btcRpc('getmempoolinfo');
+    if (info) {
+      state.mempool.count = info.size || 0;
+      state.mempool.totalFeesBtc = (info.total_fee || 0);
     }
   } catch {}
 }
 
 async function pollBlocks() {
-  if (cfg.privateMode) return;
   try {
+    if (state.privateMode) return;
     const r = await fetchWithTimeout('https://mempool.space/api/v1/blocks', { timeout: 6000 });
     if (!r.ok) return;
-    const arr = await r.json();
-    if (!Array.isArray(arr)) return;
-    state.netBlocks = arr.slice(0, 30).map(b => ({
-      height: b.height, timestamp: (b.timestamp||0)*1000, pool: b.extras?.pool?.name || 'unknown',
-    }));
-    const counts = {};
-    state.netBlocks.forEach(b => { counts[b.pool] = (counts[b.pool]||0)+1; });
-    const total = state.netBlocks.length;
-    state.topFinders = Object.entries(counts)
-      .map(([pool,count]) => ({ pool, count, pct: total ? (count/total)*100 : 0 }))
-      .sort((a,b) => b.count - a.count)
-      .slice(0, 8);
+    const blocks = await r.json();
+    const SOLO_SIGNATURES = [
+      /Solo/i, /^SoloStrike/i, /Solo Miner/i, /Solo Pool/i,
+      /Mario Nano/i, /Ckpool/i, /ckpool-solo/i, /OrangeSurf/i,
+    ];
+    const mapped = blocks.slice(0, 25).map(b => {
+      let pool = 'Unknown';
+      let isSolo = false;
+      if (b.extras?.pool?.name) {
+        pool = b.extras.pool.name;
+        isSolo = SOLO_SIGNATURES.some(re => re.test(pool));
+      }
+      return {
+        id: b.id,
+        height: b.height,
+        timestamp: b.timestamp * 1000,
+        pool,
+        isSolo,
+        tx_count: b.tx_count,
+        reward: b.extras?.reward,
+      };
+    });
+    state.netBlocks = mapped;
   } catch {}
 }
 
 async function pollPrices() {
-  if (cfg.privateMode) return;
   try {
-    const r = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,jpy,cad,aud', { timeout: 6000 });
-    if (!r.ok) return;
-    const j = await r.json();
-    if (j.bitcoin) state.prices = j.bitcoin;
+    if (state.privateMode) { state.prices = {}; return; }
+    const r = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,cad,aud,jpy,cny', { timeout: 6000 });
+    if (r.ok) {
+      const j = await r.json();
+      if (j.bitcoin) {
+        state.prices = {
+          USD: j.bitcoin.usd,
+          EUR: j.bitcoin.eur,
+          GBP: j.bitcoin.gbp,
+          CAD: j.bitcoin.cad,
+          AUD: j.bitcoin.aud,
+          JPY: j.bitcoin.jpy,
+          CNY: j.bitcoin.cny,
+        };
+      }
+    }
   } catch {}
 }
 
-// ── ZMQ client for instant block notifications ──────────────────────────────
-let zmqSub = null;
-function startZmq() {
-  if (!ZMQ_HASHBLOCK_URL) { state.zmq.enabled = false; return; }
-  try {
-    const zmq = require('zeromq');
-    state.zmq.enabled = true;
-    state.zmq.endpoint = ZMQ_HASHBLOCK_URL;
-    zmqSub = new zmq.Subscriber();
-    zmqSub.connect(ZMQ_HASHBLOCK_URL);
-    zmqSub.subscribe('hashblock');
-    (async () => {
-      for await (const [topic, msg] of zmqSub) {
-        state.zmq.lastBlockHeardAt = Date.now();
-        pollBitcoind();
-      }
-    })().catch(() => {});
-  } catch (e) {
-    state.zmq.enabled = false;
-    console.warn('[zmq] unavailable:', e.message);
-  }
+function watchLogs() {
+  const watcher = chokidar.watch(CKPOOL_LOG_DIR, { ignored: /\./, persistent:true, depth:1, ignoreInitial:true });
+  watcher.on('add', (p) => {
+    if (!p.endsWith('ckpool.log')) return;
+  });
 }
 
-// ── Log watcher ──────────────────────────────────────────────────────────────
-function watchLogs() {
-  if (!fs.existsSync(CKPOOL_LOG_DIR)) {
-    console.warn('[logs] ckpool log dir does not exist:', CKPOOL_LOG_DIR);
+function startZmq() {
+  if (!ZMQ_HASHBLOCK_URL) {
+    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
     return;
   }
-  const watcher = chokidar.watch(path.join(CKPOOL_LOG_DIR, '*.log'), {
-    persistent: true, ignoreInitial: true, usePolling: false,
-  });
-  watcher.on('add', (p) => console.log('[logs] new file', p));
+  try {
+    const zmq = require('zeromq');
+    const sock = zmq.socket('sub');
+    sock.connect(ZMQ_HASHBLOCK_URL);
+    sock.subscribe('hashblock');
+    sock.on('message', () => {
+      state.zmq.lastBlockHeardAt = Date.now();
+      pollBitcoind();
+      pollBlocks();
+    });
+    state.zmq = { enabled:true, lastBlockHeardAt:null, endpoint: ZMQ_HASHBLOCK_URL };
+    console.log(`[ZMQ] connected to ${ZMQ_HASHBLOCK_URL}`);
+  } catch (e) {
+    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
+    console.log('[zmq] unavailable:', e.message);
+  }
 }
 
-// ── Webhooks ─────────────────────────────────────────────────────────────────
-async function fireWebhook(hook, event, payload) {
+async function fireWebhook(hook, event, data) {
+  if (!hook || !hook.url) return;
   try {
     await fetchWithTimeout(hook.url, {
       method: 'POST',
-      headers: {'content-type':'application/json'},
-      body: JSON.stringify({ event, pool: cfg.poolName||'SoloStrike', at: Date.now(), ...payload }),
-      timeout: 5000,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ event, data, timestamp: Date.now(), pool: cfg.poolName || 'SoloStrike' }),
+      timeout: 8000,
     });
   } catch {}
 }
-function fireHooks(event, payload) {
-  (state.webhooks||[]).forEach(h => {
-    if (h.events && h.events.includes(event)) fireWebhook(h, event, payload);
-  });
-}
 
-// ── API routes ───────────────────────────────────────────────────────────────
-app.get('/api/state',  (req, res) => res.json(transformState(state)));
+// ── Routes ───────────────────────────────────────────────────────────────────
+app.get('/api/state',  (req, res) => {
+  res.json(transformState(state));
+});
+
 app.get('/api/config', (req, res) => res.json(cfgPublic()));
-app.get('/api/health', (req, res) => res.json({
-  ok: true,
+
+app.get('/api/version', (req, res) => res.json({
   version: VERSION,
-  uptime: Math.floor((Date.now() - bootTime)/1000),
-  status: state.status,
-  bitcoind: state.bitcoind,
-  workers: state.workers?.length || 0,
-  privateMode: !!cfg.privateMode,
-  zmq: state.zmq,
+  uptimeSeconds: Math.floor((Date.now() - bootTime)/1000),
 }));
 
-app.get('/api/prices', (req, res) => res.json(state.prices || {}));
-
-app.get('/api/snapshots', rateLimit, (req, res) => {
-  res.json(state.snapshots || { daily: [] });
-});
-
-app.get('/api/public/summary', rateLimit, (req, res) => {
-  const s = transformState(state);
-  res.json({
-    hashrate: s.hashrate?.current || 0,
-    workers: s.totalWorkers || 0,
-    blocks: (s.blocks||[]).length,
-    bestShare: s.bestshare || 0,
-  });
-});
-
-app.get('/api/public/workers', rateLimit, (req, res) => {
-  const s = transformState(state);
-  res.json({ workers: (s.workers||[]).map(w => ({
-    name: w.name,
-    alias: w.alias,
-    hashrate1m: w.hashrate1m,
-    shares: w.shares,
-    bestShare: w.bestShare,
-  }))});
-});
-
-app.get('/api/widget/four-stats', (req, res) => {
+// Umbrel widget endpoint (four-stats type for compatibility with Umbrel Home widget system)
+app.get('/widget/stats', (req, res) => {
   const formatHashrate = (hps) => {
     if (!hps || hps < 0 || !Number.isFinite(hps)) return { text: '0', subtext: 'H/s' };
     const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
-    let rate = hps, i = 0;
-    while (rate >= 1000 && i < units.length - 1) { rate /= 1000; i++; }
-    return { text: rate.toFixed(2), subtext: units[i] };
+    let unit = 0, val = hps;
+    while (val >= 1000 && unit < units.length - 1) { val /= 1000; unit++; }
+    return { text: val.toFixed(1), subtext: units[unit] };
   };
-  const formatCompact = (n) => {
+
+    const formatCompact = (n) => {
     if (!n || n < 0 || !Number.isFinite(n)) return '0';
     if (n < 1000) return Math.round(n).toString();
     if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
@@ -569,6 +573,8 @@ const handleSettings = async (req, res) => {
   if (b.poolName !== undefined) cfg.poolName = (b.poolName || 'SoloStrike').trim() || 'SoloStrike';
   if (b.privateMode !== undefined) { cfg.privateMode = !!b.privateMode; state.privateMode = cfg.privateMode; }
   await saveConfigDisk(cfg);
+  // Broadcast config change to all connected clients (v1.5.5+)
+  broadcast({ type: 'CONFIG', data: { poolName: cfg.poolName || 'SoloStrike', privateMode: !!cfg.privateMode, hasAddress: !!cfg.payoutAddress } });
   res.json({ ok: true });
 };
 app.post('/api/settings', handleSettings);
@@ -606,3 +612,4 @@ async function boot() {
 }
 
 boot();
+      
