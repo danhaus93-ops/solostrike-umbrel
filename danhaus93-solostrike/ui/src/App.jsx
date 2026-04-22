@@ -166,8 +166,7 @@ function ZmqBadge({ zmq }) {
   }
 
   return (
-    <span title={title} style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.12em', textTransform:'uppercase', color, flexShrink:0, marginLeft:4 }}>
-      <span style={{ width:5, height:5, borderRadius:'50%', background: color, boxShadow: z.enabled ? `0 0 5px ${color}` : 'none' }}/>
+    <span title={title} style={{ display:'inline-flex', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.12em', textTransform:'uppercase', color, flexShrink:0, marginLeft:4, textShadow: z.enabled ? `0 0 5px ${color}` : 'none' }}>
       {text}
     </span>
   );
@@ -180,16 +179,13 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
   const st = statusMap[status] || statusMap.loading;
   return (
     <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.5rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.4rem' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:'1 1 auto' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:1 }}>
         <span style={{ fontSize:16, color:'var(--amber)', filter: minimalMode?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: minimalMode?'none':'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
         <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
         {!minimalMode && (
           <>
             <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
-            <div style={{ display:'flex', alignItems:'center', gap:4, fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', flexShrink:0 }}>
-              <div style={{ width:6, height:6, borderRadius:'50%', background:st.c, boxShadow:`0 0 8px ${st.c}`, animation:'pulse 2s ease-in-out infinite' }}/>
-              <span style={{ color:st.c }}>{st.t}</span>
-            </div>
+            <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', color:st.c, textShadow:`0 0 6px ${st.c}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }}>{st.t}</span>
             <ZmqBadge zmq={zmq}/>
             {privateMode && (
               <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
@@ -199,8 +195,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', flexShrink:0 }}>
         <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2, fontFamily:'var(--fd)' }}>
-          <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:'0.58rem', letterSpacing:'0.12em', color: connected?'var(--cyan)':'var(--text-2)' }}>
-            <span style={{ width:5, height:5, borderRadius:'50%', background: connected?'var(--cyan)':'var(--text-2)', boxShadow: connected?'0 0 6px var(--cyan)':'none' }}/>
+         <span style={{ fontSize:'0.58rem', letterSpacing:'0.12em', color: connected?'var(--cyan)':'var(--text-2)', textShadow: connected?'0 0 6px var(--cyan)':'none', fontFamily:'var(--fd)', textTransform:'uppercase' }}>
             {connected?'LIVE':'RECONN'}
           </span>
           <span style={{ fontSize:'0.52rem', letterSpacing:'0.04em', color:'var(--amber)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
