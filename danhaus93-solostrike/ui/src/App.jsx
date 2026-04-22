@@ -1,175 +1,155 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from ‘react’;
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from ‘recharts’;
-import { usePool } from ‘./hooks/usePool.js’;
-import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from ‘./utils.js’;
-import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from ‘./metrics.js’;
-import OnboardingWizard, { hasCompletedWizard } from ‘./components/OnboardingWizard.jsx’;
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-// ── Style tokens ──────────────────────────────────────────────────────────────
-const card = { background:‘var(–bg-surface)’, border:‘1px solid var(–border)’, padding:‘1.25rem’ };
-const cardTitle = { fontFamily:‘var(–fd)’, fontSize:‘0.6rem’, letterSpacing:‘0.2em’, textTransform:‘uppercase’, color:‘var(–text-2)’, marginBottom:‘1rem’ };
-const statRow = { display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’, padding:‘0.5rem 0.75rem’, background:‘var(–bg-raised)’, border:‘1px solid var(–border)’, marginBottom:‘0.35rem’ };
-const label = { fontFamily:‘var(–fd)’, fontSize:‘0.6rem’, letterSpacing:‘0.1em’, textTransform:‘uppercase’, color:‘var(–text-2)’ };
-const HEALTH_COLOR = { green:‘var(–green)’, amber:‘var(–amber)’, red:‘var(–red)’ };
+/* ===============================================================
+   SoloStrike — Deep Mine shell + header + live state wiring
+   =============================================================== */
 
-// ── localStorage keys ─────────────────────────────────────────────────────────
-const LS_CARD_ORDER      = ‘ss_card_order_v1’;
-const LS_CURRENCY        = ‘ss_currency_v1’;
-const LS_ALIASES         = ‘ss_worker_aliases_v1’;
-const LS_NOTES           = ‘ss_worker_notes_v1’;
-const LS_OFFLINE_SEEN    = ‘ss_offline_seen_v1’;
-const LS_STRIP_METRICS   = ‘ss_strip_metrics_v1’;
-const LS_STRIP_CHUNK     = ‘ss_strip_chunk_v1’;
-const LS_STRIP_FADE      = ‘ss_strip_fade_v1’;
-const LS_STRIP_ENABLED   = ‘ss_strip_enabled_v1’;
-const LS_TICKER_ENABLED  = ‘ss_ticker_enabled_v1’;
-const LS_TICKER_SPEED    = ‘ss_ticker_speed_v1’;
-const LS_TICKER_METRICS  = ‘ss_ticker_metrics_v1’;
-const LS_MINIMAL_MODE    = ‘ss_minimal_mode_v1’;
-const LS_VISIBLE_CARDS   = ‘ss_visible_cards_v1’;
+const API_BASE = '';
+const WS_URL   = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/ws';
 
-const DEFAULT_TICKER_SPEED = 30;
-const DEFAULT_TICKER_METRICS = [‘pool_hashrate’, ‘worker_health’, ‘accept_rate’, ‘next_block_prize’, ‘btc_price’, ‘time_since_block’, ‘halving’, ‘blocks_found_total’];
+// ── Strip styles (shared between ticker + header) ───────────────────────────
+const STRIP_FULL_WIDTH = {
+  width: '100vw',
+  marginLeft: 'calc(-50vw + 50%)',
+  marginRight: 'calc(-50vw + 50%)',
+  boxSizing: 'border-box',
+};
 
-const ALL_CARDS = [
-{ id:‘hashrate’,      label:‘Pool Hashrate’ },
-{ id:‘workers’,       label:‘Connected Workers’ },
-{ id:‘network’,       label:‘Bitcoin Network’ },
-{ id:‘node’,          label:‘Bitcoin Node’ },
-{ id:‘odds’,          label:‘Block Probability’ },
-{ id:‘luck’,          label:‘Luck Gauge’ },
-{ id:‘retarget’,      label:‘Difficulty Retarget’ },
-{ id:‘shares’,        label:‘Share Stats’ },
-{ id:‘best’,          label:‘Leaderboard’ },
-{ id:‘closestcalls’,  label:‘Closest Calls — Top 10’ },
-{ id:‘blocks’,        label:‘Blocks Found’ },
-{ id:‘topfinders’,    label:‘Top Pool Finders’ },
-{ id:‘recent’,        label:‘Recent Network Blocks’ },
-];
-const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
-const MINIMAL_PRESET  = [‘hashrate’, ‘workers’, ‘blocks’];
-const DEFAULT_PRESET  = [‘hashrate’, ‘workers’, ‘network’, ‘shares’, ‘best’, ‘closestcalls’, ‘blocks’];
-const EVERYTHING_PRESET = […ALL_CARD_IDS];
+// ── localStorage helpers ─────────────────────────────────────────────────────
+const LS_ORDER    = 'ss_card_order_v1';
+const LS_CURRENCY = 'ss_currency_v1';
+const LS_ALIASES  = 'ss_aliases_v1';
+const LS_NOTES    = 'ss_notes_v1';
+const LS_STRIP_ENABLED = 'ss_strip_enabled_v1';
+const LS_STRIP_METRICS = 'ss_strip_metrics_v1';
+const LS_STRIP_CHUNK   = 'ss_strip_chunk_v1';
+const LS_STRIP_FADE    = 'ss_strip_fade_v1';
+const LS_TICKER_ENABLED = 'ss_ticker_enabled_v1';
+const LS_TICKER_SPEED   = 'ss_ticker_speed_v1';
+const LS_TICKER_METRICS = 'ss_ticker_metrics_v1';
+const LS_MINIMAL_MODE   = 'ss_minimal_mode_v1';
+const LS_VISIBLE_CARDS  = 'ss_visible_cards_v1';
 
-function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
-function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
-function loadNotes()   { try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
-function saveNotes(n)  { try { localStorage.setItem(LS_NOTES, JSON.stringify(n)); } catch {} }
+const DEFAULT_CARDS = ['hashrate','workers','blocks','finders','closest','network','snapshots','prices'];
 
-function loadStripMetrics() { try { const s = localStorage.getItem(LS_STRIP_METRICS); if (!s) return DEFAULT_STRIP_METRICS; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => METRIC_MAP[id]) : DEFAULT_STRIP_METRICS; } catch { return DEFAULT_STRIP_METRICS; } }
-function saveStripMetrics(list) { try { localStorage.setItem(LS_STRIP_METRICS, JSON.stringify(list)); } catch {} }
-function loadStripChunk()    { try { const n = parseInt(localStorage.getItem(LS_STRIP_CHUNK), 10); return Number.isFinite(n) && n>=1 && n<=8 ? n : DEFAULT_CHUNK_SIZE; } catch { return DEFAULT_CHUNK_SIZE; } }
+const DEFAULT_TICKER_METRICS = ['hashrate','btcPrice','workersActive','closestCall','pendingBlock','lastBlockAgo','feeRate','mempool','uptime'];
+
+function loadOrder() {
+  try {
+    const v = localStorage.getItem(LS_ORDER);
+    if (!v) return DEFAULT_CARDS;
+    const parsed = JSON.parse(v);
+    if (!Array.isArray(parsed)) return DEFAULT_CARDS;
+    const filtered = parsed.filter(c => DEFAULT_CARDS.includes(c));
+    const missing = DEFAULT_CARDS.filter(c => !filtered.includes(c));
+    return [...filtered, ...missing];
+  } catch { return DEFAULT_CARDS; }
+}
+function saveOrder(order) {
+  try { localStorage.setItem(LS_ORDER, JSON.stringify(order)); } catch {}
+}
+
+function loadCurrency() {
+  try { return localStorage.getItem(LS_CURRENCY) || 'USD'; } catch { return 'USD'; }
+}
+function saveCurrency(c) {
+  try { localStorage.setItem(LS_CURRENCY, c); } catch {}
+}
+
+function loadAliases() {
+  try {
+    const v = localStorage.getItem(LS_ALIASES);
+    if (!v) return {};
+    const parsed = JSON.parse(v);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch { return {}; }
+}
+function saveAliases(aliases) {
+  try { localStorage.setItem(LS_ALIASES, JSON.stringify(aliases || {})); } catch {}
+}
+
+function loadNotes() {
+  try {
+    const v = localStorage.getItem(LS_NOTES);
+    if (!v) return {};
+    const parsed = JSON.parse(v);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch { return {}; }
+}
+function saveNotes(notes) {
+  try { localStorage.setItem(LS_NOTES, JSON.stringify(notes || {})); } catch {}
+}
+
+function loadStripEnabled()  { try { return localStorage.getItem(LS_STRIP_ENABLED) !== 'false'; } catch { return true; } }
+function saveStripEnabled(v) { try { localStorage.setItem(LS_STRIP_ENABLED, v ? 'true' : 'false'); } catch {} }
+function loadStripMetrics()  { try { const v = localStorage.getItem(LS_STRIP_METRICS); return v ? JSON.parse(v) : ['mempool','feeRate','halving','btcPrice']; } catch { return ['mempool','feeRate','halving','btcPrice']; } }
+function saveStripMetrics(m) { try { localStorage.setItem(LS_STRIP_METRICS, JSON.stringify(m||[])); } catch {} }
+function loadStripChunk()    { try { return parseInt(localStorage.getItem(LS_STRIP_CHUNK) || '4', 10); } catch { return 4; } }
 function saveStripChunk(n)   { try { localStorage.setItem(LS_STRIP_CHUNK, String(n)); } catch {} }
-function loadStripFade()     { try { const n = parseInt(localStorage.getItem(LS_STRIP_FADE), 10); return Number.isFinite(n) && n>=1000 && n<=20000 ? n : DEFAULT_FADE_MS; } catch { return DEFAULT_FADE_MS; } }
+function loadStripFade()     { try { return parseInt(localStorage.getItem(LS_STRIP_FADE) || '600', 10); } catch { return 600; } }
 function saveStripFade(n)    { try { localStorage.setItem(LS_STRIP_FADE, String(n)); } catch {} }
-function loadStripEnabled()  { try { const v = localStorage.getItem(LS_STRIP_ENABLED); return v === null ? true : v === ‘true’; } catch { return true; } }
-function saveStripEnabled(v) { try { localStorage.setItem(LS_STRIP_ENABLED, String(!!v)); } catch {} }
-function loadTickerEnabled() { try { const v = localStorage.getItem(LS_TICKER_ENABLED); return v === null ? true : v === ‘true’; } catch { return true; } }
-function saveTickerEnabled(v){ try { localStorage.setItem(LS_TICKER_ENABLED, String(!!v)); } catch {} }
-function loadTickerSpeed()   { try { const n = parseInt(localStorage.getItem(LS_TICKER_SPEED), 10); return Number.isFinite(n) && n>=3 && n<=120 ? n : DEFAULT_TICKER_SPEED; } catch { return DEFAULT_TICKER_SPEED; } }
+
+function loadTickerEnabled() { try { return localStorage.getItem(LS_TICKER_ENABLED) !== 'false'; } catch { return true; } }
+function saveTickerEnabled(v){ try { localStorage.setItem(LS_TICKER_ENABLED, v ? 'true' : 'false'); } catch {} }
+function loadTickerSpeed()   { try { return parseInt(localStorage.getItem(LS_TICKER_SPEED) || '60', 10); } catch { return 60; } }
 function saveTickerSpeed(n)  { try { localStorage.setItem(LS_TICKER_SPEED, String(n)); } catch {} }
-function loadTickerMetrics() { try { const s = localStorage.getItem(LS_TICKER_METRICS); if (!s) return DEFAULT_TICKER_METRICS; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => METRIC_MAP[id]) : DEFAULT_TICKER_METRICS; } catch { return DEFAULT_TICKER_METRICS; } }
-function saveTickerMetrics(list) { try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(list)); } catch {} }
-function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === ‘true’; } catch { return false; } }
-function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
-function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
-function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
+function loadTickerMetrics() { try { const v = localStorage.getItem(LS_TICKER_METRICS); return v ? JSON.parse(v) : DEFAULT_TICKER_METRICS; } catch { return DEFAULT_TICKER_METRICS; } }
+function saveTickerMetrics(m){ try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(m||DEFAULT_TICKER_METRICS)); } catch {} }
 
-function stripAddr(fullName) {
-if (!fullName || typeof fullName !== ‘string’) return fullName || ‘’;
-const dot = fullName.indexOf(’.’);
-if (dot === -1) return fullName;
-return fullName.slice(dot + 1);
-}
-function displayName(fullName, aliases) {
-if (!fullName) return ‘’;
-if (aliases && aliases[fullName]) return aliases[fullName];
-return stripAddr(fullName);
-}
+function loadMinimalMode()   { try { return localStorage.getItem(LS_MINIMAL_MODE) === 'true'; } catch { return false; } }
+function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, v ? 'true' : 'false'); } catch {} }
 
-function fmtBytes(bytes) {
-if (!bytes) return ‘—’;
-const mb = bytes / 1_000_000;
-if (mb < 1) return `${(bytes/1000).toFixed(0)} KB`;
-if (mb < 1000) return `${mb.toFixed(1)} MB`;
-return `${(mb/1000).toFixed(2)} GB`;
-}
-function parseClient(subversion) {
-if (!subversion) return { name:’—’, version:’’ };
-const m = subversion.match(//([^:]+):([^/]+)//);
-if (!m) return { name:subversion, version:’’ };
-return { name: m[1] === ‘Satoshi’ ? ‘Bitcoin Core’ : m[1], version: m[2] };
-}
+function loadVisibleCards()  { try { const v = localStorage.getItem(LS_VISIBLE_CARDS); return v ? JSON.parse(v) : DEFAULT_CARDS; } catch { return DEFAULT_CARDS; } }
+function saveVisibleCards(c) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(c||DEFAULT_CARDS)); } catch {} }
 
-const BTC_ADDR_RE = /^(bc1[a-z0-9]{6,87}|tb1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
-function isValidBtcAddress(a){ if(!a||typeof a!==‘string’)return false; const t=a.trim(); return t.length>=26&&t.length<=90&&BTC_ADDR_RE.test(t); }
-
-const STRIP_FULL_WIDTH = { width:‘100%’, boxSizing:‘border-box’, maxWidth:‘100%’, minWidth:0 };
-
-// ── DraggableCard ─────────────────────────────────────────────────────────────
-function DraggableCard({ id, onDragStart, onDragOver, onDrop, draggedId, children, spanTwo }) {
-const classes = [‘ss-card’, spanTwo?‘ss-span-2’:’’, draggedId===id?‘ss-dragging’:’’].filter(Boolean).join(’ ’);
-return (
-<div className={classes}
-onDragOver={e=>{e.preventDefault(); onDragOver(id);}}
-onDrop={e=>{e.preventDefault(); onDrop(id);}}
->
-<span className=“ss-drag-handle” draggable
-style={{color:‘var(–amber)’}}
-onDragStart={e=>{ e.dataTransfer.effectAllowed=‘move’; try{e.dataTransfer.setData(‘text/plain’, id);}catch{} onDragStart(id); }}
-title=“Drag to reorder”>≡</span>
-{children}
-</div>
-);
-}
-
-// ── Live clock hook ───────────────────────────────────────────────────────────
-function useNow(refreshMs = 30000) {
-const [now, setNow] = useState(() => new Date());
-useEffect(() => {
-const id = setInterval(() => setNow(new Date()), refreshMs);
-return () => clearInterval(id);
-}, [refreshMs]);
-return now;
+// ── Tiny hook: live clock that only re-renders at a cadence we choose ─────────
+function useNow(intervalMs = 30000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
 }
 function fmtClockTime(d) {
-let h = d.getHours();
-const m = d.getMinutes();
-const ampm = h >= 12 ? ‘PM’ : ‘AM’;
-h = h % 12; if (h === 0) h = 12;
-return `${h}:${String(m).padStart(2,'0')} ${ampm}`;
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  const mm = m < 10 ? '0' + m : '' + m;
+  return `${h}:${mm} ${ampm}`;
 }
 function fmtClockDate(d) {
-const months = [‘JAN’,‘FEB’,‘MAR’,‘APR’,‘MAY’,‘JUN’,‘JUL’,‘AUG’,‘SEP’,‘OCT’,‘NOV’,‘DEC’];
-const days   = [‘SUN’,‘MON’,‘TUE’,‘WED’,‘THU’,‘FRI’,‘SAT’];
-return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const days   = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
 }
 
 // ── ZMQ badge ─────────────────────────────────────────────────────────────────
 function ZmqBadge({ zmq }) {
-if (!zmq) return null;
-const z = zmq;
-const now = Date.now();
-const idleMs = 30 * 60 * 1000;
-const recentlyHeard = z.lastBlockHeardAt && (now - z.lastBlockHeardAt < idleMs);
+  if (!zmq) return null;
+  const z = zmq;
+  const now = Date.now();
+  const idleMs = 30 * 60 * 1000;
+  const recentlyHeard = z.lastBlockHeardAt && (now - z.lastBlockHeardAt < idleMs);
 
-let color, text, title;
-if (!z.enabled) {
-color = ‘var(–text-3)’; text = ‘ZMQ OFF’;
-title = ‘ZMQ not configured — pool relies on RPC polling (slightly slower block notifications)’;
-} else if (recentlyHeard) {
-color = ‘var(–green)’; text = ‘ZMQ’;
-title = `ZMQ active — last block heard ${Math.floor((now - z.lastBlockHeardAt)/60000)}m ago${z.endpoint ? '\n' + z.endpoint : ''}`;
-} else {
-color = ‘var(–amber)’; text = ‘ZMQ IDLE’;
-title = `ZMQ configured but no recent block. Normal during quiet periods.${z.endpoint ? '\n' + z.endpoint : ''}`;
-}
+  let color, text, title;
+  if (!z.enabled) {
+    color = 'var(--text-3)'; text = 'ZMQ OFF';
+    title = 'ZMQ not configured — pool relies on RPC polling (slightly slower block notifications)';
+  } else if (recentlyHeard) {
+    color = 'var(--green)'; text = 'ZMQ';
+    title = `ZMQ active — last block heard ${Math.floor((now - z.lastBlockHeardAt)/60000)}m ago${z.endpoint ? '\n' + z.endpoint : ''}`;
+  } else {
+    color = 'var(--amber)'; text = 'ZMQ IDLE';
+    title = `ZMQ configured but no recent block. Normal during quiet periods.${z.endpoint ? '\n' + z.endpoint : ''}`;
+  }
 
-return (
-<span title={title} style={{ display:‘inline-flex’, alignItems:‘center’, fontFamily:‘var(–fd)’, fontSize:‘0.52rem’, letterSpacing:‘0.12em’, textTransform:‘uppercase’, color, flexShrink:0, marginLeft:4, textShadow: z.enabled ? `0 0 5px ${color}` : ‘none’ }}>
-{text}
-</span>
-);
+  return (
+    <span title={title} style={{ display:'inline-flex', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.12em', textTransform:'uppercase', color, flexShrink:0, marginLeft:4, textShadow: z.enabled ? `0 0 5px ${color}` : 'none' }}>
+      {text}
+    </span>
+  );
 }
 
 // ── PortLight — color-coded port number based on live stratum health ──────────
@@ -177,853 +157,536 @@ return (
 //   🟢 green  = healthy (listening + stratum handshake OK)
 //   🟡 amber  = degraded (listening but handshake failed)
 //   🔴 red    = down (port not reachable)
-//   ⚪ cyan   = unknown (health check hasn’t run yet)
+//   ⚪ cyan   = unknown (health check hasn't run yet)
 function PortLight({ health, port }) {
-const portData = health?.ports?.[port];
-const status   = portData?.status;
+  const portData = health?.ports?.[port];
+  const status   = portData?.status;
 
-let color, glow, title;
-if (status === ‘healthy’) {
-color = ‘var(–green)’;
-glow  = color;
-title = `Port ${port} — healthy${portData.latencyMs ? ` (${portData.latencyMs}ms)` : ''}`;
-} else if (status === ‘degraded’) {
-color = ‘var(–amber)’;
-glow  = color;
-title = `Port ${port} — degraded${portData.error ? ` (${portData.error})` : ''}`;
-} else if (status === ‘down’) {
-color = ‘var(–red)’;
-glow  = color;
-title = `Port ${port} — down${portData.error ? ` (${portData.error})` : ''}`;
-} else {
-color = ‘var(–cyan)’;
-glow  = null;
-title = `Port ${port} — checking...`;
-}
+  let color, glow, title;
+  if (status === 'healthy') {
+    color = 'var(--green)';
+    glow  = color;
+    title = `Port ${port} — healthy${portData.latencyMs ? ` (${portData.latencyMs}ms)` : ''}`;
+  } else if (status === 'degraded') {
+    color = 'var(--amber)';
+    glow  = color;
+    title = `Port ${port} — degraded${portData.error ? ` (${portData.error})` : ''}`;
+  } else if (status === 'down') {
+    color = 'var(--red)';
+    glow  = color;
+    title = `Port ${port} — down${portData.error ? ` (${portData.error})` : ''}`;
+  } else {
+    color = 'var(--cyan)';
+    glow  = null;
+    title = `Port ${port} — checking...`;
+  }
 
-return (
-<span title={title} style={{ color, textShadow: glow ? `0 0 6px ${glow}` : ‘none’, transition:‘color 0.3s, text-shadow 0.3s’ }}>
-{port}
-</span>
-);
+  return (
+    <span title={title} style={{ color, textShadow: glow ? `0 0 6px ${glow}` : 'none', transition:'color 0.3s, text-shadow 0.3s' }}>
+      {port}
+    </span>
+  );
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
 function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }) {
-const now = useNow(30000);
-const statusMap = { running:{c:‘var(–green)’,t:‘MINING’}, mining:{c:‘var(–green)’,t:‘MINING’}, no_address:{c:‘var(–amber)’,t:‘SETUP’}, setup:{c:‘var(–amber)’,t:‘SETUP’}, starting:{c:‘var(–amber)’,t:‘STARTING’}, error:{c:‘var(–red)’,t:‘ERROR’}, loading:{c:‘var(–text-2)’,t:’…’} };
-const st = statusMap[status] || statusMap.loading;
-return (
-<header style={{ …STRIP_FULL_WIDTH, display:‘flex’, alignItems:‘center’, justifyContent:‘space-between’, padding:‘0 0.5rem’, minHeight:58, borderBottom:‘1px solid var(–border)’, gap:‘0.4rem’ }}>
-<div style={{ display:‘flex’, alignItems:‘center’, gap:‘0.4rem’, minWidth:0, flex:1 }}>
-<span style={{ fontSize:16, color:‘var(–amber)’, filter: minimalMode?‘none’:‘drop-shadow(0 0 8px rgba(245,166,35,0.7))’, animation: minimalMode?‘none’:‘pulse 3s ease-in-out infinite’, flexShrink:0 }}>⛏</span>
-<span style={{ fontFamily:‘var(–fd)’, fontSize:‘0.92rem’, fontWeight:700, letterSpacing:‘0.06em’, color:‘var(–amber)’, textTransform:‘uppercase’, flexShrink:0 }}>SoloStrike</span>
-{!minimalMode && (
-<>
-<div style={{ width:1, height:16, background:‘var(–border)’, flexShrink:0 }}/>
-<span style={{ fontFamily:‘var(–fd)’, fontSize:‘0.58rem’, letterSpacing:‘0.12em’, textTransform:‘uppercase’, color:st.c, textShadow:`0 0 6px ${st.c}`, animation:‘pulse 2s ease-in-out infinite’, flexShrink:0 }}>{st.t}</span>
-<ZmqBadge zmq={zmq}/>
-{privateMode && (
-<span title=“Private Mode” style={{ display:‘inline-flex’, alignItems:‘center’, gap:3, color:‘var(–cyan)’, fontFamily:‘var(–fd)’, fontSize:‘0.54rem’, letterSpacing:‘0.12em’, textTransform:‘uppercase’, textShadow:‘0 0 6px rgba(0,255,209,0.4)’, animation:‘pulse 3s ease-in-out infinite’, flexShrink:0, marginLeft:4 }}>🔒</span>
-)}
-</>
-)}
-</div>
-<div style={{ display:‘flex’, alignItems:‘center’, gap:‘0.4rem’, flexShrink:0 }}>
-<div style={{ display:‘flex’, flexDirection:‘column’, alignItems:‘flex-end’, gap:2, fontFamily:‘var(–fd)’ }}>
-<span style={{ fontSize:‘0.58rem’, letterSpacing:‘0.12em’, color: connected?‘var(–cyan)’:‘var(–text-2)’, textShadow: connected?‘0 0 6px var(–cyan)’:‘none’, fontFamily:‘var(–fd)’, textTransform:‘uppercase’ }}>
-{connected?‘LIVE’:‘RECONN’}
-</span>
-<span style={{ fontSize:‘0.52rem’, letterSpacing:‘0.04em’, color:‘var(–amber)’, fontFamily:‘var(–fm)’, whiteSpace:‘nowrap’ }}>
-{fmtClockTime(now)}
-</span>
-<span style={{ fontSize:‘0.48rem’, letterSpacing:‘0.08em’, color:‘var(–amber)’, fontFamily:‘var(–fm)’, whiteSpace:‘nowrap’ }}>
-{fmtClockDate(now)}
-</span>
-</div>
-<button onClick={onSettings} style={{ background:‘none’, border:‘none’, color:‘var(–text-2)’, cursor:‘pointer’, fontSize:18, padding:‘4px 6px’, flexShrink:0 }}>⚙</button>
-</div>
-</header>
-);
+  const now = useNow(30000);
+  const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
+  const st = statusMap[status] || statusMap.loading;
+  return (
+    <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.5rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.4rem' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:1 }}>
+        <span style={{ fontSize:16, color:'var(--amber)', filter: minimalMode?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: minimalMode?'none':'pulse 3s ease-in-out infinite', flexShrink:0 }}>⛏</span>
+        <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
+        {!minimalMode && (
+          <>
+            <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
+            <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', color:st.c, textShadow:`0 0 6px ${st.c}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }}>{st.t}</span>
+            <ZmqBadge zmq={zmq}/>
+            {privateMode && (
+              <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
+            )}
+          </>
+        )}
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', flexShrink:0 }}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2, fontFamily:'var(--fd)' }}>
+          <span style={{ fontSize:'0.58rem', letterSpacing:'0.12em', color: connected?'var(--cyan)':'var(--text-2)', textShadow: connected?'0 0 6px var(--cyan)':'none', fontFamily:'var(--fd)', textTransform:'uppercase' }}>
+            {connected?'LIVE':'RECONN'}
+          </span>
+          <span style={{ fontSize:'0.52rem', letterSpacing:'0.04em', color:'var(--amber)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+            {fmtClockTime(now)}
+          </span>
+          <span style={{ fontSize:'0.48rem', letterSpacing:'0.08em', color:'var(--amber)', fontFamily:'var(--fm)', whiteSpace:'nowrap' }}>
+            {fmtClockDate(now)}
+          </span>
+        </div>
+        <button onClick={onSettings} style={{ background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:18, padding:'4px 6px', flexShrink:0 }}>⚙</button>
+      </div>
+    </header>
+  );
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
-const trackRef = useRef(null);
-const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
-const duration = speedSec || DEFAULT_TICKER_SPEED;
-
-useEffect(() => {
-if (!enabled || !snapshotText) return;
-const track = trackRef.current;
-if (!track) return;
-
-```
-const measure = () => {
-  stateRef.current.halfWidth = track.scrollWidth / 2;
-};
-measure();
-window.addEventListener('resize', measure);
-
-const step = (t) => {
-  const s = stateRef.current;
-  if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
-  if (s.lastT == null) s.lastT = t;
-  const dt = (t - s.lastT) / 1000;
-  s.lastT = t;
-  const pxPerSec = s.halfWidth / duration;
-  s.x -= pxPerSec * dt;
-  while (s.x <= -s.halfWidth) s.x += s.halfWidth;
-  track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
-  s.rafId = requestAnimationFrame(step);
-};
-stateRef.current.rafId = requestAnimationFrame(step);
-
-return () => {
-  window.removeEventListener('resize', measure);
-  if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
-  stateRef.current.lastT = null;
-};
-```
-
-}, [enabled, snapshotText, duration]);
-
-if (!enabled || !snapshotText) return null;
-
-return (
-<div style={{
-width:‘100%’, boxSizing:‘border-box’, maxWidth:‘100%’, minWidth:0,
-background:‘var(–bg-deep)’,
-borderBottom:‘1px solid var(–border)’,
-overflow:‘hidden’,
-height:26,
-display:‘flex’,
-alignItems:‘center’,
-}}>
-<div ref={trackRef} style={{
-whiteSpace:‘nowrap’,
-fontFamily:‘var(–fd)’,
-fontSize:‘0.55rem’,
-letterSpacing:‘0.15em’,
-color:‘var(–text-2)’,
-textTransform:‘uppercase’,
-display:‘inline-block’,
-flexShrink:0,
-willChange:‘transform’,
-transform:‘translate3d(0,0,0)’,
-}}>
-{snapshotText}      {snapshotText}      
-</div>
-</div>
-);
+  if (!enabled || !snapshotText) return null;
+  const pxPerSec = 60;
+  const textLen = snapshotText.length * 7;
+  const viewportEst = 700;
+  const calcDur = Math.max(30, Math.round((textLen + viewportEst) / pxPerSec));
+  return (
+    <div style={{
+      ...STRIP_FULL_WIDTH,
+      overflow:'hidden',
+      whiteSpace:'nowrap',
+      fontFamily:'var(--fd)',
+      fontSize:'0.62rem',
+      letterSpacing:'0.1em',
+      color:'var(--text-2)',
+      background:'var(--bg-2)',
+      borderBottom:'1px solid var(--border)',
+      padding:'4px 0',
+      position:'relative',
+      textTransform:'uppercase',
+    }}>
+      <div style={{
+        display:'inline-block',
+        paddingLeft:'100%',
+        animation:`ticker-scroll ${calcDur}s linear infinite`,
+        willChange:'transform',
+      }}>{snapshotText}</div>
+    </div>
+  );
 });
 
-// ── Latest Block strip ────────────────────────────────────────────────────────
-function LatestBlockStrip({ netBlocks, blockReward }) {
-const latest = netBlocks?.[0];
-if (!latest) return null;
-const rewardBtc = latest.reward != null ? (latest.reward / 1e8) : blockReward?.totalBtc;
-return (
-<div className=“ss-hide-scrollbar” style={{
-…STRIP_FULL_WIDTH,
-background:‘linear-gradient(90deg, rgba(245,166,35,0.06) 0%, rgba(6,7,8,0.95) 60%)’,
-borderBottom:‘1px solid var(–border)’,
-padding:‘0.55rem 1rem’,
-display:‘flex’, alignItems:‘center’, gap:‘0.75rem’,
-fontFamily:‘var(–fd)’, fontSize:‘0.65rem’, letterSpacing:‘0.08em’,
-textTransform:‘uppercase’,
-overflowX:‘auto’, whiteSpace:‘nowrap’,
-}}>
-<span style={{display:‘inline-flex’, alignItems:‘center’, gap:6, flexShrink:0}}>
-<span style={{
-display:‘inline-flex’, alignItems:‘center’, justifyContent:‘center’,
-width:20, height:20, borderRadius:‘50%’,
-background:’#000’, color:‘var(–btc-orange)’,
-fontWeight:700, fontSize:‘0.8rem’, lineHeight:1,
-border:‘1px solid var(–btc-orange)’,
-boxShadow:‘0 0 8px var(–btc-orange-glow)’,
-flexShrink:0,
-}}>
-<span style={{transform:‘translate(0.5px, 0.5px)’, display:‘inline-block’}}>₿</span>
-</span>
-<span style={{color:‘var(–amber)’, fontWeight:700}}>LATEST BLOCK</span>
-</span>
-<span style={{color:‘var(–text-2)’, flexShrink:0}}>·</span>
-<span style={{color:‘var(–cyan)’, fontFamily:‘var(–fm)’, fontWeight:700, flexShrink:0}}>#{fmtNum(latest.height)}</span>
-<span style={{color:‘var(–text-2)’, flexShrink:0}}>·</span>
-<span style={{color: latest.isSolo?‘var(–amber)’:‘var(–text-1)’, fontWeight:600, flexShrink:0}}>
-{latest.pool}{latest.isSolo && <span style={{marginLeft:6, fontSize:‘0.52rem’, border:‘1px solid var(–amber)’, padding:‘1px 4px’}}>SOLO</span>}
-</span>
-<span style={{color:‘var(–text-2)’, flexShrink:0}}>·</span>
-<span style={{color:‘var(–text-1)’, fontFamily:‘var(–fm)’, flexShrink:0}}>{blockTimeAgo(latest.timestamp)}</span>
-{rewardBtc && (<>
-<span style={{color:‘var(–text-2)’, flexShrink:0}}>·</span>
-<span style={{color:‘var(–green)’, fontFamily:‘var(–fm)’, flexShrink:0}}>{rewardBtc.toFixed(3)} BTC</span>
-</>)}
-<a href={`https://mempool.space/block/${latest.id}`} target=”_blank” rel=“noopener noreferrer” style={{marginLeft:‘auto’, color:‘var(–text-2)’, fontSize:13, fontFamily:‘var(–fm)’, flexShrink:0}}>↗</a>
-</div>
-);
+// ── Hashrate strip ──────────────────────────────────────────────────────────
+function StatStrip({ metrics, chunkSize, fadeMs, enabled, getValues }) {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const safeMetrics = Array.isArray(metrics) ? metrics : [];
+
+  const chunks = useMemo(() => {
+    if (!safeMetrics.length) return [];
+    const result = [];
+    for (let i = 0; i < safeMetrics.length; i += chunkSize) {
+      result.push(safeMetrics.slice(i, i + chunkSize));
+    }
+    return result;
+  }, [safeMetrics, chunkSize]);
+
+  useEffect(() => {
+    if (!enabled || chunks.length <= 1) return;
+    const rotationMs = 5000;
+    const id = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx(i => (i + 1) % chunks.length);
+        setVisible(true);
+      }, fadeMs / 2);
+    }, rotationMs);
+    return () => clearInterval(id);
+  }, [chunks.length, enabled, fadeMs]);
+
+  if (!enabled || !chunks.length) return null;
+
+  const activeChunk = chunks[idx] || [];
+  const values = getValues(activeChunk);
+
+  return (
+    <div style={{
+      ...STRIP_FULL_WIDTH,
+      display:'flex',
+      alignItems:'center',
+      justifyContent:'center',
+      gap:'clamp(0.75rem, 3vw, 2rem)',
+      flexWrap:'wrap',
+      padding:'0.55rem 0.75rem',
+      background:'var(--bg-2)',
+      borderBottom:'1px solid var(--border)',
+      fontFamily:'var(--fd)',
+      fontSize:'0.62rem',
+      letterSpacing:'0.1em',
+      textTransform:'uppercase',
+      color:'var(--text-2)',
+      transition:`opacity ${fadeMs/2}ms`,
+      opacity: visible?1:0.15,
+    }}>
+      {values.map((v, i) => (
+        <span key={`${v.label}-${i}`} style={{display:'inline-flex', alignItems:'center', gap:'0.4rem'}}>
+          <span>{v.label}</span>
+          <span style={{color:v.color||'var(--amber)', fontWeight:700, fontFamily:'var(--fm)'}}>{v.value}</span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
-// ── Customizable Top Strip ────────────────────────────────────────────────────
-function CustomizableTopStrip({ state, aliases, currency, uptime, enabled, metricIds, chunkSize, fadeMs }) {
-const [idx, setIdx] = useState(0);
-const [visible, setVisible] = useState(true);
-
-const validMetrics = useMemo(
-() => (metricIds || []).map(id => METRIC_MAP[id]).filter(Boolean),
-[metricIds]
-);
-
-const groups = useMemo(() => {
-if (!validMetrics.length) return [];
-const cs = Math.max(1, Math.min(chunkSize || 1, validMetrics.length));
-if (cs >= validMetrics.length) return [validMetrics];
-const out = [];
-for (let i = 0; i < validMetrics.length; i += cs) out.push(validMetrics.slice(i, i + cs));
-return out;
-}, [validMetrics, chunkSize]);
-
-useEffect(() => {
-if (groups.length <= 1) return;
-const fadeDuration = 400;
-const holdDuration = Math.max(1000, (fadeMs || DEFAULT_FADE_MS) - fadeDuration * 2);
-const id = setInterval(() => {
-setVisible(false);
-setTimeout(() => {
-setIdx(i => (i + 1) % groups.length);
-setVisible(true);
-}, fadeDuration);
-}, holdDuration + fadeDuration);
-return () => clearInterval(id);
-}, [groups.length, fadeMs]);
-
-if (!enabled || !groups.length) return null;
-const currentGroup = groups[Math.min(idx, groups.length - 1)] || groups[0];
-
-return (
-<div className=“ss-hide-scrollbar” style={{
-…STRIP_FULL_WIDTH,
-background:‘linear-gradient(90deg, rgba(0,255,209,0.04) 0%, rgba(6,7,8,0.95) 60%)’,
-borderBottom:‘1px solid var(–border)’,
-padding:‘0.5rem 1rem’,
-display:‘flex’, alignItems:‘center’, gap:‘0.75rem’,
-fontFamily:‘var(–fd)’, fontSize:‘0.62rem’, letterSpacing:‘0.08em’,
-textTransform:‘uppercase’,
-minHeight:32,
-overflow:‘hidden’, whiteSpace:‘nowrap’,
-}}>
-<div style={{
-display:‘flex’, alignItems:‘center’, gap:‘0.9rem’,
-opacity: visible ? 1 : 0,
-transform: visible ? ‘translateY(0)’ : ‘translateY(-3px)’,
-transition: ‘opacity 0.4s ease, transform 0.4s ease’,
-minWidth:0,
-flex:1,
-overflowX:‘auto’,
-}} className=“ss-hide-scrollbar”>
-{currentGroup.map((m, i) => {
-const out = m.render(state, aliases, currency, uptime) || {};
-const value = out.value != null ? out.value : ‘—’;
-const prefix = out.prefix != null ? out.prefix : m.label.toUpperCase();
-return (
-<React.Fragment key={m.id}>
-{i > 0 && <span style={{color:‘var(–text-3)’}}>·</span>}
-<span style={{display:‘inline-flex’, gap:6, alignItems:‘baseline’, flexShrink:0}}>
-<span style={{color:‘var(–text-2)’}}>{prefix}</span>
-<span style={{color:m.color || ‘var(–text-1)’, fontFamily:‘var(–fm)’, textTransform:‘none’, letterSpacing:0, fontWeight:600}}>
-{value}
-</span>
-</span>
-</React.Fragment>
-);
-})}
-</div>
-{groups.length > 1 && (
-<div style={{display:‘flex’, gap:3, flexShrink:0}}>
-{groups.map((_, i) => (
-<span key={i} style={{
-width:4, height:4, borderRadius:‘50%’,
-background: i === idx ? ‘var(–amber)’ : ‘var(–text-3)’,
-transition:‘background 0.3s’,
-}}/>
-))}
-</div>
-)}
-</div>
-);
+// ── Toast system ─────────────────────────────────────────────────────────────
+function ToastSystem({ blockAlert, workers }) {
+  const [toasts, setToasts] = useState([]);
+  const prevWorkersRef = useRef(null);
+  useEffect(() => {
+    if (!blockAlert || !blockAlert.timestamp) return;
+    const id = `block-${blockAlert.timestamp}`;
+    setToasts(t => {
+      if (t.some(x => x.id === id)) return t;
+      return [...t, { id, kind:'block', title:'🎉 BLOCK FOUND!', body:`Height #${blockAlert.height} · by ${blockAlert.minerAlias||blockAlert.miner||'unknown'}`, ttlMs:60000 }];
+    });
+    return () => {};
+  }, [blockAlert && blockAlert.timestamp]);
+  useEffect(() => {
+    const prev = prevWorkersRef.current;
+    const now = Array.isArray(workers) ? workers : [];
+    if (prev && now.length) {
+      const offline = now.filter(w => {
+        const was = prev.find(p => p.name === w.name);
+        if (!was) return false;
+        return was.hashrate1m > 0 && w.hashrate1m === 0;
+      });
+      if (offline.length) {
+        setToasts(t => {
+          const next = [...t];
+          offline.forEach(w => {
+            const id = `offline-${w.name}-${Date.now()}`;
+            if (!next.some(x => x.id === id)) {
+              next.push({ id, kind:'worker', title:'⚠️ WORKER OFFLINE', body: w.alias || w.name, ttlMs:30000 });
+            }
+          });
+          return next;
+        });
+      }
+    }
+    prevWorkersRef.current = now;
+  }, [workers]);
+  useEffect(() => {
+    if (!toasts.length) return;
+    const timers = toasts.map(t => setTimeout(() => {
+      setToasts(curr => curr.filter(x => x.id !== t.id));
+    }, t.ttlMs||20000));
+    return () => timers.forEach(clearTimeout);
+  }, [toasts]);
+  const dismiss = (id) => setToasts(curr => curr.filter(t => t.id !== id));
+  if (!toasts.length) return null;
+  return (
+    <div style={{position:'fixed',bottom:16,right:16,zIndex:2000,display:'flex',flexDirection:'column',gap:8,alignItems:'flex-end',maxWidth:360}}>
+      {toasts.map(t=>(
+        <div key={t.id} onClick={()=>dismiss(t.id)} style={{background:'var(--bg-2)',border:'1px solid '+(t.kind==='block'?'var(--amber)':'var(--red)'),borderRadius:6,padding:'0.7rem 0.9rem',fontFamily:'var(--fd)',fontSize:'0.75rem',color:'var(--text-1)',letterSpacing:'0.05em',cursor:'pointer',boxShadow:'0 6px 20px rgba(0,0,0,0.6)',minWidth:240,animation:'toast-in 0.4s ease-out'}}>
+          <div style={{fontSize:'0.7rem',fontWeight:700,color:t.kind==='block'?'var(--amber)':'var(--red)',marginBottom:4,textTransform:'uppercase'}}>{t.title}</div>
+          <div style={{color:'var(--text-2)',fontSize:'0.72rem'}}>{t.body}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-// ── Sync warning banner ───────────────────────────────────────────────────────
-function SyncWarningBanner({ sync }) {
-if (!sync?.warn) return null;
-const pct = (sync.progress || 0) * 100;
-const behind = Math.max(0, (sync.headers || 0) - (sync.blocks || 0));
-return (
-<div className=“ss-hide-scrollbar” style={{
-…STRIP_FULL_WIDTH,
-background:‘linear-gradient(90deg, rgba(255,59,59,0.14) 0%, rgba(6,7,8,0.95) 70%)’,
-borderBottom:‘1px solid rgba(255,59,59,0.35)’,
-padding:‘0.55rem 1rem’,
-display:‘flex’, alignItems:‘center’, gap:‘0.75rem’,
-fontFamily:‘var(–fd)’, fontSize:‘0.62rem’, letterSpacing:‘0.1em’,
-textTransform:‘uppercase’, color:‘var(–red)’,
-boxShadow:‘inset 0 -1px 0 rgba(255,59,59,0.2)’,
-overflowX:‘auto’, whiteSpace:‘nowrap’,
-}}>
-<span style={{fontWeight:700, animation:‘pulse 2s ease-in-out infinite’, flexShrink:0}}>⚠ BITCOIN CORE SYNCING</span>
-<span style={{color:‘var(–text-2)’, flexShrink:0}}>·</span>
-<span style={{color:‘var(–text-1)’, fontFamily:‘var(–fm)’, flexShrink:0}}>{pct.toFixed(2)}% verified</span>
-{behind > 0 && <>
-<span style={{color:‘var(–text-2)’, flexShrink:0}}>·</span>
-<span style={{color:‘var(–text-1)’, fontFamily:‘var(–fm)’, flexShrink:0}}>{fmtNum(behind)} blocks behind</span>
-</>}
-<span style={{color:‘var(–text-3)’, marginLeft:‘auto’, fontSize:‘0.55rem’, flexShrink:0}}>Mined blocks may be stale</span>
-</div>
-);
+// ── Hashrate history chart ───────────────────────────────────────────────────
+function HashrateChart({ history, state, fmtHashrate, range }) {
+  if (!history || !history.length) {
+    return <div style={{color:'var(--text-3)',padding:'2rem 0',textAlign:'center',fontSize:'0.8rem'}}>Collecting hashrate history…</div>;
+  }
+  const sorted = [...history].sort((a,b)=>a.t - b.t);
+  const nowTs = Date.now();
+  const rangeMs = range==='24h' ? 24*3600*1000 : range==='7d' ? 7*24*3600*1000 : 60*60*1000;
+  const sinceTs = nowTs - rangeMs;
+  const windowed = sorted.filter(p => p.t >= sinceTs);
+  const data = windowed.length ? windowed : sorted;
+  const maxY = Math.max(...data.map(p=>p.hps || 0), 1);
+  const minY = 0;
+  const axisTop = maxY * 1.12;
+  const width = 800, height = 200;
+  const padL = 48, padR = 10, padT = 16, padB = 24;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const tMin = data[0].t, tMax = data[data.length-1].t || tMin + 1;
+  const tSpan = Math.max(tMax - tMin, 1);
+  const x = (t) => padL + ((t - tMin) / tSpan) * plotW;
+  const y = (v) => padT + plotH - ((v - minY) / (axisTop - minY)) * plotH;
+  const pts = data.map(p => `${x(p.t).toFixed(2)},${y(p.hps||0).toFixed(2)}`).join(' ');
+  const areaPts = `${padL.toFixed(2)},${(padT+plotH).toFixed(2)} ${pts} ${(padL+plotW).toFixed(2)},${(padT+plotH).toFixed(2)}`;
+  const peakPoint = data.reduce((best, p) => (p.hps||0) > (best.hps||0) ? p : best, data[0]);
+  const currentVal = data[data.length-1]?.hps || 0;
+  const avgVal = data.reduce((s,p) => s + (p.hps||0), 0) / data.length;
+  const tickCount = 4;
+  const yTicks = Array.from({length: tickCount+1}, (_,i) => (axisTop - minY) * (i/tickCount) + minY);
+  const xTicks = [0, 0.33, 0.66, 1].map(f => tMin + tSpan*f);
+  const fmtTick = (ts) => {
+    const d = new Date(ts);
+    if (range === '7d') {
+      return d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+    }
+    return d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+  };
+  return (
+    <div style={{width:'100%'}}>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" style={{width:'100%',height:'auto'}}>
+        <defs>
+          <linearGradient id="hashArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--amber)" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="var(--amber)" stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        {yTicks.map((tick,i)=>{
+          const yp = y(tick);
+          return <g key={`yt${i}`}>
+            <line x1={padL} y1={yp} x2={padL+plotW} y2={yp} stroke="var(--border)" strokeDasharray="2 3"/>
+            <text x={padL-6} y={yp+3} fontSize="10" fill="var(--text-3)" fontFamily="var(--fm)" textAnchor="end">{fmtHashrate(tick)}</text>
+          </g>;
+        })}
+        {xTicks.map((tick,i)=>{
+          const xp = x(tick);
+          return <g key={`xt${i}`}>
+            <line x1={xp} y1={padT+plotH} x2={xp} y2={padT+plotH+3} stroke="var(--border)"/>
+            <text x={xp} y={padT+plotH+16} fontSize="10" fill="var(--text-3)" fontFamily="var(--fm)" textAnchor="middle">{fmtTick(tick)}</text>
+          </g>;
+        })}
+        <polygon points={areaPts} fill="url(#hashArea)"/>
+        <polyline points={pts} fill="none" stroke="var(--amber)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+        {peakPoint && (
+          <g>
+            <circle cx={x(peakPoint.t)} cy={y(peakPoint.hps||0)} r="4" fill="var(--cyan)" stroke="var(--bg-0)" strokeWidth="1.5"/>
+            <text x={x(peakPoint.t)} y={y(peakPoint.hps||0) - 10} fontSize="10" fill="var(--cyan)" fontFamily="var(--fm)" textAnchor="middle" fontWeight="700">{fmtHashrate(peakPoint.hps||0)}</text>
+          </g>
+        )}
+      </svg>
+      <div style={{display:'flex',justifyContent:'space-around',fontSize:'0.6rem',color:'var(--text-3)',fontFamily:'var(--fm)',letterSpacing:'0.08em',marginTop:'0.3rem'}}>
+        <span>CUR <span style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(currentVal)}</span></span>
+        <span>AVG <span style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(avgVal)}</span></span>
+        <span>PEAK <span style={{color:'var(--cyan)',fontWeight:700}}>{fmtHashrate(peakPoint?.hps||0)}</span></span>
+      </div>
+    </div>
+  );
 }
 
-// ── Offline toast ─────────────────────────────────────────────────────────────
-function OfflineToasts({ workers, aliases }) {
-const [toasts, setToasts] = useState([]);
-const prevRef = useRef({});
-useEffect(() => {
-let seen = {};
-try { seen = JSON.parse(sessionStorage.getItem(LS_OFFLINE_SEEN) || ‘{}’); } catch {}
-const newToasts = [];
-(workers || []).forEach(w => {
-const prevStatus = prevRef.current[w.name];
-if (prevStatus && prevStatus !== ‘offline’ && w.status === ‘offline’ && !seen[w.name + ‘:’ + w.lastSeen]) {
-newToasts.push({ id:`${w.name}-${w.lastSeen}`, name:w.name, displayName:displayName(w.name, aliases), lastSeen:w.lastSeen, minerType:w.minerType });
-seen[w.name + ‘:’ + w.lastSeen] = Date.now();
-}
-prevRef.current[w.name] = w.status;
-});
-try { sessionStorage.setItem(LS_OFFLINE_SEEN, JSON.stringify(seen)); } catch {}
-if (newToasts.length) setToasts(t => […t, …newToasts]);
-}, [workers, aliases]);
-const dismiss = (id) => setToasts(t => t.filter(x => x.id !== id));
-useEffect(() => {
-if (!toasts.length) return;
-const timers = toasts.map(t => setTimeout(() => dismiss(t.id), 12000));
-return () => timers.forEach(clearTimeout);
-}, [toasts]);
-if (!toasts.length) return null;
-return (
-<div style={{position:‘fixed’, right:12, bottom:12, display:‘flex’, flexDirection:‘column’, gap:8, zIndex:400, maxWidth:340, pointerEvents:‘none’}}>
-{toasts.map(t => (
-<div key={t.id} onClick={()=>dismiss(t.id)} style={{
-pointerEvents:‘auto’, cursor:‘pointer’,
-background:‘var(–bg-elevated, #1a1b1e)’, border:‘1px solid var(–amber)’,
-padding:‘0.7rem 0.9rem’, boxShadow:‘0 6px 24px rgba(245,166,35,0.15), 0 0 18px rgba(245,166,35,0.2)’,
-animation:‘fadeIn 0.3s ease’,
-}}>
-<div style={{fontFamily:‘var(–fd)’, fontSize:‘0.6rem’, letterSpacing:‘0.15em’, color:‘var(–amber)’, textTransform:‘uppercase’, marginBottom:4}}>⚠ WORKER OFFLINE</div>
-<div style={{fontFamily:‘var(–fm)’, fontSize:‘0.82rem’, color:‘var(–text-1)’, fontWeight:600}}>
-{t.displayName}
-{t.minerType && <span style={{fontFamily:‘var(–fd)’,fontSize:‘0.54rem’,color:‘var(–text-3)’,marginLeft:8,letterSpacing:‘0.1em’,textTransform:‘uppercase’}}>{t.minerType}</span>}
-</div>
-<div style={{fontFamily:‘var(–fm)’, fontSize:‘0.65rem’, color:‘var(–text-2)’, marginTop:2}}>Last share {timeAgo(t.lastSeen)} · tap to dismiss</div>
-</div>
-))}
-</div>
-);
+// ── Hashrate card ────────────────────────────────────────────────────────────
+function HashrateCard({ state, fmtHashrate }) {
+  const [range, setRange] = useState('1h');
+  const btns = [['1h','1H'],['24h','24H'],['7d','7D']];
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem',flexWrap:'wrap',gap:'0.4rem'}}>
+        <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase'}}>POOL HASHRATE</span>
+        <div style={{display:'flex',gap:4}}>
+          {btns.map(([k,l])=>(
+            <button key={k} onClick={()=>setRange(k)} style={{background:range===k?'var(--amber)':'var(--bg-2)',color:range===k?'var(--bg-0)':'var(--text-2)',border:'1px solid var(--border)',padding:'3px 8px',fontSize:'0.6rem',fontFamily:'var(--fd)',letterSpacing:'0.1em',cursor:'pointer',borderRadius:3}}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <HashrateChart history={state.hashrateHistory||[]} state={state} fmtHashrate={fmtHashrate} range={range}/>
+    </div>
+  );
 }
 
-// ── Hashrate chart ────────────────────────────────────────────────────────────
-function HashrateChart({ history, week, current }) {
-const [range, setRange] = useState(‘1h’);
+// ── Workers card ─────────────────────────────────────────────────────────────
+function WorkersCard({ state, aliases, setAliases, onSelect, selectedWorker, onClearSelection, fmtHashrate }) {
+  const [query, setQuery] = useState('');
+  const workers = Array.isArray(state.workers) ? state.workers : [];
+  const q = query.trim().toLowerCase();
+  const filtered = q ? workers.filter(w => {
+    const disp = (aliases[w.name] || w.name).toLowerCase();
+    return disp.includes(q) || w.name.toLowerCase().includes(q);
+  }) : workers;
+  const sorted = [...filtered].sort((a,b)=>(b.hashrate1m||0)-(a.hashrate1m||0));
 
-const windowMs = { ‘1h’: 60*60*1000, ‘6h’: 6*60*60*1000, ‘24h’: 24*60*60*1000, ‘7d’: 7*24*60*60*1000 }[range];
-const source = range === ‘7d’ ? (week || []) : (history || []);
-const cutoff = Date.now() - windowMs;
-const filtered = source.filter(p => p && p.ts >= cutoff);
-
-const smoothWindow = { ‘1h’: 3, ‘6h’: 5, ‘24h’: 10, ‘7d’: 30 }[range];
-const smoothed = filtered.map((p, i) => {
-const start = Math.max(0, i - smoothWindow + 1);
-const slice = filtered.slice(start, i + 1);
-const avg = slice.reduce((s, x) => s + (x.hr || 0), 0) / slice.length;
-return { ts: p.ts, hr: avg };
-});
-
-const data = smoothed;
-const peak = useMemo(() => Math.max(current || 0, …data.map(p => p.hr || 0)), [data, current]);
-const [p0, p1] = fmtHr(current).split(’ ’);
-
-const rangeBtn = (key, label) => (
-<button key={key} onClick={() => setRange(key)}
-style={{
-padding:‘4px 10px’, minWidth:38,
-background: range === key ? ‘var(–bg-raised)’ : ‘transparent’,
-border: `1px solid ${range === key ? 'var(--border-hot)' : 'var(--border)'}`,
-color: range === key ? ‘var(–amber)’ : ‘var(–text-2)’,
-fontFamily:‘var(–fd)’, fontSize:‘0.58rem’, fontWeight:600,
-letterSpacing:‘0.08em’, textTransform:‘uppercase’, cursor:‘pointer’,
-}}>
-{label}
-</button>
-);
-
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={{…cardTitle, display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’}}>
-<span>▸ Pool Hashrate — Live</span>
-{peak > 0 && <span style={{color:‘var(–amber-dim, #b37a1a)’, fontFamily:‘var(–fm)’, fontSize:‘0.6rem’, letterSpacing:‘0.08em’}}>PEAK {fmtHr(peak)}</span>}
-</div>
-<div style={{ fontFamily:‘var(–fd)’, fontSize:‘2.6rem’, fontWeight:700, color:‘var(–amber)’, letterSpacing:‘0.01em’, lineHeight:1, textShadow:‘0 0 30px rgba(245,166,35,0.35)’, marginBottom:‘0.8rem’ }}>
-{p0}<span style={{ fontSize:‘1rem’, color:‘var(–amber-dim)’, marginLeft:4 }}>{p1}</span>
-</div>
-<div style={{display:‘flex’, gap:4, marginBottom:‘0.6rem’, justifyContent:‘flex-end’}}>
-{rangeBtn(‘1h’, ‘1H’)}
-{rangeBtn(‘6h’, ‘6H’)}
-{rangeBtn(‘24h’, ‘24H’)}
-{rangeBtn(‘7d’, ‘7D’)}
-</div>
-<div style={{width:‘100%’, maxWidth:‘100%’, overflow:‘hidden’, minWidth:0}}>
-<ResponsiveContainer width="100%" height={140}>
-<AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
-<defs>
-<linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1">
-<stop offset="5%" stopColor="#F5A623" stopOpacity={0.28}/>
-<stop offset="95%" stopColor="#F5A623" stopOpacity={0.02}/>
-</linearGradient>
-</defs>
-<XAxis hide dataKey="ts"/>
-<YAxis hide domain={[0, (dataMax)=>Math.max(dataMax, peak)*1.15]}/>
-<Tooltip content={({active,payload})=>{
-if(!active||!payload?.length) return null;
-const p = payload[0].payload;
-return (
-<div style={{background:‘var(–bg-elevated, #1a1b1e)’,border:‘1px solid var(–border-hot, rgba(245,166,35,0.4))’,padding:‘5px 10px’,fontSize:‘0.7rem’,fontFamily:‘var(–fm)’}}>
-<div style={{color:‘var(–amber)’,fontWeight:600}}>{fmtHr(p.hr)}</div>
-<div style={{color:‘var(–text-2)’,fontSize:‘0.6rem’,marginTop:2}}>{timeAgo(p.ts)}</div>
-</div>
-);
-}}/>
-<Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
-</AreaChart>
-</ResponsiveContainer>
-</div>
-</div>
-);
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem',flexWrap:'wrap',gap:'0.4rem'}}>
+        <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase'}}>WORKERS ({sorted.length})</span>
+        <input type="text" placeholder="Search…" value={query} onChange={e=>setQuery(e.target.value)} style={{background:'var(--bg-2)',color:'var(--text-1)',border:'1px solid var(--border)',padding:'3px 8px',fontSize:'0.65rem',fontFamily:'var(--fd)',borderRadius:3,width:120}}/>
+      </div>
+      {sorted.length === 0
+        ? (q ? <div style={{color:'var(--text-3)',fontSize:'0.72rem',textAlign:'center',padding:'1rem'}}>No workers match "{query}"</div>
+             : <>No miners connected yet.<br/><span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--cyan)'}}>stratum+tcp://umbrel.local:3333</span><br/><span style={{color:'var(--text-3)',fontSize:'0.65rem'}}>user: worker_name · pass: x</span></>)
+        : (
+          <div style={{display:'flex',flexDirection:'column',gap:3}}>
+            {sorted.map(w => {
+              const disp = aliases[w.name] || w.name;
+              const isSelected = selectedWorker === w.name;
+              const on = w.hashrate1m > 0;
+              return (
+                <div
+                  key={w.name}
+                  onClick={()=>isSelected?onClearSelection():onSelect(w.name)}
+                  style={{
+                    display:'flex',justifyContent:'space-between',alignItems:'center',
+                    padding:'5px 8px',
+                    background:isSelected?'var(--bg-2)':'transparent',
+                    border:isSelected?'1px solid var(--amber)':'1px solid transparent',
+                    borderRadius:3,cursor:'pointer',
+                    transition:'background 0.15s',
+                  }}
+                  onMouseEnter={e=>{ if (!isSelected) e.currentTarget.style.background = 'var(--bg-2)'; }}
+                  onMouseLeave={e=>{ if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0,flex:1}}>
+                    <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--text-3)',flexShrink:0,boxShadow:on?'0 0 6px var(--green)':'none'}}/>
+                    <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{disp}</span>
+                    {w.minerType && <span style={{color:'var(--text-3)',fontSize:'0.6rem',fontFamily:'var(--fd)',letterSpacing:'0.08em',textTransform:'uppercase'}}>{w.minerType}</span>}
+                  </div>
+                  <span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:on?'var(--amber)':'var(--text-3)',fontWeight:700}}>{fmtHashrate(w.hashrate1m||0)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )
+      }
+    </div>
+  );
 }
 
-// ── Worker grid ───────────────────────────────────────────────────────────────
-function WorkerGrid({ workers, aliases, onWorkerClick }) {
-const [query, setQuery] = useState(’’);
-const q = query.trim().toLowerCase();
-const sorted = […(workers||[])].sort(
-(a,b)=>(a.status===‘offline’?1:-1)-(b.status===‘offline’?1:-1)||(b.hashrate||0)-(a.hashrate||0)
-);
-const filtered = q
-? sorted.filter(w =>
-(w.name||’’).toLowerCase().includes(q) ||
-(stripAddr(w.name)||’’).toLowerCase().includes(q) ||
-(displayName(w.name, aliases)||’’).toLowerCase().includes(q) ||
-(w.minerType||’’).toLowerCase().includes(q)
-)
-: sorted;
-const online = sorted.filter(w=>w.status!==‘offline’).length;
-
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={{…cardTitle, display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’}}>
-<span>▸ Connected Workers</span>
-<span style={{color:‘var(–amber)’}}>{online}/{sorted.length} online</span>
-</div>
-{sorted.length > 3 && (
-<div style={{position:‘relative’, marginBottom:‘0.5rem’}}>
-<span style={{position:‘absolute’, left:10, top:‘50%’, transform:‘translateY(-50%)’, fontSize:12, color:‘var(–text-2)’, pointerEvents:‘none’}}>🔍</span>
-<input type=“text” value={query} onChange={e=>setQuery(e.target.value)} placeholder=“Filter workers by name or miner type…”
-spellCheck={false} autoCorrect=“off” autoCapitalize=“off”
-style={{width:‘100%’,background:‘var(–bg-deep)’,border:‘1px solid var(–border)’,color:‘var(–text-1)’,fontFamily:‘var(–fm)’,fontSize:‘0.75rem’,padding:‘0.5rem 0.6rem 0.5rem 2rem’,outline:‘none’,boxSizing:‘border-box’}}/>
-{query && <button onClick={()=>setQuery(’’)} style={{position:‘absolute’, right:6, top:‘50%’, transform:‘translateY(-50%)’, background:‘none’, border:‘none’, color:‘var(–text-2)’, cursor:‘pointer’, fontSize:14, padding:‘4px 6px’}}>✕</button>}
-</div>
-)}
-{filtered.length === 0 ? (
-<div style={{textAlign:‘center’,padding:‘1.5rem’,border:‘1px dashed var(–border)’,color:‘var(–text-2)’,fontSize:‘0.75rem’,fontFamily:‘var(–fd)’,lineHeight:2}}>
-{q ? <>No workers match “<span style={{color:‘var(–amber)’}}>{query}</span>”</>
-: <>No miners connected yet.<br/><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.7rem’,color:‘var(–cyan)’}}>stratum+tcp://umbrel.local:3333</span><br/><span style={{color:‘var(–text-3)’,fontSize:‘0.65rem’}}>user: worker_name · pass: x</span></>}
-</div>
-) : (
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.4rem’}}>
-{filtered.map(w=>{
-const on=w.status!==‘offline’;
-const workAccepted = w.shares || 0;
-const workRejected = w.rejected || 0;
-const totalWork = workAccepted + workRejected || 1;
-const healthC = HEALTH_COLOR[w.health] || ‘var(–text-3)’;
-const icon = w.minerIcon || ‘▪’;
-const disp = displayName(w.name, aliases);
-const lastShareAgo = w.lastSeen ? fmtAgoShort(w.lastSeen) : ‘—’;
-return(
-<div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:‘flex’,alignItems:‘center’,gap:‘0.6rem’,padding:‘0.6rem 0.875rem’,background:‘var(–bg-raised)’,border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:‘pointer’,transition:‘background 0.15s’, minWidth:0, overflow:‘hidden’}}
-onMouseEnter={e=>e.currentTarget.style.background=‘var(–bg-elevated, #1a1b1e)’} onMouseLeave={e=>e.currentTarget.style.background=‘var(–bg-raised)’}>
-<div title={w.health||‘unknown’} style={{width:8,height:8,borderRadius:‘50%’,flexShrink:0,background:on?healthC:‘var(–text-3)’,boxShadow:on?`0 0 6px ${healthC}`:‘none’,animation:on?‘pulse 2s ease-in-out infinite’:‘none’}}/>
-<span title={w.minerType||‘Unknown’} style={{fontSize:13,color:on?‘var(–cyan)’:‘var(–text-3)’,width:16,textAlign:‘center’,flexShrink:0}}>{icon}</span>
-<div style={{flex:1,minWidth:0}}>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.82rem’,color:‘var(–text-1)’,overflow:‘hidden’,textOverflow:‘ellipsis’,whiteSpace:‘nowrap’,fontWeight:500}} title={w.name}>
-{disp}
-{w.minerType && <span style={{fontFamily:‘var(–fd)’,fontSize:‘0.54rem’,letterSpacing:‘0.1em’,color:‘var(–text-3)’,marginLeft:8,textTransform:‘uppercase’}}>{w.minerType}</span>}
-</div>
-<div style={{display:‘flex’,gap:8,alignItems:‘center’,marginTop:3}}>
-<div style={{flex:1,height:2,background:‘var(–bg-deep)’,borderRadius:1,overflow:‘hidden’}}>
-<div style={{height:‘100%’,width:`${(workAccepted/totalWork)*100}%`,background:‘var(–green)’,borderRadius:1}}/>
-</div>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.55rem’,color:‘var(–text-3)’,whiteSpace:‘nowrap’}}>last {lastShareAgo}</span>
-{w.diff>0 && <span style={{fontFamily:‘var(–fm)’,fontSize:‘0.55rem’,color:‘var(–text-3)’,whiteSpace:‘nowrap’}}>diff {fmtDiff(w.diff)}</span>}
-</div>
-</div>
-<div style={{display:‘flex’,flexDirection:‘column’,alignItems:‘flex-end’,gap:1, flexShrink:0}}>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.62rem’,color:‘var(–text-2)’}}>
-<span style={{color:‘var(–green)’}}>{fmtDiff(workAccepted)}</span>{workRejected>0 && <>/<span style={{color:‘var(–red)’}}>{fmtDiff(workRejected)}</span></>}
-</span>
-{w.bestshare>0 && <span style={{fontFamily:‘var(–fm)’,fontSize:‘0.55rem’,color:‘var(–amber)’}}>best {fmtDiff(w.bestshare)}</span>}
-</div>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.78rem’,fontWeight:600,color:on?‘var(–amber)’:‘var(–text-2)’,minWidth:64,textAlign:‘right’, flexShrink:0}}>
-{on?fmtHr(w.hashrate):‘offline’}
-</span>
-</div>
-);
-})}
-</div>
-)}
-</div>
-);
+// ── Worker detail modal ──────────────────────────────────────────────────────
+function WorkerDetailModal({ workerName, onClose, state, aliases, setAliases, notes, setNotes, fmtHashrate }) {
+  const w = (state.workers||[]).find(x => x.name === workerName);
+  if (!w) return null;
+  const disp = aliases[w.name] || w.name;
+  const note = notes[w.name] || '';
+  const [localAlias, setLocalAlias] = useState(disp);
+  const [localNote, setLocalNote] = useState(note);
+  useEffect(()=>{ setLocalAlias(aliases[w.name]||w.name); }, [w.name, aliases]);
+  useEffect(()=>{ setLocalNote(notes[w.name]||''); }, [w.name, notes]);
+  const saveAlias = (value) => {
+    const next = { ...aliases };
+    if (value && value !== w.name) next[w.name] = value; else delete next[w.name];
+    setAliases(next);
+  };
+  const saveNote = (value) => {
+    const next = { ...notes };
+    if (value) next[w.name] = value; else delete next[w.name];
+    setNotes(next);
+  };
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-1)',border:'1px solid var(--border)',borderRadius:6,padding:20,maxWidth:420,width:'100%',boxShadow:'0 16px 60px rgba(0,0,0,0.8)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,marginBottom:16}}>
+          <div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--text-3)',letterSpacing:'0.1em',textTransform:'uppercase'}}>{w.name}</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)'}}>{disp}</div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'1px solid var(--border)',color:'var(--text-2)',padding:'3px 9px',cursor:'pointer',borderRadius:3,fontSize:16,lineHeight:1}}>×</button>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12,fontFamily:'var(--fm)',fontSize:'0.8rem'}}>
+          <div>
+            <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>1M HR</div>
+            <div style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(w.hashrate1m||0)}</div>
+          </div>
+          <div>
+            <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>5M HR</div>
+            <div style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(w.hashrate5m||0)}</div>
+          </div>
+          <div>
+            <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>1HR HR</div>
+            <div style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(w.hashrate1h||0)}</div>
+          </div>
+          <div>
+            <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>24H HR</div>
+            <div style={{color:'var(--amber)',fontWeight:700}}>{fmtHashrate(w.hashrate1d||0)}</div>
+          </div>
+          <div>
+            <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>SHARES</div>
+            <div style={{color:'var(--text-1)'}}>{(w.shares||0).toLocaleString()}</div>
+          </div>
+          <div>
+            <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>BEST SHARE</div>
+            <div style={{color:'var(--text-1)'}}>{w.bestShareFmt || '—'}</div>
+          </div>
+          {w.ip && (
+            <div style={{gridColumn:'1 / -1'}}>
+              <div style={{color:'var(--text-3)',fontSize:'0.6rem',letterSpacing:'0.1em',marginBottom:2}}>IP</div>
+              <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--cyan)',textDecoration:'none'}}>{w.ip}</a>
+            </div>
+          )}
+        </div>
+        <div style={{marginBottom:10}}>
+          <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--text-3)',letterSpacing:'0.1em',marginBottom:4,textTransform:'uppercase'}}>ALIAS</label>
+          <input
+            type="text"
+            value={localAlias}
+            onChange={e=>setLocalAlias(e.target.value)}
+            onBlur={e=>saveAlias(e.target.value.trim())}
+            onKeyDown={e=>{ if (e.key==='Enter') { saveAlias(e.target.value.trim()); e.target.blur(); }}}
+            style={{width:'100%',background:'var(--bg-2)',color:'var(--text-1)',border:'1px solid var(--border)',padding:'5px 9px',fontFamily:'var(--fd)',fontSize:'0.8rem',borderRadius:3,boxSizing:'border-box'}}
+          />
+        </div>
+        <div>
+          <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--text-3)',letterSpacing:'0.1em',marginBottom:4,textTransform:'uppercase'}}>NOTE</label>
+          <textarea
+            value={localNote}
+            onChange={e=>setLocalNote(e.target.value)}
+            onBlur={e=>saveNote(e.target.value.trim())}
+            rows={3}
+            style={{width:'100%',background:'var(--bg-2)',color:'var(--text-1)',border:'1px solid var(--border)',padding:'5px 9px',fontFamily:'var(--fd)',fontSize:'0.8rem',borderRadius:3,boxSizing:'border-box',resize:'vertical'}}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-// ── Closest Calls — pool-wide top 10 best-diff shares ever ──────────────────
-function ClosestCallsPanel({ closestCalls, aliases }) {
-const list = closestCalls || [];
-if (!list.length) {
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Closest Calls — Top 10 Near-Misses</div>
-<div style={{textAlign:‘center’,padding:‘1.5rem’,border:‘1px dashed var(–border)’,color:‘var(–text-2)’,fontSize:‘0.72rem’,fontFamily:‘var(–fd)’}}>
-Building leaderboard…<br/>
-<span style={{color:‘var(–amber)’,fontSize:‘0.65rem’}}>Shares tracked as they come in</span>
-</div>
-</div>
-);
+// ── Closest Calls panel ──────────────────────────────────────────────────────
+function ClosestCallsPanel({ closestCalls, aliases, fmtBestShareCompact }) {
+  const list = closestCalls || [];
+  if (!list.length) {
+    return <div style={{color:'var(--text-3)',padding:'1rem',textAlign:'center',fontSize:'0.72rem',letterSpacing:'0.08em'}}>Waiting for your first high-difficulty share...</div>;
+  }
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:3}}>
+      {list.map((c,i)=>{
+        const disp = aliases[c.worker] || c.worker;
+        const ts = new Date(c.timestamp);
+        const ago = (() => {
+          const now = Date.now();
+          const diff = now - c.timestamp;
+          const days = Math.floor(diff / 86400000);
+          const hrs = Math.floor((diff % 86400000) / 3600000);
+          if (days > 0) return `${days}d ago`;
+          if (hrs > 0) return `${hrs}h ago`;
+          const mins = Math.floor(diff / 60000);
+          return `${mins}m ago`;
+        })();
+        return (
+          <div key={`${c.worker}-${c.timestamp}-${i}`} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 7px',border:'1px solid var(--border)',borderRadius:3,background:i===0?'rgba(245,166,35,0.06)':'transparent'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0,flex:1}}>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--text-3)',letterSpacing:'0.08em',width:24,flexShrink:0}}>#{i+1}</span>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{disp}</span>
+              <span style={{color:'var(--text-3)',fontSize:'0.62rem',fontFamily:'var(--fm)'}}>{ago}</span>
+            </div>
+            <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--amber)',fontWeight:700}}>{fmtBestShareCompact(c.bestShare)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
-const maxDiff = list[0]?.diff || 1;
-
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={{…cardTitle, display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’}}>
-<span>▸ Closest Calls — All-Time Top {list.length}</span>
-<span style={{color:‘var(–amber)’, fontFamily:‘var(–fm)’, fontSize:‘0.6rem’, letterSpacing:‘0.08em’}}>fleet-wide</span>
-</div>
-<div style={{display:‘flex’, flexDirection:‘column’, gap:‘0.35rem’}}>
-{list.map((c, i) => {
-const pct = (c.diff / maxDiff) * 100;
-const disp = displayName(c.workerName, aliases);
-const color = i === 0 ? ‘var(–amber)’ : i < 3 ? ‘var(–cyan)’ : ‘var(–text-1)’;
-return (
-<div key={`${c.workerName}-${c.ts}`} style={{
-padding:‘0.55rem 0.7rem’,
-background:‘var(–bg-raised)’,
-border:`1px solid ${i===0?'rgba(245,166,35,0.35)':i<3?'rgba(0,255,209,0.15)':'var(--border)'}`,
-position:‘relative’,
-overflow:‘hidden’,
-minWidth:0,
-boxShadow: i===0 ? ‘0 0 10px rgba(245,166,35,0.12)’ : ‘none’,
-}}>
-<div style={{position:‘absolute’, inset:0, width:`${pct}%`, background: i===0?‘rgba(245,166,35,0.06)’:‘rgba(0,255,209,0.04)’, transition:‘width 0.6s ease’}}/>
-<div style={{position:‘relative’, display:‘flex’, alignItems:‘center’, gap:‘0.6rem’}}>
-<span style={{
-fontFamily:‘var(–fd)’, fontSize:‘0.72rem’, fontWeight:700,
-color, minWidth:22, flexShrink:0,
-textShadow: i===0 ? ‘0 0 8px rgba(245,166,35,0.5)’ : ‘none’,
-}}>#{i+1}</span>
-<div style={{flex:1, minWidth:0}}>
-<div style={{fontFamily:‘var(–fm)’, fontSize:‘0.78rem’, color:‘var(–text-1)’, fontWeight:500, overflow:‘hidden’, textOverflow:‘ellipsis’, whiteSpace:‘nowrap’}} title={c.workerName}>
-{disp}
-{c.minerType && <span style={{fontFamily:‘var(–fd)’, fontSize:‘0.5rem’, letterSpacing:‘0.1em’, color:‘var(–text-3)’, marginLeft:6, textTransform:‘uppercase’}}>{c.minerType}</span>}
-</div>
-<div style={{fontFamily:‘var(–fm)’, fontSize:‘0.55rem’, color:‘var(–text-3)’, marginTop:2}}>
-{c.ts ? timeAgo(c.ts) : ‘—’}
-</div>
-</div>
-<span style={{fontFamily:‘var(–fd)’, fontSize:‘0.9rem’, fontWeight:700, color, flexShrink:0, textShadow: i===0 ? ‘0 0 10px rgba(245,166,35,0.4)’ : ‘none’}}>
-{fmtDiff(c.diff)}
-</span>
-</div>
-</div>
-);
-})}
-</div>
-</div>
-);
-}
-
-// ── Bitcoin Network ───────────────────────────────────────────────────────────
-function NetworkStats({ network, blockReward, mempool, prices, currency, privateMode }) {
-const price = prices?.[currency];
-const rewardUsd = price && blockReward ? blockReward.totalBtc * price : null;
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Bitcoin Network</div>
-{[[‘Block Height’, fmtNum(network?.height), ‘var(–text-1)’],
-[‘Difficulty’, fmtDiff(network?.difficulty), ‘var(–text-1)’],
-[‘Net Hashrate’, fmtHr(network?.hashrate), ‘var(–cyan)’]].map(([l,v,c])=>(
-<div key={l} style={statRow}>
-<span style={label}>{l}</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.88rem’,fontWeight:600,color:c,textShadow:c===‘var(–cyan)’?‘0 0 10px rgba(0,255,209,0.3)’:‘none’}}>{v}</span>
-</div>
-))}
-<div style={{height:1,background:‘var(–border)’,margin:‘0.7rem 0’}}/>
-{blockReward && (
-<div style={{…statRow, background:‘var(–bg-deep)’, borderColor:‘rgba(245,166,35,0.25)’}}>
-<span style={{…label, color:‘var(–amber)’}}>🏆 Next Block Prize</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.92rem’,fontWeight:700,color:‘var(–amber)’,textAlign:‘right’,textShadow:‘0 0 12px rgba(245,166,35,0.35)’}}>
-{fmtBtc(blockReward.totalBtc, 3)}
-{rewardUsd!=null && <div style={{fontFamily:‘var(–fm)’,fontSize:‘0.68rem’,color:‘var(–green)’,fontWeight:600,marginTop:2,textShadow:‘0 0 8px rgba(57,255,106,0.2)’}}>{fmtFiat(rewardUsd, currency)}</div>}
-</span>
-</div>
-)}
-{!privateMode && price!=null && (
-<div style={statRow}>
-<span style={label}>BTC Price</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.88rem’,fontWeight:600,color:‘var(–cyan)’}}>{fmtFiat(price, currency)}</span>
-</div>
-)}
-{mempool?.totalFeesBtc>0 && (
-<div style={statRow}>
-<span style={label}>Mempool Fees</span>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–amber)’}}>{fmtBtc(mempool.totalFeesBtc, 2)}</span>
-</div>
-)}
-{mempool?.feeRate!=null && (
-<div style={statRow}>
-<span style={label}>Priority Fee</span>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–amber)’}}>{mempool.feeRate} sat/vB</span>
-</div>
-)}
-{privateMode && (
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,color:‘var(–cyan)’,marginTop:‘0.5rem’,textAlign:‘center’,letterSpacing:‘0.1em’}}>
-🔒 PRICE HIDDEN — PRIVATE MODE
-</div>
-)}
-</div>
-);
-}
-
-// ── Bitcoin Node ──────────────────────────────────────────────────────────────
-function BitcoinNodePanel({ nodeInfo }) {
-const ni = nodeInfo || {};
-const client = parseClient(ni.subversion);
-const connected = ni.connected;
-const relayStr = ni.relayFee != null ? `${(ni.relayFee * 1e5).toFixed(2)} sat/vB` : ‘—’;
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={{…cardTitle, display:‘flex’, justifyContent:‘space-between’, alignItems:‘center’}}>
-<span>▸ Bitcoin Node</span>
-<span style={{display:‘inline-flex’, alignItems:‘center’, gap:5, color: connected?‘var(–green)’:‘var(–red)’, fontSize:‘0.55rem’, letterSpacing:‘0.12em’}}>
-<span style={{width:6, height:6, borderRadius:‘50%’, background: connected?‘var(–green)’:‘var(–red)’, boxShadow: `0 0 6px ${connected?'var(--green)':'var(--red)'}`, animation: connected?‘pulse 2s ease-in-out infinite’:‘none’}}/>
-{connected ? ‘CONNECTED’ : ‘OFFLINE’}
-</span>
-</div>
-<div style={statRow}>
-<span style={label}>Client</span>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–text-1)’,textAlign:‘right’}}>
-{client.name}
-{client.version && <div style={{fontSize:‘0.6rem’,color:‘var(–text-2)’,marginTop:2}}>v{client.version}</div>}
-</span>
-</div>
-<div style={statRow}>
-<span style={label}>Peers</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.88rem’,fontWeight:600,color:‘var(–cyan)’}}>
-{fmtNum(ni.peers || 0)}
-{(ni.peersIn > 0 || ni.peersOut > 0) && <span style={{fontFamily:‘var(–fm)’,fontSize:‘0.6rem’,color:‘var(–text-2)’,fontWeight:400,marginLeft:6}}>{ni.peersOut}↑ · {ni.peersIn}↓</span>}
-</span>
-</div>
-<div style={statRow}><span style={label}>Relay Fee</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–amber)’}}>{relayStr}</span></div>
-<div style={statRow}><span style={label}>Mempool TXs</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–text-1)’}}>{fmtNum(ni.mempoolCount || 0)}</span></div>
-<div style={statRow}><span style={label}>Mempool Size</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–cyan)’}}>{fmtBytes(ni.mempoolBytes || 0)}</span></div>
-</div>
-);
-}
-
-// ── Odds ──────────────────────────────────────────────────────────────────────
-function OddsDisplay({ odds, hashrate, netHashrate }) {
-const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0 } = odds||{};
-const R=48, C=2*Math.PI*R;
-const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Block Probability</div>
-<div style={{display:‘flex’,flexDirection:‘column’,alignItems:‘center’,gap:‘0.875rem’}}>
-<div style={{position:‘relative’,width:110,height:110,display:‘flex’,alignItems:‘center’,justifyContent:‘center’}}>
-<svg width=“110” height=“110” viewBox=“0 0 110 110” style={{position:‘absolute’}}>
-<circle cx="55" cy="55" r={R} fill="none" stroke="var(--bg-raised)" strokeWidth="7"/>
-{[0,90,180,270].map(d=><line key={d} x1=“55” y1=“4” x2=“55” y2=“12” stroke=“var(–border)” strokeWidth=“1” transform={`rotate(${d} 55 55)`}/>)}
-<circle cx=“55” cy=“55” r={R} fill=“none” stroke=“var(–amber)” strokeWidth=“7” strokeLinecap=“round”
-strokeDasharray={`${C*scale} ${C}`} style={{filter:‘drop-shadow(0 0 5px rgba(245,166,35,0.6))’,transition:‘stroke-dasharray 1.2s ease’}} transform=“rotate(-90 55 55)”/>
-</svg>
-<div style={{textAlign:‘center’}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.65rem’,fontWeight:700,color:‘var(–amber)’,lineHeight:1.2}}>
-{perBlock>0?`${(perBlock*100).toExponential(1)}%`:’—’}
-</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.5rem’,color:‘var(–text-2)’,letterSpacing:‘0.08em’,textTransform:‘uppercase’,marginTop:2}}>per block</div>
-</div>
-</div>
-{[[‘Expected’, fmtOdds(expectedDays), ‘var(–amber)’],
-[‘Per Day’,   perDay>0?fmtPct(perDay*100,4):’—’, ‘var(–text-1)’],
-[‘Per Week’,  perWeek>0?fmtPct(perWeek*100,3):’—’, ‘var(–text-1)’],
-[‘Per Month’, perMonth>0?fmtPct(perMonth*100,2):’—’,‘var(–cyan)’],
-[‘Pool Share’, netHashrate>0&&hashrate>0?`${((hashrate/netHashrate)*100).toExponential(2)}%`:’—’,‘var(–text-1)’]
-].map(([l,v,c])=>(
-<div key={l} style={{…statRow,width:‘100%’,marginBottom:0}}>
-<span style={label}>{l}</span>
-<span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:c}}>{v}</span>
-</div>
-))}
-</div>
-</div>
-);
-}
-
-// ── Luck ──────────────────────────────────────────────────────────────────────
-function LuckGauge({ luck }) {
-const { progress=0, blocksExpected=0, blocksFound=0, luck: luckVal=null } = luck||{};
-const visualPct = Math.min(300, progress);
-const w = Math.min(100, visualPct/3);
-const barColor = luckVal==null ? ‘var(–amber)’ : (luckVal>=100 ? ‘var(–green)’ : luckVal>=50 ? ‘var(–amber)’ : ‘var(–red)’);
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Luck — Since Pool Start</div>
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.6rem’}}>
-<div style={{textAlign:‘center’,padding:‘0.6rem 0’}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘2rem’,fontWeight:700,color:barColor,textShadow:`0 0 20px ${barColor}50`,lineHeight:1}}>
-{luckVal==null ? ‘—’ : fmtPct(luckVal, 1)}
-</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginTop:4}}>
-{luckVal==null ? ‘warming up’ : luckVal>=100 ? ‘lucky’ : ‘unlucky so far’}
-</div>
-</div>
-<div>
-<div style={{display:‘flex’,justifyContent:‘space-between’,fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.1em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:4}}>
-<span>Progress to next block</span>
-<span style={{color:‘var(–amber)’}}>{fmtPct(progress,2)}</span>
-</div>
-<div style={{height:4,background:‘var(–bg-deep)’,borderRadius:2,overflow:‘hidden’}}>
-<div style={{height:‘100%’,width:`${w}%`,background:barColor,boxShadow:`0 0 8px ${barColor}80`,transition:‘width 0.6s ease’}}/>
-</div>
-</div>
-<div style={{...statRow,marginBottom:0}}><span style={label}>Blocks Expected</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–text-1)’}}>{blocksExpected.toFixed(3)}</span></div>
-<div style={{...statRow,marginBottom:0}}><span style={label}>Blocks Found</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:blocksFound>0?‘var(–green)’:‘var(–text-1)’}}>{blocksFound}</span></div>
-</div>
-</div>
-);
-}
-
-// ── Retarget ──────────────────────────────────────────────────────────────────
-function RetargetPanel({ retarget }) {
-if (!retarget) return null;
-const { progressPercent=0, difficultyChange=0, remainingBlocks=0, remainingTime=0 } = retarget;
-const changeColor = difficultyChange>=0 ? ‘var(–red)’ : ‘var(–green)’;
-const pct = Math.max(0, Math.min(100, progressPercent));
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Difficulty Retarget</div>
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.5rem’}}>
-<div style={{textAlign:‘center’,padding:‘0.25rem 0’}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘1.6rem’,fontWeight:700,color:changeColor,textShadow:`0 0 14px ${changeColor}50`,lineHeight:1}}>
-{difficultyChange>=0?’+’:’’}{difficultyChange.toFixed(2)}%
-</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.15em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginTop:4}}>estimated change</div>
-</div>
-<div>
-<div style={{display:‘flex’,justifyContent:‘space-between’,fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.1em’,textTransform:‘uppercase’,color:‘var(–text-2)’,marginBottom:4}}>
-<span>Epoch progress</span><span style={{color:‘var(–cyan)’}}>{pct.toFixed(1)}%</span>
-</div>
-<div style={{height:3,background:‘var(–bg-deep)’,borderRadius:2,overflow:‘hidden’}}>
-<div style={{height:‘100%’,width:`${pct}%`,background:‘var(–cyan)’,boxShadow:‘0 0 8px rgba(0,255,209,0.5)’,transition:‘width 0.6s ease’}}/>
-</div>
-</div>
-<div style={{...statRow,marginBottom:0}}><span style={label}>Remaining Blocks</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–text-1)’}}>{fmtNum(remainingBlocks)}</span></div>
-<div style={{...statRow,marginBottom:0}}><span style={label}>ETA</span><span style={{fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–amber)’}}>{fmtDurationMs(remainingTime)}</span></div>
-</div>
-</div>
-);
-}
-
-// ── Share stats ───────────────────────────────────────────────────────────────
-function ShareStats({ shares, hashrate, bestshare }) {
-const s = shares || {};
-const workAccepted = s.accepted || 0;
-const workRejected = s.rejected || 0;
-const stale = s.stale || 0;
-const total = workAccepted + workRejected || 1;
-const acceptRate = ((workAccepted / total) * 100).toFixed(2);
-const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : ‘0’;
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={{…cardTitle,display:‘flex’,justifyContent:‘space-between’,alignItems:‘center’}}>
-<span>▸ Share Stats</span>
-<a href=”/api/export/workers.csv” download style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.1em’,color:‘var(–cyan)’,textDecoration:‘none’,border:‘1px solid var(–border)’,padding:‘2px 6px’,background:‘var(–bg-raised)’}}>⬇ CSV</a>
-</div>
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.6rem’}}>
-<div style={{background:‘var(–bg-raised)’,border:‘1px solid var(–border)’,padding:‘0.875rem’}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.15em’,color:‘var(–text-2)’,textTransform:‘uppercase’,marginBottom:6}}>Work Accepted</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘1.8rem’,fontWeight:700,color:‘var(–green)’,lineHeight:1}}>{fmtDiff(workAccepted)}</div>
-<div style={{fontFamily:‘var(–fm)’,fontSize:‘0.7rem’,color:‘var(–text-2)’,marginTop:6}}>
-{workRejected>0 && <><span style={{color:‘var(–red)’}}>{fmtDiff(workRejected)}</span> rejected</>}
-{stale>0 && <> · <span style={{color:‘var(–amber)’}}>{fmtDiff(stale)}</span> stale</>}
-{workAccepted>0 && workRejected>0 && <> · <span style={{color:parseFloat(acceptRate)>99.9?‘var(–green)’:‘var(–amber)’}}>{acceptRate}%</span> accept</>}
-</div>
-</div>
-<div style={{background:‘var(–bg-raised)’,border:‘1px solid var(–border)’,padding:‘0.875rem’}}>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘0.55rem’,letterSpacing:‘0.15em’,color:‘var(–text-2)’,textTransform:‘uppercase’,marginBottom:6}}>Best Difficulty</div>
-<div style={{fontFamily:‘var(–fd)’,fontSize:‘1.8rem’,fontWeight:700,color:‘var(–amber)’,lineHeight:1,textShadow:‘0 0 14px rgba(245,166,35,0.3)’}}>{fmtDiff(bestshare||0)}<span style={{fontSize:‘0.6rem’,color:‘var(–text-2)’,marginLeft:6,fontWeight:400}}>all-time</span></div>
-</div>
-<div style={{display:‘flex’,justifyContent:‘space-between’,fontFamily:‘var(–fm)’,fontSize:‘0.6rem’,color:‘var(–text-2)’,marginTop:‘0.2rem’}}>
-<span>Shares / min (est.)</span><span style={{color:‘var(–cyan)’}}>{sharesPerMin}</span>
-</div>
-</div>
-</div>
-);
-}
-
-// ── Leaderboard ───────────────────────────────────────────────────────────────
-function BestShareLeaderboard({ workers, poolBest, aliases }) {
-const sorted = […(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
-return (
-<div style={{…card, minWidth:0, maxWidth:‘100%’, overflow:‘hidden’}} className=“fade-in”>
-<div style={cardTitle}>▸ Leaderboard — Best Difficulties</div>
-{sorted.length === 0 ? (
-<div style={{textAlign:‘center’,padding:‘1.5rem’,border:‘1px dashed var(–border)’,color:‘var(–text-2)’,fontSize:‘0.72rem’,fontFamily:‘var(–fd)’}}>No shares submitted yet<br/><span style={{color:‘var(–amber)’,fontSize:‘0.65rem’}}>Keep mining ⛏</span></div>
-) : (
-<div style={{display:‘flex’,flexDirection:‘column’,gap:‘0.35rem’}}>
-{sorted.map((w, i) => {
-const on = w.status !== ‘offline’;
-const healthC = HEALTH_COLOR[w.health] || ‘var(–text-3)’;
-return (
-<div key={w.name} style={{padding:‘0.55rem 0.7rem’,background:‘var(–bg-raised)’,border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:‘hidden’}}>
-<div style={{display:‘flex’,alignItems:‘center’,gap:‘0.5rem’,marginBottom:3}}>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.7rem’,fontWeight:700,color:i===0?‘var(–amber)’:‘var(–text-2)’,minWidth:20, flexShrink:0}}>#{i+1}</span>
-<div style={{flex:1,minWidth:0,fontFamily:‘var(–fm)’,fontSize:‘0.78rem’,color:‘var(–text-1)’,overflow:‘hidden’,textOverflow:‘ellipsis’,whiteSpace:‘nowrap’}} title={w.name}>{displayName(w.name, aliases)}</div>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.82rem’,fontWeight:700,color:i===0?‘var(–amber)’:‘var(–cyan)’, flexShrink:0}}>{fmtDiff(w.bestshare || 0)}</span>
-</div>
-<div style={{display:‘flex’,alignItems:‘center’,gap:‘0.5rem’,paddingLeft:25,fontFamily:‘var(–fm)’,fontSize:‘0.58rem’,color:‘var(–text-2)’}}>
-<div title={w.health||‘unknown’} style={{width:6,height:6,borderRadius:‘50%’,background:on?healthC:‘var(–text-3)’,boxShadow:on?`0 0 4px ${healthC}`:‘none’,flexShrink:0}}/>
-{w.minerType && <><span style={{color:‘var(–text-3)’,letterSpacing:‘0.05em’,textTransform:‘uppercase’,fontSize:‘0.55rem’}}>{w.minerType}</span><span style={{color:‘var(–text-3)’}}>·</span></>}
-<span style={{color: on?‘var(–amber)’:‘var(–text-3)’}}>{on ? fmtHr(w.hashrate) : ‘offline’}</span>
-</div>
-</div>
-);
-})}
-<div style={{…statRow,marginTop:‘0.4rem’,borderColor:‘var(–border-hot)’}}>
-<span style={label}>Pool Best</span>
-<span style={{fontFamily:‘var(–fd)’,fontSize:‘0.9rem’,fontWeight:700,color:‘var(–amber)’,textShadow:‘0 0 8px rgba(245,166,35,0.4)’}}>{fmtDiff(poolBest || 0)}</span>
-</div>
-</div>
-)}
-</div>
-);
+// ── Blocks card ──────────────────────────────────────────────────────────────
+function BlocksCard({ state, fmtBestShareCompact }) {
+  const blocks = Array.isArray(state.blocks) ? state.blocks : [];
+  const sorted = [...blocks].sort((a,b)=>b.height - a.height);
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem'}}>
+        <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.1em',textTransform:'uppercase'}}>BLOCKS FOUND ({sorted.length})</span>
+      </div>
+      {sorted.length === 0 ? (
+        <div style={{color:'var(--text-3)',padding:'1rem 0',textAlign:'center',fontSize:'0.72rem'}}>No solo blocks yet. Best of luck, miner.</div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:3}}>
+          {sorted.map(b=>{
+            const ts = new Date(b.timestamp);
+            const dateStr = ts.toLocaleDateString(undefined,{ month:'short', day:'numeric', year:'numeric'});
+            return (
+              <div key={b.height} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 7px',border:'1px solid var(--border)',borderRadius:3,background:'rgba(245,166,35,0.06)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0,flex:1}}>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.72rem',color:'var(--amber)',fontWeight:700}}>#{b.height}</span>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.75rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.minerAlias || b.miner || 'unknown'}</span>
+                </div>
+                <span style={{color:'var(--text-3)',fontSize:'0.65rem',fontFamily:'var(--fm)'}}>{dateStr}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Top Pool Finders ──────────────────────────────────────────────────────────
