@@ -572,6 +572,51 @@ app.get('/api/public/workers', rateLimit, (req, res) => {
   })));
 });
 
+// umbrelOS home-screen widget — four-stats format
+// Replaces the standalone widget-server container as of v1.5.3
+app.get('/api/widget/four-stats', (req, res) => {
+  const formatHashrate = (hps) => {
+    if (!hps || hps < 0 || !Number.isFinite(hps)) return { text: '0', subtext: 'H/s' };
+    const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s', 'EH/s'];
+    let rate = hps, i = 0;
+    while (rate >= 1000 && i < units.length - 1) { rate /= 1000; i++; }
+    return { text: rate.toFixed(2), subtext: units[i] };
+  };
+  const formatCompact = (n) => {
+    if (!n || n < 0 || !Number.isFinite(n)) return '0';
+    if (n < 1000) return Math.round(n).toString();
+    if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
+    if (n < 1e9) return (n / 1e6).toFixed(1) + 'M';
+    if (n < 1e12) return (n / 1e9).toFixed(1) + 'B';
+    return (n / 1e12).toFixed(1) + 'T';
+  };
+  try {
+    const s = transformState(state);
+    const hr = formatHashrate(s.hashrate?.current || 0);
+    res.json({
+      type: 'four-stats',
+      refresh: '10s',
+      items: [
+        { title: 'Pool Hashrate', text: hr.text, subtext: hr.subtext },
+        { title: 'Workers',       text: (s.totalWorkers || 0).toString() },
+        { title: 'Blocks Found',  text: ((s.blocks || []).length).toString() },
+        { title: 'Best Diff',     text: formatCompact(s.bestshare || 0) },
+      ],
+    });
+  } catch (err) {
+    res.json({
+      type: 'four-stats',
+      refresh: '10s',
+      items: [
+        { title: 'Pool Hashrate', text: '—', subtext: 'H/s' },
+        { title: 'Workers',       text: '—' },
+        { title: 'Blocks Found',  text: '—' },
+        { title: 'Best Diff',     text: '—' },
+      ],
+    });
+  }
+});
+
 app.get('/metrics', (req, res) => {
   const s = transformState(state);
   const lines = [];
