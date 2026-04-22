@@ -195,11 +195,28 @@ async function pollBitcoind() {
     state.network.height = info.blocks || 0;
     state.network.difficulty = info.difficulty || 0;
 
+// Difficulty retarget (v1.5.6+)
     const epochProgress   = (info.blocks || 0) % 2016;
     const remainingBlocks = 2016 - epochProgress;
+    let difficultyChange = 0;
+    try {
+      if (epochProgress > 0) {
+        const epochStartHeight = (info.blocks || 0) - epochProgress;
+        const startHash  = await btcRpc('getblockhash', [epochStartHeight]);
+        const startBlock = startHash ? await btcRpc('getblockheader', [startHash]) : null;
+        const currTime   = info.mediantime || Math.floor(Date.now()/1000);
+        if (startBlock && startBlock.time) {
+          const actualSec  = currTime - startBlock.time;
+          const idealSec   = epochProgress * 600;
+          difficultyChange = ((idealSec / actualSec) - 1) * 100;
+          // cap at +/- 300% which is the protocol limit
+          difficultyChange = Math.max(-75, Math.min(300, difficultyChange));
+        }
+      }
+    } catch (e) {}
     state.retarget = {
       progressPercent: (epochProgress / 2016) * 100,
-      difficultyChange: 0,
+      difficultyChange,
       remainingBlocks,
       remainingTime: remainingBlocks * 600 * 1000,
     };
