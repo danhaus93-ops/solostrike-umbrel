@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.5.4"
+version: "1.5.6"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,6 +76,76 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.5.6 — Dashboard Reliability Overhaul.
+
+
+  This release fixes a cluster of long-standing data-flow bugs that silently
+  kept several dashboard cards empty. The whole dashboard now lights up with
+  real data the moment you open it.
+
+
+  FIXED:
+
+  • 🔧 WEBSOCKET RECONNECT LOOP — the UI was connecting to the wrong path,
+  which meant the "LIVE" status badge stayed stuck on "RECONN" and the UI
+  never received live updates. Now connects properly; dashboard refreshes
+  in real time every 5 seconds.
+
+  • 🔧 NODE STATUS "DOWN" — the Bitcoin Node card always showed DOWN because
+  the api never populated node info. Now pulls real peer counts, inbound /
+  outbound split, relay fee, mempool size, and Bitcoin Core version every
+  15 seconds.
+
+  • 🔧 SHARE STATS EMPTY — the Share Stats card stayed at zero because the
+  internal shares state was never initialized. Now tracks every accepted,
+  rejected, and stale share from ckpool.
+
+  • 🔧 HASHRATE GRAPH EMPTY — the pool hashrate graph never drew a line
+  because the history array failed silently on first write. Now accumulates
+  points every minute and renders 1H / 6H / 24H / 7D views correctly.
+
+  • 🔧 UPTIME BROKEN — the API uptime indicator showed nonsense ("20565d 22h")
+  because the UI's fmtUptime helper expected a timestamp but got a duration.
+  Now displays correct "2m", "1h 14m", etc.
+
+  • 🔧 SYNC INDICATOR MISSING — the top-bar SYNC badge stayed on a dash
+  because sync state was never computed. Now shows verification progress
+  and blocks-behind count.
+
+  • 🔧 DIFFICULTY RETARGET CARD EMPTY — the entire card rendered as a ghost
+  (just a stray drag handle) because retarget state was never populated.
+  Now computes epoch progress, remaining blocks, ETA, and a real-time
+  estimated difficulty change percentage based on epoch block timing.
+
+  • 🔧 STABILITY INDICATOR — displays "rock solid / stable / volatile" based
+  on the coefficient of variation of recent hashrate samples.
+
+
+  NEW:
+
+  • ⚡ ZMQ real-time block notifications re-enabled. When Bitcoin Core's ZMQ
+  publisher is reachable, the pool learns about new network blocks within
+  milliseconds instead of up to 15 seconds late — less stale work, more
+  efficient mining.
+
+  • 🎯 Preset-button highlighting in Settings → Display now reflects which
+  preset (Minimal / Default / Everything) actually matches your current
+  card selection.
+
+
+  HOUSEKEEPING:
+
+  • Log spam from the snapshots scheduler silenced with a proper null-check
+  on the closestCalls array.
+
+  • WebSocket message types normalized (STATE_UPDATE, BLOCK_FOUND, CONFIG).
+
+  • CONFIG broadcast on settings save — pool name and private-mode changes
+  propagate to all connected clients without a refresh.
+
+  • API version string in startup log now matches package version.
+
+
   v1.5.4 — Live Stratum Port Health.
 
 
