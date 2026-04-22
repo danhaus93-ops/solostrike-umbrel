@@ -79,3 +79,11 @@ export function fmtFiat(amount, currency='USD'){
   return`${sym}${amount.toLocaleString(undefined,{minimumFractionDigits:digits,maximumFractionDigits:digits})}`;
 }
 export const CURRENCIES = ['USD','EUR','GBP','CAD','CHF','AUD','JPY'];
+
+// Bitcoin address validation — supports legacy (1…, 3…) and bech32 (bc1…, tb1…)
+const BTC_ADDR_RE = /^(bc1[a-z0-9]{6,87}|tb1[a-z0-9]{6,87}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/;
+export function isValidBtcAddress(a){
+  if(!a||typeof a!=='string')return false;
+  const t=a.trim();
+  return t.length>=26&&t.length<=90&&BTC_ADDR_RE.test(t);
+}
