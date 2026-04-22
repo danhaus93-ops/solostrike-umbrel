@@ -265,13 +265,13 @@ Anything that speaks Stratum V1 works out of the box:
 
 |Miner                       |Protocol  |Status  |
 |----------------------------|----------|--------|
-|Antminer S9 / S19 / S21 / L9|Stratum V1|✅       |
+|Antminer S9 / S19 / S21 / L9|Stratum V1|✅ Tested|
 |BitAxe Gamma / Supra / Ultra|Stratum V1|✅ Tested|
 |NerdMiner v2                |Stratum V1|✅       |
 |NerdQaxe++                  |Stratum V1|✅ Tested|
-|Avalon Nano 3 / 3S / Q      |Stratum V1|✅       |
+|Avalon Nano 3 / 3S / Q      |Stratum V1|✅ Tested|
 |Whatsminer (M3x, M5x, M6x)  |Stratum V1|✅       |
-|Braiins rentals             |Stratum V1|✅       |
+|Braiins rentals             |Stratum V1|✅ Tested|
 |cgminer / bfgminer          |Stratum V1|✅       |
 
 Automatic detection identifies the miner type from share patterns and displays it in the Workers card — no manual tagging.
