@@ -195,6 +195,15 @@ async function pollBitcoind() {
     state.network.height = info.blocks || 0;
     state.network.difficulty = info.difficulty || 0;
 
+    const epochProgress   = (info.blocks || 0) % 2016;
+    const remainingBlocks = 2016 - epochProgress;
+    state.retarget = {
+      progressPercent: (epochProgress / 2016) * 100,
+      difficultyChange: 0,
+      remainingBlocks,
+      remainingTime: remainingBlocks * 600 * 1000,
+    };
+
     const headers   = info.headers || info.blocks || 0;
     const blocksN   = info.blocks || 0;
     const progress  = info.verificationprogress || 0;
