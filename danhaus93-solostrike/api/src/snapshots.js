@@ -91,7 +91,9 @@ function applyDailySnapshot(snapshots, snap) {
 // Update closest-calls leaderboard based on current worker bestshares
 // Returns true if the leaderboard changed (caller should persist)
 function updateClosestCalls(snapshots, state) {
+  if (!Array.isArray(snapshots.closestCalls)) snapshots.closestCalls = [];
   const workers = Object.values(state.workers || {});
+
   let changed = false;
 
   for (const w of workers) {
