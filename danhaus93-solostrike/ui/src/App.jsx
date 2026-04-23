@@ -942,7 +942,147 @@ function RetargetPanel({ retarget }) {
 }
 
 // ── Share stats ───────────────────────────────────────────────────────────────
-function ShareStats({ shares, hashrate, bestshare }) {
+// ── Share Stats Modal (v1.5.9+) ─────────────────────────────────────────────
+function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect }) {
+  const s = shares || {};
+  const reasons = s.rejectReasons || {};
+
+  const wl = Array.isArray(workers) ? workers : [];
+  let totalAccepted = 0, totalRejected = 0, totalStale = 0, bestSdiff = 0;
+  for (const w of wl) {
+    const se = w.shareEvents;
+    if (!se) continue;
+    totalAccepted += (se.accepted || 0);
+    totalRejected += (se.rejected || 0);
+    totalStale    += (se.stale    || 0);
+    if ((se.bestSdiff || 0) > bestSdiff) bestSdiff = se.bestSdiff;
+  }
+  const grandTotal = totalAccepted + totalRejected + totalStale || 1;
+  const acceptPct = ((totalAccepted / grandTotal) * 100);
+  const rejectPct = ((totalRejected / grandTotal) * 100);
+  const stalePct  = ((totalStale    / grandTotal) * 100);
+
+  const reasonRows = Object.entries(reasons).sort((a,b) => b[1] - a[1]);
+
+  const classifyReason = (reason) => {
+    if (/stale|invalid.?jobid|old.?job|expired/i.test(reason)) return 'var(--amber)';
+    if (/duplicate|bad.?nonce|coinbase/i.test(reason)) return 'var(--text-2)';
+    return 'var(--red)';
+  };
+
+  const workerRows = wl
+    .filter(w => w.shareEvents)
+    .map(w => {
+      const se = w.shareEvents;
+      const tot = (se.accepted || 0) + (se.rejected || 0) + (se.stale || 0);
+      const ar = tot > 0 ? ((se.accepted || 0) / tot) * 100 : 100;
+      return { worker: w, se, tot, ar };
+    })
+    .filter(r => r.tot > 0)
+    .sort((a, b) => a.ar - b.ar);
+
+  const health = (ar) => ar >= 99.9 ? 'var(--green)' : ar >= 99 ? 'var(--amber)' : 'var(--red)';
+
+  const section = { marginBottom:'1rem' };
+  const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
+  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right' };
+  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
+  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
+  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, lineHeight:1 };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
+        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+            <span style={{fontSize:16,color:'var(--amber)'}}>📊</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>Share Diagnostics</span>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem'}}>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Pool Share Health</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem',marginBottom:'0.5rem'}}>
+              <div style={heroBox}><div style={heroLbl}>Accepted</div><div style={{...heroVal,color:'var(--green)'}}>{fmtNum(totalAccepted)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>Rejected</div><div style={{...heroVal,color:totalRejected>0?'var(--red)':'var(--text-2)'}}>{fmtNum(totalRejected)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>Stale</div><div style={{...heroVal,color:totalStale>0?'var(--amber)':'var(--text-2)'}}>{fmtNum(totalStale)}</div></div>
+            </div>
+            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:health(acceptPct)}}>{acceptPct.toFixed(3)}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Reject Rate</span><span style={{...kvVal,color:rejectPct<0.5?'var(--text-2)':'var(--red)'}}>{rejectPct.toFixed(3)}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Stale Rate</span><span style={{...kvVal,color:stalePct<0.5?'var(--text-2)':'var(--amber)'}}>{stalePct.toFixed(3)}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(bestSdiff)}</span></div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
+              Session totals since share-watcher started. Persists across API restarts.
+            </div>
+          </div>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Reject Reasons</div>
+            {reasonRows.length === 0 ? (
+              <div style={{textAlign:'center',padding:'1rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>
+                No rejects yet ✓
+              </div>
+            ) : (
+              reasonRows.map(([reason, count]) => (
+                <div key={reason} style={kvRow}>
+                  <span style={{...kvLabel,textTransform:'none',letterSpacing:'0.02em',color:classifyReason(reason)}}>{reason}</span>
+                  <span style={{...kvVal,color:'var(--text-1)',fontWeight:600}}>{fmtNum(count)}</span>
+                </div>
+              ))
+            )}
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
+              <span style={{color:'var(--amber)'}}>amber</span> = stale/latency · <span style={{color:'var(--red)'}}>red</span> = hardware/config · <span style={{color:'var(--text-2)'}}>grey</span> = rare
+            </div>
+          </div>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Per-Worker Health ({workerRows.length})</div>
+            {workerRows.length === 0 ? (
+              <div style={{textAlign:'center',padding:'1rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>
+                Gathering data…
+              </div>
+            ) : (
+              workerRows.map(({worker, se, tot, ar}) => (
+                <div key={worker.name}
+                     onClick={() => { onClose(); onWorkerSelect && onWorkerSelect(worker); }}
+                     style={{...kvRow,cursor:'pointer',flexDirection:'column',alignItems:'stretch',gap:4}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontFamily:'var(--fd)',fontSize:'0.68rem',fontWeight:600,color:'var(--text-1)'}}>
+                      {worker.minerIcon || '▪'} {displayName(worker.name, aliases)}
+                    </span>
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.75rem',fontWeight:700,color:health(ar)}}>{ar.toFixed(2)}%</span>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)'}}>
+                    <span>
+                      <span style={{color:'var(--green)'}}>{fmtNum(se.accepted||0)}</span>
+                      {(se.rejected||0) > 0 && <> · <span style={{color:'var(--red)'}}>{fmtNum(se.rejected)} rej</span></>}
+                      {(se.stale||0) > 0 && <> · <span style={{color:'var(--amber)'}}>{fmtNum(se.stale)} stale</span></>}
+                    </span>
+                    <span>
+                      {se.port && <>:{se.port}</>}
+                      {se.lastRejectReason && <> · {se.lastRejectReason}</>}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
+              Sorted by accept rate (worst first). Tap a worker for full details.
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   const s = shares || {};
   const workAccepted = s.accepted || 0;
   const workRejected = s.rejected || 0;
@@ -951,10 +1091,10 @@ function ShareStats({ shares, hashrate, bestshare }) {
   const acceptRate = ((workAccepted / total) * 100).toFixed(2);
   const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Share Stats</span>
-        <a href="/api/export/workers.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>
+        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
@@ -977,6 +1117,7 @@ function ShareStats({ shares, hashrate, bestshare }) {
     </div>
   );
 }
+
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 function BestShareLeaderboard({ workers, poolBest, aliases }) {
@@ -1858,6 +1999,7 @@ export default function App() {
   const [aliases, setAliases] = useState(loadAliases);
   const [notes, setNotes] = useState(loadNotes);
   const [selectedWorker, setSelectedWorker] = useState(null);
+  const [shareStatsOpen, setShareStatsOpen] = useState(false);
 
   const [stripSettings, setStripSettings] = useState(() => ({
     enabled: loadStripEnabled(),
@@ -1978,7 +2120,7 @@ export default function App() {
     odds:         { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
     luck:         { spanTwo:false, el:<LuckGauge luck={state.luck}/> },
     retarget:     { spanTwo:false, el:<RetargetPanel retarget={state.retarget}/> },
-    shares:       { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare}/> },
+    shares:       { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare} onOpen={()=>setShareStatsOpen(true)}/> },
     best:         { spanTwo:false, el:<BestShareLeaderboard workers={state.workers} poolBest={state.bestshare} aliases={aliases}/> },
     closestcalls: { spanTwo:false, el:<ClosestCallsPanel closestCalls={state.snapshots?.closestCalls} aliases={aliases}/> },
     blocks:       { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
@@ -2059,6 +2201,7 @@ export default function App() {
         const live = (state.workers || []).find(w => w.name === selectedWorker.name) || selectedWorker;
         return <WorkerDetailModal worker={live} onClose={()=>setSelectedWorker(null)} aliases={aliases} onAliasesChange={handleAliasesChange} notes={notes} onNotesChange={handleNotesChange}/>;
       })()}
+      {shareStatsOpen && <ShareStatsModal shares={state.shares} workers={state.workers} aliases={aliases} onClose={()=>setShareStatsOpen(false)} onWorkerSelect={(w)=>setSelectedWorker(w)}/>}
     </>
   );
 }
