@@ -4,7 +4,8 @@
 // result (accepted/rejected), reject-reason, sdiff, and more.
 //
 // We discover the pool-id subdirectory dynamically, watch all .sharelog files
-// under it, parse each line as JSON, and aggregate counters per worker.
+// under it, parse each line as JSON, and aggregate counters per worker AND at
+// the pool level.
 //
 // Classification:
 //   result:true                                       → accepted
@@ -16,6 +17,7 @@
 //   Sharelog file read-offsets persist as sharelogCursors so we resume reading
 //   from where we left off instead of skipping ahead to end-of-file on every
 //   restart (which previously caused us to miss historical shares entirely).
+//   Pool-level acceptedCount/rejectedCount/stale now populated in real time.
 //
 //   Shape:
 //     shareCounters: { [workerName]: { accepted, rejected, stale, bestSdiff,
@@ -23,6 +25,7 @@
 //                                       lastRejectReason, lastRejectAt, port,
 //                                       firstSeen } }
 //     sharelogCursors: { [absoluteFilePath]: bytesRead }
+//     state.shares.acceptedCount / rejectedCount / stale   (pool-level rollup)
 
 const fs = require('fs');
 const path = require('path');
@@ -45,6 +48,8 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (!state.shareCounters) state.shareCounters = {};
   if (!state.sharelogCursors) state.sharelogCursors = {};
   if (!state.shares) state.shares = {};
+  if (typeof state.shares.acceptedCount !== 'number') state.shares.acceptedCount = 0;
+  if (typeof state.shares.rejectedCount !== 'number') state.shares.rejectedCount = 0;
   if (typeof state.shares.stale !== 'number') state.shares.stale = 0;
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
 
@@ -55,18 +60,24 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       const p = JSON.parse(fs.readFileSync(persistPath, 'utf8'));
       if (p.shareCounters && typeof p.shareCounters === 'object') {
         state.shareCounters = p.shareCounters;
+        let poolAccepted = 0;
+        let poolRejected = 0;
         let poolStale = 0;
         const poolReasons = {};
         for (const name of Object.keys(state.shareCounters)) {
           const c = state.shareCounters[name];
+          poolAccepted += (c.accepted || 0);
+          poolRejected += (c.rejected || 0);
           poolStale += (c.stale || 0);
           for (const [r, n] of Object.entries(c.rejectReasons || {})) {
             poolReasons[r] = (poolReasons[r] || 0) + n;
           }
         }
+        state.shares.acceptedCount = poolAccepted;
+        state.shares.rejectedCount = poolRejected;
         state.shares.stale = poolStale;
         state.shares.rejectReasons = poolReasons;
-        console.log('[share-watcher] Restored counters for', Object.keys(state.shareCounters).length, 'workers (stale=' + poolStale + ')');
+        console.log('[share-watcher] Restored counters for', Object.keys(state.shareCounters).length, 'workers (accepted=' + poolAccepted + ' rejected=' + poolRejected + ' stale=' + poolStale + ')');
       }
       if (p.sharelogCursors && typeof p.sharelogCursors === 'object') {
         state.sharelogCursors = p.sharelogCursors;
@@ -108,6 +119,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
 
     if (obj.result === true) {
       c.accepted++;
+      state.shares.acceptedCount = (state.shares.acceptedCount || 0) + 1;
       const sd = typeof obj.sdiff === 'number' ? obj.sdiff : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
     } else {
@@ -117,6 +129,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         state.shares.stale = (state.shares.stale || 0) + 1;
       } else {
         c.rejected++;
+        state.shares.rejectedCount = (state.shares.rejectedCount || 0) + 1;
       }
       if (reason) {
         c.rejectReasons[reason] = (c.rejectReasons[reason] || 0) + 1;
@@ -167,10 +180,10 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
     for (const filepath of files) {
       if (!tracked.has(filepath)) {
         // Resume from last persisted cursor, or start from byte 0 for new files.
-        // This is the v1.5.11 fix: previously we set cursor to current file size
-        // on first discovery, which silently skipped all existing shares on
-        // every API restart. Now we read from byte 0 so historical shares get
-        // counted exactly once (persistence prevents double-count on restart).
+        // v1.5.11 fix: previously we set cursor to current file size on first
+        // discovery, silently skipping all existing shares on every API restart.
+        // Now we read from byte 0 so historical shares get counted exactly once
+        // (persistence prevents double-count across restarts).
         const savedCursor = state.sharelogCursors[filepath];
         tracked.set(filepath, typeof savedCursor === 'number' ? savedCursor : 0);
       }
