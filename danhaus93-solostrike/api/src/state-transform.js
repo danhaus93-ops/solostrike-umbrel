@@ -55,7 +55,7 @@ function computeBlockReward(state) {
 }
 
 function transformState(state) {
-  const { _avgState, _workerLastStatus, workers, ...rest } = state;
+  const { _avgState, _workerLastStatus, workers, shareCounters, ...rest } = state;
   // netBlocks fallback (v1.5.7+) — when mempool.space is unreachable or privateMode,
   // synthesize netBlocks[0] from the locally-fetched latestBlock (from Bitcoin Core RPC)
   let netBlocks = Array.isArray(state.netBlocks) ? state.netBlocks : [];
@@ -73,7 +73,7 @@ function transformState(state) {
   }
   return {
     ...rest,
-    workers:              Object.values(workers || {}),
+    workers:              Object.values(workers || {}).map(w => ({ ...w, shareEvents: (shareCounters || {})[w.name] || null })),
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
     retarget:             state.retarget  || null,
