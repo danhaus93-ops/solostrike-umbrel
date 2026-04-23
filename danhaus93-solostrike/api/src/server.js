@@ -18,6 +18,8 @@ const {
 } = require('./snapshots');
 const { startStratumHealthPoller, getStratumHealth } = require('./stratum-health');
 const { startBlockWatcher } = require('./block-watcher');
+const { startShareWatcher } = require('./share-watcher');
+
 
 const VERSION = '1.5.8';
 
@@ -701,6 +703,8 @@ async function boot() {
   startSnapshotScheduler({ state, snapshots: state.snapshots, configDir: CONFIG_DIR });
   startStratumHealthPoller();
   startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir: CKPOOL_LOG_DIR });
+  startShareWatcher({ state, logDir: CKPOOL_LOG_DIR, savePersist, broadcast });
+
   state.status = cfg.payoutAddress ? 'mining' : 'setup';
   const PORT = 3001;
   server.listen(PORT, () => console.log(`[SoloStrike API v${VERSION}] Listening on :${PORT} (privateMode=${cfg.privateMode})`));
