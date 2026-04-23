@@ -41,8 +41,11 @@ function startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir })
       minerAlias: null,
       difficulty: state.network?.difficulty || 0,
       reward: (3.125 + (state.mempool?.totalFeesBtc || 0)),
-    };
-    console.log('[block-watcher] 🎉 BLOCK FOUND:', block.height, block.hash || '(hash pending)');
+          };
+          // Dedup: skip if this block hash is already recorded (handles multi-pattern log matches)
+          if (block.hash && (state.blocks || []).some(b => b.hash === block.hash)) return;
+          console.log('[block-watcher] 🎉 BLOCK FOUND:', block.height, block.hash || '(hash pending)');
+
     state.blocks = [block, ...(state.blocks || [])].slice(0, 1000);
     try { broadcast({ type: 'BLOCK_FOUND', data: block }); } catch {}
     try { fireHooks('block_found', { block }); } catch {}
