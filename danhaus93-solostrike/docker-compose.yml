@@ -10,7 +10,7 @@ services:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a
     restart: unless-stopped
     stop_grace_period: 1m
-    command: ["--btcsolo", "--config", "/etc/ckpool/ckpool.conf"]
+    command: ["--btcsolo", "--log-shares", "--config", "/etc/ckpool/ckpool.conf"]
     ports:
       - "3333:3333"
       - "3334:3334"
