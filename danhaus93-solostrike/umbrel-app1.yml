@@ -1,0 +1,502 @@
+manifestVersion: 1
+id: danhaus93-solostrike
+category: bitcoin
+name: SoloStrike
+version: "1.5.12"
+tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
+description: >-
+  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
+  dashboard.
+
+
+  Connect your ASICs directly to your own Bitcoin node and keep 100% of every
+  block you find — no pool fees, no custody risk, no middleman.
+
+
+  v1.3.0 introduces Private Mode — toggle one switch and the entire app goes
+  airgapped. No mempool.space calls, no price feeds, no outbound traffic of
+  any kind. Your mining activity is yours alone.
+
+
+  Features:
+
+  • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
+
+  • Closest Calls leaderboard — historical top 10 best-diff shares across your fleet
+
+  • Daily hashrate snapshots — 90 days of avg/peak history
+
+  • Sticky header cluster — pool status, ticker, latest block, sync warnings, ZMQ indicator
+
+  • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
+
+  • Worker search, miner rename aliases, per-worker last-share timestamps
+
+  • Click miner IP to open its web UI in a new tab
+
+  • Worker offline toast notifications — catch outages the moment they happen
+
+  • Bitcoin Core sync warning banner when your node falls behind
+
+  • Bitcoin Node panel — Core version, total/in/out peers, relay fee, mempool size
+
+  • Block probability — daily, weekly, and monthly odds + expected time to block
+
+  • Luck gauge, difficulty retarget countdown, Top Pool Finders leaderboard
+
+  • Latest Block hero strip — most recently mined block, pool, and reward
+
+  • Recent network blocks feed with solo-winner highlighting
+
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
+
+  • Drag-and-drop card reordering — layout persists per-device
+
+  • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
+
+  • Leaderboard table — worker, miner type, hashrate, best diff, status
+
+  • CSV export for workers and found blocks
+
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc.
+
+  • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
+
+  • Public read-only API — share your pool stats externally
+
+  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
+
+  • Works with any Stratum V1 miner — one-time setup, miners connect automatically
+
+
+  100% self-custody. Truly zero fees. Your node, your rules, your blocks.
+releaseNotes: >-
+  v1.5.12 — Reset Button, UI Polish, Expanded CSV.
+
+
+  NEW:
+
+  • 🔄 RESET SESSION STATS — a new red button at the bottom of the Share
+  Diagnostics modal lets you zero all per-worker share counts and start
+  fresh. Confirms before wiping. After reset, only new shares from that
+  moment forward are counted. Historical sharelog files on disk are never
+  touched.
+
+
+  • ⏱️ TRACKING SINCE TIMESTAMP — Share Diagnostics now shows exactly when
+  the current session counts started accumulating, so you always know what
+  window your stats cover.
+
+
+  • 📊 EXPANDED CSV EXPORT — the workers.csv download now includes every
+  share-diagnostic field: session accepted / rejected / stale, accept-rate
+  percentage, per-worker best sdiff, last reject reason, full reject-reason
+  breakdown, stratum port, worker alias, miner type/vendor, status, IP
+  address, and all hashrate windows (1m/5m/1h/24h/7d). Plus a proper header
+  row and correct MIME headers so browsers name the file as expected.
+
+
+  UI POLISH:
+
+  • 🔧 Fixed header text (ONLINE counter, PEAK hashrate, FLEET-WIDE label)
+  overlapping with the drag-handle icon on the Pool Hashrate, Connected
+  Workers, and Closest Calls cards.
+
+
+  • 🧹 CSV download buttons are now clean icon-links instead of bordered
+  boxes — lighter visual weight and better touch targets.
+
+
+  FIXED:
+
+  • 📥 CSV EXPORTS WERE RETURNING EMPTY FILES — the existing workers.csv,
+  blocks.csv, and snapshots.csv endpoints passed array-of-objects to the
+  CSV serializer, which only accepts array-of-arrays. All three endpoints
+  rebuilt with proper header rows, correct value arrays, and
+  content-disposition headers for sensible download filenames.
+
+
+  v1.5.11 — Share Counter Accuracy (triple fix).
+
+
+  FIXED:
+
+  • 📊 MAIN SHARE STATS CARD displayed hashrate-work-weighted rejected
+  counts (e.g. "11.28M rejected") instead of actual share counts
+  (e.g. "0 rejected · 4 stale"). The status-poller was overwriting
+  share-watcher's pool-level acceptedCount/rejectedCount/stale fields
+  every 5 seconds with values from ckpool's pool.status file (which
+  doesn't actually track share counts). The main card and the Share
+  Diagnostics modal now agree — both show the same real share numbers.
+
+
+  • 💾 SHARELOG CURSORS PERSISTENCE — share-watcher previously skipped to
+  end-of-file every time it discovered a sharelog, losing all historical
+  shares silently on every API restart. Now persists the byte-offset for
+  every sharelog to persist.json and resumes reading from the correct
+  position after restart. New files read from byte 0. Previously-tracked
+  files resume from the saved offset. No double-counting, no silent
+  skipping.
+
+
+  • ➕ POOL-LEVEL COUNTERS — share-watcher now populates state.shares
+  acceptedCount and rejectedCount in real time (in addition to stale,
+  which already worked). Previously these fields were initialized to 0
+  and never incremented, which is why the UI main card fell back to
+  showing the work-weighted numbers from pool.status.
+
+
+  UNDER THE HOOD:
+
+  • share-watcher.js: sharelogCursors persisted alongside shareCounters,
+  resumes from saved byte offsets on startup, falls back to byte 0 for
+  newly-discovered files (which prevents re-counting since counters are
+  also persisted), increments pool-level counters in live processShare.
+
+
+  • status-poller.js: deleted three lines that overwrote share-watcher's
+  counters every 5 seconds. Only work-weighted accepted/rejected from
+  ckpool's pool.status are touched by status-poller now.
+
+
+  v1.5.10 — Share Diagnostics Visibility (bundled into v1.5.9).
+
+
+  Quiet polish pass, no separate release: tap-for-diagnostics affordance on
+  the Share Stats card, zero-rejected/zero-stale rows hidden in the
+  Per-Worker Health breakdown to reduce visual noise when everything's
+  working.
+
+
+  v1.5.9 — Per-Worker Share Diagnostics.
+
+
+  Pool-wide and per-worker tracking of every share submitted — accepted,
+  rejected, and stale — with full reject-reason breakdowns. Tap the Share
+  Stats card to open a new Share Diagnostics modal, or tap any worker row
+  to see that worker's individual reject history.
+
+
+  NEW:
+
+  • 📊 SHARE DIAGNOSTICS MODAL — tap the Share Stats card to open a full
+  diagnostic view. Three sections: Pool Share Health (accepted / rejected
+  / stale totals with percentage rates and session best-share), Reject
+  Reasons (color-classified — amber for stale/latency, red for hardware
+  or config errors, grey for rare edge cases), and Per-Worker Health
+  (sorted worst-first, tap any row to jump into that worker's detail
+  modal).
+
+  • 🔍 PER-WORKER SESSION STATS — the Worker Detail modal now includes
+  session-level accepted, rejected, and stale share counts alongside the
+  existing work totals, plus a new Reject Reasons section showing
+  exactly which errors (if any) are tripping up each specific worker.
+  Best share difficulty for the current session tracked separately from
+  all-time.
+
+  • 💡 TAP-FOR-DIAGNOSTICS AFFORDANCE — the Share Stats card now shows a
+  "Tap for diagnostics ↗" hint so the drill-down is discoverable. The
+  CSV export button still works independently of the tap-to-open
+  behavior (tapping CSV no longer accidentally opens the modal).
+
+
+  UNDER THE HOOD:
+
+  • New share-watcher service tails ckpool's per-share JSON logs via the
+  --log-shares flag (now wired into docker-compose.yml). Each share
+  event is classified (accepted / rejected / stale) using the
+  reject-reason string, aggregated into per-worker counters, and
+  persisted to disk every 60 seconds. Counters survive API restarts.
+
+  • /api/state now exposes shareEvents on each worker object, plus
+  pool-wide shares.stale and shares.rejectReasons fields for external
+  consumers (Prometheus, webhooks, public API).
+
+
+  v1.5.8 — Webhooks Unblocked + Polish.
+
+
+  The webhook UI is fully working end-to-end, plus three smaller fixes.
+
+
+  FIXED:
+
+  • 🔗 WEBHOOKS WORK END-TO-END — the Settings → Webhooks tab can now add, list,
+  and delete hooks. The UI was out of sync with the backend in three places; all
+  three are fixed. Discord / ntfy / Telegram / Home Assistant integrations
+  configured via the UI will now fire on block-found and worker status events as
+  expected.
+
+  • 🎨 RESET LAYOUT FULLY RESETS — the Reset Layout button under Settings →
+  Display now restores card visibility in addition to card order. Previously any
+  cards you had hidden stayed hidden after reset.
+
+  • 📜 SMOOTHER TICKER — the live scrolling ticker no longer blinks or shows a
+  blank gap when the snapshot refreshes every 30 seconds.
+
+  • 🩹 SETUP SCREEN SAFETY — fixed a reference error that could have caused a
+  white screen if you cleared your payout address without running the onboarding
+  wizard again. Harmless for existing installs, but the landmine is gone.
+
+
+  v1.5.7 — Block Detection + Fee-Aware Prize.
+
+
+  Your solo mining lottery just got real. When you find a block, SoloStrike now
+  celebrates it immediately instead of quietly burying it. And the block prize
+  is now computed correctly, including the mempool fee bounty.
+
+
+  NEW:
+
+  • 🎯 SOLO BLOCK DETECTION — a new log watcher tails ckpool.log every 2
+  seconds for block-solve events. When you find a block, the api appends to
+  state.blocks, broadcasts a BLOCK_FOUND websocket event to all connected
+  clients (triggering the celebration modal), fires any configured webhooks
+  (Discord / ntfy / Telegram / Home Assistant), and persists to disk so the
+  win survives restarts.
+
+  • 🪙 ACCURATE BLOCK PRIZE — the Latest Block hero strip now shows the real
+  total prize (subsidy + mempool fees) instead of just the 3.125 BTC subsidy.
+  Pulls aggregate fees from mempool.space every 60 seconds. Typical fee
+  pools add 0.05–0.3 BTC per block, worth thousands of dollars.
+
+  • 🛡️ PRIVATE MODE LATEST BLOCK — when mempool.space is unreachable or the
+  pool is in Private Mode, the dashboard now falls back to data pulled
+  directly from your local Bitcoin Core RPC. Latest Block, height, pool
+  identification, and reward continue to display. Zero external calls.
+
+
+  FIXED:
+
+  • 🎨 QUICK PRESET BUTTONS — the Settings → Display preset buttons (Minimal,
+  Default, Everything) now correctly highlight which preset is active. The
+  previous version hardcoded Default as always-selected regardless of
+  actual card layout.
+
+
+  HOUSEKEEPING:
+
+  • Synchronized ui/package.json version to match api + umbrel-app manifest.
+
+  • state.latestBlock now exposed to frontend in transformState payload so UI
+  can access locally-fetched chain-tip data independently of mempool.space.
+
+
+  v1.5.6 — Dashboard Reliability Overhaul.
+
+
+  This release fixes a cluster of long-standing data-flow bugs that silently
+  kept several dashboard cards empty. The whole dashboard now lights up with
+  real data the moment you open it.
+
+
+  FIXED:
+
+  • 🔧 WEBSOCKET RECONNECT LOOP — the UI was connecting to the wrong path,
+  which meant the "LIVE" status badge stayed stuck on "RECONN" and the UI
+  never received live updates. Now connects properly; dashboard refreshes
+  in real time every 5 seconds.
+
+  • 🔧 NODE STATUS "DOWN" — the Bitcoin Node card always showed DOWN because
+  the api never populated node info. Now pulls real peer counts, inbound /
+  outbound split, relay fee, mempool size, and Bitcoin Core version every
+  15 seconds.
+
+  • 🔧 SHARE STATS EMPTY — the Share Stats card stayed at zero because the
+  internal shares state was never initialized. Now tracks every accepted,
+  rejected, and stale share from ckpool.
+
+  • 🔧 HASHRATE GRAPH EMPTY — the pool hashrate graph never drew a line
+  because the history array failed silently on first write. Now accumulates
+  points every minute and renders 1H / 6H / 24H / 7D views correctly.
+
+  • 🔧 UPTIME BROKEN — the API uptime indicator showed nonsense ("20565d 22h")
+  because the UI's fmtUptime helper expected a timestamp but got a duration.
+  Now displays correct "2m", "1h 14m", etc.
+
+  • 🔧 SYNC INDICATOR MISSING — the top-bar SYNC badge stayed on a dash
+  because sync state was never computed. Now shows verification progress
+  and blocks-behind count.
+
+  • 🔧 DIFFICULTY RETARGET CARD EMPTY — the entire card rendered as a ghost
+  (just a stray drag handle) because retarget state was never populated.
+  Now computes epoch progress, remaining blocks, ETA, and a real-time
+  estimated difficulty change percentage based on epoch block timing.
+
+  • 🔧 STABILITY INDICATOR — displays "rock solid / stable / volatile" based
+  on the coefficient of variation of recent hashrate samples.
+
+
+  NEW:
+
+  • ⚡ ZMQ real-time block notifications re-enabled. When Bitcoin Core's ZMQ
+  publisher is reachable, the pool learns about new network blocks within
+  milliseconds instead of up to 15 seconds late — less stale work, more
+  efficient mining.
+
+  • 🎯 Preset-button highlighting in Settings → Display now reflects which
+  preset (Minimal / Default / Everything) actually matches your current
+  card selection.
+
+
+  HOUSEKEEPING:
+
+  • Log spam from the snapshots scheduler silenced with a proper null-check
+  on the closestCalls array.
+
+  • WebSocket message types normalized (STATE_UPDATE, BLOCK_FOUND, CONFIG).
+
+  • CONFIG broadcast on settings save — pool name and private-mode changes
+  propagate to all connected clients without a refresh.
+
+  • API version string in startup log now matches package version.
+
+
+  v1.5.4 — Live Stratum Port Health.
+
+
+  NEW:
+
+  • 🚦 LIVE STRATUM PORT HEALTH — the three stratum ports in the footer (3333,
+  3334, 4333) are now color-coded based on real-time health checks. Green =
+  healthy, amber = degraded, red = down. Background poller runs every 30
+  seconds, performing actual TCP + stratum subscribe handshakes (and TLS
+  handshake for 4333) to verify each port is accepting connections. Hover
+  any port number for detailed status including latency. No more guessing
+  whether the pool is accepting connections — you can see it at a glance.
+
+
+  v1.5.3 — Security Hardening: TLS stratum + architecture consolidation.
+
+
+  NEW:
+
+  • 🔐 TLS STRATUM on port 4333 — secure, encrypted stratum mining alongside
+  the existing plaintext ports. Modern ASICs (Antminer S21, BitAxe Ultra,
+  Whatsminer M60/M66) support stratum+ssl:// URLs natively. Point them at
+  port 4333 for end-to-end TLS encryption of all share submissions and job
+  templates. Plaintext 3333 and 3334 remain available for legacy miners.
+
+  • 🔒 Self-signed TLS certificate auto-generates on first run and persists
+  in app-data across restarts. 10-year validity. No manual cert management
+  needed.
+
+  • 🏗️ ARCHITECTURE SIMPLIFIED — widget-server merged into the main api
+  container. One less container, one less Docker image, cleaner operation.
+  umbrelOS widget now served by the api directly at
+  /api/widget/four-stats.
+
+
+  CHANGED:
+
+  • Container count reduced from 5 to 5 (widget-server replaced by stunnel).
+
+  • CI build matrix simplified: 2 images (ui, api) + stunnel, down from 3.
+
+  • New stunnel sidecar service handles TLS termination — distroless-style
+  minimal Alpine image, drops to unprivileged user after cert generation.
+
+
+  SECURITY:
+
+  • Connections over WireGuard, Tailscale, or exposed networks can now use
+  port 4333 for encrypted stratum instead of exposing plaintext traffic.
+
+  • The existing plaintext ports remain available for older ASICs and
+  hobby miners without TLS support.
+
+  • Self-signed cert is fine for LAN and VPN use; the miners just need to
+  accept it once.
+
+
+  UPGRADE NOTE:
+
+  If your home-screen widget shows blank after update, remove and re-add it
+  from the umbrelOS "Edit widgets" screen — umbrelOS will re-register the
+  new endpoint.
+
+
+  CARRIED FORWARD FROM v1.5.2:
+
+  • 🧭 5-step guided onboarding wizard for first-time installers with
+  scannable stratum QR codes and auto-detection of first miner connection.
+
+
+  CARRIED FORWARD FROM v1.5.1:
+
+  • 📱 Progressive Web App support — "Add to Home Screen" for a standalone
+  app experience on iOS and Android.
+
+  • 🏷️ Branded coinbase tag "/SoloStrike on Umbrel/" on every block found.
+
+
+  CARRIED FORWARD FROM v1.5.0:
+
+  • 🖥️ umbrelOS home-screen widget showing Pool Hashrate, Workers, Blocks
+  Found, and Best Difficulty. Refreshes every 10 seconds.
+
+
+  CARRIED FORWARD FROM v1.4.0:
+
+  • Multi-arch Docker images (linux/amd64 + linux/arm64) — runs natively on
+  Raspberry Pi, Umbrel Home, and other x86-64 hardware.
+
+
+  CARRIED FORWARD FROM v1.3.4:
+
+  • Closest Calls card — pool-wide historical leaderboard of the top 10
+  highest-difficulty shares ever submitted.
+
+  • Miner IP capture with clickable link to each miner's web UI.
+
+
+  CARRIED FORWARD FROM v1.3.3:
+
+  • ZMQ status badge in header, dual stratum ports 3333/3334.
+
+
+  CARRIED FORWARD FROM v1.3.0:
+
+  • 🔒 Private Mode — toggle one switch and the entire app goes airgapped.
+  No mempool.space calls, no price feeds, no outbound traffic.
+developer: danhaus93-ops
+website: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
+repo: https://github.com/danhaus93-ops/solostrike-umbrel
+support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
+port: 1234
+gallery:
+  - 1.png
+  - 2.png
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: danhaus93-ops
+submission: https://github.com/danhaus93-ops/solostrike-umbrel
+widgets:
+  - id: "stats"
+    type: "four-stats"
+    refresh: "10s"
+    endpoint: "api:3001/api/widget/four-stats"
+    link: ""
+    example:
+      type: "four-stats"
+      link: ""
+      items:
+        - title: "Pool Hashrate"
+          text: "542.8"
+          subtext: "GH/s"
+        - title: "Workers"
+          text: "3"
+        - title: "Blocks Found"
+          text: "0"
+        - title: "Best Diff"
+          text: "1.2B"
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
