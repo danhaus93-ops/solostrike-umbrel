@@ -252,7 +252,6 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       overflow:'hidden',
       height:26,
       display:'flex',
-      alignItems:'center',
     }}>
     <div style={{
         whiteSpace:'nowrap',
