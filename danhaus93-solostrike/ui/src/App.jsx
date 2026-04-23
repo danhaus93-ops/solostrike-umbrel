@@ -1113,11 +1113,15 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
         <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
           <span>Shares / min (est.)</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
         </div>
+        {onOpen && (
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--cyan)',textTransform:'uppercase',textAlign:'center',paddingTop:4,borderTop:'1px dashed var(--border)',marginTop:2}}>
+            Tap for diagnostics ↗
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
 function BestShareLeaderboard({ workers, poolBest, aliases }) {
@@ -1187,7 +1191,6 @@ function TopFindersPanel({ topFinders, netBlocks }) {
     </div>
   );
 }
-
 
 // ── Block feed ────────────────────────────────────────────────────────────────
 function BlockFeed({ blocks, blockAlert }) {
@@ -1779,6 +1782,19 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
   const totalWork = work + workRej || 1;
   const acceptRate = ((work / totalWork) * 100).toFixed(2);
   const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
+  const se = w.shareEvents || null;
+  const seAcc = se?.accepted || 0;
+  const seRej = se?.rejected || 0;
+  const seStale = se?.stale || 0;
+  const seTot = seAcc + seRej + seStale;
+  const seAcceptRate = seTot > 0 ? ((seAcc / seTot) * 100).toFixed(3) : null;
+  const seReasons = se?.rejectReasons || {};
+  const seReasonRows = Object.entries(seReasons).sort((a,b) => b[1] - a[1]);
+  const classifySeReason = (reason) => {
+    if (/stale|invalid.?jobid|old.?job|expired/i.test(reason)) return 'var(--amber)';
+    if (/duplicate|bad.?nonce|coinbase/i.test(reason)) return 'var(--text-2)';
+    return 'var(--red)';
+  };
   const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
   const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
   const freshness = (() => {
@@ -1909,10 +1925,36 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
                 <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
               </>
             )}
+            {se && seTot > 0 && (
+              <>
+                <div style={kvRow}><span style={kvLabel}>Accepted (session)</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
+                {seRej > 0 && <div style={kvRow}><span style={kvLabel}>Rejected (session)</span><span style={{...kvVal,color:'var(--red)'}}>{fmtNum(seRej)}</span></div>}
+                {seStale > 0 && <div style={kvRow}><span style={kvLabel}>Stale (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtNum(seStale)}</span></div>}
+                {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>Accept Rate (session)</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
+                {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
+              </>
+            )}
             {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
             {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
             <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
           </div>
+
+          {seReasonRows.length > 0 && (
+            <div style={section}>
+              <div style={secTitle}>▸ Reject Reasons</div>
+              {seReasonRows.map(([reason, count]) => (
+                <div key={reason} style={kvRow}>
+                  <span style={{...kvLabel,textTransform:'none',letterSpacing:'0.02em',color:classifySeReason(reason)}}>{reason}</span>
+                  <span style={{...kvVal,color:'var(--text-1)',fontWeight:600}}>{fmtNum(count)}</span>
+                </div>
+              ))}
+              {se && se.lastRejectAt && (
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem'}}>
+                  Last reject: {fmtAgoShort(se.lastRejectAt)}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={section}>
             <div style={secTitle}>▸ Connection</div>
