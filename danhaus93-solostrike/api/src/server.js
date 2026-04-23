@@ -21,7 +21,7 @@ const { startBlockWatcher } = require('./block-watcher');
 const { startShareWatcher } = require('./share-watcher');
 
 
-const VERSION = '1.5.8';
+const VERSION = '1.5.9';
 
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
