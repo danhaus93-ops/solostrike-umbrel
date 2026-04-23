@@ -1060,8 +1060,8 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect }) 
                   <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)'}}>
                     <span>
                       <span style={{color:'var(--green)'}}>{fmtNum(se.accepted||0)}</span>
-                      {(se.rejected||0) > 0 && <> · <span style={{color:'var(--red)'}}>{fmtNum(se.rejected)} rej</span></>}
-                      {(se.stale||0) > 0 && <> · <span style={{color:'var(--amber)'}}>{fmtNum(se.stale)} stale</span></>}
+                      {' · '}<span style={{color:(se.rejected||0) > 0 ? 'var(--red)' : 'var(--text-3)'}}>{fmtNum(se.rejected||0)} rej</span>
+                      {' · '}<span style={{color:(se.stale||0) > 0 ? 'var(--amber)' : 'var(--text-3)'}}>{fmtNum(se.stale||0)} stale</span>
                     </span>
                     <span>
                       {se.port && <>:{se.port}</>}
@@ -1928,8 +1928,8 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             {se && seTot > 0 && (
               <>
                 <div style={kvRow}><span style={kvLabel}>Accepted (session)</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
-                {seRej > 0 && <div style={kvRow}><span style={kvLabel}>Rejected (session)</span><span style={{...kvVal,color:'var(--red)'}}>{fmtNum(seRej)}</span></div>}
-                {seStale > 0 && <div style={kvRow}><span style={kvLabel}>Stale (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtNum(seStale)}</span></div>}
+                <div style={kvRow}><span style={kvLabel}>Rejected (session)</span><span style={{...kvVal,color:seRej > 0 ? 'var(--red)' : 'var(--text-2)'}}>{fmtNum(seRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>Stale (session)</span><span style={{...kvVal,color:seStale > 0 ? 'var(--amber)' : 'var(--text-2)'}}>{fmtNum(seStale)}</span></div>
                 {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>Accept Rate (session)</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
                 {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
               </>
