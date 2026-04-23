@@ -1933,7 +1933,11 @@ export default function App() {
     setShowSettings(true);
   };
   const handleCurrencyChange = (c) => { setCurrency(c); saveCurrency(c); };
-  const handleResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
+  const handleResetLayout = () => {
+    setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER);
+    setVisibleCards(EVERYTHING_PRESET); saveVisibleCards(EVERYTHING_PRESET);
+  };
+
   const handleAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const handleNotesChange = (n) => { setNotes(n); saveNotes(n); };
 
