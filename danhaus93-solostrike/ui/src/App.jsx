@@ -1556,7 +1556,7 @@ function WebhooksTab() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const load = useCallback(async () => {
-    try { const r = await fetch('/api/webhooks'); setHooks(await r.json()); } catch {}
+    try { const r = await fetch('/api/webhooks'); const j = await r.json(); setHooks(j.hooks || []); } catch {}
   }, []);
   useEffect(()=>{ load(); }, [load]);
   const add = async () => {
@@ -1564,13 +1564,13 @@ function WebhooksTab() {
     if (!/^https?:\/\//i.test(newUrl.trim())) { setErr('URL must start with http:// or https://'); return; }
     setBusy(true);
     try {
-      const r = await fetch('/api/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name:newName || 'Webhook', url:newUrl.trim(), events:newEvents }) });
+    const r = await fetch('/api/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ op:'add', name:newName || 'Webhook', url:newUrl.trim(), events:newEvents }) });
       if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || 'Add failed'); }
       setNewUrl(''); setNewName(''); setNewEvents(['block_found']);
       await load();
     } catch(e){ setErr(e.message); } finally { setBusy(false); }
   };
-  const del = async (id) => { await fetch(`/api/webhooks/${id}`, { method:'DELETE' }); await load(); };
+  const del = async (id) => { await fetch('/api/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ op:'remove', id }) }); await load(); };
   const EVENT_LABELS = { block_found:'Block Found', worker_offline:'Worker Offline', worker_online:'Worker Online' };
   const toggleEvent = (ev) => setNewEvents(list => list.includes(ev) ? list.filter(x=>x!==ev) : [...list, ev]);
   return (
