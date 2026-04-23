@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.5.6"
+version: "1.5.7"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,6 +76,50 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.5.7 — Block Detection + Fee-Aware Prize.
+
+
+  Your solo mining lottery just got real. When you find a block, SoloStrike now
+  celebrates it immediately instead of quietly burying it. And the block prize
+  is now computed correctly, including the mempool fee bounty.
+
+
+  NEW:
+
+  • 🎯 SOLO BLOCK DETECTION — a new log watcher tails ckpool.log every 2
+  seconds for block-solve events. When you find a block, the api appends to
+  state.blocks, broadcasts a BLOCK_FOUND websocket event to all connected
+  clients (triggering the celebration modal), fires any configured webhooks
+  (Discord / ntfy / Telegram / Home Assistant), and persists to disk so the
+  win survives restarts.
+
+  • 🪙 ACCURATE BLOCK PRIZE — the Latest Block hero strip now shows the real
+  total prize (subsidy + mempool fees) instead of just the 3.125 BTC subsidy.
+  Pulls aggregate fees from mempool.space every 60 seconds. Typical fee
+  pools add 0.05–0.3 BTC per block, worth thousands of dollars.
+
+  • 🛡️ PRIVATE MODE LATEST BLOCK — when mempool.space is unreachable or the
+  pool is in Private Mode, the dashboard now falls back to data pulled
+  directly from your local Bitcoin Core RPC. Latest Block, height, pool
+  identification, and reward continue to display. Zero external calls.
+
+
+  FIXED:
+
+  • 🎨 QUICK PRESET BUTTONS — the Settings → Display preset buttons (Minimal,
+  Default, Everything) now correctly highlight which preset is active. The
+  previous version hardcoded Default as always-selected regardless of
+  actual card layout.
+
+
+  HOUSEKEEPING:
+
+  • Synchronized ui/package.json version to match api + umbrel-app manifest.
+
+  • state.latestBlock now exposed to frontend in transformState payload so UI
+  can access locally-fetched chain-tip data independently of mempool.space.
+
+
   v1.5.6 — Dashboard Reliability Overhaul.
 
 
