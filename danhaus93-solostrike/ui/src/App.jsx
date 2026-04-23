@@ -242,52 +242,8 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
-  const trackRef = useRef(null);
-  const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
-
-  useEffect(() => {
-    if (!enabled || !snapshotText) return;
-    const track = trackRef.current;
-    if (!track) return;
-
-    const measure = () => {
-      stateRef.current.halfWidth = track.scrollWidth / 2;
-    };
-// Delay measurement until after layout settles (prevents jitter on snapshot change)
-    requestAnimationFrame(() => requestAnimationFrame(measure));
-    window.addEventListener('resize', measure);
-
-    const step = (t) => {
-      const s = stateRef.current;
-      if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
-      if (s.lastT == null) s.lastT = t;
-      const dt = (t - s.lastT) / 1000;
-      s.lastT = t;
-      const pxPerSec = s.halfWidth / duration;
-      s.x -= pxPerSec * dt;
-      while (s.x <= -s.halfWidth) s.x += s.halfWidth;
-      track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
-      s.rafId = requestAnimationFrame(step);
-    };
-    stateRef.current.rafId = requestAnimationFrame(step);
-
-    return () => {
-      window.removeEventListener('resize', measure);
-      if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
-      stateRef.current.lastT = null;
-    };
-}, [enabled, snapshotText, duration]);
-
-  // Reset scroll position when snapshot text changes to avoid mid-stream discontinuity
-  useEffect(() => {
-    stateRef.current.x = 0;
-    stateRef.current.lastT = null;
-  }, [snapshotText]);
-
   if (!enabled || !snapshotText) return null;
-
-
   return (
     <div style={{
       width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0,
@@ -298,19 +254,19 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       display:'flex',
       alignItems:'center',
     }}>
-      <div ref={trackRef} style={{
+      <div style={{
         whiteSpace:'nowrap',
+        display:'inline-flex',
         fontFamily:'var(--fd)',
         fontSize:'0.55rem',
         letterSpacing:'0.15em',
         color:'var(--text-2)',
         textTransform:'uppercase',
-        display:'inline-block',
-        flexShrink:0,
         willChange:'transform',
-        transform:'translate3d(0,0,0)',
+        animation:`ticker ${duration}s linear infinite`,
       }}>
-        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span style={{flexShrink:0}}>{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+        <span style={{flexShrink:0}}>{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
       </div>
     </div>
   );
