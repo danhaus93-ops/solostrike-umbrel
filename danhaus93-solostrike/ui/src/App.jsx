@@ -242,8 +242,44 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
+  const trackRef = useRef(null);
+  const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
+
+  useEffect(() => {
+    if (!enabled || !snapshotText) return;
+    const track = trackRef.current;
+    if (!track) return;
+
+    const measure = () => {
+      stateRef.current.halfWidth = track.scrollWidth / 2;
+    };
+    measure();
+    window.addEventListener('resize', measure);
+
+    const step = (t) => {
+      const s = stateRef.current;
+      if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
+      if (s.lastT == null) s.lastT = t;
+      const dt = (t - s.lastT) / 1000;
+      s.lastT = t;
+      const pxPerSec = s.halfWidth / duration;
+      s.x -= pxPerSec * dt;
+      while (s.x <= -s.halfWidth) s.x += s.halfWidth;
+      track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
+      s.rafId = requestAnimationFrame(step);
+    };
+    stateRef.current.rafId = requestAnimationFrame(step);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
+      stateRef.current.lastT = null;
+    };
+  }, [enabled, snapshotText, duration]);
+
   if (!enabled || !snapshotText) return null;
+
   return (
     <div style={{
       width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0,
@@ -252,19 +288,19 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       overflow:'hidden',
       height:26,
       display:'flex',
+      alignItems:'center',
     }}>
-    <div style={{
+      <div ref={trackRef} style={{
         whiteSpace:'nowrap',
-        width:'max-content',
-        display:'inline-block',
-        flexShrink:0,
         fontFamily:'var(--fd)',
         fontSize:'0.55rem',
         letterSpacing:'0.15em',
         color:'var(--text-2)',
         textTransform:'uppercase',
+        display:'inline-block',
+        flexShrink:0,
         willChange:'transform',
-        animation:`ticker ${duration}s linear infinite`,
+        transform:'translate3d(0,0,0)',
       }}>
         {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       </div>
