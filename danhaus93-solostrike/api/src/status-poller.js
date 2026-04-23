@@ -124,12 +124,12 @@ function startStatusPoller(state, broadcast, logDir) {
 
             refreshAverages();
 
-            state.shares.accepted      = shares.accepted      || 0;
-            state.shares.rejected      = shares.rejected      || 0;
-            state.shares.acceptedCount = shares.acceptedCount || 0;
-            state.shares.rejectedCount = shares.rejectedCount || 0;
-            state.shares.stale         = shares.stale         || 0;
-            state.shares.sps1m         = shares.SPS1m         || 0;
+// v1.5.11: share-watcher owns acceptedCount/rejectedCount/stale fields
+            // (real share counts from sharelogs). Status-poller only sets the
+            // work-weighted accepted/rejected from ckpool's pool.status.
+            state.shares.accepted = shares.accepted || 0;
+            state.shares.rejected = shares.rejected || 0;
+            state.shares.sps1m    = shares.SPS1m    || 0;
             state.bestshare            = shares.bestshare     || 0;
             state.totalWorkers         = summary.Workers      || 0;
             state.totalUsers           = summary.Users        || 0;
