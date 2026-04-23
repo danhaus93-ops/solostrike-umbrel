@@ -402,7 +402,14 @@ function startZmq() {
       pollBitcoind();
       pollBlocks();
     });
+    sock.on('error', (e) => {
+      console.log('[ZMQ] socket error:', e.message);
+      try { sock.close(); } catch {}
+      state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
+      setTimeout(startZmq, 10000);
+    });
     state.zmq = { enabled:true, lastBlockHeardAt:null, endpoint: ZMQ_HASHBLOCK_URL };
+
     console.log(`[ZMQ] connected to ${ZMQ_HASHBLOCK_URL}`);
   } catch (e) {
     state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
@@ -448,7 +455,7 @@ app.get('/api/health', (req, res) => res.json({
   uptime: Math.floor((Date.now() - bootTime)/1000),
   status: state.status,
   bitcoind: state.bitcoind,
-  workers: state.workers?.length || 0,
+  workers: Object.values(state.workers || {}).length || 0,
   privateMode: !!cfg.privateMode,
   zmq: state.zmq,
 }));
