@@ -21,7 +21,7 @@ const { startBlockWatcher } = require('./block-watcher');
 const { startShareWatcher } = require('./share-watcher');
 
 
-const VERSION = '1.5.9';
+const VERSION = '1.5.12';
 
 async function fetchWithTimeout(url, opts = {}) {
   const { timeout = 8000, ...rest } = opts;
@@ -584,39 +584,130 @@ app.post('/api/webhooks', async (req, res) => {
   res.json({ hooks: (state.webhooks || []).map(h => ({ id:h.id, name:h.name, url:h.url, events:h.events })) });
 });
 
-// CSV exports
+// CSV exports (v1.5.12: expanded workers.csv with full share diagnostics;
+// all three endpoints fixed to use array-of-arrays format that rowsToCsv expects)
 app.get('/api/export/workers.csv', rateLimit, (req, res) => {
   const s = transformState(state);
-  const rows = (s.workers||[]).map(w => ({
-    name: w.name,
-    alias: w.alias || '',
-    hashrate_1m: w.hashrate1m,
-    hashrate_5m: w.hashrate5m,
-    hashrate_1h: w.hashrate1h,
-    hashrate_1d: w.hashrate1d,
-    shares: w.shares,
-    best_share: w.bestShare,
+  const header = [
+    'name','alias','miner_type','miner_vendor','port','status',
+    'ip','hashrate_1m','hashrate_5m','hashrate_1h','hashrate_1d','hashrate_7d',
+    'work_shares','work_rejected','best_share_alltime',
+    'session_accepted','session_rejected','session_stale','session_total','accept_rate_pct',
+    'session_best_sdiff','last_reject_reason','last_reject_at','reject_reasons',
+    'first_seen','last_seen'
+  ];
+  const rows = [header].concat((s.workers||[]).map(w => {
+    const se = w.shareEvents || {};
+    const acc = se.accepted || 0;
+    const rej = se.rejected || 0;
+    const stl = se.stale || 0;
+    const total = acc + rej + stl;
+    const acceptPct = total > 0 ? ((acc / total) * 100).toFixed(3) : '';
+    const reasons = Object.entries(se.rejectReasons || {})
+      .map(([k,v]) => `${k}:${v}`).join('|');
+    return [
+      w.name || '', w.alias || '',
+      w.minerType || '', w.minerVendor || '',
+      se.port || '', w.status || '',
+      w.ip || '',
+      w.hashrate1m || 0, w.hashrate5m || 0, w.hashrate1h || 0, w.hashrate24h || 0, w.hashrate7d || 0,
+      w.shares || 0, w.rejected || 0, w.bestshare || 0,
+      acc, rej, stl, total, acceptPct,
+      se.bestSdiff || 0,
+      se.lastRejectReason || '',
+      se.lastRejectAt ? new Date(se.lastRejectAt).toISOString() : '',
+      reasons,
+      se.firstSeen ? new Date(se.firstSeen).toISOString() : '',
+      w.lastSeen ? new Date(w.lastSeen).toISOString() : '',
+    ];
   }));
-  res.set('content-type', 'text/csv').send(rowsToCsv(rows));
+  res.set('content-type', 'text/csv')
+     .set('content-disposition', 'attachment; filename="solostrike-workers.csv"')
+     .send(rowsToCsv(rows));
 });
 app.get('/api/export/blocks.csv', rateLimit, (req, res) => {
-  const rows = (state.blocks||[]).map(b => ({
-    height: b.height,
-    miner: b.miner,
-    miner_alias: b.minerAlias || '',
-    timestamp: new Date(b.timestamp).toISOString(),
-    hash: b.hash || '',
-  }));
-  res.set('content-type', 'text/csv').send(rowsToCsv(rows));
+  const header = ['height','miner','miner_alias','timestamp','hash'];
+  const rows = [header].concat((state.blocks||[]).map(b => [
+    b.height || '',
+    b.miner || '',
+    b.minerAlias || '',
+    b.timestamp ? new Date(b.timestamp).toISOString() : '',
+    b.hash || '',
+  ]));
+  res.set('content-type', 'text/csv')
+     .set('content-disposition', 'attachment; filename="solostrike-blocks.csv"')
+     .send(rowsToCsv(rows));
 });
 app.get('/api/export/snapshots.csv', rateLimit, (req, res) => {
-  const rows = (state.snapshots?.daily || []).map(s => ({
-    date: s.date,
-    avg_hps: s.avg,
-    peak_hps: s.peak,
-    blocks: s.blocks || 0,
-  }));
-  res.set('content-type', 'text/csv').send(rowsToCsv(rows));
+  const header = ['date','avg_hashrate','peak_hashrate','blocks_found'];
+  const rows = [header].concat((state.snapshots?.daily || []).map(s => [
+    s.date || '',
+    s.avgHashrate || s.avg || 0,
+    s.peakHashrate || s.peak || 0,
+    s.blocksFound || s.blocks || 0,
+  ]));
+  res.set('content-type', 'text/csv')
+     .set('content-disposition', 'attachment; filename="solostrike-snapshots.csv"')
+     .send(rowsToCsv(rows));
+});
+
+// v1.5.12: Reset all share-watcher session counters.
+// Zeros per-worker shareCounters + pool-level acceptedCount/rejectedCount/stale.
+// Skips sharelogs to current end-of-file (via cursors) so only NEW shares from
+// this moment forward are counted. Historical sharelog files untouched on disk.
+app.post('/api/reset-share-stats', (req, res) => {
+  try {
+    // Zero all in-memory counters
+    state.shareCounters = {};
+    state.shares = state.shares || {};
+    state.shares.acceptedCount = 0;
+    state.shares.rejectedCount = 0;
+    state.shares.stale = 0;
+    state.shares.rejectReasons = {};
+
+    // Skip sharelog cursors to current end-of-file so share-watcher doesn't
+    // re-count historical shares on the next tick.
+    const cursors = {};
+    try {
+      const entries = fs.readdirSync(CKPOOL_LOG_DIR, { withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        if (e.name === 'pool' || e.name === 'users') continue;
+        if (!/^[0-9a-f]+$/i.test(e.name)) continue;
+        const subdir = path.join(CKPOOL_LOG_DIR, e.name);
+        try {
+          const files = fs.readdirSync(subdir).filter(f => f.endsWith('.sharelog'));
+          for (const f of files) {
+            const fp = path.join(subdir, f);
+            try { cursors[fp] = fs.statSync(fp).size; } catch {}
+          }
+        } catch {}
+      }
+    } catch (e) { /* logDir may not exist yet */ }
+    state.sharelogCursors = cursors;
+    state.shareStatsStartedAt = Date.now();
+
+    // Snapshot to disk so reset survives API restart
+    savePersist({
+      closestCalls: state.closestCalls,
+      blocks: state.blocks,
+      snapshots: state.snapshots,
+      webhooks: state.webhooks,
+      shareCounters: state.shareCounters,
+      sharelogCursors: state.sharelogCursors,
+      shareStatsStartedAt: state.shareStatsStartedAt,
+    });
+
+    console.log('[api] /api/reset-share-stats OK — cursors=' + Object.keys(cursors).length + ' resetAt=' + state.shareStatsStartedAt);
+    res.json({
+      ok: true,
+      resetAt: state.shareStatsStartedAt,
+      cursorsSkipped: Object.keys(cursors).length,
+    });
+  } catch (e) {
+    console.log('[api] /api/reset-share-stats FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Setup endpoint
