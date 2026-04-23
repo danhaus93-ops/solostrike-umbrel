@@ -768,7 +768,7 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
       {blockReward && (
         <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(245,166,35,0.25)'}}>
           <span style={{...label, color:'var(--amber)'}}>🏆 Next Block Prize</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.92rem',fontWeight:700,color:'var(--amber)',textAlign:'right',textShadow:'0 0 12px rgba(245,166,35,0.35)'}}>
+          <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 12px rgba(245,166,35,0.4)',textAlign:'right'}}>
             {fmtBtc(blockReward.totalBtc, 3)}
             {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--green)',fontWeight:600,marginTop:2,textShadow:'0 0 8px rgba(57,255,106,0.2)'}}>{fmtFiat(rewardUsd, currency)}</div>}
           </span>
@@ -1268,6 +1268,20 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
     onVisibleCardsChange(next);
   };
   const applyPreset = (preset) => onVisibleCardsChange([...preset]);
+  const matchesPreset = (preset) => {
+    if (!Array.isArray(visibleCards) || visibleCards.length !== preset.length) return false;
+    const a = [...visibleCards].sort();
+    const b = [...preset].sort();
+    return a.every((id, i) => id === b[i]);
+  };
+  const presetBtnStyle = (active) => ({
+    flex:1, padding:'0.55rem',
+    background:'var(--bg-raised)',
+    border:`1px solid ${active?'var(--border-hot)':'var(--border)'}`,
+    color: active?'var(--amber)':'var(--text-1)',
+    fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700,
+    letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer',
+  });
 
   const toggleTickerMetric = (id) => {
     const current = tickerSettings.metrics || [];
@@ -1318,16 +1332,13 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
       <div style={rowLabel}>Quick presets</div>
       <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
-        <button onClick={()=>applyPreset(MINIMAL_PRESET)}
-          style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
+        <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
           Minimal (3)
         </button>
-        <button onClick={()=>applyPreset(DEFAULT_PRESET)}
-          style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border-hot)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
+        <button onClick={()=>applyPreset(DEFAULT_PRESET)} style={presetBtnStyle(matchesPreset(DEFAULT_PRESET))}>
           Default ({DEFAULT_PRESET.length})
         </button>
-        <button onClick={()=>applyPreset(EVERYTHING_PRESET)}
-          style={{flex:1, padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer'}}>
+        <button onClick={()=>applyPreset(EVERYTHING_PRESET)} style={presetBtnStyle(matchesPreset(EVERYTHING_PRESET))}>
           Everything ({EVERYTHING_PRESET.length})
         </button>
       </div>
@@ -2009,7 +2020,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.5.6 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.5.7 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
