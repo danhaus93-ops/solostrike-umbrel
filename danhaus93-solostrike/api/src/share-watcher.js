@@ -1,4 +1,4 @@
-// ── Share watcher (v1.5.9+) ─────────────────────────────────────────────────
+// ── Share watcher (v1.5.11+) ────────────────────────────────────────────────
 // Tails ckpool sharelog files (requires --log-shares flag in ckpool command).
 // For every share submission, ckpool writes a JSON line with workername,
 // result (accepted/rejected), reject-reason, sdiff, and more.
@@ -11,11 +11,18 @@
 //   result:false + reason matches STALE_RE           → stale (network latency)
 //   result:false + any other reason                  → rejected (hardware/config)
 //
-// Persistence:
+// Persistence (v1.5.11+):
 //   Counters persist to persist.json as shareCounters so restarts don't zero.
-//   Kept as { [workerName]: { accepted, rejected, stale, bestSdiff,
-//                              rejectReasons: { reason: count },
-//                              lastRejectReason, lastRejectAt, port } }
+//   Sharelog file read-offsets persist as sharelogCursors so we resume reading
+//   from where we left off instead of skipping ahead to end-of-file on every
+//   restart (which previously caused us to miss historical shares entirely).
+//
+//   Shape:
+//     shareCounters: { [workerName]: { accepted, rejected, stale, bestSdiff,
+//                                       rejectReasons: { reason: count },
+//                                       lastRejectReason, lastRejectAt, port,
+//                                       firstSeen } }
+//     sharelogCursors: { [absoluteFilePath]: bytesRead }
 
 const fs = require('fs');
 const path = require('path');
@@ -31,16 +38,17 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
     return;
   }
 
-  const tracked = new Map(); // filepath -> lastSize
+  const tracked = new Map(); // filepath -> lastSize (mirrors state.sharelogCursors)
   let poolDir = null;
   let lastPersistAt = Date.now();
 
   if (!state.shareCounters) state.shareCounters = {};
+  if (!state.sharelogCursors) state.sharelogCursors = {};
   if (!state.shares) state.shares = {};
   if (typeof state.shares.stale !== 'number') state.shares.stale = 0;
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
 
-  // Restore counters from persist.json if present
+  // Restore counters + cursors from persist.json if present
   try {
     const persistPath = path.join(process.env.CONFIG_DIR || '/app/config', 'persist.json');
     if (fs.existsSync(persistPath)) {
@@ -59,6 +67,10 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         state.shares.stale = poolStale;
         state.shares.rejectReasons = poolReasons;
         console.log('[share-watcher] Restored counters for', Object.keys(state.shareCounters).length, 'workers (stale=' + poolStale + ')');
+      }
+      if (p.sharelogCursors && typeof p.sharelogCursors === 'object') {
+        state.sharelogCursors = p.sharelogCursors;
+        console.log('[share-watcher] Restored sharelog cursors for', Object.keys(state.sharelogCursors).length, 'files');
       }
     }
   } catch (e) { console.log('[share-watcher] persist restore failed:', e.message); }
@@ -139,8 +151,12 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         .map(f => path.join(poolDir, f));
     } catch { return; }
 
+    // Purge tracked files that no longer exist on disk (ckpool log rotation)
     for (const p of Array.from(tracked.keys())) {
-      if (!files.includes(p)) tracked.delete(p);
+      if (!files.includes(p)) {
+        tracked.delete(p);
+        delete state.sharelogCursors[p];
+      }
     }
 
     if (files.length > MAX_FILES_TRACKED) {
@@ -150,11 +166,13 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
 
     for (const filepath of files) {
       if (!tracked.has(filepath)) {
-        try {
-          const stat = fs.statSync(filepath);
-          tracked.set(filepath, stat.size);
-        } catch { tracked.set(filepath, 0); }
-        continue;
+        // Resume from last persisted cursor, or start from byte 0 for new files.
+        // This is the v1.5.11 fix: previously we set cursor to current file size
+        // on first discovery, which silently skipped all existing shares on
+        // every API restart. Now we read from byte 0 so historical shares get
+        // counted exactly once (persistence prevents double-count on restart).
+        const savedCursor = state.sharelogCursors[filepath];
+        tracked.set(filepath, typeof savedCursor === 'number' ? savedCursor : 0);
       }
       tickFile(filepath);
     }
@@ -162,10 +180,12 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
 
   function tickFile(filepath) {
     fs.stat(filepath, (err, stats) => {
-      if (err) { tracked.delete(filepath); return; }
+      if (err) { tracked.delete(filepath); delete state.sharelogCursors[filepath]; return; }
       const lastSize = tracked.get(filepath) || 0;
       if (stats.size < lastSize) {
+        // File was truncated/rotated in place — reset cursor
         tracked.set(filepath, 0);
+        state.sharelogCursors[filepath] = 0;
         return;
       }
       if (stats.size <= lastSize) return;
@@ -177,6 +197,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       stream.on('end', () => {
         processChunk(buf);
         tracked.set(filepath, stats.size);
+        state.sharelogCursors[filepath] = stats.size;
       });
       stream.on('error', () => {});
     });
@@ -193,6 +214,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         snapshots: state.snapshots,
         webhooks: state.webhooks,
         shareCounters: state.shareCounters,
+        sharelogCursors: state.sharelogCursors,
       });
     } catch (e) { console.log('[share-watcher] persist failed:', e.message); }
   }
