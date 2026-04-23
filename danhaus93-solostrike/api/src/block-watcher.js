@@ -1,85 +1,129 @@
-// Miner-type detection: two-tier (user-agent preferred, workername suffix fallback).
-// User-agent comes from stratum mining.subscribe via ua-tailer.
-// Workername suffix is the historical fallback for users who name their
-// workers like "bc1q...address.s19jpro".
+// ── Block watcher (v1.5.7+) ─────────────────────────────────────────────────
+// Tails ckpool.log for block-solve events. When your pool finds a block, ckpool
+// writes a distinctive log line. We parse it, append to state.blocks, broadcast
+// a BLOCK_FOUND websocket event, and fire ‘block_found’ webhooks.
+//
+// ckpool-solo writes these patterns (observed from source + community logs):
+//   * “BLOCK ACCEPTED!”       — block accepted by network
+//   * “Block hash: <hex>”     — follows above
+//   * “Block solved”          — variant
+//   * “SOLVED”                — short variant
+//   * “block .*? solved”      — yet another variant
+//
+// We match any of the above, then capture the hash from the nearest
+// “Block hash:” line. Height is fetched from state.network.height at the
+// moment of the event.
 
-const { detectFromUserAgent } = require('./ua-patterns');
+const fs = require(‘fs’);
+const path = require(‘path’);
 
-// Legacy workername-suffix patterns (kept as fallback).
-const WORKERNAME_PATTERNS = [
-  { match: /\.s19[\s_.-]*xp|\.s19xp|\.nakamoto/i,              type: 'Antminer S19 XP',      icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.s19[\s_.-]*k[\s_.-]*pro|\.s19kpro/i,             type: 'Antminer S19k Pro',    icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.s19[\s_.-]*j[\s_.-]*pro|\.s19jpro/i,             type: 'Antminer S19j Pro',    icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.s19[\s_.-]*pro|\.s19pro/i,                       type: 'Antminer S19 Pro',     icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.s21[\s_.-]*xp|\.s21xp/i,                         type: 'Antminer S21 XP',      icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.s21/i,                                           type: 'Antminer S21',         icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.s19|\.antminer/i,                                type: 'Antminer S19',         icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.l9|\.l7/i,                                       type: 'Antminer L-series',    icon: '⛏',  vendor: 'Bitmain' },
-  { match: /\.nano[\s_.-]*3s|\.avalon[\s_.-]*nano/i,           type: 'Avalon Nano 3S',       icon: '▸',  vendor: 'Canaan' },
-  { match: /\.avalon[\s_.-]*q/i,                               type: 'Avalon Q',             icon: '▸',  vendor: 'Canaan' },
-  { match: /\.avalon/i,                                        type: 'Avalon',               icon: '▸',  vendor: 'Canaan' },
-  { match: /\.nerdqaxe/i,                                      type: 'NerdQaxe++',           icon: '◈',  vendor: 'Shufps' },
-  { match: /\.nerdminer|\.nerd/i,                              type: 'NerdMiner',            icon: '◈',  vendor: 'OSS' },
-  { match: /\.bitaxe[\s_.-]*gamma/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
-  { match: /\.bitaxe[\s_.-]*supra/i,                           type: 'BitAxe Supra',         icon: '◆',  vendor: 'OSS' },
-  { match: /\.bitaxe[\s_.-]*ultra/i,                           type: 'BitAxe Ultra',         icon: '◆',  vendor: 'OSS' },
-  { match: /\.bitaxe/i,                                        type: 'BitAxe',               icon: '◆',  vendor: 'OSS' },
-  { match: /\.braiins|\.hashpower|\.rental/i,                  type: 'Braiins Rental',       icon: '⚡', vendor: 'Rented' },
-  { match: /\.whatsminer|\.m3[0-9]|\.m5[0-9]|\.m6[0-9]/i,      type: 'Whatsminer',           icon: '⛏',  vendor: 'MicroBT' },
-  { match: /\.t3|\.innosilicon/i,                              type: 'Innosilicon',          icon: '⛏',  vendor: 'Innosilicon' },
-  { match: /\.cgminer|\.bfgminer/i,                            type: 'cgminer/bfgminer',     icon: '▪',  vendor: 'OSS' },
-];
-
-function detectFromWorkername(workername) {
-  if (!workername || typeof workername !== 'string') {
-    return { type: null, icon: null, vendor: null };
-  }
-  for (const p of WORKERNAME_PATTERNS) {
-    if (p.match.test(workername)) {
-      return { type: p.type, icon: p.icon, vendor: p.vendor };
-    }
-  }
-  return { type: null, icon: null, vendor: null };
+function startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir }) {
+const logPath = path.join(logDir, ‘ckpool.log’);
+if (!fs.existsSync(logPath)) {
+console.warn(’[block-watcher] ckpool.log not found at’, logPath);
+return;
 }
 
-// Best-effort detection combining user-agent (preferred) and workername fallback.
-// Returns { type, icon, vendor, source } — `source` tells you which method won.
-function detectMinerBest(workername, userAgent) {
-  const ua = detectFromUserAgent(userAgent);
-  if (ua.type) return { ...ua, source: 'user-agent' };
+let lastSize = 0;
+let pendingHash = null;
+let pendingHeight = null;
 
-  const wn = detectFromWorkername(workername);
-  if (wn.type) return { ...wn, source: 'workername' };
+try {
+lastSize = fs.statSync(logPath).size;
+} catch {}
 
-  return { type: null, icon: '▪', vendor: null, source: 'unknown' };
-}
-
-// Back-compat: the old `detectMiner(workername)` used elsewhere.
-function detectMiner(workername) {
-  const result = detectFromWorkername(workername);
-  return {
-    type: result.type,
-    icon: result.icon || '▪',
-    vendor: result.vendor,
-  };
-}
-
-// Traffic-light worker health
-function workerHealth(w) {
-  if (!w) return 'red';
-  const now = Date.now();
-  const age = now - (w.lastSeen || 0);
-  const total = (w.shares || 0) + (w.rejected || 0);
-  const rejectRate = total > 0 ? (w.rejected || 0) / total : 0;
-  if (age > 10 * 60 * 1000 || rejectRate > 0.05) return 'red';
-  if (age > 2  * 60 * 1000 || rejectRate > 0.01) return 'amber';
-  return 'green';
-}
-
-module.exports = {
-  detectMiner,            // back-compat
-  detectMinerBest,        // new two-tier detection
-  detectFromWorkername,
-  detectFromUserAgent,
-  workerHealth,
+function handleBlockFound({ hash, height }) {
+const block = {
+hash: hash || null,
+height: height || state.network?.height || 0,
+timestamp: Date.now(),
+miner: ‘SoloStrike’,
+minerAlias: null,
+difficulty: state.network?.difficulty || 0,
+reward: (3.125 + (state.mempool?.totalFeesBtc || 0)),
 };
+console.log(’[block-watcher] 🎉 BLOCK FOUND:’, block.height, block.hash || ‘(hash pending)’);
+state.blocks = [block, …(state.blocks || [])].slice(0, 1000);
+try { broadcast({ type: ‘BLOCK_FOUND’, data: block }); } catch {}
+try { fireHooks(‘block_found’, { block }); } catch {}
+try {
+savePersist({
+closestCalls: state.closestCalls,
+blocks: state.blocks,
+snapshots: state.snapshots,
+webhooks: state.webhooks,
+});
+} catch {}
+}
+
+function processChunk(chunk) {
+const lines = chunk.split(/\r?\n/);
+for (const raw of lines) {
+if (!raw) continue;
+const line = raw.trim();
+
+```
+  // Capture hash/height proactively from context
+  const hashMatch = line.match(/Block hash[:\s]+([0-9a-fA-F]{64})/i);
+  if (hashMatch) {
+    pendingHash = hashMatch[1].toLowerCase();
+    continue;
+  }
+  const heightMatch = line.match(/height[:\s]+(\d+)/i);
+  if (heightMatch) {
+    pendingHeight = parseInt(heightMatch[1], 10);
+  }
+
+  // Trigger on any of these event patterns
+  const solved =
+    /BLOCK ACCEPTED!/i.test(line) ||
+    /Block solved/i.test(line) ||
+    /\bSOLVED\b/.test(line) ||
+    /block .*? solved/i.test(line);
+
+  if (solved) {
+    const capturedHash = pendingHash;
+    const capturedHeight = pendingHeight;
+    // 500ms debounce to capture any follow-up "Block hash:" line
+    setTimeout(() => {
+      handleBlockFound({
+        hash: capturedHash || pendingHash,
+        height: capturedHeight || pendingHeight,
+      });
+      pendingHash = null;
+      pendingHeight = null;
+    }, 500);
+  }
+}
+```
+
+}
+
+function tick() {
+fs.stat(logPath, (err, stats) => {
+if (err) return;
+if (stats.size < lastSize) {
+// log rotated
+lastSize = 0;
+}
+if (stats.size <= lastSize) return;
+const stream = fs.createReadStream(logPath, {
+start: lastSize,
+end: stats.size,
+encoding: ‘utf8’,
+});
+let buf = ‘’;
+stream.on(‘data’, (d) => { buf += d; });
+stream.on(‘end’, () => {
+processChunk(buf);
+lastSize = stats.size;
+});
+stream.on(‘error’, () => {});
+});
+}
+
+setInterval(tick, 2000);
+console.log(’[block-watcher] Watching’, logPath, ‘for block-solve events’);
+}
+
+module.exports = { startBlockWatcher };
