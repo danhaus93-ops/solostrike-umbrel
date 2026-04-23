@@ -254,7 +254,8 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
     const measure = () => {
       stateRef.current.halfWidth = track.scrollWidth / 2;
     };
-    measure();
+// Delay measurement until after layout settles (prevents jitter on snapshot change)
+    requestAnimationFrame(() => requestAnimationFrame(measure));
     window.addEventListener('resize', measure);
 
     const step = (t) => {
@@ -276,9 +277,16 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
       stateRef.current.lastT = null;
     };
-  }, [enabled, snapshotText, duration]);
+}, [enabled, snapshotText, duration]);
+
+  // Reset scroll position when snapshot text changes to avoid mid-stream discontinuity
+  useEffect(() => {
+    stateRef.current.x = 0;
+    stateRef.current.lastT = null;
+  }, [snapshotText]);
 
   if (!enabled || !snapshotText) return null;
+
 
   return (
     <div style={{
