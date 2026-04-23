@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.5.8"
+version: "1.5.9"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,6 +76,51 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.5.9 — Per-Worker Share Diagnostics.
+
+
+  Pool-wide and per-worker tracking of every share submitted — accepted,
+  rejected, and stale — with full reject-reason breakdowns. Tap the Share
+  Stats card to open a new Share Diagnostics modal, or tap any worker row
+  to see that worker's individual reject history.
+
+
+  NEW:
+
+  • 📊 SHARE DIAGNOSTICS MODAL — tap the Share Stats card to open a full
+  diagnostic view. Three sections: Pool Share Health (accepted / rejected
+  / stale totals with percentage rates and session best-share), Reject
+  Reasons (color-classified — amber for stale/latency, red for hardware
+  or config errors, grey for rare edge cases), and Per-Worker Health
+  (sorted worst-first, tap any row to jump into that worker's detail
+  modal).
+
+  • 🔍 PER-WORKER SESSION STATS — the Worker Detail modal now includes
+  session-level accepted, rejected, and stale share counts alongside the
+  existing work totals, plus a new Reject Reasons section showing
+  exactly which errors (if any) are tripping up each specific worker.
+  Best share difficulty for the current session tracked separately from
+  all-time.
+
+  • 💡 TAP-FOR-DIAGNOSTICS AFFORDANCE — the Share Stats card now shows a
+  "Tap for diagnostics ↗" hint so the drill-down is discoverable. The
+  CSV export button still works independently of the tap-to-open
+  behavior (tapping CSV no longer accidentally opens the modal).
+
+
+  UNDER THE HOOD:
+
+  • New share-watcher service tails ckpool's per-share JSON logs via the
+  --log-shares flag (now wired into docker-compose.yml). Each share
+  event is classified (accepted / rejected / stale) using the
+  reject-reason string, aggregated into per-worker counters, and
+  persisted to disk every 60 seconds. Counters survive API restarts.
+
+  • /api/state now exposes shareEvents on each worker object, plus
+  pool-wide shares.stale and shares.rejectReasons fields for external
+  consumers (Prometheus, webhooks, public API).
+
+
   v1.5.8 — Webhooks Unblocked + Polish.
 
 
