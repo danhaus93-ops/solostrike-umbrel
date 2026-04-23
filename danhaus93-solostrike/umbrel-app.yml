@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.5.7"
+version: "1.5.8"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -76,7 +76,34 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.5.8 — Webhooks Unblocked + Polish.
+
+
+  The webhook UI is fully working end-to-end, plus three smaller fixes.
+
+
+  FIXED:
+
+  • 🔗 WEBHOOKS WORK END-TO-END — the Settings → Webhooks tab can now add, list,
+  and delete hooks. The UI was out of sync with the backend in three places; all
+  three are fixed. Discord / ntfy / Telegram / Home Assistant integrations
+  configured via the UI will now fire on block-found and worker status events as
+  expected.
+
+  • 🎨 RESET LAYOUT FULLY RESETS — the Reset Layout button under Settings →
+  Display now restores card visibility in addition to card order. Previously any
+  cards you had hidden stayed hidden after reset.
+
+  • 📜 SMOOTHER TICKER — the live scrolling ticker no longer blinks or shows a
+  blank gap when the snapshot refreshes every 30 seconds.
+
+  • 🩹 SETUP SCREEN SAFETY — fixed a reference error that could have caused a
+  white screen if you cleared your payout address without running the onboarding
+  wizard again. Harmless for existing installs, but the landmine is gone.
+
+
   v1.5.7 — Block Detection + Fee-Aware Prize.
+
 
 
   Your solo mining lottery just got real. When you find a block, SoloStrike now
