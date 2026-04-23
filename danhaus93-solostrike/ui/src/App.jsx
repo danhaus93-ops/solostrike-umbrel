@@ -1961,7 +1961,8 @@ export default function App() {
   );
   if (state.status==='no_address'||state.status==='setup') {
     if (!hasCompletedWizard()) return <OnboardingWizard onComplete={()=>window.location.reload()}/>;
-    return <SetupScreen onComplete={()=>window.location.reload()}/>;
+    return <SetupForm saveConfig={saveConfig}/>;
+
   }
 
 
