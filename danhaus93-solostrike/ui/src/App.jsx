@@ -254,9 +254,9 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       display:'flex',
       alignItems:'center',
     }}>
-      <div style={{
+    <div style={{
         whiteSpace:'nowrap',
-        display:'inline-flex',
+        display:'inline-block',
         flexShrink:0,
         fontFamily:'var(--fd)',
         fontSize:'0.55rem',
@@ -266,8 +266,7 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
         willChange:'transform',
         animation:`ticker ${duration}s linear infinite`,
       }}>
-        <span style={{flexShrink:0}}>{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
-        <span style={{flexShrink:0}}>{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       </div>
     </div>
   );
