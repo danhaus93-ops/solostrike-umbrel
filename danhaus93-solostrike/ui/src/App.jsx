@@ -559,7 +559,7 @@ function HashrateChart({ history, week, current }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Pool Hashrate — Live</span>
-        {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>PEAK {fmtHr(peak)}</span>}
+        {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'22px'}}>PEAK {fmtHr(peak)}</span>}
       </div>
       <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:'0.8rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
@@ -620,7 +620,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Connected Workers</span>
-        <span style={{color:'var(--amber)'}}>{online}/{sorted.length} online</span>
+        <span style={{color:'var(--amber)', marginRight:'22px'}}>{online}/{sorted.length} online</span>
       </div>
       {sorted.length > 3 && (
         <div style={{position:'relative', marginBottom:'0.5rem'}}>
@@ -704,7 +704,7 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Closest Calls — All-Time Top {list.length}</span>
-        <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em'}}>fleet-wide</span>
+        <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'22px'}}>fleet-wide</span>
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
         {list.map((c, i) => {
@@ -942,8 +942,8 @@ function RetargetPanel({ retarget }) {
 }
 
 // ── Share stats ───────────────────────────────────────────────────────────────
-// ── Share Stats Modal (v1.5.9+) ─────────────────────────────────────────────
-function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect }) {
+// ── Share Stats Modal (v1.5.12+) ────────────────────────────────────────────
+function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, trackingSince }) {
   const s = shares || {};
   const reasons = s.rejectReasons || {};
 
@@ -1017,7 +1017,16 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect }) 
             <div style={kvRow}><span style={kvLabel}>Stale Rate</span><span style={{...kvVal,color:stalePct<0.5?'var(--text-2)':'var(--amber)'}}>{stalePct.toFixed(3)}%</span></div>
             <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(bestSdiff)}</span></div>
             <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              Session totals since share-watcher started. Persists across API restarts.
+              {trackingSince ? <>Tracking since <span style={{color:'var(--amber)'}}>{new Date(trackingSince).toLocaleDateString(undefined,{month:'short',day:'numeric'})} {new Date(trackingSince).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>. Persists across restarts.</> : <>Session totals since share-watcher started. Persists across restarts.</>}
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',marginTop:'0.6rem'}}>
+              <button onClick={()=>{
+                if(!window.confirm('Reset all share statistics?\n\nThis zeros accepted/rejected/stale counts for every worker.\nHistorical sharelogs on disk are unaffected.\n\nAfter reset, only new shares from this moment forward are tracked.')) return;
+                fetch('/api/reset-share-stats',{method:'POST'})
+                  .then(r=>r.json())
+                  .then(d=>{ if(d.error) throw new Error(d.error); onClose && onClose(); })
+                  .catch(e=>window.alert('Reset failed: '+e.message));
+              }} style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',padding:'6px 12px',cursor:'pointer',textTransform:'uppercase'}}>⟲ Reset Session Stats</button>
             </div>
           </div>
 
@@ -1094,7 +1103,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
     <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Share Stats</span>
-        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>
+        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'22px'}}>⬇ CSV</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
@@ -1198,7 +1207,7 @@ function BlockFeed({ blocks, blockAlert }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Blocks Found — {(blocks||[]).length} total</span>
-        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',border:'1px solid var(--border)',padding:'2px 6px',background:'var(--bg-raised)'}}>⬇ CSV</a>}
+        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'22px'}}>⬇ CSV</a>}
       </div>
       {!(blocks||[]).length?(
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>No blocks found yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem'}}>Keep mining ⛏</span></div>
@@ -1895,7 +1904,6 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
             <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
-
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
               <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
@@ -2209,7 +2217,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.5.9 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.5.12 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -2243,7 +2251,7 @@ export default function App() {
         const live = (state.workers || []).find(w => w.name === selectedWorker.name) || selectedWorker;
         return <WorkerDetailModal worker={live} onClose={()=>setSelectedWorker(null)} aliases={aliases} onAliasesChange={handleAliasesChange} notes={notes} onNotesChange={handleNotesChange}/>;
       })()}
-      {shareStatsOpen && <ShareStatsModal shares={state.shares} workers={state.workers} aliases={aliases} onClose={()=>setShareStatsOpen(false)} onWorkerSelect={(w)=>setSelectedWorker(w)}/>}
+      {shareStatsOpen && <ShareStatsModal shares={state.shares} workers={state.workers} aliases={aliases} trackingSince={state.shareStatsStartedAt} onClose={()=>setShareStatsOpen(false)} onWorkerSelect={(w)=>setSelectedWorker(w)}/>}
     </>
   );
 }
