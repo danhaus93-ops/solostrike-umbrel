@@ -1,4 +1,4 @@
-// ── Share watcher (v1.5.11+) ────────────────────────────────────────────────
+// ── Share watcher (v1.5.12+) ────────────────────────────────────────────────
 // Tails ckpool sharelog files (requires --log-shares flag in ckpool command).
 // For every share submission, ckpool writes a JSON line with workername,
 // result (accepted/rejected), reject-reason, sdiff, and more.
@@ -52,6 +52,9 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (typeof state.shares.rejectedCount !== 'number') state.shares.rejectedCount = 0;
   if (typeof state.shares.stale !== 'number') state.shares.stale = 0;
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
+  // v1.5.12: Track when counters started accumulating (for "Tracking since"
+  // timestamp in the UI and for the reset-stats endpoint).
+  if (typeof state.shareStatsStartedAt !== 'number') state.shareStatsStartedAt = Date.now();
 
   // Restore counters + cursors from persist.json if present
   try {
@@ -82,6 +85,9 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       if (p.sharelogCursors && typeof p.sharelogCursors === 'object') {
         state.sharelogCursors = p.sharelogCursors;
         console.log('[share-watcher] Restored sharelog cursors for', Object.keys(state.sharelogCursors).length, 'files');
+      }
+      if (typeof p.shareStatsStartedAt === 'number') {
+        state.shareStatsStartedAt = p.shareStatsStartedAt;
       }
     }
   } catch (e) { console.log('[share-watcher] persist restore failed:', e.message); }
@@ -228,6 +234,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         webhooks: state.webhooks,
         shareCounters: state.shareCounters,
         sharelogCursors: state.sharelogCursors,
+        shareStatsStartedAt: state.shareStatsStartedAt,
       });
     } catch (e) { console.log('[share-watcher] persist failed:', e.message); }
   }
