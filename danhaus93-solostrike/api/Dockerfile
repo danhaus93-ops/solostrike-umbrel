@@ -1,5 +1,5 @@
 FROM node:20-alpine
-RUN apk add --no-cache wget
+RUN apk add --no-cache wget python3 make g++ zeromq-dev
 WORKDIR /app
 COPY package.json ./
 RUN npm install --production
