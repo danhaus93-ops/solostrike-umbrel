@@ -226,13 +226,32 @@ export const METRICS = [
       if (!total) return { prefix: 'EARNED', value: '0 sat' };
       return { prefix: 'EARNED', value: fmtBtc(total, 3) };
     } },
+
+  // ── PULSE (v1.6.0) ──
+  { id: 'pulse', label: 'SoloStrike Pulse', category: 'Pulse', color: 'var(--amber)',
+    render: (s) => {
+      const ns = s.networkStats;
+      if (!ns || !ns.enabled || !ns.pools) {
+        return { prefix: '📡 SOLOSTRIKE PULSE', value: 'SEE HOW MANY ARE SOLO MINING' };
+      }
+      const hr = ns.hashrate || 0;
+      let hrText;
+      if (hr >= 1e15) hrText = (hr/1e15).toFixed(2) + ' PH/s';
+      else if (hr >= 1e12) hrText = (hr/1e12).toFixed(1) + ' TH/s';
+      else if (hr >= 1e9) hrText = (hr/1e9).toFixed(1) + ' GH/s';
+      else hrText = (hr/1e6).toFixed(0) + ' MH/s';
+      return {
+        prefix: '📡 SOLOSTRIKE PULSE',
+        value: `${ns.pools} POOL${ns.pools===1?'':'S'} · ${hrText} · ${ns.workers || 0} MINERS`,
+      };
+    } },
 ];
 
 // Map for quick lookup by id
 export const METRIC_MAP = Object.fromEntries(METRICS.map(m => [m.id, m]));
 
 // Category order for the settings UI
-export const METRIC_CATEGORIES = ['Performance', 'Workers', 'Odds', 'Network', 'Infrastructure', 'Session'];
+export const METRIC_CATEGORIES = ['Performance', 'Workers', 'Odds', 'Network', 'Infrastructure', 'Session', 'Pulse'];
 
 // Available chart marker symbols
 export const MARKER_SYMBOLS = ['₿', '⛏', '💎', '⚡', '🎯', '🔥', '🚀', '🎰', '☠️', '🟠'];
