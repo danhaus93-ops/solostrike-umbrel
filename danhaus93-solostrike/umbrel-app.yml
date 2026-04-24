@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.5.13"
+version: "1.6.0"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -22,6 +22,8 @@ description: >-
   Features:
 
   • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • 🌐 SoloStrike Network (v1.6.0) — opt-in anonymous community counter over nostr
 
   • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
 
@@ -76,6 +78,84 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.6.0 — SoloStrike Network (backend). A new opt-in community counter
+  lets your pool see and contribute to a live total of all SoloStrike
+  pools running worldwide.
+
+
+  HOW IT WORKS:
+
+  Every install that opts in publishes a signed, anonymous event to three
+  public nostr relays every 5 minutes. The payload is tiny: pool
+  hashrate, worker count, app version, and total blocks found. Nothing
+  else. No BTC address. No IP. No hostname. No location. Every install
+  also subscribes to events from the last 15 minutes and aggregates the
+  totals locally — so even installs that don't publish can still see
+  the community's combined strength.
+
+
+  PRIVACY MODEL:
+
+  • Off by default. Publishing requires an explicit opt-in via
+  /api/network-stats/enable.
+
+  • A random nostr keypair is generated on first boot and stored only on
+  your Umbrel. Not linked to your payout address or anything else.
+
+  • You can regenerate the keypair anytime to reset your identity.
+
+  • You can turn off publishing anytime. You'll still see network totals
+  while observing.
+
+  • Relays see your IP when you connect (same as any outbound Bitcoin
+  service), but can't tie that IP to a person without out-of-band data.
+
+
+  WHY NOSTR:
+
+  Nostr is a decentralized messaging protocol with no central server.
+  Free public relays carry the tiny signed events. No SoloStrike cloud
+  infrastructure, no phone-home server. If one relay goes offline, two
+  others carry the load.
+
+
+  SPAM DEFENSE:
+
+  • Any single install reporting over 10 PH/s or 1000 workers is
+  rejected as bogus.
+
+  • Events older than 15 minutes are rejected (prevents replay).
+
+  • Same pubkey across multiple relays is deduped (counted once).
+
+
+  BACKEND-FIRST ROLLOUT:
+
+  This release ships the full backend — publisher, subscriber,
+  aggregator, 4 new API endpoints (/api/network-stats,
+  /api/network-stats/enable, /api/network-stats/disable,
+  /api/network-stats/regenerate). UI surfaces are coming in v1.6.1 once
+  the relay pipeline is verified in the wild.
+
+
+  Advanced users can flip the toggle immediately via:
+    curl -X POST http://<umbrel>:3001/api/network-stats/enable
+
+  And verify events are publishing via:
+    curl http://<umbrel>:3001/api/network-stats
+
+
+  OTHER CHANGES:
+
+  • savePersist now merges with existing persist.json instead of
+  overwriting, so modules that save partial state (like the new
+  network-stats module) don't need to carry around every other
+  module's fields.
+
+  • state.version is now exposed for use by modules that need to
+  broadcast the running version.
+
+
   v1.5.13 — Recursive Sharelog Discovery + Gold-Rush Rebrand.
 
 
