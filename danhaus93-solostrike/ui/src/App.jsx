@@ -41,7 +41,7 @@ const ALL_CARDS = [
   { id:'retarget',      label:'Difficulty Retarget' },
   { id:'shares',        label:'Share Stats' },
   { id:'best',          label:'Leaderboard' },
-  { id:'closestcalls',  label:'Closest Calls — Top 10' },
+  { id:'closestcalls',  label:'Near Strikes' },
   { id:'blocks',        label:'Blocks Found' },
   { id:'topfinders',    label:'Top Pool Finders' },
   { id:'recent',        label:'Recent Network Blocks' },
@@ -559,7 +559,7 @@ function HashrateChart({ history, week, current }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Pool Hashrate — Live</span>
-        {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'22px'}}>PEAK {fmtHr(peak)}</span>}
+        {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>PEAK {fmtHr(peak)}</span>}
       </div>
       <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:'0.8rem' }}>
         {p0}<span style={{ fontSize:'1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
@@ -620,7 +620,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <span>▸ Connected Workers</span>
-        <span style={{color:'var(--amber)', marginRight:'22px'}}>{online}/{sorted.length} online</span>
+        <span style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap'}}>{online}/{sorted.length} online</span>
       </div>
       {sorted.length > 3 && (
         <div style={{position:'relative', marginBottom:'0.5rem'}}>
@@ -689,7 +689,7 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
   if (!list.length) {
     return (
       <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-        <div style={cardTitle}>▸ Closest Calls — Top 10 Near-Misses</div>
+        <div style={cardTitle}>▸ Near Strikes</div>
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
           Building leaderboard…<br/>
           <span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Shares tracked as they come in</span>
@@ -703,8 +703,8 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <span>▸ Closest Calls — All-Time Top {list.length}</span>
-        <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'22px'}}>fleet-wide</span>
+        <span>▸ Near Strikes</span>
+        <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
         {list.map((c, i) => {
@@ -1103,7 +1103,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
     <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Share Stats</span>
-        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'22px'}}>⬇ CSV</a>
+        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
@@ -1207,7 +1207,7 @@ function BlockFeed({ blocks, blockAlert }) {
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span>▸ Blocks Found — {(blocks||[]).length} total</span>
-        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'22px'}}>⬇ CSV</a>}
+        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>}
       </div>
       {!(blocks||[]).length?(
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>No blocks found yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem'}}>Keep mining ⛏</span></div>
@@ -1645,7 +1645,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
     </>
   );
 }
-
 function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
   return (
     <>
@@ -1904,6 +1903,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
             <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
+
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
               <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
