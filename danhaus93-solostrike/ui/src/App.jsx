@@ -45,6 +45,7 @@ const ALL_CARDS = [
   { id:'blocks',        label:'Gold Strikes' },
   { id:'topfinders',    label:'Claim Jumpers' },
   { id:'recent',        label:'The Goldfields' },
+  { id:'pulse',         label:'SoloStrike Pulse' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'workers', 'blocks'];
@@ -1316,7 +1317,7 @@ function SetupForm({ saveConfig }) {
 }
 
 // ── Settings modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats }) {
   const [tab, setTab] = useState('main');
   const [addr,setAddr]=useState('');
   const [poolName,setPoolName]=useState(currentConfig?.poolName||'SoloStrike');
@@ -1359,6 +1360,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           <button onClick={()=>setTab('main')}     style={tabStyle(tab==='main')}>Main</button>
           <button onClick={()=>setTab('display')}  style={tabStyle(tab==='display')}>Display</button>
           <button onClick={()=>setTab('privacy')}  style={tabStyle(tab==='privacy')}>Privacy</button>
+          <button onClick={()=>setTab('pulse')}    style={tabStyle(tab==='pulse')}>Pulse</button>
           <button onClick={()=>setTab('aliases')}  style={tabStyle(tab==='aliases')}>Names</button>
           <button onClick={()=>setTab('hooks')}    style={tabStyle(tab==='hooks')}>Webhooks</button>
         </div>
@@ -1368,6 +1370,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
         {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange} minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange} visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>}
         {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
+        {tab==='pulse' && <PulseTab networkStats={networkStats}/>}
         {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
         {tab==='hooks' && <WebhooksTab />}
       </div>
@@ -1670,6 +1673,261 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
         {loading?'SAVING…':saved?'✓ SAVED':'APPLY PRIVATE MODE'}
       </button>
     </>
+  );
+}
+
+// ── PulseTab (v1.6.0) ────────────────────────────────────────────────────────
+function PulseTab({ networkStats }) {
+  const [busy, setBusy] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [err, setErr] = useState('');
+  const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
+  const enabled = !!ns.enabled;
+
+  const doToggle = async () => {
+    if (enabled) {
+      setBusy(true); setErr('');
+      try {
+        const r = await fetch('/api/network-stats/disable', { method: 'POST' });
+        if (!r.ok) throw new Error('server returned ' + r.status);
+      } catch (e) { setErr(e.message); }
+      setBusy(false);
+    } else {
+      setShowConfirm(true);
+    }
+  };
+
+  const confirmEnable = async () => {
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch('/api/network-stats/enable', { method: 'POST' });
+      if (!r.ok) throw new Error('server returned ' + r.status);
+      setShowConfirm(false);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+
+  const regenerate = async () => {
+    if (!window.confirm('Reset your Pulse identity?\n\nA new anonymous keypair will be generated. Your pool will appear as a new participant to other Pulse observers. Your blocks, stats, and pool data are unaffected.\n\nThe API container will need to be restarted for the new identity to take effect.')) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch('/api/network-stats/regenerate', { method: 'POST' });
+      if (!r.ok) throw new Error('server returned ' + r.status);
+      window.alert('Identity reset. Restart the SoloStrike app from Umbrel to apply.');
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+
+  const relayEntries = Object.entries(ns.relayStatus || {});
+  const relaysUp = relayEntries.filter(([,s]) => s === 'connected').length;
+
+  const fmtPulseHr = (hr) => {
+    if (!hr) return '0 H/s';
+    if (hr >= 1e15) return (hr/1e15).toFixed(2) + ' PH/s';
+    if (hr >= 1e12) return (hr/1e12).toFixed(1) + ' TH/s';
+    if (hr >= 1e9) return (hr/1e9).toFixed(1) + ' GH/s';
+    return (hr/1e6).toFixed(0) + ' MH/s';
+  };
+
+  return (
+    <>
+      <div style={{background:enabled?'rgba(245,166,35,0.05)':'var(--bg-deep)',border:`1px solid ${enabled?'rgba(245,166,35,0.3)':'var(--border)'}`,padding:'1rem',marginBottom:'0.875rem'}}>
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem',marginBottom:'0.7rem'}}>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:4}}>📡 SoloStrike Pulse</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-2)',fontStyle:'italic'}}>A heartbeat for the solo mining community.</div>
+          </div>
+          <button onClick={doToggle} disabled={busy} style={{flexShrink:0,width:48,height:26,borderRadius:13,background:enabled?'var(--amber)':'var(--bg-raised)',border:'1px solid var(--border)',position:'relative',cursor:busy?'wait':'pointer',transition:'background 0.2s',opacity:busy?0.5:1}}>
+            <div style={{position:'absolute',top:2,left:enabled?24:2,width:20,height:20,borderRadius:'50%',background:enabled?'#000':'var(--text-2)',transition:'left 0.2s'}}/>
+          </button>
+        </div>
+
+        {!enabled ? (
+          <>
+            <p style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',lineHeight:1.6,margin:'0 0 0.7rem 0'}}>
+              Pulse broadcasts a signed, anonymous signal from your pool every five minutes. In exchange, you see a live count of every other solo pool doing the same.
+            </p>
+            <div style={{padding:'0.65rem 0.8rem',background:'rgba(0,255,209,0.06)',border:'1px solid rgba(0,255,209,0.2)',marginBottom:'0.5rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--cyan)',marginBottom:4}}>You stay 100% solo</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.5}}>
+                Pulse is a census, not a pool. No shared mining, no combined rewards, no affiliation. If you find a block, it's still yours — Pulse just lets you count yourself among the solo miners worldwide.
+              </div>
+            </div>
+            <div style={{padding:'0.6rem 0.8rem',background:'rgba(255,255,255,0.02)',border:'1px solid var(--border)'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>What gets broadcast</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-1)',lineHeight:1.5}}>
+                • Pool hashrate · worker count · app version · total blocks found<br/>
+                • <span style={{color:'var(--text-3)'}}>Never sent:</span> BTC address, IP, hostname, location, anything identifiable
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem',marginBottom:'0.75rem'}}>
+              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.5rem',textAlign:'center'}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}>Pools</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1.3rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{ns.pools || 0}</div>
+              </div>
+              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.5rem',textAlign:'center'}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}>Hashrate</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{fmtPulseHr(ns.hashrate)}</div>
+              </div>
+              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.5rem',textAlign:'center'}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}>Miners</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1.3rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{ns.workers || 0}</div>
+              </div>
+            </div>
+            <div style={{padding:'0.5rem 0.7rem',background:'rgba(57,255,106,0.04)',border:'1px solid rgba(57,255,106,0.2)',marginBottom:'0.5rem'}}>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',display:'flex',alignItems:'center',gap:6}}>
+                <span style={{width:6,height:6,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)',animation:'pulse 2s ease-in-out infinite',display:'inline-block'}}/>
+                Broadcasting. You are part of the Pulse.
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {relayEntries.length > 0 && (
+        <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.7rem 0.8rem',marginBottom:'0.875rem'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.5rem'}}>
+            ▸ Relay Connections ({relaysUp}/{relayEntries.length})
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            {relayEntries.map(([url, status]) => (
+              <div key={url} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.3rem 0.5rem',background:'var(--bg-raised)',border:'1px solid var(--border)'}}>
+                <span style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{url.replace(/^wss:\/\//, '')}</span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.52rem',letterSpacing:'0.1em',textTransform:'uppercase',color:status==='connected'?'var(--green)':status==='connecting'?'var(--amber)':'var(--red)',flexShrink:0,marginLeft:8}}>{status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {enabled && ns.versions && Object.keys(ns.versions).length > 0 && (
+        <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.7rem 0.8rem',marginBottom:'0.875rem'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.5rem'}}>
+            ▸ Version Distribution
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:3}}>
+            {Object.entries(ns.versions).sort((a,b) => b[1] - a[1]).map(([version, count]) => (
+              <div key={version} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.3rem 0.5rem',background:'var(--bg-raised)',border:'1px solid var(--border)'}}>
+                <span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)'}}>v{version}</span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:600,color:'var(--amber)'}}>{count} pool{count===1?'':'s'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {enabled && (
+        <div style={{padding:'0.7rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.5rem'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>Advanced</div>
+          <button onClick={regenerate} disabled={busy} style={{width:'100%',padding:'0.55rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',cursor:busy?'wait':'pointer',opacity:busy?0.5:1}}>
+            ⟲ Reset Pulse Identity
+          </button>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:6,lineHeight:1.4}}>
+            Generate a fresh random keypair. Your pool will appear as a new participant to other observers. Requires API restart to take effect.
+          </div>
+        </div>
+      )}
+
+      {err && <div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'0.5rem'}}>⚠ {err}</div>}
+
+      {showConfirm && (
+        <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300,padding:'1rem'}} onClick={e=>e.target===e.currentTarget&&setShowConfirm(false)}>
+          <div style={{width:'100%',maxWidth:440,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'1.5rem',boxShadow:'var(--glow-a)'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:'0.8rem'}}>📡 Join the Pulse?</div>
+            <p style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',lineHeight:1.6,marginBottom:'0.8rem'}}>
+              Every 5 minutes, your Umbrel will publish a signed, anonymous message containing:
+            </p>
+            <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.7rem 0.9rem',marginBottom:'0.8rem'}}>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.8}}>
+                • Pool hashrate<br/>
+                • Worker count (active only)<br/>
+                • App version<br/>
+                • Total blocks found
+              </div>
+            </div>
+            <div style={{background:'rgba(0,255,209,0.04)',border:'1px solid rgba(0,255,209,0.2)',padding:'0.7rem 0.9rem',marginBottom:'1rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--cyan)',marginBottom:4}}>Not sent</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)'}}>
+                BTC address · IP · hostname · location · anything identifiable
+              </div>
+            </div>
+            <p style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'1rem',fontStyle:'italic'}}>
+              You can turn this off anytime. You'll still see the Pulse count while observing.
+            </p>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>setShowConfirm(false)} disabled={busy} style={{flex:1,padding:'0.75rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>
+                Cancel
+              </button>
+              <button onClick={confirmEnable} disabled={busy} style={{flex:1,padding:'0.75rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:busy?'wait':'pointer',opacity:busy?0.6:1}}>
+                {busy ? 'Starting…' : 'Start Broadcasting'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── PulsePanel (v1.6.0) — dashboard card variant ────────────────────────────
+function PulsePanel({ networkStats, onOpenSettings }) {
+  const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0 };
+  const enabled = !!ns.enabled;
+
+  const fmtPulseHr = (hr) => {
+    if (!hr) return '0';
+    if (hr >= 1e15) return (hr/1e15).toFixed(2) + ' PH/s';
+    if (hr >= 1e12) return (hr/1e12).toFixed(1) + ' TH/s';
+    if (hr >= 1e9) return (hr/1e9).toFixed(1) + ' GH/s';
+    return (hr/1e6).toFixed(0) + ' MH/s';
+  };
+
+  return (
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ SoloStrike Pulse</div>
+      {!enabled ? (
+        <div onClick={onOpenSettings} style={{background:'var(--bg-raised)',border:'1px solid rgba(245,166,35,0.3)',padding:'1rem',cursor:'pointer',textAlign:'center'}}>
+          <div style={{fontSize:'1.8rem',marginBottom:6}}>📡</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:4}}>SEE HOW MANY ARE SOLO MINING</div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'0.6rem'}}>
+            Pulse is an anonymous count of every solo miner running SoloStrike. Tap to opt in.
+          </div>
+          <div style={{display:'inline-block',padding:'0.45rem 0.9rem',background:'rgba(245,166,35,0.1)',border:'1px solid var(--amber)',fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+            Tap to Join →
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'0.6rem'}}>
+            <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.75rem 0.5rem',textAlign:'center'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Pools</div>
+              <div style={{fontFamily:'var(--fd)',fontSize:'1.6rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{ns.pools || 0}</div>
+            </div>
+            <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.75rem 0.5rem',textAlign:'center'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Combined Hashrate</div>
+              <div style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{fmtPulseHr(ns.hashrate)}</div>
+            </div>
+          </div>
+          <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem 0.7rem',marginBottom:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)'}}>Total Miners</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--cyan)'}}>{ns.workers || 0}</span>
+          </div>
+          {ns.blocks > 0 && (
+            <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem 0.7rem',marginBottom:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)'}}>Blocks Struck</span>
+              <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--green)'}}>{ns.blocks}</span>
+            </div>
+          )}
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--green)',textAlign:'center',padding:'0.4rem 0',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+            <span style={{width:6,height:6,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)',animation:'pulse 2s ease-in-out infinite',display:'inline-block'}}/>
+            You are broadcasting
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -2089,6 +2347,25 @@ export default function App() {
     const id = setInterval(fetchHealth, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  // SoloStrike Pulse — polls /api/network-stats every 30s (v1.6.0+)
+  const [networkStats, setNetworkStats] = useState({ enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchNetworkStats() {
+      try {
+        const r = await fetch('/api/network-stats', { cache: 'no-store' });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled) setNetworkStats(j || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
+      } catch (_) { /* network blip — keep last known state */ }
+    }
+    fetchNetworkStats();
+    const id = setInterval(fetchNetworkStats, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  // Expose to state so metrics renderer can read it for the ticker
+  useEffect(() => { state.networkStats = networkStats; }, [networkStats, state]);
   useEffect(() => {
     const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
     if (!hasData) return;
@@ -2176,6 +2453,7 @@ export default function App() {
     blocks:       { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
     topfinders:   { spanTwo:false, el:<TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/> },
     recent:       { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
+    pulse:        { spanTwo:false, el:<PulsePanel networkStats={networkStats} onOpenSettings={openSettings}/> },
   };
 
   const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
@@ -2217,7 +2495,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.5.13 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.6.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -2244,6 +2522,7 @@ export default function App() {
         onMinimalModeChange={handleMinimalModeChange}
         visibleCards={visibleCards}
         onVisibleCardsChange={handleVisibleCardsChange}
+        networkStats={networkStats}
       />}
       {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
       <OfflineToasts workers={state.workers} aliases={aliases}/>
