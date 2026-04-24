@@ -32,19 +32,19 @@ const DEFAULT_TICKER_SPEED = 30;
 const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'worker_health', 'accept_rate', 'next_block_prize', 'btc_price', 'time_since_block', 'halving', 'blocks_found_total'];
 
 const ALL_CARDS = [
-  { id:'hashrate',      label:'Pool Hashrate' },
-  { id:'workers',       label:'Connected Workers' },
+  { id:'hashrate',      label:'Firepower' },
+  { id:'workers',       label:'The Crew' },
   { id:'network',       label:'Bitcoin Network' },
   { id:'node',          label:'Bitcoin Node' },
-  { id:'odds',          label:'Block Probability' },
-  { id:'luck',          label:'Luck Gauge' },
+  { id:'odds',          label:'Strike Odds' },
+  { id:'luck',          label:'Hot Streak' },
   { id:'retarget',      label:'Difficulty Retarget' },
   { id:'shares',        label:'Share Stats' },
-  { id:'best',          label:'Leaderboard' },
+  { id:'best',          label:'Top Diggers' },
   { id:'closestcalls',  label:'Near Strikes' },
-  { id:'blocks',        label:'Blocks Found' },
-  { id:'topfinders',    label:'Top Pool Finders' },
-  { id:'recent',        label:'Recent Network Blocks' },
+  { id:'blocks',        label:'Gold Strikes' },
+  { id:'topfinders',    label:'Claim Jumpers' },
+  { id:'recent',        label:'The Goldfields' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'workers', 'blocks'];
@@ -557,8 +557,8 @@ function HashrateChart({ history, week, current }) {
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <span>▸ Pool Hashrate — Live</span>
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+        <span>▸ Firepower — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>PEAK {fmtHr(peak)}</span>}
       </div>
       <div style={{ fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:'0.8rem' }}>
@@ -618,8 +618,8 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <span>▸ Connected Workers</span>
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+        <span>▸ The Crew</span>
         <span style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap'}}>{online}/{sorted.length} online</span>
       </div>
       {sorted.length > 3 && (
@@ -689,7 +689,7 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
   if (!list.length) {
     return (
       <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-        <div style={cardTitle}>▸ Near Strikes</div>
+        <div style={{...cardTitle, color:'var(--amber)'}}>▸ Near Strikes</div>
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
           Building leaderboard…<br/>
           <span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Shares tracked as they come in</span>
@@ -702,7 +702,7 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
         <span>▸ Near Strikes</span>
         <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
       </div>
@@ -844,7 +844,7 @@ function OddsDisplay({ odds, hashrate, netHashrate }) {
   const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Block Probability</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Strike Odds</div>
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.875rem'}}>
         <div style={{position:'relative',width:110,height:110,display:'flex',alignItems:'center',justifyContent:'center'}}>
           <svg width="110" height="110" viewBox="0 0 110 110" style={{position:'absolute'}}>
@@ -884,7 +884,7 @@ function LuckGauge({ luck }) {
   const barColor = luckVal==null ? 'var(--amber)' : (luckVal>=100 ? 'var(--green)' : luckVal>=50 ? 'var(--amber)' : 'var(--red)');
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Luck — Since Pool Start</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Hot Streak — Since Pool Start</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{textAlign:'center',padding:'0.6rem 0'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:barColor,textShadow:`0 0 20px ${barColor}50`,lineHeight:1}}>
@@ -1137,7 +1137,7 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Leaderboard — Best Difficulties</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Top Diggers — Best Difficulties</div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Keep mining ⛏</span></div>
       ) : (
@@ -1178,7 +1178,7 @@ function TopFindersPanel({ topFinders, netBlocks }) {
   const maxCount = list[0]?.count || 1;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Top Pool Finders — Last {totalSample} Blocks</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Claim Jumpers — Last {totalSample} Blocks</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
         {list.map((p,i)=>{
           const pct = (p.count/maxCount)*100;
@@ -1205,12 +1205,12 @@ function TopFindersPanel({ topFinders, netBlocks }) {
 function BlockFeed({ blocks, blockAlert }) {
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span>▸ Blocks Found — {(blocks||[]).length} total</span>
+      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center', color:'var(--amber)'}}>
+        <span>▸ Gold Strikes — {(blocks||[]).length} total</span>
         {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>}
       </div>
       {!(blocks||[]).length?(
-        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>No blocks found yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem'}}>Keep mining ⛏</span></div>
+        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>No gold struck yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem'}}>Keep digging ⛏</span></div>
       ):(
         <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',maxHeight:240,overflowY:'auto'}}>
           {blocks.map((b,i)=>(
@@ -1236,7 +1236,7 @@ function RecentBlocksPanel({ netBlocks }) {
   if (!list.length) return null;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Recent Network Blocks — Solo Winners ⚡</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ The Goldfields — Solo Winners ⚡</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',maxHeight:300,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
           <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none', minWidth:0}}>
@@ -1281,7 +1281,7 @@ function BlockAlert({ show, block, onDismiss }) {
   if(!show||!block)return null;
   return(
     <div style={{position:'fixed',top:'8rem',left:'50%',transform:'translateX(-50%)',zIndex:300,background:'var(--bg-surface)',border:'2px solid var(--green)',padding:'1.5rem 2rem',boxShadow:'0 0 60px rgba(57,255,106,0.6)',animation:'fadeIn .5s ease',maxWidth:'90%'}}>
-      <div style={{fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.2em',color:'var(--green)',textTransform:'uppercase',marginBottom:'0.5rem',textAlign:'center'}}>✦ BLOCK FOUND ✦</div>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.2em',color:'var(--green)',textTransform:'uppercase',marginBottom:'0.5rem',textAlign:'center'}}>✦ GOLD STRUCK ✦</div>
       <div style={{fontFamily:'var(--fd)',fontSize:'2.5rem',fontWeight:700,color:'var(--amber)',textAlign:'center',textShadow:'0 0 20px var(--amber)'}}>#{fmtNum(block.height)}</div>
       <button onClick={onDismiss} style={{width:'100%',marginTop:'1rem',padding:'0.5rem',background:'transparent',border:'1px solid var(--green)',color:'var(--green)',fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.1em',cursor:'pointer'}}>DISMISS</button>
     </div>
@@ -1645,6 +1645,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
     </>
   );
 }
+
 function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
   return (
     <>
@@ -2161,7 +2162,6 @@ export default function App() {
 
   }
 
-
   const cards = {
     hashrate:     { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
     workers:      { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
@@ -2217,7 +2217,7 @@ export default function App() {
           </div>
         </main>
         <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.5.12 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+          <span>SoloStrike v1.5.13 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
           <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
