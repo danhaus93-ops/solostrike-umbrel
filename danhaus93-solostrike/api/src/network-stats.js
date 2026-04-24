@@ -1,24 +1,12 @@
 // ── SoloStrike Network Stats (v1.6.0) ─────────────────────────────────────
 //
-// Publishes anonymous pool stats (hashrate, worker count, version,
-// blocks found) to the SoloStrike Network over nostr every 5 minutes.
-// Subscribes to everyone else's stats from the last 15 minutes and
-// aggregates them into state.networkStats.
+// Publishes anonymous pool stats to the SoloStrike Network over nostr
+// every 5 minutes. Subscribes to everyone else's stats from the last
+// 15 minutes and aggregates them into state.networkStats.
 //
-// Privacy model:
-// • Random keypair generated once per install, stored in persist.json.
-//   Not linked to the BTC payout address or anything else identifiable.
-// • Payload contains only numeric stats and version string. No IP,
-//   no BTC address, no hostname, no location.
-// • Publishing is opt-in (cfg.networkStatsEnabled). Subscribing/
-//   displaying network totals is always on.
-// • Users can regenerate the keypair anytime to start fresh.
-//
-// Protocol:
-// • nostr kind 30078 (parameterized replaceable)
-// • tag "t": "solostrike-stats" for discovery
-// • tag "d": install UUID for dedup
-// • content: JSON.stringify({ hashrate, workers, version, blocks })
+// Privacy: random keypair per install, no BTC address, no IP, no hostname.
+// Opt-in publishing (cfg.networkStatsEnabled). Subscribing always on.
+// Protocol: nostr kind 30078, tag "t":"solostrike-stats", tag "d":installId.
 
 const crypto = require('crypto');
 const WebSocket = require('ws');
@@ -79,7 +67,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
 
   function connectRelay(url) {
     state.networkStats.relayStatus[url] = 'connecting';
-
     let ws;
     try {
       ws = new WebSocket(url, { handshakeTimeout: 10000 });
@@ -88,7 +75,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
       scheduleReconnect(url);
       return;
     }
-
     sockets.set(url, ws);
 
     ws.on('open', () => {
@@ -215,10 +201,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     const template = {
       kind: EVENT_KIND,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ['t', TAG_NAME],
-        ['d', installId],
-      ],
+      tags: [['t', TAG_NAME], ['d', installId]],
       content,
     };
 
