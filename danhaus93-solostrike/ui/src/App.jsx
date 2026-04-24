@@ -1317,7 +1317,7 @@ function SetupForm({ saveConfig }) {
 }
 
 // ── Settings modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh }) {
   const [tab, setTab] = useState('main');
   const [addr,setAddr]=useState('');
   const [poolName,setPoolName]=useState(currentConfig?.poolName||'SoloStrike');
@@ -1370,7 +1370,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
         {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange} minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange} visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>}
         {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
-        {tab==='pulse' && <PulseTab networkStats={networkStats}/>}
+        {tab==='pulse' && <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}/>}
         {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
         {tab==='hooks' && <WebhooksTab />}
       </div>
@@ -1677,7 +1677,7 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
 }
 
 // ── PulseTab (v1.6.0) ────────────────────────────────────────────────────────
-function PulseTab({ networkStats }) {
+function PulseTab({ networkStats, onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState('');
@@ -1690,12 +1690,25 @@ function PulseTab({ networkStats }) {
       try {
         const r = await fetch('/api/network-stats/disable', { method: 'POST' });
         if (!r.ok) throw new Error('server returned ' + r.status);
+        if (onRefresh) await onRefresh();
       } catch (e) { setErr(e.message); }
       setBusy(false);
     } else {
       setShowConfirm(true);
     }
   };
+
+  const confirmEnable = async () => {
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch('/api/network-stats/enable', { method: 'POST' });
+      if (!r.ok) throw new Error('server returned ' + r.status);
+      if (onRefresh) await onRefresh();
+      setShowConfirm(false);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+
 
   const confirmEnable = async () => {
     setBusy(true); setErr('');
@@ -2347,23 +2360,22 @@ export default function App() {
     const id = setInterval(fetchHealth, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
-
   // SoloStrike Pulse — polls /api/network-stats every 30s (v1.6.0+)
-  const [networkStats, setNetworkStats] = useState({ enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchNetworkStats() {
-      try {
-        const r = await fetch('/api/network-stats', { cache: 'no-store' });
-        if (!r.ok) return;
-        const j = await r.json();
-        if (!cancelled) setNetworkStats(j || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
-      } catch (_) { /* network blip — keep last known state */ }
-    }
-    fetchNetworkStats();
-    const id = setInterval(fetchNetworkStats, 30000);
-    return () => { cancelled = true; clearInterval(id); };
+    const [networkStats, setNetworkStats] = useState({ enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
+  const refreshNetworkStats = useCallback(async () => {
+    try {
+      const r = await fetch('/api/network-stats', { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      setNetworkStats(j || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
+    } catch (_) { /* network blip — keep last known state */ }
   }, []);
+  useEffect(() => {
+    refreshNetworkStats();
+    const id = setInterval(refreshNetworkStats, 30000);
+    return () => clearInterval(id);
+  }, [refreshNetworkStats]);
+
   // Expose to state so metrics renderer can read it for the ticker
   useEffect(() => { state.networkStats = networkStats; }, [networkStats, state]);
   useEffect(() => {
@@ -2523,7 +2535,9 @@ export default function App() {
         visibleCards={visibleCards}
         onVisibleCardsChange={handleVisibleCardsChange}
         networkStats={networkStats}
+        onNetworkStatsRefresh={refreshNetworkStats}
       />}
+
       {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
       <OfflineToasts workers={state.workers} aliases={aliases}/>
       {selectedWorker && (() => {
