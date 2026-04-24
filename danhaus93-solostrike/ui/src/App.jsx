@@ -1261,7 +1261,6 @@ function RecentBlocksPanel({ netBlocks }) {
   );
 }
 
-// ── Confetti + BlockAlert ─────────────────────────────────────────────────────
 function Confetti() {
   const ref = useRef(null);
   useEffect(()=>{
@@ -1704,17 +1703,6 @@ function PulseTab({ networkStats, onRefresh }) {
       const r = await fetch('/api/network-stats/enable', { method: 'POST' });
       if (!r.ok) throw new Error('server returned ' + r.status);
       if (onRefresh) await onRefresh();
-      setShowConfirm(false);
-    } catch (e) { setErr(e.message); }
-    setBusy(false);
-  };
-
-
-  const confirmEnable = async () => {
-    setBusy(true); setErr('');
-    try {
-      const r = await fetch('/api/network-stats/enable', { method: 'POST' });
-      if (!r.ok) throw new Error('server returned ' + r.status);
       setShowConfirm(false);
     } catch (e) { setErr(e.message); }
     setBusy(false);
@@ -2360,8 +2348,9 @@ export default function App() {
     const id = setInterval(fetchHealth, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+
   // SoloStrike Pulse — polls /api/network-stats every 30s (v1.6.0+)
-    const [networkStats, setNetworkStats] = useState({ enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
+  const [networkStats, setNetworkStats] = useState({ enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
   const refreshNetworkStats = useCallback(async () => {
     try {
       const r = await fetch('/api/network-stats', { cache: 'no-store' });
@@ -2375,7 +2364,6 @@ export default function App() {
     const id = setInterval(refreshNetworkStats, 30000);
     return () => clearInterval(id);
   }, [refreshNetworkStats]);
-
   // Expose to state so metrics renderer can read it for the ticker
   useEffect(() => { state.networkStats = networkStats; }, [networkStats, state]);
   useEffect(() => {
@@ -2537,7 +2525,6 @@ export default function App() {
         networkStats={networkStats}
         onNetworkStatsRefresh={refreshNetworkStats}
       />}
-
       {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
       <OfflineToasts workers={state.workers} aliases={aliases}/>
       {selectedWorker && (() => {
