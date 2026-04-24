@@ -1,15 +1,18 @@
-// ── Share watcher (v1.5.12+) ────────────────────────────────────────────────
+// ── Share watcher (v1.5.13) ─────────────────────────────────────────────────
 // Tails ckpool sharelog files (requires --log-shares flag in ckpool command).
 // For every share submission, ckpool writes a JSON line with workername,
 // result (accepted/rejected), reject-reason, sdiff, and more.
 //
-// We discover the pool-id subdirectory dynamically, watch all .sharelog files
-// under it, parse each line as JSON, and aggregate counters per worker AND at
-// the pool level.
+// ckpool's log directory layout is:
+//   <logDir>/<block-height-hex>/<jobid-hex>.sharelog
+// A NEW subdirectory is created for every block height, so the watcher must
+// recursively scan and re-discover new directories continuously — not cache a
+// single poolDir from first boot (v1.5.12 bug that missed 97% of shares).
 //
 // Classification:
 //   result:true                                       → accepted
-//   result:false + reason matches STALE_RE           → stale (network latency)
+//   result:false + reason matches STALE_RE           → stale (latency-adjacent,
+//                                                        includes "Invalid JobID")
 //   result:false + any other reason                  → rejected (hardware/config)
 //
 // Persistence (v1.5.11+):
@@ -17,7 +20,7 @@
 //   Sharelog file read-offsets persist as sharelogCursors so we resume reading
 //   from where we left off instead of skipping ahead to end-of-file on every
 //   restart (which previously caused us to miss historical shares entirely).
-//   Pool-level acceptedCount/rejectedCount/stale now populated in real time.
+//   Pool-level acceptedCount/rejectedCount/stale populated in real time.
 //
 //   Shape:
 //     shareCounters: { [workerName]: { accepted, rejected, stale, bestSdiff,
@@ -33,7 +36,8 @@ const path = require('path');
 const STALE_RE = /stale|invalid.?jobid|old.?job|expired/i;
 const POLL_MS = 2000;
 const PERSIST_MS = 60000;
-const MAX_FILES_TRACKED = 50;
+const RESCAN_DIRS_EVERY_MS = 15000;   // re-walk tree every 15s for new block-height dirs
+const SKIP_DIRS = new Set(['pool', 'users']);
 
 function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (!fs.existsSync(logDir)) {
@@ -42,8 +46,9 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   }
 
   const tracked = new Map(); // filepath -> lastSize (mirrors state.sharelogCursors)
-  let poolDir = null;
   let lastPersistAt = Date.now();
+  let lastDirScanAt = 0;
+  let cachedFileList = [];
 
   if (!state.shareCounters) state.shareCounters = {};
   if (!state.sharelogCursors) state.sharelogCursors = {};
@@ -52,8 +57,6 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (typeof state.shares.rejectedCount !== 'number') state.shares.rejectedCount = 0;
   if (typeof state.shares.stale !== 'number') state.shares.stale = 0;
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
-  // v1.5.12: Track when counters started accumulating (for "Tracking since"
-  // timestamp in the UI and for the reset-stats endpoint).
   if (typeof state.shareStatsStartedAt !== 'number') state.shareStatsStartedAt = Date.now();
 
   // Restore counters + cursors from persist.json if present
@@ -92,16 +95,28 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
     }
   } catch (e) { console.log('[share-watcher] persist restore failed:', e.message); }
 
-  function findPoolDir() {
-    try {
-      const entries = fs.readdirSync(logDir, { withFileTypes: true });
+  // Recursively walk logDir for all .sharelog files. ckpool creates one
+  // subdirectory per block height (e.g. 000e708f, 000e7090, ...), so we
+  // must re-walk every RESCAN_DIRS_EVERY_MS to catch new directories.
+  // We skip 'pool' and 'users' subdirs (those are ckpool's own bookkeeping).
+  function walkSharelogFiles(root) {
+    const out = [];
+    const stack = [root];
+    while (stack.length) {
+      const dir = stack.pop();
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+      catch { continue; }
       for (const e of entries) {
-        if (!e.isDirectory()) continue;
-        if (e.name === 'pool' || e.name === 'users') continue;
-        if (/^[0-9a-f]+$/i.test(e.name)) return path.join(logDir, e.name);
+        if (e.isDirectory()) {
+          if (SKIP_DIRS.has(e.name)) continue;
+          stack.push(path.join(dir, e.name));
+        } else if (e.isFile() && e.name.endsWith('.sharelog')) {
+          out.push(path.join(dir, e.name));
+        }
       }
-    } catch {}
-    return null;
+    }
+    return out;
   }
 
   function ensureCounter(name) {
@@ -160,36 +175,34 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   }
 
   function scanFiles() {
-    if (!poolDir) poolDir = findPoolDir();
-    if (!poolDir) return;
+    const now = Date.now();
 
-    let files;
-    try {
-      files = fs.readdirSync(poolDir)
-        .filter(f => f.endsWith('.sharelog'))
-        .map(f => path.join(poolDir, f));
-    } catch { return; }
+    // Re-walk the directory tree periodically (every 15s) to pick up new
+    // block-height subdirectories created by ckpool. Between walks we reuse
+    // the cached list — cheap, avoids thrashing the filesystem.
+    if (now - lastDirScanAt >= RESCAN_DIRS_EVERY_MS || cachedFileList.length === 0) {
+      cachedFileList = walkSharelogFiles(logDir);
+      lastDirScanAt = now;
+    }
+    const files = cachedFileList;
+    if (!files.length) return;
 
-    // Purge tracked files that no longer exist on disk (ckpool log rotation)
+    const fileSet = new Set(files);
+
+    // Purge tracked files that no longer exist on disk (deleted/rotated away).
+    // Keep cursors for files that still exist — we want to resume them.
     for (const p of Array.from(tracked.keys())) {
-      if (!files.includes(p)) {
+      if (!fileSet.has(p)) {
         tracked.delete(p);
         delete state.sharelogCursors[p];
       }
     }
 
-    if (files.length > MAX_FILES_TRACKED) {
-      files.sort();
-      files = files.slice(-MAX_FILES_TRACKED);
-    }
-
+    // Track and tick every sharelog file — no cap. At ~300 files across 60
+    // block-height dirs this is fine; fs.stat is cheap and streams only read
+    // new bytes beyond the cursor.
     for (const filepath of files) {
       if (!tracked.has(filepath)) {
-        // Resume from last persisted cursor, or start from byte 0 for new files.
-        // v1.5.11 fix: previously we set cursor to current file size on first
-        // discovery, silently skipping all existing shares on every API restart.
-        // Now we read from byte 0 so historical shares get counted exactly once
-        // (persistence prevents double-count across restarts).
         const savedCursor = state.sharelogCursors[filepath];
         tracked.set(filepath, typeof savedCursor === 'number' ? savedCursor : 0);
       }
@@ -245,7 +258,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   }
 
   setInterval(tick, POLL_MS);
-  console.log('[share-watcher] Watching', logDir, 'for .sharelog files');
+  console.log('[share-watcher] Watching', logDir, 'recursively for .sharelog files (v1.5.13)');
 }
 
 module.exports = { startShareWatcher };
