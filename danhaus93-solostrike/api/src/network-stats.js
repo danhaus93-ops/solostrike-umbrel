@@ -1,39 +1,41 @@
-// network-stats.js — SoloStrike Pulse (v1.6.0+)
+// ── SoloStrike Network Stats (v1.6.0) ─────────────────────────────────────
 //
-// Anonymous, opt-in census of solo mining pools running SoloStrike.
-// Uses nostr (Notes and Other Stuff Transmitted by Relays) as the transport.
+// Publishes anonymous pool stats (hashrate, worker count, version,
+// blocks found) to the SoloStrike Network over nostr every 5 minutes.
+// Subscribes to everyone else's stats from the last 15 minutes and
+// aggregates them into state.networkStats.
 //
-// HOW IT WORKS:
-//   • Each pool generates a fresh keypair on first opt-in (nostrPrivkey in cfg)
-//   • Every 5 min: signs an event with { hashrate, workers, version, blocks }
-//     and publishes to 3 public relays (damus.io, nos.lol, primal.net)
-//   • Subscribes to all SoloStrike events from the last 15 min
-//   • Aggregates results into the network-stats response that the UI polls
+// Privacy model:
+// • Random keypair generated once per install, stored in persist.json.
+//   Not linked to the BTC payout address or anything else identifiable.
+// • Payload contains only numeric stats and version string. No IP,
+//   no BTC address, no hostname, no location.
+// • Publishing is opt-in (cfg.networkStatsEnabled). Subscribing/
+//   displaying network totals is always on — users can see the
+//   network without contributing.
+// • Users can regenerate the keypair anytime to start over with a
+//   fresh identity.
 //
-// PRIVACY:
-//   • Payload contains NO BTC address, NO IP, NO hostname, NO location
-//   • Pool identity is a fresh keypair (not tied to BTC address)
-//   • User can opt out anytime; user can regenerate identity anytime
+// Protocol details:
+// • nostr kind 30078 (parameterized replaceable — one event per install)
+// • tag "t": "solostrike-stats" (discovery)
+// • tag "d": install UUID (dedup key — same install only counts once
+//   even if we see events from multiple relays)
+// • content: JSON.stringify({ hashrate, workers, version, blocks })
 //
-// SPAM DEFENSE:
-//   • MAX_HASHRATE_HPS = 10 PH/s per pool (10,000 TH/s — generous)
-//   • MAX_WORKERS = 1000 per pool
-//   • MAX_BLOCKS = 1000 per pool
-//   • Replay protection: only the most recent event per pubkey within window
-//
-// EVENT FORMAT (kind 30078, parameterized replaceable per NIP-78):
-//   • d-tag: "solostrike-pool-stats"
-//   • content: JSON.stringify({ hashrate, workers, version, blocks })
-//   • created_at: now
-//   • signed with the pool's nostr privkey
+// Spam defense:
+// • Reject hashrate > 10 PH/s per install (home pool sanity limit)
+// • Reject worker count > 1000 per install
+// • Reject events older than 15 minutes (prevents replay)
+// • Dedup by pubkey (one event per install per 15-min window)
 
+const crypto = require('crypto');
 const WebSocket = require('ws');
-const { schnorr } = require('@noble/curves/secp256k1');
-const { sha256 } = require('@noble/hashes/sha2');
-const { bytesToHex, hexToBytes, randomBytes } = require('@noble/hashes/utils');
-
-// Make WebSocket available to nostr-tools (needs global in Node)
-global.WebSocket = WebSocket;
+const {
+  generateSecretKey,
+  getPublicKey,
+  finalizeEvent,
+} = require('nostr-tools/pure');
 
 const RELAYS = [
   'wss://relay.damus.io',
@@ -41,240 +43,188 @@ const RELAYS = [
   'wss://relay.primal.net',
 ];
 
-const D_TAG = 'solostrike-pool-stats';
-const EVENT_KIND = 30078;
-const PUBLISH_INTERVAL_MS = 5 * 60 * 1000;       // every 5 min
-const SUBSCRIBE_WINDOW_S = 15 * 60;              // last 15 min of events count
-const MAX_HASHRATE_HPS = 10 * 1e15;              // 10 PH/s — fleet-level cap
+const PUBLISH_INTERVAL_MS = 5 * 60 * 1000;   // 5 minutes
+const SUBSCRIBE_WINDOW_MS = 15 * 60 * 1000;  // count events from last 15 min
+const RECONNECT_DELAY_MS = 30 * 1000;        // 30s between reconnect attempts
+const EVENT_KIND = 30078;                    // parameterized replaceable
+const TAG_NAME = 'solostrike-stats';
+
+// Sanity limits — reject obviously bogus events
+const MAX_HASHRATE_HPS = 10 * 1e15;          // 10 PH/s
 const MAX_WORKERS = 1000;
 const MAX_BLOCKS = 1000;
 
-let publishTimer = null;
-let aggregateTimer = null;
-const relayConnections = new Map(); // url -> { ws, status, reconnectTimer }
-
-// ─── KEY UTILS ──────────────────────────────────────────────────────────────
-
-function generatePrivkey() {
-  return bytesToHex(randomBytes(32));
-}
-
-function getPubkey(privkey) {
-  return bytesToHex(schnorr.getPublicKey(hexToBytes(privkey)));
-}
-
-function generateInstallId() {
-  return bytesToHex(randomBytes(16));
-}
-
-// Compute event id (sha256 of canonical JSON serialization per NIP-01)
-function getEventHash(event) {
-  const serialized = JSON.stringify([
-    0,
-    event.pubkey,
-    event.created_at,
-    event.kind,
-    event.tags,
-    event.content,
-  ]);
-  return bytesToHex(sha256(new TextEncoder().encode(serialized)));
-}
-
-function signEvent(event, privkey) {
-  const id = getEventHash(event);
-  const sig = bytesToHex(schnorr.sign(hexToBytes(id), hexToBytes(privkey)));
-  return { ...event, id, sig };
-}
-
-function verifyEvent(event) {
-  if (!event || !event.id || !event.sig || !event.pubkey) return false;
-  try {
-    const expectedId = getEventHash(event);
-    if (expectedId !== event.id) return false;
-    return schnorr.verify(hexToBytes(event.sig), hexToBytes(event.id), hexToBytes(event.pubkey));
-  } catch {
-    return false;
-  }
-}
-
-// ─── PUBLIC API ─────────────────────────────────────────────────────────────
-
-/**
- * Initialize state.networkStats and ensure cfg has a keypair if missing.
- * Returns { cfg, state } unchanged-but-augmented for the caller to merge.
- */
-function ensureIdentity(cfg) {
+function startNetworkStats({ state, cfg, savePersist }) {
+  // Ensure identity keypair exists. Stored in persist.json so it survives
+  // restarts — otherwise we'd create a new "install" every boot and
+  // pollute everyone's counter.
   if (!cfg.nostrPrivkey) {
-    cfg.nostrPrivkey = generatePrivkey();
+    const sk = generateSecretKey();
+    cfg.nostrPrivkey = Buffer.from(sk).toString('hex');
+    cfg.nostrInstallId = crypto.randomUUID();
+    console.log('[network-stats] Generated new nostr identity');
   }
   if (!cfg.nostrInstallId) {
-    cfg.nostrInstallId = generateInstallId();
-  }
-  return cfg;
-}
-
-function regenerateIdentity(cfg) {
-  cfg.nostrPrivkey = generatePrivkey();
-  cfg.nostrInstallId = generateInstallId();
-  return cfg;
-}
-
-/**
- * Connect to all relays. Reconnects automatically.
- * Stores subscriptions to receive other pools' events.
- */
-function startNetworkStats({ cfg, state, savePersist, log }) {
-  if (!state.networkStats) {
-    state.networkStats = {
-      enabled: !!cfg.networkStatsEnabled,
-      pools: 0,
-      hashrate: 0,
-      workers: 0,
-      blocks: 0,
-      versions: {},
-      relayStatus: {},
-      lastUpdate: 0,
-    };
-  } else {
-    state.networkStats.enabled = !!cfg.networkStatsEnabled;
+    cfg.nostrInstallId = crypto.randomUUID();
   }
 
-  // Always populate pubkey for UI, even if not enabled
-  if (cfg.nostrPrivkey) {
-    try { state.networkStats.pubkey = getPubkey(cfg.nostrPrivkey); } catch {}
-  }
+  const privkeyBytes = Buffer.from(cfg.nostrPrivkey, 'hex');
+  const pubkey = getPublicKey(privkeyBytes);
+  const installId = cfg.nostrInstallId;
 
-  // Always observe the network even when not publishing —
-  // gives the user a glimpse of the count before they opt in.
-  ensureIdentity(cfg);
-  // Persist any keypair we just generated
-  if (typeof savePersist === 'function') {
-    try { savePersist({ nostrPrivkey: cfg.nostrPrivkey, nostrInstallId: cfg.nostrInstallId }); } catch {}
-  }
+  console.log(`[network-stats] Identity: pubkey=${pubkey.slice(0,16)}… installId=${installId.slice(0,8)}…`);
 
-  // seenEvents: stores latest event per pubkey within the rolling window
+  // Aggregated view of the network — refreshed continuously as we
+  // receive events. Gets pruned every minute to drop stale entries.
+  // Keyed by pubkey so the same install reporting to multiple relays
+  // only counts once.
   const seenEvents = new Map(); // pubkey -> { hashrate, workers, version, blocks, receivedAt }
 
-  function aggregate() {
-    const now = Date.now();
-    const cutoff = now - SUBSCRIBE_WINDOW_S * 1000;
-    let totalHashrate = 0;
-    let totalWorkers = 0;
-    let totalBlocks = 0;
-    const versions = {};
-    let pools = 0;
+  state.networkStats = {
+    enabled: !!cfg.networkStatsEnabled,
+    pools: 0,
+    hashrate: 0,
+    workers: 0,
+    blocks: 0,
+    versions: {},
+    lastUpdate: 0,
+    relayStatus: {}, // url -> 'connected' | 'connecting' | 'error'
+  };
 
-    for (const [pubkey, ev] of seenEvents.entries()) {
-      if (ev.receivedAt < cutoff) {
-        seenEvents.delete(pubkey);
-        continue;
-      }
-      pools++;
-      totalHashrate += ev.hashrate;
-      totalWorkers += ev.workers;
-      totalBlocks += ev.blocks;
-      versions[ev.version] = (versions[ev.version] || 0) + 1;
-    }
+  // Relay connection pool. One WebSocket per relay, reconnects on drop.
+  const sockets = new Map(); // url -> WebSocket
 
-    state.networkStats.pools = pools;
-    state.networkStats.hashrate = totalHashrate;
-    state.networkStats.workers = totalWorkers;
-    state.networkStats.blocks = totalBlocks;
-    state.networkStats.versions = versions;
-    state.networkStats.lastUpdate = now;
-  }
+  function connectRelay(url) {
+    state.networkStats.relayStatus[url] = 'connecting';
 
-  function ingestEvent(event) {
-    if (event.kind !== EVENT_KIND) return;
-    const dTag = (event.tags || []).find(t => t[0] === 'd');
-    if (!dTag || dTag[1] !== D_TAG) return;
-    if (!verifyEvent(event)) {
-      if (log) log(`[network-stats] Rejected event with bad signature from ${event.pubkey?.slice(0,8)}…`);
+    let ws;
+    try {
+      ws = new WebSocket(url, { handshakeTimeout: 10000 });
+    } catch (e) {
+      console.log(`[network-stats] Relay ${url} connect threw: ${e.message}`);
+      scheduleReconnect(url);
       return;
     }
 
+    sockets.set(url, ws);
+
+    ws.on('open', () => {
+      state.networkStats.relayStatus[url] = 'connected';
+      console.log(`[network-stats] Connected to ${url}`);
+      // Subscribe immediately on connect
+      const subId = 'ss-sub-' + crypto.randomBytes(4).toString('hex');
+      const since = Math.floor((Date.now() - SUBSCRIBE_WINDOW_MS) / 1000);
+      const req = JSON.stringify([
+        'REQ', subId,
+        { kinds: [EVENT_KIND], '#t': [TAG_NAME], since },
+      ]);
+      try { ws.send(req); } catch {}
+    });
+
+    ws.on('message', (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+      if (!Array.isArray(msg)) return;
+
+      const type = msg[0];
+      if (type === 'EVENT') {
+        handleIncomingEvent(msg[2]);
+      } else if (type === 'NOTICE') {
+        // Relay advisory, log but don't panic
+        console.log(`[network-stats] ${url} notice: ${msg[1]}`);
+      }
+      // EOSE and OK messages — no action needed
+    });
+
+    ws.on('error', (err) => {
+      console.log(`[network-stats] Relay ${url} error: ${err.message}`);
+      state.networkStats.relayStatus[url] = 'error';
+    });
+
+    ws.on('close', () => {
+      sockets.delete(url);
+      state.networkStats.relayStatus[url] = 'error';
+      scheduleReconnect(url);
+    });
+  }
+
+  const reconnectTimers = new Map();
+  function scheduleReconnect(url) {
+    if (reconnectTimers.has(url)) return;
+    const timer = setTimeout(() => {
+      reconnectTimers.delete(url);
+      connectRelay(url);
+    }, RECONNECT_DELAY_MS);
+    reconnectTimers.set(url, timer);
+  }
+
+  function handleIncomingEvent(ev) {
+    if (!ev || typeof ev !== 'object') return;
+    if (ev.kind !== EVENT_KIND) return;
+    if (!Array.isArray(ev.tags)) return;
+
+    // Must have the solostrike-stats tag
+    const hasTag = ev.tags.some(t => Array.isArray(t) && t[0] === 't' && t[1] === TAG_NAME);
+    if (!hasTag) return;
+
+    // Reject events older than our subscribe window (replay protection)
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (ev.created_at < nowSec - (SUBSCRIBE_WINDOW_MS / 1000)) return;
+    if (ev.created_at > nowSec + 60) return; // clock-skew tolerance
+
+    // Parse content
     let data;
-    try { data = JSON.parse(event.content); }
-    catch { return; }
+    try { data = JSON.parse(ev.content); } catch { return; }
+    if (!data || typeof data !== 'object') return;
 
     const hashrate = Number(data.hashrate) || 0;
     const workers = Number(data.workers) || 0;
     const blocks = Number(data.blocks) || 0;
-    const version = String(data.version || 'unknown').slice(0, 16);
+    const version = typeof data.version === 'string' ? data.version.slice(0, 16) : 'unknown';
 
-    // Spam defense — clamp values
+    // Sanity limits
     if (hashrate < 0 || hashrate > MAX_HASHRATE_HPS) return;
     if (workers < 0 || workers > MAX_WORKERS) return;
     if (blocks < 0 || blocks > MAX_BLOCKS) return;
 
-    // Keep most recent event per pubkey
-    const existing = seenEvents.get(event.pubkey);
-    if (existing && existing.receivedAt > (event.created_at * 1000)) return;
+    // Dedup by pubkey — keep newest event only
+    const existing = seenEvents.get(ev.pubkey);
+    if (existing && existing.receivedAt > ev.created_at) return;
 
-    seenEvents.set(event.pubkey, {
+    seenEvents.set(ev.pubkey, {
       hashrate, workers, blocks, version,
-      receivedAt: event.created_at * 1000,
+      receivedAt: ev.created_at,
     });
 
-    aggregate();
+    recomputeAggregates();
   }
 
-  function connectRelay(url) {
-    const existing = relayConnections.get(url);
-    if (existing && existing.ws && existing.ws.readyState === WebSocket.OPEN) return;
+  function recomputeAggregates() {
+    const cutoffSec = Math.floor((Date.now() - SUBSCRIBE_WINDOW_MS) / 1000);
 
-    if (existing && existing.reconnectTimer) {
-      clearTimeout(existing.reconnectTimer);
+    // Prune stale entries
+    for (const [pk, e] of seenEvents) {
+      if (e.receivedAt < cutoffSec) seenEvents.delete(pk);
     }
 
-    const ws = new WebSocket(url);
-    const conn = { ws, status: 'connecting', reconnectTimer: null };
-    relayConnections.set(url, conn);
-    state.networkStats.relayStatus[url] = 'connecting';
+    let hashrate = 0, workers = 0, blocks = 0;
+    const versions = {};
+    for (const e of seenEvents.values()) {
+      hashrate += e.hashrate;
+      workers += e.workers;
+      blocks += e.blocks;
+      versions[e.version] = (versions[e.version] || 0) + 1;
+    }
 
-    ws.on('open', () => {
-      conn.status = 'connected';
-      state.networkStats.relayStatus[url] = 'connected';
-      if (log) log(`[network-stats] Connected to ${url}`);
-
-      // Subscribe to all SoloStrike events from the last window
-      const since = Math.floor(Date.now() / 1000) - SUBSCRIBE_WINDOW_S;
-      const subId = 'solostrike-pulse';
-      const sub = ['REQ', subId, {
-        kinds: [EVENT_KIND],
-        '#d': [D_TAG],
-        since,
-      }];
-      try { ws.send(JSON.stringify(sub)); } catch {}
-    });
-
-    ws.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        if (Array.isArray(msg) && msg[0] === 'EVENT' && msg[2]) {
-          ingestEvent(msg[2]);
-        }
-        // ignore EOSE, NOTICE, OK, etc.
-      } catch { /* malformed message — ignore */ }
-    });
-
-    ws.on('close', () => {
-      conn.status = 'disconnected';
-      state.networkStats.relayStatus[url] = 'disconnected';
-      if (log) log(`[network-stats] Disconnected from ${url} — reconnecting in 30s`);
-      conn.reconnectTimer = setTimeout(() => connectRelay(url), 30000);
-    });
-
-    ws.on('error', (err) => {
-      conn.status = 'error';
-      state.networkStats.relayStatus[url] = 'error';
-      if (log) log(`[network-stats] Error on ${url}: ${err.message}`);
-      // close handler will trigger reconnect
-    });
+    state.networkStats.pools = seenEvents.size;
+    state.networkStats.hashrate = hashrate;
+    state.networkStats.workers = workers;
+    state.networkStats.blocks = blocks;
+    state.networkStats.versions = versions;
+    state.networkStats.lastUpdate = Date.now();
   }
 
-  // Periodically publish our own stats
-  function publish() {
+  function publishOurStats() {
     // Only publish if opted in
     if (!cfg.networkStatsEnabled) return;
 
@@ -302,73 +252,101 @@ function startNetworkStats({ cfg, state, savePersist, log }) {
     const template = {
       kind: EVENT_KIND,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [['d', D_TAG]],
+      tags: [
+        ['t', TAG_NAME],
+        ['d', installId],
+      ],
       content,
-      pubkey: getPubkey(cfg.nostrPrivkey),
     };
 
-    const signed = signEvent(template, cfg.nostrPrivkey);
+    let signed;
+    try {
+      signed = finalizeEvent(template, privkeyBytes);
+    } catch (e) {
+      console.log(`[network-stats] Sign failed: ${e.message}`);
+      return;
+    }
+
+    const payload = JSON.stringify(['EVENT', signed]);
 
     let publishedTo = 0;
-    for (const [url, conn] of relayConnections.entries()) {
-      if (conn.ws && conn.ws.readyState === WebSocket.OPEN) {
-        try {
-          conn.ws.send(JSON.stringify(['EVENT', signed]));
-          publishedTo++;
-        } catch (e) {
-          if (log) log(`[network-stats] Failed to publish to ${url}: ${e.message}`);
-        }
+    for (const [url, ws] of sockets) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      try {
+        ws.send(payload);
+        publishedTo++;
+      } catch (e) {
+        console.log(`[network-stats] Publish to ${url} failed: ${e.message}`);
       }
     }
-    if (log) log(`[network-stats] Published stats to ${publishedTo}/${relayConnections.size} relays`);
+    console.log(`[network-stats] Published stats to ${publishedTo}/${RELAYS.length} relays`);
 
-    // Also self-ingest so our own pool is counted in the aggregate
-    seenEvents.set(signed.pubkey, {
-      hashrate: ourHashrate,
+    // Also count ourselves in the aggregate immediately (don't wait to
+    // hear our own event echoed back)
+    seenEvents.set(pubkey, {
+      hashrate: Math.round(ourHashrate),
       workers: ourWorkers,
       blocks: ourBlocks,
       version: ourVersion,
-      receivedAt: Date.now(),
+      receivedAt: template.created_at,
     });
-    aggregate();
+    recomputeAggregates();
   }
 
-  // Connect to all relays
-  for (const url of RELAYS) {
-    connectRelay(url);
-  }
-
-  // Schedule publishing — every 5 min, with a small initial delay so we
-  // get a chance to see our own first event come back through the relays
-  if (publishTimer) clearInterval(publishTimer);
-  publishTimer = setInterval(publish, PUBLISH_INTERVAL_MS);
-  setTimeout(publish, 30 * 1000); // first publish after 30s
-
-  // Periodically re-aggregate (in case events expire from window)
-  if (aggregateTimer) clearInterval(aggregateTimer);
-  aggregateTimer = setInterval(aggregate, 60 * 1000);
-
-  return {
-    publishNow: publish,
-    aggregateNow: aggregate,
-    stop: () => {
-      if (publishTimer) clearInterval(publishTimer);
-      if (aggregateTimer) clearInterval(aggregateTimer);
-      for (const [, conn] of relayConnections.entries()) {
-        if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer);
-        if (conn.ws) {
-          try { conn.ws.close(); } catch {}
-        }
-      }
-      relayConnections.clear();
+  // API exposed to the rest of the app for runtime control
+  const controller = {
+    enable() {
+      cfg.networkStatsEnabled = true;
+      state.networkStats.enabled = true;
+      // Publish immediately so the user sees themselves in the counter
+      publishOurStats();
+      saveIdentity();
+    },
+    disable() {
+      cfg.networkStatsEnabled = false;
+      state.networkStats.enabled = false;
+      // Remove our own event from the local aggregate so counter updates
+      seenEvents.delete(pubkey);
+      recomputeAggregates();
+      saveIdentity();
+    },
+    regenerateIdentity() {
+      // Clear our old pubkey from the aggregate first
+      seenEvents.delete(pubkey);
+      const sk = generateSecretKey();
+      cfg.nostrPrivkey = Buffer.from(sk).toString('hex');
+      cfg.nostrInstallId = crypto.randomUUID();
+      saveIdentity();
+      console.log('[network-stats] Regenerated identity — restart API to apply');
+      // Note: we don't rebuild the signer in-place because the closure
+      // captures privkeyBytes and pubkey. A restart is required for the
+      // new identity to actually publish.
     },
   };
+
+  function saveIdentity() {
+    try {
+      savePersist({
+        nostrPrivkey: cfg.nostrPrivkey,
+        nostrInstallId: cfg.nostrInstallId,
+        networkStatsEnabled: !!cfg.networkStatsEnabled,
+      });
+    } catch (e) {
+      console.log(`[network-stats] saveIdentity failed: ${e.message}`);
+    }
+  }
+
+  // Kick everything off
+  RELAYS.forEach(connectRelay);
+  setInterval(publishOurStats, PUBLISH_INTERVAL_MS);
+  setInterval(recomputeAggregates, 60 * 1000); // prune every minute
+
+  // First publish happens after 15s delay so hashrate has time to warm up
+  setTimeout(publishOurStats, 15 * 1000);
+
+  console.log(`[network-stats] Started (participating=${!!cfg.networkStatsEnabled})`);
+
+  return controller;
 }
 
-module.exports = {
-  startNetworkStats,
-  ensureIdentity,
-  regenerateIdentity,
-  generatePrivkey,
-  getPubkey,
-};
+module.exports = { startNetworkStats };
