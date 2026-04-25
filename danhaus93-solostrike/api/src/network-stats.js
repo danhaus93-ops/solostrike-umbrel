@@ -139,10 +139,6 @@ function getDeviceFingerprint(cfg) {
   // MAC addresses are unstable in Docker (assigned fresh per container restart),
   // so we explicitly do NOT include them. The salt is the real anchor.
 
-    macs.sort();
-    if (macs.length) sources.push('mac:' + macs[0]);
-  } catch (_) { /* no network info available */ }
-
   // HKDF-style derivation: sha256(domain || sha256(joined sources))
   const inner = crypto.createHash('sha256').update(sources.join('||')).digest();
   return crypto.createHash('sha256')
