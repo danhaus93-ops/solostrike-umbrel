@@ -136,17 +136,9 @@ function getDeviceFingerprint(cfg) {
   const hn = os.hostname();
   if (hn) sources.push('host:' + hn);
 
-  // First non-zero MAC — also unstable in Docker but adds entropy
-  try {
-    const ifaces = os.networkInterfaces();
-    const macs = [];
-    for (const name of Object.keys(ifaces)) {
-      for (const i of ifaces[name]) {
-        if (!i.internal && i.mac && i.mac !== '00:00:00:00:00:00') {
-          macs.push(i.mac);
-        }
-      }
-    }
+  // MAC addresses are unstable in Docker (assigned fresh per container restart),
+  // so we explicitly do NOT include them. The salt is the real anchor.
+
     macs.sort();
     if (macs.length) sources.push('mac:' + macs[0]);
   } catch (_) { /* no network info available */ }
