@@ -1365,253 +1365,245 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
 
 // ── Display tab ───────────────────────────────────────────────────────────────
 function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
-  const stripIds = stripSettings.metricIds;
-  const tickerIds = tickerSettings.metricIds;
-  const stripSet = new Set(stripIds);
-  const tickerSet = new Set(tickerIds);
-  const fadeSec = (stripSettings.fadeMs || DEFAULT_FADE_MS) / 1000;
-  const [draggedStrip, setDraggedStrip] = useState(null);
-  const [draggedTicker, setDraggedTicker] = useState(null);
-
-  const moveStrip = (idx, dir) => {
-    const next = [...stripIds];
-    const swap = idx + dir;
-    if (swap < 0 || swap >= next.length) return;
-    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
+  const toggleMetric = (id) => {
+    const next = stripSettings.metricIds.includes(id) ? stripSettings.metricIds.filter(x => x !== id) : [...stripSettings.metricIds, id];
     onStripSettingsChange({ ...stripSettings, metricIds: next });
   };
-
-  const moveTicker = (idx, dir) => {
-    const next = [...tickerIds];
+  const moveMetric = (id, dir) => {
+    const idx = stripSettings.metricIds.indexOf(id);
+    if (idx < 0) return;
     const swap = idx + dir;
-    if (swap < 0 || swap >= next.length) return;
-    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
-    onTickerSettingsChange({ ...tickerSettings, metricIds: next });
-  };
-
-  const reorderStrip = (fromId, toId) => {
-    if (fromId === toId) return;
-    const fromIdx = stripIds.indexOf(fromId);
-    const toIdx = stripIds.indexOf(toId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const next = [...stripIds];
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
+    if (swap < 0 || swap >= stripSettings.metricIds.length) return;
+    const next = [...stripSettings.metricIds];
+    const tmp = next[idx];
+    next[idx] = next[swap];
+    next[swap] = tmp;
     onStripSettingsChange({ ...stripSettings, metricIds: next });
-  };
-
-  const reorderTicker = (fromId, toId) => {
-    if (fromId === toId) return;
-    const fromIdx = tickerIds.indexOf(fromId);
-    const toIdx = tickerIds.indexOf(toId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const next = [...tickerIds];
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
-    onTickerSettingsChange({ ...tickerSettings, metricIds: next });
-  };
-
-  const toggleStripMetric = (id) => {
-    if (stripSet.has(id)) {
-      const next = stripIds.filter(x=>x!==id);
-      onStripSettingsChange({ ...stripSettings, metricIds: next });
-    } else {
-      onStripSettingsChange({ ...stripSettings, metricIds: [...stripIds, id] });
-    }
-  };
-
-  const toggleTickerMetric = (id) => {
-    if (tickerSet.has(id)) {
-      const next = tickerIds.filter(x=>x!==id);
-      onTickerSettingsChange({ ...tickerSettings, metricIds: next });
-    } else {
-      onTickerSettingsChange({ ...tickerSettings, metricIds: [...tickerIds, id] });
-    }
-  };
-
-  const sectionStyle = { marginBottom: 18, paddingBottom: 14, borderBottom:'1px dashed var(--border)' };
-  const rowLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:6, textTransform:'uppercase' };
-  const inputStyle = { width:'100%', padding:'0.5rem', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.75rem', outline:'none', boxSizing:'border-box' };
-
-  // Card preset helpers
-  const applyPreset = (preset) => onVisibleCardsChange(preset);
-  const matchesPreset = (preset) => {
-    if (visibleCards.length !== preset.length) return false;
-    return preset.every(id => visibleCards.includes(id));
   };
   const toggleCard = (id) => {
-    if (visibleCards.includes(id)) {
-      onVisibleCardsChange(visibleCards.filter(x => x !== id));
-    } else {
-      onVisibleCardsChange([...visibleCards, id]);
-    }
+    const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
+    onVisibleCardsChange(next);
+  };
+  const applyPreset = (preset) => onVisibleCardsChange([...preset]);
+  const matchesPreset = (preset) => {
+    if (!Array.isArray(visibleCards) || visibleCards.length !== preset.length) return false;
+    const a = [...visibleCards].sort();
+    const b = [...preset].sort();
+    return a.every((id, i) => id === b[i]);
   };
   const presetBtnStyle = (active) => ({
-    padding:'6px 12px', background:active?'var(--bg-raised)':'transparent',
-    border: active?'1px solid var(--amber)':'1px solid var(--border)',
-    color: active?'var(--amber)':'var(--text-2)',
-    fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em',
-    cursor:'pointer', textTransform:'uppercase'
+    flex:1, padding:'0.55rem',
+    background:'var(--bg-raised)',
+    border:`1px solid ${active?'var(--border-hot)':'var(--border)'}`,
+    color: active?'var(--amber)':'var(--text-1)',
+    fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700,
+    letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer',
   });
+
+  const toggleTickerMetric = (id) => {
+    const current = tickerSettings.metricIds || [];
+    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
+    onTickerSettingsChange({ ...tickerSettings, metricIds: next });
+  };
+  const moveTickerMetric = (id, dir) => {
+    const current = tickerSettings.metricIds || [];
+    const idx = current.indexOf(id);
+    if (idx < 0) return;
+    const swap = idx + dir;
+    if (swap < 0 || swap >= current.length) return;
+    const next = [...current];
+    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
+    onTickerSettingsChange({ ...tickerSettings, metricIds: next });
+  };
+  const matchTickerToStrip = () => {
+    onTickerSettingsChange({ ...tickerSettings, metricIds: [...(stripSettings.metricIds || [])] });
+  };
+
+  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.15em', color:'var(--amber)', textTransform:'uppercase', marginTop:'1.25rem', marginBottom:'0.5rem' };
+  const rowLabel = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:5, textTransform:'uppercase' };
 
   return (
     <>
-      <div style={sectionStyle}>
-        <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:6}}>
-          <input type="checkbox" id="minimal-mode" checked={minimalMode} onChange={e=>onMinimalModeChange(e.target.checked)} style={{accentColor:'var(--amber)'}}/>
-          <label htmlFor="minimal-mode" style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-1)', cursor:'pointer', letterSpacing:'0.05em'}}>Minimal mode</label>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'1rem', padding:'0.6rem 0.75rem', background:'var(--bg-raised)', border:`1px solid ${minimalMode?'var(--cyan)':'var(--border)'}`}}>
+        <span style={{fontSize:'1.1rem'}}>{minimalMode?'🔇':'🔊'}</span>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600, letterSpacing:'0.05em'}}>Minimal Mode</div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:2}}>Cleaner dashboard for shared screens. Hides nav, clock, ZMQ badge, fee rate.</div>
         </div>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginLeft:24}}>Hides strips, ticker, and most cards. Just the essentials.</div>
+        <button onClick={()=>onMinimalModeChange(!minimalMode)}
+          style={{width:40, height:22, borderRadius:11, background: minimalMode?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
+          <div style={{position:'absolute', top:1, left: minimalMode?20:2, width:18, height:18, borderRadius:'50%', background: minimalMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
+      </div>
+      {minimalMode && (
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
+          🔇 Minimal Mode is on — settings below are overridden until you turn it off.
+        </div>
+      )}
+
+      <div style={sectionTitle}>▸ Dashboard Cards</div>
+
+      <div style={rowLabel}>Quick presets</div>
+      <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
+        <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
+          Minimal (3)
+        </button>
+        <button onClick={()=>applyPreset(DEFAULT_PRESET)} style={presetBtnStyle(matchesPreset(DEFAULT_PRESET))}>
+          Default ({DEFAULT_PRESET.length})
+        </button>
+        <button onClick={()=>applyPreset(EVERYTHING_PRESET)} style={presetBtnStyle(matchesPreset(EVERYTHING_PRESET))}>
+          Everything ({EVERYTHING_PRESET.length})
+        </button>
       </div>
 
-      <div style={sectionStyle}>
-        <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:8}}>
-          <input type="checkbox" id="strip-enabled" checked={stripSettings.enabled} onChange={e=>onStripSettingsChange({...stripSettings, enabled:e.target.checked})} style={{accentColor:'var(--amber)'}}/>
-          <label htmlFor="strip-enabled" style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-1)', cursor:'pointer', letterSpacing:'0.05em'}}>Show top strip</label>
-        </div>
-        {stripSettings.enabled && (
-          <>
-            <div style={{display:'flex', gap:'0.6rem', marginBottom:10}}>
-              <div style={{flex:1}}>
-                <div style={rowLabel}>Per slide</div>
-                <input type="number" min="1" max="8" value={stripSettings.chunkSize} onChange={e=>onStripSettingsChange({...stripSettings, chunkSize:Math.max(1, Math.min(8, parseInt(e.target.value)||1))})} style={inputStyle}/>
-              </div>
-              <div style={{flex:1}}>
-                <div style={rowLabel}>Speed (sec)</div>
-                <input type="number" min="1" max="20" step="0.5" value={fadeSec} onChange={e=>onStripSettingsChange({...stripSettings, fadeMs:Math.round((parseFloat(e.target.value)||4)*1000)})} style={inputStyle}/>
-              </div>
+      <div style={rowLabel}>Individual cards (tap to toggle)</div>
+      <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
+        {ALL_CARDS.map(c => {
+          const on = visibleCards.includes(c.id);
+          return (
+            <div key={c.id} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+              <button onClick={()=>toggleCard(c.id)}
+                style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
+                {on?'✓':''}
+              </button>
+              <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.78rem', color: on?'var(--text-1)':'var(--text-2)'}}>{c.label}</span>
             </div>
-            <div style={rowLabel}>Selected ({stripIds.length}) — drag to reorder</div>
-            <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)', marginBottom:8}}>
-              {stripIds.length === 0 && <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', padding:'0.4rem'}}>No metrics selected</div>}
-              {stripIds.map((id, idx) => {
-                const m = METRIC_MAP[id];
-                if (!m) return null;
-                return (
-                  <div key={id} draggable
-                    onDragStart={()=>setDraggedStrip(id)}
-                    onDragOver={e=>{e.preventDefault();}}
-                    onDrop={()=>{ reorderStrip(draggedStrip, id); setDraggedStrip(null); }}
-                    onDragEnd={()=>setDraggedStrip(null)}
-                    style={{display:'flex', alignItems:'center', gap:8, padding:'5px 8px', background: draggedStrip===id ? 'var(--bg-raised)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)', cursor:'grab'}}>
-                    <span style={{color:'var(--text-3)', fontSize:14}}>≡</span>
-                    <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)'}}>{m.icon||''} {m.label}</span>
-                    <button onClick={()=>moveStrip(idx, -1)} disabled={idx===0} style={{background:'transparent', border:'1px solid var(--border)', color:idx===0?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===0?'default':'pointer'}}>↑</button>
-                    <button onClick={()=>moveStrip(idx, 1)} disabled={idx===stripIds.length-1} style={{background:'transparent', border:'1px solid var(--border)', color:idx===stripIds.length-1?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===stripIds.length-1?'default':'pointer'}}>↓</button>
-                    <button onClick={()=>toggleStripMetric(id)} style={{background:'transparent', border:'1px solid var(--red)', color:'var(--red)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:'pointer'}}>✕</button>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={rowLabel}>Available — tap to add</div>
-            <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
-              {Object.entries(METRIC_CATEGORIES).map(([cat, ids]) => {
-                const available = ids.filter(id => !stripSet.has(id));
-                if (!available.length) return null;
-                return (
-                  <React.Fragment key={cat}>
-                    <div style={{width:'100%', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', marginTop:6, marginBottom:2, textTransform:'uppercase'}}>{cat}</div>
-                    {available.map(id => {
-                      const m = METRIC_MAP[id];
-                      return (
-                        <button key={id} onClick={()=>toggleStripMetric(id)} style={{padding:'5px 8px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.65rem', cursor:'pointer'}}>+ {m.icon||''} {m.label}</button>
-                      );
-                    })}
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          </>
-        )}
+          );
+        })}
+      </div>
+      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
+        Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
       </div>
 
-      <div style={sectionStyle}>
-        <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:8}}>
-          <input type="checkbox" id="ticker-enabled" checked={tickerSettings.enabled} onChange={e=>onTickerSettingsChange({...tickerSettings, enabled:e.target.checked})} style={{accentColor:'var(--amber)'}}/>
-          <label htmlFor="ticker-enabled" style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-1)', cursor:'pointer', letterSpacing:'0.05em'}}>Show scrolling ticker</label>
-        </div>
-        {tickerSettings.enabled && (
-          <>
-            <div style={{display:'flex', gap:'0.6rem', marginBottom:10}}>
-              <div style={{flex:1}}>
-                <div style={rowLabel}>Speed (seconds for one cycle)</div>
-                <input type="number" min="3" max="120" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({...tickerSettings, speedSec:Math.max(3, Math.min(120, parseInt(e.target.value)||30))})} style={inputStyle}/>
-              </div>
-            </div>
-            <div style={rowLabel}>Selected ({tickerIds.length}) — drag to reorder</div>
-            <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)', marginBottom:8}}>
-              {tickerIds.length === 0 && <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', padding:'0.4rem'}}>No metrics selected</div>}
-              {tickerIds.map((id, idx) => {
-                const m = METRIC_MAP[id];
-                if (!m) return null;
-                return (
-                  <div key={id} draggable
-                    onDragStart={()=>setDraggedTicker(id)}
-                    onDragOver={e=>{e.preventDefault();}}
-                    onDrop={()=>{ reorderTicker(draggedTicker, id); setDraggedTicker(null); }}
-                    onDragEnd={()=>setDraggedTicker(null)}
-                    style={{display:'flex', alignItems:'center', gap:8, padding:'5px 8px', background: draggedTicker===id ? 'var(--bg-raised)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)', cursor:'grab'}}>
-                    <span style={{color:'var(--text-3)', fontSize:14}}>≡</span>
-                    <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)'}}>{m.icon||''} {m.label}</span>
-                    <button onClick={()=>moveTicker(idx, -1)} disabled={idx===0} style={{background:'transparent', border:'1px solid var(--border)', color:idx===0?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===0?'default':'pointer'}}>↑</button>
-                    <button onClick={()=>moveTicker(idx, 1)} disabled={idx===tickerIds.length-1} style={{background:'transparent', border:'1px solid var(--border)', color:idx===tickerIds.length-1?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===tickerIds.length-1?'default':'pointer'}}>↓</button>
-                    <button onClick={()=>toggleTickerMetric(id)} style={{background:'transparent', border:'1px solid var(--red)', color:'var(--red)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:'pointer'}}>✕</button>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={rowLabel}>Available — tap to add</div>
-            <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
-              {Object.entries(METRIC_CATEGORIES).map(([cat, ids]) => {
-                const available = ids.filter(id => !tickerSet.has(id));
-                if (!available.length) return null;
-                return (
-                  <React.Fragment key={cat}>
-                    <div style={{width:'100%', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', marginTop:6, marginBottom:2, textTransform:'uppercase'}}>{cat}</div>
-                    {available.map(id => {
-                      const m = METRIC_MAP[id];
-                      return (
-                        <button key={id} onClick={()=>toggleTickerMetric(id)} style={{padding:'5px 8px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.65rem', cursor:'pointer'}}>+ {m.icon||''} {m.label}</button>
-                      );
-                    })}
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          </>
-        )}
+      <div style={sectionTitle}>▸ Top Strip</div>
+
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable top strip</span>
+        <button onClick={()=>onStripSettingsChange({ ...stripSettings, enabled: !stripSettings.enabled })}
+          style={{width:40, height:22, borderRadius:11, background: stripSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
+          <div style={{position:'absolute', top:1, left: stripSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: stripSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
       </div>
 
-      <div style={sectionStyle}>
-        <div style={rowLabel}>Visible cards ({visibleCards.length}/{ALL_CARDS.length})</div>
-        <div style={{display:'flex', gap:5, marginBottom:8, flexWrap:'wrap'}}>
-          <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
-            Minimal ({MINIMAL_PRESET.length})
-          </button>
-          <button onClick={()=>applyPreset(DEFAULT_PRESET)} style={presetBtnStyle(matchesPreset(DEFAULT_PRESET))}>
-            Default ({DEFAULT_PRESET.length})
-          </button>
-          <button onClick={()=>applyPreset(EVERYTHING_PRESET)} style={presetBtnStyle(matchesPreset(EVERYTHING_PRESET))}>
-            Everything ({EVERYTHING_PRESET.length})
-          </button>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:'0.75rem'}}>
+        <div>
+          <div style={rowLabel}>Items per slide</div>
+          <input type="number" min="1" max="6" value={stripSettings.chunkSize}
+            onChange={e=>onStripSettingsChange({...stripSettings, chunkSize: Math.max(1, Math.min(6, parseInt(e.target.value)||1))})}
+            style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
         </div>
-
-        <div style={rowLabel}>Individual cards (tap to toggle)</div>
-        <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-          {ALL_CARDS.map(c => {
-            const on = visibleCards.includes(c.id);
-            return (
-              <div key={c.id} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                <button onClick={()=>toggleCard(c.id)}
-                  style={{width:18, height:18, padding:0, background:on?'var(--amber)':'transparent', border:'1px solid '+(on?'var(--amber)':'var(--border)'), color:'#000', fontFamily:'var(--fd)', fontSize:'0.65rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                  {on ? '✓' : ''}
-                </button>
-                <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color:on?'var(--text-1)':'var(--text-3)'}}>{c.label}</span>
-              </div>
-            );
-          })}
+        <div>
+          <div style={rowLabel}>Slide duration (ms)</div>
+          <input type="number" min="1000" max="20000" step="500" value={stripSettings.fadeMs}
+            onChange={e=>onStripSettingsChange({...stripSettings, fadeMs: Math.max(1000, Math.min(20000, parseInt(e.target.value)||5000))})}
+            style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
         </div>
       </div>
+
+      <div style={rowLabel}>Strip metrics (tap to toggle, ↑↓ to reorder)</div>
+      <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)', maxHeight:280, overflowY:'auto'}}>
+        {METRIC_CATEGORIES.map(cat => (
+          <div key={cat}>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--amber)', textTransform:'uppercase', padding:'8px 6px 4px', borderBottom:'1px solid rgba(245,166,35,0.15)'}}>{cat}</div>
+            {METRICS.filter(m => m.category === cat).map(metric => {
+              const on = stripSettings.metricIds.includes(metric.id);
+              const order = on ? stripSettings.metricIds.indexOf(metric.id) : -1;
+              return (
+                <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                  <button onClick={()=>toggleMetric(metric.id)}
+                    style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--amber)':'var(--border)'}`, background:on?'var(--amber)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
+                    {on?'✓':''}
+                  </button>
+                  <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.74rem', color: on?'var(--text-1)':'var(--text-2)', display:'flex', gap:6, alignItems:'center'}}>
+                    {metric.icon && <span style={{fontSize:'0.85rem'}}>{metric.icon}</span>}
+                    <span>{metric.label}</span>
+                  </span>
+                  {on && (
+                    <>
+                      <span style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', minWidth:20, textAlign:'right'}}>#{order+1}</span>
+                      <button onClick={()=>moveMetric(metric.id, -1)} disabled={order===0}
+                        style={{width:22, height:22, padding:0, background:'transparent', border:'1px solid var(--border)', color: order===0?'var(--text-3)':'var(--cyan)', fontSize:11, cursor: order===0?'default':'pointer'}}>↑</button>
+                      <button onClick={()=>moveMetric(metric.id, +1)} disabled={order===stripSettings.metricIds.length-1}
+                        style={{width:22, height:22, padding:0, background:'transparent', border:'1px solid var(--border)', color: order===stripSettings.metricIds.length-1?'var(--text-3)':'var(--cyan)', fontSize:11, cursor: order===stripSettings.metricIds.length-1?'default':'pointer'}}>↓</button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
+        Selected: <span style={{color:'var(--amber)'}}>{stripSettings.metricIds.length}</span> metric{stripSettings.metricIds.length===1?'':'s'}
+      </div>
+
+      <div style={sectionTitle}>▸ Scrolling Ticker</div>
+
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable scrolling ticker</span>
+        <button onClick={()=>onTickerSettingsChange({ ...tickerSettings, enabled: !tickerSettings.enabled })}
+          style={{width:40, height:22, borderRadius:11, background: tickerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
+          <div style={{position:'absolute', top:1, left: tickerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: tickerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
+      </div>
+
+      {tickerSettings.enabled && (
+        <>
+          <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8, marginBottom:'0.75rem'}}>
+            <div>
+              <div style={rowLabel}>Scroll speed (sec for one full pass)</div>
+              <input type="number" min="3" max="120" step="1" value={tickerSettings.speedSec}
+                onChange={e=>onTickerSettingsChange({...tickerSettings, speedSec: Math.max(3, Math.min(120, parseInt(e.target.value)||30))})}
+                style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
+              <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:3}}>Lower = faster scroll. 30s is a comfortable default.</div>
+            </div>
+          </div>
+
+          <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:6, marginBottom:6}}>
+            <span>Ticker metrics (tap to toggle, ↑↓ to reorder)</span>
+            <button onClick={matchTickerToStrip}
+              style={{padding:'4px 8px', background:'transparent', border:'1px solid var(--border)', color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', cursor:'pointer', textTransform:'uppercase'}}>
+              Match strip
+            </button>
+          </div>
+
+          <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)', maxHeight:280, overflowY:'auto'}}>
+            {METRIC_CATEGORIES.map(cat => (
+              <div key={cat}>
+                <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--cyan)', textTransform:'uppercase', padding:'8px 6px 4px', borderBottom:'1px solid rgba(0,255,209,0.15)'}}>{cat}</div>
+                {METRICS.filter(m => m.category === cat).map(metric => {
+                  const on = (tickerSettings.metricIds || []).includes(metric.id);
+                  const order = on ? tickerSettings.metricIds.indexOf(metric.id) : -1;
+                  return (
+                    <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                      <button onClick={()=>toggleTickerMetric(metric.id)}
+                        style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
+                        {on?'✓':''}
+                      </button>
+                      <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.74rem', color: on?'var(--text-1)':'var(--text-2)', display:'flex', gap:6, alignItems:'center'}}>
+                        {metric.icon && <span style={{fontSize:'0.85rem'}}>{metric.icon}</span>}
+                        <span>{metric.label}</span>
+                      </span>
+                      {on && (
+                        <>
+                          <span style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', minWidth:20, textAlign:'right'}}>#{order+1}</span>
+                          <button onClick={()=>moveTickerMetric(metric.id, -1)} disabled={order===0}
+                            style={{width:22, height:22, padding:0, background:'transparent', border:'1px solid var(--border)', color: order===0?'var(--text-3)':'var(--cyan)', fontSize:11, cursor: order===0?'default':'pointer'}}>↑</button>
+                          <button onClick={()=>moveTickerMetric(metric.id, +1)} disabled={order===(tickerSettings.metricIds||[]).length-1}
+                            style={{width:22, height:22, padding:0, background:'transparent', border:'1px solid var(--border)', color: order===(tickerSettings.metricIds||[]).length-1?'var(--text-3)':'var(--cyan)', fontSize:11, cursor: order===(tickerSettings.metricIds||[]).length-1?'default':'pointer'}}>↓</button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
+            Selected: <span style={{color:'var(--amber)'}}>{(tickerSettings.metricIds || []).length}</span> metric{(tickerSettings.metricIds || []).length===1?'':'s'}
+          </div>
+        </>
+      )}
     </>
   );
 }
