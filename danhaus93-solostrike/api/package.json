@@ -11,6 +11,8 @@
     "chokidar": "^3.6.0",
     "fs-extra": "^11.2.0",
     "nostr-tools": "^2.10.0",
+    "socks-proxy-agent": "^8.0.4",
     "zeromq": "^5.3.0"
   }
+
 }
