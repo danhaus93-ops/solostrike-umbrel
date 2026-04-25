@@ -659,7 +659,7 @@ function startSnapshotScheduler() {
   setInterval(() => {
     try {
       // Recompute pool-level closest calls (top 10 best shares ever) periodically
-      updateClosestCalls(state);
+      updateClosestCalls(state.snapshots, state);
     } catch (e) { console.error('[snapshots] interval failed:', e.message); }
   }, ROLLUP_INTERVAL_MS);
 
