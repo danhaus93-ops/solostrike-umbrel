@@ -1181,7 +1181,7 @@ function TopFindersPanel({ topFinders, netBlocks }) {
   const maxCount = list[0]?.count || 1;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Claim Jumpers — Last {totalSample} Blocks</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Claim Jumpers — Latest Strikes</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
         {list.map((p,i)=>{
           const pct = (p.count/maxCount)*100;
