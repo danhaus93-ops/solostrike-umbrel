@@ -131,10 +131,8 @@ function getDeviceFingerprint(cfg) {
     if (mid) sources.push('machine-id:' + mid);
   } catch (_) { /* container without machine-id, fall through */ }
 
-  // Hostname — unstable in Docker (changes on container recreate) but
-  // included for additional entropy. The salt is the real anchor.
-  const hn = os.hostname();
-  if (hn) sources.push('host:' + hn);
+  // Hostname IS unstable in Docker (changes on container recreate via docker rm -f),
+  // so we exclude it. The salt alone is the anchor — 32 bytes of host-persisted randomness.
 
   // MAC addresses are unstable in Docker (assigned fresh per container restart),
   // so we explicitly do NOT include them. The salt is the real anchor.
