@@ -448,6 +448,7 @@ app.post('/api/config', async (req, res) => {
       const t = String(payoutAddress).trim();
       if (!isValidBtcAddress(t)) return res.status(400).json({ error: 'Invalid BTC address' });
       cfg.payoutAddress = t;
+      state.payoutAddress = t;
     }
     if (poolName != null) cfg.poolName = String(poolName).slice(0, 32);
     if (typeof privateMode === 'boolean') {
@@ -697,6 +698,7 @@ async function main() {
   if (persist.pulseDeviceSalt) cfg.pulseDeviceSalt = persist.pulseDeviceSalt;
   if (typeof persist.pulseTorEnabled === 'boolean') cfg.pulseTorEnabled = persist.pulseTorEnabled;
   state.privateMode = !!cfg.privateMode;
+  state.payoutAddress = cfg.payoutAddress || null;
 
   try {
     const loaded = await loadSnapshots(CONFIG_DIR);
