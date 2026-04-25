@@ -559,11 +559,41 @@ app.post('/api/network-stats/enable', (req, res) => {
   res.json({ ok: true, enabled: true });
 });
 
-app.post('/api/network-stats/disable', (req, res) => {
+app.post('/api/network-stats/export-backup', (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
-  networkStatsController.disable();
-  res.json({ ok: true, enabled: false });
+  if (typeof networkStatsController.exportBackup !== 'function') {
+    return res.status(501).json({ error: 'exportBackup not supported in this API version' });
+  }
+  // Localhost-only safeguard. Umbrel routes everything through the local proxy.
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip.startsWith('::ffff:127.') || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.');
+  if (!isLocal) return res.status(403).json({ error: 'export-backup requires local access' });
+  try {
+    const backup = networkStatsController.exportBackup();
+    res.json({ ok: true, ...backup });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
+
+app.post('/api/network-stats/tor', (req, res) => {
+  if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
+  if (typeof networkStatsController.setTorEnabled !== 'function') {
+    return res.status(501).json({ error: 'tor toggle not supported in this API version' });
+  }
+  const enabled = !!(req.body && req.body.enabled);
+  networkStatsController.setTorEnabled(enabled);
+  res.json({ ok: true, enabled, message: 'Tor setting saved. Effective on next relay reconnect.' });
+});
+
+app.get('/api/network-stats/security', (req, res) => {
+  if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
+  if (typeof networkStatsController.securityStats !== 'function') {
+    return res.status(501).json({ error: 'security stats not supported in this API version' });
+  }
+  res.json(networkStatsController.securityStats());
+});
+
 
 app.post('/api/network-stats/regenerate', (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
