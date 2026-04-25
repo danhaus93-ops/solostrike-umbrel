@@ -1680,22 +1680,37 @@ function PulseTab({ networkStats, onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState('');
+  const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
-  const enabled = !!ns.enabled;
+  const enabled = optimistic !== null ? optimistic : !!ns.enabled;
+
+  // Clear the optimistic override once the server has caught up
+  useEffect(() => {
+    if (optimistic !== null && !!ns.enabled === optimistic) setOptimistic(null);
+  }, [ns.enabled, optimistic]);
 
   const doToggle = async () => {
     if (enabled) {
-      setBusy(true); setErr('');
+      setOptimistic(false); setErr('');
       try {
         const r = await fetch('/api/network-stats/disable', { method: 'POST' });
         if (!r.ok) throw new Error('server returned ' + r.status);
-        if (onRefresh) await onRefresh();
-      } catch (e) { setErr(e.message); }
-      setBusy(false);
+        if (onRefresh) onRefresh();
+      } catch (e) { setErr(e.message); setOptimistic(null); }
     } else {
       setShowConfirm(true);
     }
   };
+
+  const confirmEnable = async () => {
+    setOptimistic(true); setShowConfirm(false); setErr('');
+    try {
+      const r = await fetch('/api/network-stats/enable', { method: 'POST' });
+      if (!r.ok) throw new Error('server returned ' + r.status);
+      if (onRefresh) onRefresh();
+    } catch (e) { setErr(e.message); setOptimistic(null); }
+  };
+
 
   const confirmEnable = async () => {
     setBusy(true); setErr('');
