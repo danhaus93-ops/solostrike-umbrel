@@ -2046,176 +2046,42 @@ function PulseTab({ networkStats, onRefresh }) {
 
 // ── Pulse Panel — heartbeat card ──────────────────────────────────────────────
 function PulsePanel({ networkStats, onOpenSettings }) {
-  const enabled = !!networkStats?.enabled;
-  const conn = networkStats?.connections;
-  const sec  = networkStats?.security;
-  const pop  = networkStats?.population;
-  const canvasRef = useRef(null);
-  const [now, setNow] = useState(Date.now());
-
-  // Animated heartbeat
-  useEffect(() => {
-    if (!enabled) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [enabled]);
-
-  // EKG canvas
-  useEffect(() => {
-    if (!enabled) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width = canvas.clientWidth * 2;
-    const h = canvas.height = 60 * 2;
-    let t = 0;
-    let raf;
-
-    const draw = () => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.strokeStyle = 'rgba(245,166,35,0.6)';
-      ctx.lineWidth = 2;
-      ctx.shadowColor = 'rgba(245,166,35,0.8)';
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      const baseY = h / 2;
-      for (let x = 0; x < w; x++) {
-        const phase = ((x + t) % 200) / 200;
-        let y = baseY;
-        if (phase > 0.45 && phase < 0.55) {
-          // QRS spike
-          const local = (phase - 0.45) / 0.1;
-          if (local < 0.5) y -= 60 * local * 2;
-          else y += 30 * (local - 0.5) * 2;
-        } else if (phase > 0.6 && phase < 0.7) {
-          // T wave
-          y -= 12 * Math.sin((phase - 0.6) / 0.1 * Math.PI);
-        }
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      t += 2;
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, [enabled]);
+  const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0 };
+  const enabled = !!ns.enabled;
 
   if (!enabled) {
     return (
-      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', position:'relative'}} className="fade-in">
-        <div style={{...cardTitle, color:'var(--cyan)'}}>▸ SoloStrike Pulse</div>
-        <div style={{textAlign:'center', padding:'1.5rem 0.5rem', fontFamily:'var(--fd)', color:'var(--text-2)'}}>
-          <div style={{fontSize:'2.5rem', opacity:0.4}}>📡</div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', marginTop:8, fontWeight:600}}>Pulse not active</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', marginTop:6, lineHeight:1.5}}>
-            Join the anonymous solo mining network. See who else is hashing.
-          </div>
+      <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+        <div style={{...cardTitle, color:'var(--amber)'}}>▸ SoloStrike Pulse</div>
+        <div style={{textAlign:'center', padding:'1.5rem 0.75rem', color:'var(--text-2)'}}>
+          <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>Pulse is offline</div>
           <button onClick={onOpenSettings}
-            style={{marginTop:14,padding:'0.65rem 1.4rem',background:'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:'pointer',textTransform:'uppercase'}}>
-            ⚡ Open Pulse Settings
+            style={{marginTop:'0.9rem', padding:'0.55rem 1rem', background:'var(--amber)', color:'#000', border:'none', cursor:'pointer', fontFamily:'var(--fd)', fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase'}}>
+            JOIN PULSE
           </button>
         </div>
       </div>
     );
   }
 
-  const lastBroadcastMs = networkStats?.broadcastStats?.lastBroadcastAt ? (now - networkStats.broadcastStats.lastBroadcastAt) : null;
-  const isLive = lastBroadcastMs != null && lastBroadcastMs < 90 * 60 * 1000;
-
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', position:'relative'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-        <span>▸ SoloStrike Pulse</span>
-        {isLive && (
-          <span style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',color:'var(--green)',textShadow:'0 0 6px var(--green)', marginRight:'14px'}}>
-            <span style={{width:6,height:6,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)',animation:'pulse 1.5s ease-in-out infinite'}}/>
-            LIVE
-          </span>
-        )}
-      </div>
-
-      {/* Heartbeat hero */}
-      <div style={{position:'relative', padding:'1.2rem 0.5rem', textAlign:'center', overflow:'hidden', minHeight:140}}>
-        {/* EKG canvas backdrop */}
-        <canvas ref={canvasRef} style={{position:'absolute', top:'50%', left:0, right:0, transform:'translateY(-50%)', width:'100%', height:60, opacity:0.5, pointerEvents:'none'}}/>
-
-        <div style={{position:'relative', zIndex:1}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.18em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:4}}>
-            Solo Miners Online
-          </div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'2.6rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 20px rgba(245,166,35,0.5)', lineHeight:1, animation:'pulse 2s ease-in-out infinite'}}>
-            {pop?.activePeers ? fmtNum(pop.activePeers) : '—'}
-          </div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--text-3)', textTransform:'uppercase', marginTop:6}}>
-            {pop?.windowMin ? `last ${pop.windowMin} min` : ''}
-          </div>
+    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ SoloStrike Pulse</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
+        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{ns.pools || 0}</div>
         </div>
-
-        {/* 100% SOLO stamp */}
-        <div style={{
-          position:'absolute',
-          bottom:6, right:8,
-          fontFamily:'var(--fd)', fontSize:'0.5rem',
-          letterSpacing:'0.18em', color:'var(--amber)',
-          textTransform:'uppercase', fontWeight:700,
-          padding:'3px 8px', border:'1px solid var(--amber)',
-          textShadow:'0 0 4px rgba(245,166,35,0.5)',
-          opacity:0.7,
-          transform:'rotate(-4deg)',
-          background:'rgba(6,7,8,0.6)',
-        }}>
-          100% SOLO
+        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtHr(ns.hashrate || 0)}</div>
+        </div>
+        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{ns.workers || 0}</div>
         </div>
       </div>
-
-      {/* Network metrics grid */}
-      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginTop:8}}>
-        <div style={{padding:'0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', textAlign:'center'}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', color:'var(--cyan)', fontWeight:700}}>
-            {pop?.totalHashrate ? fmtHr(pop.totalHashrate) : '—'}
-          </div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:2}}>
-            Combined Firepower
-          </div>
-        </div>
-        <div style={{padding:'0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', textAlign:'center'}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', color:'var(--green)', fontWeight:700}}>
-            {pop?.totalWorkers ? fmtNum(pop.totalWorkers) : '—'}
-          </div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:2}}>
-            Active Workers
-          </div>
-        </div>
-        <div style={{padding:'0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', textAlign:'center'}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', color:'var(--amber)', fontWeight:700}}>
-            {pop?.blocksFound24h != null ? fmtNum(pop.blocksFound24h) : '—'}
-          </div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:2}}>
-            Blocks · 24h
-          </div>
-        </div>
-        <div style={{padding:'0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', textAlign:'center'}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', color:'var(--cyan)', fontWeight:700}}>
-            {conn?.connected || 0}/{conn?.total || 0}
-          </div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:2}}>
-            Relays
-          </div>
-        </div>
-      </div>
-
-      {/* Identity hash */}
-      {sec?.pubkey && (
-        <div style={{marginTop:12, padding:'0.55rem 0.75rem', background:'var(--bg-deep)', border:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8}}>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>ID</span>
-          <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-            {sec.pubkey.slice(0, 12)}…{sec.pubkey.slice(-6)}
-          </span>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em', color:'var(--green)'}}>ANONYMOUS</span>
-        </div>
-      )}
     </div>
   );
 }
