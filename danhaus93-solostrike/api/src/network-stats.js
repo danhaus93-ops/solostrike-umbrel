@@ -1,4 +1,4 @@
-// ── SoloStrike Network Stats (v1.7.2) — Hardened ──────────────────────────
+// ── SoloStrike Network Stats (v1.7.3) — Hardened ──────────────────────────
 //
 // Publishes anonymous pool stats (hashrate, worker count, version,
 // blocks found) to the SoloStrike Network over nostr every 5 minutes.
@@ -19,6 +19,11 @@
 //           correlation. Optional Tor routing via SOCKS5
 //           (off by default; activates if socks-proxy-agent installed).
 //
+// v1.7.3: Tor state machine — pre-flight reachability test, hot-swap
+// reconnect on toggle, auto-fallback to direct on failure, background
+// recovery loop. Default Tor URL is socks5h://tor_proxy:9050 (Umbrel's
+// tor_proxy on umbrel_main_network).
+//
 // Privacy model:
 // • Random keypair generated once per install, encrypted at rest in
 //   persist.json. Not linked to BTC payout address or anything else.
@@ -26,16 +31,11 @@
 //   no BTC address, no hostname, no location.
 // • Publishing is opt-in (cfg.networkStatsEnabled). Reading the network
 //   is always on.
-//
-// Compatibility: maintains the same controller contract as v1.6.0 so
-// server.js requires no changes:
-//   startNetworkStats({state, cfg, savePersist}) -> { enable, disable,
-//                                                     regenerateIdentity,
-//                                                     exportBackup }
 
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
+const net = require('net');
 const WebSocket = require('ws');
 const {
   generateSecretKey,
@@ -98,16 +98,6 @@ const KEY_DERIVATION_INFO = 'SoloStrike-Pulse-v1';   // domain separator for HKD
 const KEY_ROTATION_INTERVAL_MS = null; // not enabled by default; user must opt in
 
 // ── Tier 2: Device-bound encryption ──────────────────────────────────────────
-// Derives an encryption key from stable hardware identifiers. The same Umbrel
-// always produces the same derived key. A different machine cannot decrypt the
-// stored identity even if it has the persist.json file.
-
-// Generate or retrieve the persistent device salt. This is stored in
-// persist.json (on the host volume, survives container recreation) and is
-// the primary anchor for our encryption key derivation. Without persistence
-// across container restarts, encrypted keys would become unreadable on
-// every redeploy. The salt is not secret — security comes from the
-// combination of salt + derivation algorithm + hardware identifiers.
 function ensureDeviceSalt(cfg) {
   if (cfg.pulseDeviceSalt && typeof cfg.pulseDeviceSalt === 'string' && cfg.pulseDeviceSalt.length >= 32) {
     return cfg.pulseDeviceSalt;
@@ -119,25 +109,16 @@ function ensureDeviceSalt(cfg) {
 
 function getDeviceFingerprint(cfg) {
   const sources = [];
-
-  // PRIMARY: persisted device salt (stable across container recreation,
-  // survives docker pull/rm cycles because persist.json lives on host volume)
   const salt = ensureDeviceSalt(cfg);
   sources.push('salt:' + salt);
-
-  // Linux machine-id (often missing in containers, but use when available)
   try {
     const mid = fs.readFileSync('/etc/machine-id', 'utf8').trim();
     if (mid) sources.push('machine-id:' + mid);
   } catch (_) { /* container without machine-id, fall through */ }
-
   // Hostname IS unstable in Docker (changes on container recreate via docker rm -f),
   // so we exclude it. The salt alone is the anchor — 32 bytes of host-persisted randomness.
-
   // MAC addresses are unstable in Docker (assigned fresh per container restart),
   // so we explicitly do NOT include them. The salt is the real anchor.
-
-  // HKDF-style derivation: sha256(domain || sha256(joined sources))
   const inner = crypto.createHash('sha256').update(sources.join('||')).digest();
   return crypto.createHash('sha256')
     .update(KEY_DERIVATION_INFO + '||')
@@ -151,8 +132,6 @@ function encryptIdentityKey(plaintextHex, cfg) {
   const cipher = crypto.createCipheriv('aes-256-gcm', deviceKey, iv);
   const ct = Buffer.concat([cipher.update(plaintextHex, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  // Wire format: "v1:<base64(iv|tag|ciphertext)>" — version prefix lets us
-  // change crypto schemes later without breaking existing installs.
   return 'v1:' + Buffer.concat([iv, tag, ct]).toString('base64');
 }
 
@@ -177,17 +156,13 @@ function decryptIdentityKey(encrypted, cfg) {
   return pt.toString('utf8');
 }
 
-// Heuristic: is this string a 64-char hex (legacy plaintext) or our v1: prefix?
 function isPlaintextHexKey(s) {
   return typeof s === 'string' && /^[0-9a-f]{64}$/i.test(s);
 }
 
 // ── Tier 1: Inbound event validation ─────────────────────────────────────────
-
 function validatePulseEvent(ev) {
   if (!ev || typeof ev !== 'object') return { ok: false, reason: 'not-object' };
-
-  // Structural checks
   if (ev.kind !== EVENT_KIND) return { ok: false, reason: 'wrong-kind' };
   if (typeof ev.pubkey !== 'string' || !/^[0-9a-f]{64}$/.test(ev.pubkey)) {
     return { ok: false, reason: 'bad-pubkey' };
@@ -203,19 +178,16 @@ function validatePulseEvent(ev) {
   }
   if (!Array.isArray(ev.tags)) return { ok: false, reason: 'bad-tags' };
 
-  // Tag check — must be a SoloStrike Pulse event
   const hasOurTag = ev.tags.some(t =>
     Array.isArray(t) && t[0] === 't' && t[1] === TAG_NAME
   );
   if (!hasOurTag) return { ok: false, reason: 'missing-tag' };
 
-  // Time window — reject too old (replay) and too future (clock injection)
   const nowSec = Math.floor(Date.now() / 1000);
   const minAge = nowSec - Math.floor(SUBSCRIBE_WINDOW_MS / 1000);
   if (ev.created_at < minAge) return { ok: false, reason: 'too-old' };
   if (ev.created_at > nowSec + 300) return { ok: false, reason: 'future-timestamp' };
 
-  // Content shape
   if (typeof ev.content !== 'string' || ev.content.length > 2048) {
     return { ok: false, reason: 'bad-content-size' };
   }
@@ -223,7 +195,6 @@ function validatePulseEvent(ev) {
   try { data = JSON.parse(ev.content); } catch { return { ok: false, reason: 'bad-content-json' }; }
   if (!data || typeof data !== 'object') return { ok: false, reason: 'bad-content-type' };
 
-  // Numeric range validation
   const hashrate = Number(data.hashrate);
   if (!Number.isFinite(hashrate) || hashrate < 0 || hashrate > MAX_HASHRATE_HPS) {
     return { ok: false, reason: 'hashrate-range' };
@@ -237,14 +208,11 @@ function validatePulseEvent(ev) {
     return { ok: false, reason: 'blocks-range' };
   }
 
-  // Version string — strict format, length cap
   const version = String(data.version || '').slice(0, MAX_VERSION_LEN);
   if (version && !VERSION_PATTERN.test(version)) {
     return { ok: false, reason: 'bad-version-chars' };
   }
 
-  // Cryptographic verification (this is the critical check — confirms the
-  // event was actually signed by the claimed pubkey, not forged by a relay)
   let sigValid;
   try { sigValid = verifyEvent(ev); }
   catch (e) { return { ok: false, reason: 'verify-threw:' + e.message }; }
@@ -259,7 +227,6 @@ function validatePulseEvent(ev) {
 }
 
 // ── Tier 1: Outlier detection (median absolute deviation) ───────────────────
-
 function medianAbsoluteDeviation(values) {
   if (!values.length) return { median: 0, mad: 0 };
   const sorted = [...values].sort((a, b) => a - b);
@@ -270,21 +237,13 @@ function medianAbsoluteDeviation(values) {
 }
 
 function isOutlier(value, median, mad) {
-  if (mad === 0) return false; // can't compute Z-score against zero variance
-  // Modified Z-score (Iglewicz-Hoaglin): 0.6745 * |v - median| / MAD
+  if (mad === 0) return false;
   const z = 0.6745 * Math.abs(value - median) / mad;
   return z > OUTLIER_MAD_THRESHOLD;
 }
 
 // ── Main module ──────────────────────────────────────────────────────────────
-
 function startNetworkStats({ state, cfg, savePersist }) {
-  // ── Tier 2: Identity bootstrap with encryption migration ───────────────────
-  // Three cases:
-  //   1. Fresh install: no key, generate one and store encrypted.
-  //   2. Migration: plaintext key found, encrypt and rewrite.
-  //   3. Existing encrypted key: decrypt to memory.
-
   if (!cfg.nostrPrivkey) {
     const sk = generateSecretKey();
     const plaintextHex = Buffer.from(sk).toString('hex');
@@ -292,22 +251,19 @@ function startNetworkStats({ state, cfg, savePersist }) {
     cfg.nostrInstallId = crypto.randomUUID();
     console.log('[network-stats] Generated new nostr identity (encrypted at rest)');
   } else if (isPlaintextHexKey(cfg.nostrPrivkey)) {
-    // Legacy plaintext key — migrate to encrypted form
     try {
       const encrypted = encryptIdentityKey(cfg.nostrPrivkey, cfg);
       cfg.nostrPrivkey = encrypted;
       console.log('[network-stats] Migrated plaintext identity key to encrypted storage');
     } catch (e) {
       console.error('[network-stats] Migration encrypt failed:', e.message);
-      // Continue with plaintext — better to keep working than to brick Pulse
     }
   }
 
   if (!cfg.nostrInstallId) cfg.nostrInstallId = crypto.randomUUID();
 
-  // Decrypt to memory (or fall back to plaintext if migration failed)
   let privkeyBytes;
-  let plaintextForBackup; // held only in-memory for export feature
+  let plaintextForBackup;
   try {
     if (isPlaintextHexKey(cfg.nostrPrivkey)) {
       plaintextForBackup = cfg.nostrPrivkey;
@@ -328,23 +284,15 @@ function startNetworkStats({ state, cfg, savePersist }) {
   const pubkey = getPublicKey(privkeyBytes);
   const installId = cfg.nostrInstallId;
 
-  // ── Tier 2: Ephemeral read identity ──────────────────────────────────────
-  // Subscribing to relays uses this throwaway keypair, regenerated per process
-  // boot. The publishing identity stays clean of metadata about what we read.
-  // Note: nostr REQ messages don't actually require auth on most relays, but
-  // some relays sign their connection metadata. Using a fresh ephemeral
-  // keypair ensures even if relays log connection identifiers, our publishing
-  // identity is never tied to our reading patterns.
   const ephemeralReadKey = generateSecretKey();
   const ephemeralReadPubkey = getPublicKey(ephemeralReadKey);
 
   console.log(`[network-stats] Identity: pubkey=${pubkey.slice(0,16)}... installId=${installId.slice(0,8)}... readkey=${ephemeralReadPubkey.slice(0,8)}...`);
 
-  // ── State setup ─────────────────────────────────────────────────────────
-  const seenEvents = new Map();         // pubkey -> { hashrate, workers, version, blocks, receivedAt }
-  const lastSeenPerPubkey = new Map();  // pubkey -> last created_at (Tier 1: rate limit)
-  const droppedReasons = new Map();     // reason -> count (telemetry)
-  let lastOwnBroadcastAt = 0;            // Tier 1: outbound throttle
+  const seenEvents = new Map();
+  const lastSeenPerPubkey = new Map();
+  const droppedReasons = new Map();
+  let lastOwnBroadcastAt = 0;
 
   state.networkStats = {
     enabled: !!cfg.networkStatsEnabled,
@@ -355,7 +303,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
     versions: {},
     lastUpdate: 0,
     relayStatus: {},
-    // v1.7.1 telemetry — exposed for diagnostics
     security: {
       eventsAccepted: 0,
       eventsDropped: 0,
@@ -365,35 +312,79 @@ function startNetworkStats({ state, cfg, savePersist }) {
     },
   };
 
-  // ── Tier 3: Tor support ─────────────────────────────────────────────────
-  function maybeBuildTorAgent() {
+  // ── Tier 3: Tor support with reachability test + auto-fallback ──────────
+  // Default URL points at Umbrel's tor_proxy container on umbrel_main_network.
+  // Override via cfg.pulseTorUrl or env var PULSE_TOR_URL for non-Umbrel installs.
+  const TOR_DEFAULT_URL = process.env.PULSE_TOR_URL || 'socks5h://tor_proxy:9050';
+
+  // Tor health state machine — tracks whether Tor is actually working RIGHT NOW
+  //   "off"        — user toggle is off, nothing to check
+  //   "checking"   — actively probing reachability
+  //   "ready"      — last probe succeeded, Tor is the path
+  //   "fallback"   — toggle is on but probes fail; using direct, retrying in background
+  const torHealth = {
+    state: 'off',
+    lastProbeAt: 0,
+    lastProbeOk: null,
+    consecutiveFailures: 0,
+    activeUrl: TOR_DEFAULT_URL,
+    lastError: null,
+  };
+
+  // Lightweight TCP probe to the SOCKS port. Doesn't actually open a SOCKS
+  // session — just verifies the port accepts TCP. Cheap, ~50ms, reliable.
+  function testSocksReachable(socksUrl, timeoutMs = 3000) {
+    return new Promise((resolve) => {
+      try {
+        const u = new URL(socksUrl);
+        const host = u.hostname;
+        const port = parseInt(u.port || '9050', 10);
+        const sock = net.createConnection({ host, port });
+        let settled = false;
+        const finish = (ok, err) => {
+          if (settled) return;
+          settled = true;
+          try { sock.destroy(); } catch (_) {}
+          resolve({ ok, host, port, error: err || null });
+        };
+        sock.setTimeout(timeoutMs, () => finish(false, 'timeout'));
+        sock.once('connect', () => finish(true));
+        sock.once('error', (e) => finish(false, e.message));
+      } catch (e) {
+        resolve({ ok: false, host: null, port: null, error: 'invalid-url:' + e.message });
+      }
+    });
+  }
+
+  function buildTorAgent() {
+    if (!SocksProxyAgent) return null;
+    try { return new SocksProxyAgent(torHealth.activeUrl); }
+    catch (e) {
+      torHealth.lastError = 'agent-build:' + e.message;
+      return null;
+    }
+  }
+
+  // Returns the agent to use right now (or null for direct), based on toggle + health.
+  function currentTorAgent() {
     if (!cfg.pulseTorEnabled) return null;
-    if (!SocksProxyAgent) {
-      console.warn('[network-stats] Tor requested but socks-proxy-agent not installed; falling back to direct');
-      return null;
-    }
-    try {
-      // Umbrel's built-in Tor SOCKS port (verify on your install)
-      const torUrl = cfg.pulseTorUrl || 'socks5h://127.0.0.1:9050';
-      return new SocksProxyAgent(torUrl);
-    } catch (e) {
-      console.warn('[network-stats] Tor agent build failed:', e.message);
-      return null;
-    }
+    if (torHealth.state !== 'ready') return null;
+    return buildTorAgent();
   }
 
   state.networkStats.security.torEnabled = !!(cfg.pulseTorEnabled && SocksProxyAgent);
 
   // ── Relay connection management ─────────────────────────────────────────
-  const sockets = new Map(); // url -> WebSocket
+  const sockets = new Map();
   const reconnectTimers = new Map();
 
   function connectRelay(url) {
-    if (sockets.has(url)) return; // already connected/connecting
+    if (sockets.has(url)) return;
     state.networkStats.relayStatus[url] = 'connecting';
 
     const wsOpts = { handshakeTimeout: 10000 };
-    const torAgent = maybeBuildTorAgent();
+    const torAgent = currentTorAgent();
+    const usingTor = !!torAgent;
     if (torAgent) wsOpts.agent = torAgent;
 
     let ws;
@@ -401,15 +392,25 @@ function startNetworkStats({ state, cfg, savePersist }) {
       ws = new WebSocket(url, wsOpts);
     } catch (e) {
       console.log(`[network-stats] Relay ${url} connect threw: ${e.message}`);
+      if (cfg.pulseTorEnabled && torHealth.state === 'ready') {
+        markTorUnhealthy('connect-threw:' + e.message);
+      }
       scheduleReconnect(url);
       return;
     }
 
     sockets.set(url, ws);
+    ws._pulseMode = usingTor ? 'tor' : 'direct';
 
     ws.on('open', () => {
-      state.networkStats.relayStatus[url] = 'connected';
-      console.log(`[network-stats] Connected to ${url}${torAgent ? ' (via Tor)' : ''}`);
+      state.networkStats.relayStatus[url] = usingTor ? 'connected-tor' : 'connected-direct';
+      console.log(`[network-stats] Connected to ${url}${usingTor ? ' (via Tor)' : ''}`);
+      if (usingTor && torHealth.state !== 'ready') {
+        torHealth.state = 'ready';
+        torHealth.consecutiveFailures = 0;
+        torHealth.lastError = null;
+        state.networkStats.security.torEnabled = true;
+      }
       const subId = 'ss-sub-' + crypto.randomBytes(4).toString('hex');
       const since = Math.floor((Date.now() - SUBSCRIBE_WINDOW_MS) / 1000);
       const req = JSON.stringify(['REQ', subId, { kinds: [EVENT_KIND], '#t': [TAG_NAME], since }]);
@@ -431,6 +432,9 @@ function startNetworkStats({ state, cfg, savePersist }) {
     ws.on('error', (err) => {
       console.log(`[network-stats] Relay ${url} error: ${err.message}`);
       state.networkStats.relayStatus[url] = 'error';
+      if (usingTor && /ECONNREFUSED|EHOSTUNREACH|ETIMEDOUT/.test(err.message)) {
+        markTorUnhealthy('relay-error:' + err.message.slice(0, 60));
+      }
     });
 
     ws.on('close', () => {
@@ -438,6 +442,30 @@ function startNetworkStats({ state, cfg, savePersist }) {
       state.networkStats.relayStatus[url] = 'error';
       scheduleReconnect(url);
     });
+  }
+
+  // Tor went bad — switch to fallback mode and trigger immediate reconnect
+  // of all sockets via direct routing. Pulse keeps broadcasting; privacy
+  // is degraded but the network stays alive.
+  function markTorUnhealthy(reason) {
+    if (torHealth.state === 'fallback') return;
+    torHealth.consecutiveFailures++;
+    torHealth.lastError = reason;
+    torHealth.state = 'fallback';
+    state.networkStats.security.torEnabled = false;
+    console.warn(`[network-stats] Tor unhealthy (${reason}). Falling back to direct connections.`);
+    closeAllSockets('tor-fallback');
+  }
+
+  // Close all relay sockets — used when Tor toggle changes or fallback triggers.
+  function closeAllSockets(reason) {
+    for (const [url, ws] of sockets) {
+      try { ws.close(1000, reason); } catch (_) {}
+    }
+    sockets.clear();
+    for (const t of reconnectTimers.values()) clearTimeout(t);
+    reconnectTimers.clear();
+    setTimeout(() => DEFAULT_RELAYS.forEach(connectRelay), 100);
   }
 
   function scheduleReconnect(url) {
@@ -458,11 +486,9 @@ function startNetworkStats({ state, cfg, savePersist }) {
   }
 
   function handleIncomingEvent(ev) {
-    // Step 1: Validate structure + signature + content
     const result = validatePulseEvent(ev);
     if (!result.ok) { recordDrop(result.reason); return; }
 
-    // Step 2: Per-pubkey rate limit (Tier 1 — block spam from one bad actor)
     const lastSeen = lastSeenPerPubkey.get(result.pubkey);
     if (lastSeen && (result.created_at - lastSeen) < MIN_PUBKEY_INTERVAL_SEC) {
       recordDrop('rate-limited-pubkey');
@@ -470,14 +496,12 @@ function startNetworkStats({ state, cfg, savePersist }) {
     }
     lastSeenPerPubkey.set(result.pubkey, result.created_at);
 
-    // Step 3: Dedup (keep newest) — protect against multi-relay echoes
     const existing = seenEvents.get(result.pubkey);
     if (existing && existing.receivedAt >= result.created_at) {
       recordDrop('dedup-older');
       return;
     }
 
-    // Accept
     seenEvents.set(result.pubkey, {
       hashrate: result.payload.hashrate,
       workers: result.payload.workers,
@@ -489,15 +513,12 @@ function startNetworkStats({ state, cfg, savePersist }) {
     recomputeAggregates();
   }
 
-  // ── Tier 1: Outlier-aware aggregation ───────────────────────────────────
   function recomputeAggregates() {
     const cutoffSec = Math.floor((Date.now() - SUBSCRIBE_WINDOW_MS) / 1000);
 
-    // Prune stale entries
     for (const [pk, e] of seenEvents) {
       if (e.receivedAt < cutoffSec) seenEvents.delete(pk);
     }
-    // Prune rate-limit history
     const histCutoff = Math.floor((Date.now() - PUBKEY_HISTORY_TTL_MS) / 1000);
     for (const [pk, t] of lastSeenPerPubkey) {
       if (t < histCutoff) lastSeenPerPubkey.delete(pk);
@@ -507,7 +528,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
     let activeEntries = all;
     let outliersFilteredThisRound = 0;
 
-    // Outlier filter — only meaningful with N≥OUTLIER_MIN_SAMPLES
     if (all.length >= OUTLIER_MIN_SAMPLES) {
       const hashrates = all.map(([, e]) => e.hashrate);
       const workersArr = all.map(([, e]) => e.workers);
@@ -543,11 +563,9 @@ function startNetworkStats({ state, cfg, savePersist }) {
     state.networkStats.security.outliersFiltered += outliersFilteredThisRound;
   }
 
-  // ── Tier 1+3: Hardened broadcast ────────────────────────────────────────
   function publishOurStats() {
     if (!cfg.networkStatsEnabled) return;
 
-    // Tier 1 — outbound self-throttle
     const now = Date.now();
     if (now - lastOwnBroadcastAt < MIN_OWN_BROADCAST_INTERVAL_MS) {
       console.warn('[network-stats] Outbound throttle: skipping (last broadcast ' +
@@ -565,7 +583,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
 
     if (ourHashrate === 0 && ourWorkers === 0) return;
 
-    // Defensive cap on our own outbound numbers — prevents bug-induced bogus values
     const safeHashrate = Math.min(Math.max(0, Math.round(ourHashrate)), MAX_HASHRATE_HPS);
     const safeWorkers = Math.min(Math.max(0, Math.round(ourWorkers)), MAX_WORKERS);
     const safeBlocks = Math.min(Math.max(0, Math.round(ourBlocks)), MAX_BLOCKS);
@@ -589,8 +606,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
     try { signed = finalizeEvent(template, privkeyBytes); }
     catch (e) { console.log(`[network-stats] Sign failed: ${e.message}`); return; }
 
-    // Tier 3 — random subset of connected relays. Reduces correlation any
-    // single relay operator can do across our broadcasts.
     const connected = [...sockets.entries()]
       .filter(([, ws]) => ws.readyState === WebSocket.OPEN);
     const subset = pickRandomSubset(connected, PUBLISH_SUBSET_SIZE);
@@ -604,7 +619,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
     lastOwnBroadcastAt = now;
     console.log(`[network-stats] Published to ${publishedTo}/${connected.length} relays (subset of ${DEFAULT_RELAYS.length})`);
 
-    // Count ourselves in the local aggregate immediately
     seenEvents.set(pubkey, {
       hashrate: safeHashrate,
       workers: safeWorkers,
@@ -618,7 +632,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
   function pickRandomSubset(arr, n) {
     if (arr.length <= n) return arr;
     const copy = [...arr];
-    // Fisher-Yates partial shuffle
     for (let i = 0; i < n; i++) {
       const j = i + Math.floor(Math.random() * (copy.length - i));
       [copy[i], copy[j]] = [copy[j], copy[i]];
@@ -626,27 +639,24 @@ function startNetworkStats({ state, cfg, savePersist }) {
     return copy.slice(0, n);
   }
 
-  // ── Tier 3: Jittered publish scheduler ─────────────────────────────────
   let publishTimer = null;
   function schedulePublish(initialDelayMs) {
     if (publishTimer) clearTimeout(publishTimer);
     const baseDelay = (initialDelayMs != null) ? initialDelayMs : PUBLISH_INTERVAL_MS;
-    // Symmetric jitter: ±PUBLISH_JITTER_MS
     const jitter = (Math.random() * 2 - 1) * PUBLISH_JITTER_MS;
-    const delay = Math.max(15 * 1000, baseDelay + jitter); // never below 15s
+    const delay = Math.max(15 * 1000, baseDelay + jitter);
     publishTimer = setTimeout(() => {
       try { publishOurStats(); } catch (e) { console.error('[network-stats] publish error:', e.message); }
-      schedulePublish(); // chain for next cycle
+      schedulePublish();
     }, delay);
   }
 
-  // ── Controller — same contract as v1.6.0 + new exportBackup ─────────────
   function saveIdentity() {
     try {
       savePersist({
-        nostrPrivkey: cfg.nostrPrivkey, // already encrypted
+        nostrPrivkey: cfg.nostrPrivkey,
         nostrInstallId: cfg.nostrInstallId,
-        pulseDeviceSalt: cfg.pulseDeviceSalt, // anchor for encryption
+        pulseDeviceSalt: cfg.pulseDeviceSalt,
         networkStatsEnabled: !!cfg.networkStatsEnabled,
         pulseTorEnabled: !!cfg.pulseTorEnabled,
       });
@@ -659,7 +669,6 @@ function startNetworkStats({ state, cfg, savePersist }) {
     enable() {
       cfg.networkStatsEnabled = true;
       state.networkStats.enabled = true;
-      // Reset throttle so user sees themselves immediately on enable
       lastOwnBroadcastAt = 0;
       publishOurStats();
       saveIdentity();
@@ -679,12 +688,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
       cfg.nostrInstallId = crypto.randomUUID();
       saveIdentity();
       console.log('[network-stats] Regenerated identity — restart API to apply');
-      // Note: in-memory privkey/pubkey closure isn't rebuilt; restart required
-      // to actually publish under the new identity.
     },
-    // v1.7.1 — backup export. Returns the plaintext nsec/hex key + installId.
-    // Caller is responsible for showing this only on user demand and clearing
-    // it from any UI state quickly. Never stored in logs.
     exportBackup() {
       return {
         privkeyHex: plaintextForBackup,
@@ -693,40 +697,129 @@ function startNetworkStats({ state, cfg, savePersist }) {
         warning: 'This is your Pulse identity. Anyone with this key can sign events as you. Store it offline.',
       };
     },
-    // v1.7.1 — security telemetry for diagnostics
     securityStats() {
+      const connected = [...sockets.values()].filter(w => w.readyState === WebSocket.OPEN);
+      const torConnections = connected.filter(w => w._pulseMode === 'tor').length;
+      const directConnections = connected.filter(w => w._pulseMode === 'direct').length;
       return {
-        relays: { configured: DEFAULT_RELAYS.length, connected: [...sockets.values()].filter(w => w.readyState === WebSocket.OPEN).length },
+        relays: {
+          configured: DEFAULT_RELAYS.length,
+          connected: connected.length,
+          tor: torConnections,
+          direct: directConnections,
+        },
         eventsAccepted: state.networkStats.security.eventsAccepted,
         eventsDropped: state.networkStats.security.eventsDropped,
         droppedReasons: { ...state.networkStats.security.droppedReasons },
         outliersFiltered: state.networkStats.security.outliersFiltered,
         torEnabled: state.networkStats.security.torEnabled,
         torAvailable: !!SocksProxyAgent,
+        torHealth: {
+          state: torHealth.state,
+          activeUrl: torHealth.activeUrl,
+          lastProbeOk: torHealth.lastProbeOk,
+          lastError: torHealth.lastError,
+          consecutiveFailures: torHealth.consecutiveFailures,
+        },
         ratelimitedPubkeys: lastSeenPerPubkey.size,
       };
     },
-    setTorEnabled(enabled) {
-      cfg.pulseTorEnabled = !!enabled;
-      state.networkStats.security.torEnabled = !!(enabled && SocksProxyAgent);
+    // v1.7.3 — async toggle with reachability pre-flight + hot-swap reconnect.
+    // Returns: { ok, mode: "tor"|"direct"|"unreachable", via, error }
+    async setTorEnabled(enabled) {
+      const wantOn = !!enabled;
+
+      if (!wantOn) {
+        cfg.pulseTorEnabled = false;
+        torHealth.state = 'off';
+        torHealth.lastError = null;
+        state.networkStats.security.torEnabled = false;
+        saveIdentity();
+        closeAllSockets('tor-off');
+        console.log('[network-stats] Tor disabled — reconnecting all relays direct');
+        return { ok: true, mode: 'direct', via: null };
+      }
+
+      if (!SocksProxyAgent) {
+        return {
+          ok: false,
+          mode: 'unreachable',
+          via: torHealth.activeUrl,
+          error: 'socks-proxy-agent dependency missing in API container',
+        };
+      }
+
+      torHealth.state = 'checking';
+      const probe = await testSocksReachable(torHealth.activeUrl, 3000);
+      torHealth.lastProbeAt = Date.now();
+      torHealth.lastProbeOk = probe.ok;
+
+      if (!probe.ok) {
+        torHealth.state = 'off';
+        torHealth.lastError = 'probe-failed:' + (probe.error || 'unknown');
+        state.networkStats.security.torEnabled = false;
+        console.warn(`[network-stats] Tor probe failed at ${torHealth.activeUrl}: ${probe.error}`);
+        return {
+          ok: false,
+          mode: 'unreachable',
+          via: torHealth.activeUrl,
+          error: probe.error || 'probe-failed',
+        };
+      }
+
+      cfg.pulseTorEnabled = true;
+      torHealth.state = 'ready';
+      torHealth.consecutiveFailures = 0;
+      torHealth.lastError = null;
+      state.networkStats.security.torEnabled = true;
       saveIdentity();
-      // Existing connections keep using direct path; new reconnects pick up Tor
-      console.log(`[network-stats] Tor ${enabled ? 'enabled' : 'disabled'} (effective on reconnect; available=${!!SocksProxyAgent})`);
+      closeAllSockets('tor-on');
+      console.log(`[network-stats] Tor enabled and reachable via ${torHealth.activeUrl} — reconnecting all relays`);
+      return { ok: true, mode: 'tor', via: torHealth.activeUrl };
     },
   };
 
   // ── Boot ─────────────────────────────────────────────────────────────────
-  // Connect to all relays from the diversified pool
-  DEFAULT_RELAYS.forEach(connectRelay);
+  (async () => {
+    if (cfg.pulseTorEnabled && SocksProxyAgent) {
+      const probe = await testSocksReachable(torHealth.activeUrl, 3000);
+      torHealth.lastProbeAt = Date.now();
+      torHealth.lastProbeOk = probe.ok;
+      if (probe.ok) {
+        torHealth.state = 'ready';
+        state.networkStats.security.torEnabled = true;
+        console.log(`[network-stats] Tor reachable at boot via ${torHealth.activeUrl}`);
+      } else {
+        torHealth.state = 'fallback';
+        torHealth.lastError = 'boot-probe-failed:' + (probe.error || 'unknown');
+        state.networkStats.security.torEnabled = false;
+        console.warn(`[network-stats] Tor configured but unreachable (${probe.error}). Boot connecting direct; will retry Tor every 5min.`);
+      }
+    }
+    DEFAULT_RELAYS.forEach(connectRelay);
+  })();
 
-  // Schedule recompute every minute to prune stale entries
+  // Background Tor health check — recovery loop.
+  setInterval(async () => {
+    if (!cfg.pulseTorEnabled || !SocksProxyAgent) return;
+    if (torHealth.state === 'ready') return;
+    const probe = await testSocksReachable(torHealth.activeUrl, 3000);
+    torHealth.lastProbeAt = Date.now();
+    torHealth.lastProbeOk = probe.ok;
+    if (probe.ok && torHealth.state !== 'ready') {
+      torHealth.state = 'ready';
+      torHealth.consecutiveFailures = 0;
+      torHealth.lastError = null;
+      state.networkStats.security.torEnabled = true;
+      console.log('[network-stats] Tor recovered — switching all relays back to Tor routing');
+      closeAllSockets('tor-recovered');
+    }
+  }, 5 * 60 * 1000);
+
   setInterval(recomputeAggregates, 60 * 1000);
 
-  // First publish after a short warm-up delay (gives miners time to come up
-  // before we broadcast a "0 H/s" message)
   schedulePublish(15 * 1000);
 
-  // Optional auto-rotation (disabled by default)
   if (KEY_ROTATION_INTERVAL_MS) {
     setInterval(() => {
       console.log('[network-stats] Auto-rotating identity (90 days elapsed)');
@@ -734,12 +827,11 @@ function startNetworkStats({ state, cfg, savePersist }) {
     }, KEY_ROTATION_INTERVAL_MS);
   }
 
-  // Persist any migrations that happened during boot
   saveIdentity();
 
-  console.log(`[network-stats v1.7.2] Started: participating=${!!cfg.networkStatsEnabled}, ` +
-    `relays=${DEFAULT_RELAYS.length}, tor=${state.networkStats.security.torEnabled}, ` +
-    `encryption=v1`);
+  console.log(`[network-stats v1.7.3] Started: participating=${!!cfg.networkStatsEnabled}, ` +
+    `relays=${DEFAULT_RELAYS.length}, tor=${cfg.pulseTorEnabled ? torHealth.state : 'off'}, ` +
+    `torUrl=${torHealth.activeUrl}, encryption=v1`);
 
   return controller;
 }
