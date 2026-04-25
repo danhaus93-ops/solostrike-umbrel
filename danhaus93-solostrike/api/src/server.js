@@ -5,15 +5,21 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
+const { startStatusPoller }             = require('./status-poller');
+const { startUaTailer }                 = require('./ua-tailer');
+const { transformState }                = require('./state-transform');
+const { isValidBtcAddress }             = require('./validators');
+const {
+  loadSnapshots,
+  saveSnapshots,
+  captureDailySnapshot,
+  applyDailySnapshot,
+  updateClosestCalls,
+} = require('./snapshots');
+const { startStratumHealthPoller, getStratumHealth } = require('./stratum-health');
 const { startBlockWatcher } = require('./block-watcher');
-const { startStatusPoller } = require('./status-poller');
-const { startSnapshots } = require('./snapshots');
 const { startShareWatcher } = require('./share-watcher');
-const { startUaTailer } = require('./ua-tailer');
-const { startStratumHealth } = require('./stratum-health');
 const { startNetworkStats } = require('./network-stats');
-const { transformState } = require('./state-transform');
-const { isValidBtcAddress } = require('./validators');
 
 const PORT          = parseInt(process.env.PORT, 10) || 3001;
 const CKPOOL_LOG_DIR = process.env.CKPOOL_LOG_DIR || '/var/log/ckpool';
@@ -367,6 +373,19 @@ async function pollPrices() {
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
+
+function rateLimitFactory(maxPerMin = 60) {
+  const buckets = new Map();
+  return (req, res, next) => {
+    const ip = req.ip || 'unknown';
+    const now = Date.now();
+    let b = buckets.get(ip);
+    if (!b || (now - b.t) > 60000) { b = { c:0, t:now }; buckets.set(ip, b); }
+    b.c++;
+    if (b.c > maxPerMin) return res.status(429).json({ error: 'rate limited' });
+    next();
+  };
+}
 app.use(rateLimitFactory(120));
 
 const server = http.createServer(app);
@@ -382,19 +401,6 @@ wss.on('connection', (ws, req) => {
   try { ws.send(JSON.stringify({ type:'CONFIG', data: { poolName: cfg.poolName || 'SoloStrike', privateMode: !!cfg.privateMode, hasAddress: !!cfg.payoutAddress } })); } catch {}
   ws.on('close', () => { wsClients--; });
 });
-
-function rateLimitFactory(maxPerMin = 60) {
-  const buckets = new Map();
-  return (req, res, next) => {
-    const ip = req.ip || 'unknown';
-    const now = Date.now();
-    let b = buckets.get(ip);
-    if (!b || (now - b.t) > 60000) { b = { c:0, t:now }; buckets.set(ip, b); }
-    b.c++;
-    if (b.c > maxPerMin) return res.status(429).json({ error: 'rate limited' });
-    next();
-  };
-}
 
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfgPublic()));
@@ -466,7 +472,7 @@ app.post('/api/reset-share-stats', (req, res) => {
 
 // Stratum health (live port liveness)
 app.get('/api/stratum-health', (req, res) => {
-  res.json({ ports: state.stratumHealth?.ports || {} });
+  res.json(getStratumHealth());
 });
 
 // Webhooks API
@@ -598,6 +604,37 @@ setInterval(() => {
   broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
 }, 5000);
 
+// ── Snapshots scheduler ────────────────────────────────────────────────────
+function startSnapshotScheduler() {
+  // Capture daily snapshot at UTC midnight + run intermediate close-call updates every 60s
+  const ROLLUP_INTERVAL_MS = 60 * 1000;
+
+  const scheduleNextRollup = () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setUTCHours(24, 0, 0, 0);
+    const ms = tomorrow.getTime() - now.getTime();
+    setTimeout(async () => {
+      try {
+        const snap = captureDailySnapshot(state);
+        await applyDailySnapshot(state, snap);
+        await savePersist({ snapshots: state.snapshots, closestCalls: state.closestCalls });
+      } catch (e) { console.error('[snapshots] daily failed:', e.message); }
+      scheduleNextRollup();
+    }, ms);
+  };
+  scheduleNextRollup();
+
+  setInterval(() => {
+    try {
+      // Recompute pool-level closest calls (top 10 best shares ever) periodically
+      updateClosestCalls(state);
+    } catch (e) { console.error('[snapshots] interval failed:', e.message); }
+  }, ROLLUP_INTERVAL_MS);
+
+  console.log(`[Snapshots] Scheduler started (interval ${ROLLUP_INTERVAL_MS/1000}s, daily rollup at UTC midnight)`);
+}
+
 // ── Boot sequence ─────────────────────────────────────────────────────────
 async function main() {
   await fs.ensureDir(CONFIG_DIR);
@@ -616,6 +653,12 @@ async function main() {
   // v1.7.1: Tor preference persists
   if (typeof persist.pulseTorEnabled === 'boolean') cfg.pulseTorEnabled = persist.pulseTorEnabled;
   state.privateMode = !!cfg.privateMode;
+
+  // Snapshots — restore from disk if present
+  try {
+    const loaded = await loadSnapshots(CONFIG_DIR);
+    if (loaded) state.snapshots = loaded;
+  } catch (e) { console.error('snapshot load failed:', e.message); }
 
   // Main polls
   setInterval(pollBitcoind, 15000);
@@ -640,16 +683,13 @@ async function main() {
   await loadHooks();
 
   // Subsystems
-  startStatusPoller({ state, broadcast });
-  startSnapshots({ state, broadcast, savePersist });
-  state.stratumHealth = startStratumHealth({ stratumHosts: ['ckpool', 'ckpool', 'ckpool'], stratumPorts: [3333, 3334, 4333] });
-
+  startUaTailer({ configDir: CONFIG_DIR, logDir: CKPOOL_LOG_DIR });
+  startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
+  startSnapshotScheduler();
+  startStratumHealthPoller();
   startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir: CKPOOL_LOG_DIR });
   startShareWatcher({ state, logDir: CKPOOL_LOG_DIR, savePersist, broadcast });
   networkStatsController = startNetworkStats({ state, cfg, savePersist });
-
-  // UA tailer (worker fingerprinting)
-  startUaTailer({ state, broadcast, savePersist, logDir: CKPOOL_LOG_DIR, fireHooks });
 
   // Status set to running once polls produce data
   setTimeout(() => {
