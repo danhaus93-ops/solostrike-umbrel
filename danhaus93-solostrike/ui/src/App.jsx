@@ -2501,7 +2501,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Card order + currency helpers ─────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'closestcalls', 'blocks', 'topfinders', 'recent'];
+const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'closestcalls', 'blocks', 'topfinders', 'recent', 'pulse'];
 function loadOrder() {
   try {
     const saved = localStorage.getItem(LS_CARD_ORDER);
