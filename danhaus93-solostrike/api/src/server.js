@@ -68,7 +68,7 @@ let bootTime = Date.now();
 
 const state = {
   status: 'loading',
-  version: '1.6.0',
+  version: '1.7.0',
   privateMode: false,
   minimalMode: false,
   workers: {},
