@@ -36,7 +36,7 @@ const RPC_PORT = parseInt(process.env.BITCOIN_RPC_PORT || '8332', 10);
 const RPC_USER = process.env.BITCOIN_RPC_USER || 'umbrel';
 const RPC_PASS = process.env.BITCOIN_RPC_PASS || '';
 
-// Internal Mempool app (private mode allowed) — UMBREL_INTERNAL_MEMPOOL_URL like 'http://mempool_mempool_1:8999'
+// Internal Mempool app (private mode allowed)
 const INTERNAL_MEMPOOL = process.env.UMBREL_INTERNAL_MEMPOOL_URL || '';
 const ZMQ_HASHBLOCK_URL = process.env.BITCOIN_ZMQ_HASHBLOCK || null;
 
@@ -47,7 +47,7 @@ const PUBLIC_PRICE_URL   = 'https://mempool.space/api/v1/prices';
 
 let networkStatsController = null;
 
-// ── State (transient, what websocket clients see) ──────────────────────────
+// ── State ──────────────────────────────────────────────────────────────────
 const state = {
   status: 'starting',
   payoutAddress: null,
@@ -59,10 +59,10 @@ const state = {
   blockReward: { totalBtc: 0, base: 0, fees: 0 },
   mempool: { totalFeesBtc: 0, feeRate: null },
   prices: {},
-  blocks: [],            // OUR strikes
-  netBlocks: [],         // network blocks (mempool API)
-  topFinders: [],        // top pool finders in last N
-  closestCalls: [],      // best diff shares ever
+  blocks: [],
+  netBlocks: [],
+  topFinders: [],
+  closestCalls: [],
   bestshare: 0,
   shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {} },
   uptime: 0,
@@ -115,7 +115,6 @@ async function loadPersist() {
 async function savePersist(obj) {
   try {
     await fs.ensureDir(CONFIG_DIR);
-    // Merge with existing persist so callers only need to pass what they changed
     let existing = {};
     try {
       if (await fs.pathExists(PERSIST_FILE)) existing = await fs.readJson(PERSIST_FILE);
@@ -226,7 +225,6 @@ async function pollBitcoind() {
       mempoolBytes: mempool.bytes || 0,
     };
 
-    // Sync warning if behind
     const headers = blockchain.headers || 0;
     const blocks = blockchain.blocks || 0;
     const progress = blockchain.verificationprogress || 0;
@@ -238,7 +236,6 @@ async function pollBitcoind() {
       warn: progress < 0.999 || behind > 5,
     };
 
-    // Build template fees (next block)
     try {
       const tmpl = await rpc('getblocktemplate', [{ rules: ['segwit'] }]);
       const totalFees = (tmpl.transactions || []).reduce((s, t) => s + (t.fee || 0), 0);
@@ -248,11 +245,8 @@ async function pollBitcoind() {
         base: blockSubsidy / 1e8,
         fees: totalFees / 1e8,
       };
-    } catch (e) {
-      // Template fetch is optional; ignore failures
-    }
+    } catch (e) {}
 
-    // ── Compute strike odds + luck + retarget ─────────────────────────────
     const myHr = state.hashrate.current || 0;
     const netHr = state.network.hashrate || 1;
     const blocksPerDay = 144;
@@ -269,7 +263,6 @@ async function pollBitcoind() {
       perMonth: perBlockProbWithinMonth,
     };
 
-    // Luck: blocks expected since pool start vs blocks actually found
     if (state.startedAt) {
       const elapsedMs = Date.now() - state.startedAt;
       const blocksExpected = (myHr / netHr) * (elapsedMs / 600000);
@@ -284,7 +277,6 @@ async function pollBitcoind() {
       };
     }
 
-    // Retarget
     const retargetBlock = Math.floor(blocks / 2016) * 2016 + 2016;
     const remainingBlocks = retargetBlock - blocks;
     const retargetEpochStart = retargetBlock - 2016;
@@ -303,7 +295,7 @@ async function pollBitcoind() {
         remainingBlocks,
         remainingTime,
       };
-    } catch (e) { /* retarget is best-effort */ }
+    } catch (e) {}
 
   } catch (e) {
     console.warn('pollBitcoind failed:', e.message);
@@ -313,7 +305,6 @@ async function pollBitcoind() {
 
 async function pollMempool() {
   if (cfg.privateMode) {
-    // Try internal Umbrel Mempool first
     if (INTERNAL_MEMPOOL) {
       const fees = await tryFetchJson(`${INTERNAL_MEMPOOL}/api/v1/fees/recommended`);
       if (fees) {
@@ -324,7 +315,6 @@ async function pollMempool() {
     state.mempool.feeRate = null;
     return;
   }
-  // Public mempool.space
   const fees = await tryFetchJson(PUBLIC_FEES_URL);
   if (fees) state.mempool.feeRate = fees.fastestFee || fees.halfHourFee || null;
 }
@@ -341,7 +331,6 @@ async function pollBlocks() {
   if (!Array.isArray(blocks)) return;
   state.netBlocks = blocks.slice(0, 30).map(formatNetBlock);
 
-  // Compute top finders
   const counts = new Map();
   for (const b of blocks) {
     const key = b.extras?.pool?.name || 'unknown';
@@ -476,7 +465,6 @@ app.get('/api/export/workers.csv', (req, res) => {
   res.send(rows.map(r => r.join(',')).join('\n'));
 });
 
-// Reset session share counters
 app.post('/api/reset-share-stats', (req, res) => {
   try {
     if (state.shareCounters) {
@@ -501,14 +489,11 @@ app.post('/api/reset-share-stats', (req, res) => {
   }
 });
 
-// Stratum health (live port liveness)
 app.get('/api/stratum-health', (req, res) => {
   res.json(getStratumHealth());
 });
 
-// Webhooks API
 app.get('/api/webhooks', (req, res) => {
-// Don't return URLs in list endpoint? For now, return everything since this is local-only.
   res.json({ hooks: state.webhooks || [] });
 });
 app.post('/api/webhooks', async (req, res) => {
@@ -542,7 +527,7 @@ app.post('/api/webhooks', async (req, res) => {
   }
 });
 
-// ── SoloStrike Network (v1.6.0) ──────────────────────────────────────────────
+// ── SoloStrike Network ──────────────────────────────────────────────────────
 app.get('/api/network-stats', (req, res) => {
   res.json(state.networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {} });
 });
@@ -565,8 +550,7 @@ app.post('/api/network-stats/regenerate', (req, res) => {
   res.json({ ok: true, message: 'Identity regenerated. Restart the API container to apply.' });
 });
 
-// v1.7.1 — Backup the encrypted identity to plaintext on user demand.
-// Localhost-only (Umbrel routes through the local proxy network).
+// v1.7.1 — Backup the encrypted identity to plaintext on user demand (localhost-only).
 app.post('/api/network-stats/export-backup', (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
   if (typeof networkStatsController.exportBackup !== 'function') {
@@ -583,15 +567,34 @@ app.post('/api/network-stats/export-backup', (req, res) => {
   }
 });
 
-// v1.7.1 — Toggle Tor routing for relay connections
-app.post('/api/network-stats/tor', (req, res) => {
+// v1.7.3 — Async toggle Tor routing with reachability pre-flight + hot-swap.
+// Returns { ok, mode, via, error } so UI can show specific feedback.
+app.post('/api/network-stats/tor', async (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
   if (typeof networkStatsController.setTorEnabled !== 'function') {
     return res.status(501).json({ error: 'tor toggle not supported in this API version' });
   }
   const enabled = !!(req.body && req.body.enabled);
-  networkStatsController.setTorEnabled(enabled);
-  res.json({ ok: true, enabled, message: 'Tor setting saved. Effective on next relay reconnect.' });
+  try {
+    const result = await networkStatsController.setTorEnabled(enabled);
+    if (!result.ok) {
+      return res.json({
+        ok: false,
+        enabled: false,
+        mode: result.mode,
+        via: result.via,
+        error: result.error,
+      });
+    }
+    res.json({
+      ok: true,
+      enabled: result.mode === 'tor',
+      mode: result.mode,
+      via: result.via,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // v1.7.1 — Security telemetry endpoint for diagnostics
@@ -629,7 +632,6 @@ app.get('/metrics', (req, res) => {
   res.send(lines.join('\n') + '\n');
 });
 
-// State broadcast loop (websocket clients)
 setInterval(() => {
   if (wss.clients.size === 0) return;
   broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
@@ -637,7 +639,6 @@ setInterval(() => {
 
 // ── Snapshots scheduler ────────────────────────────────────────────────────
 function startSnapshotScheduler() {
-  // Capture daily snapshot at UTC midnight + run intermediate close-call updates every 60s
   const ROLLUP_INTERVAL_MS = 60 * 1000;
 
   const scheduleNextRollup = () => {
@@ -658,7 +659,6 @@ function startSnapshotScheduler() {
 
   setInterval(() => {
     try {
-      // Recompute pool-level closest calls (top 10 best shares ever) periodically
       updateClosestCalls(state.snapshots, state);
     } catch (e) { console.error('[snapshots] interval failed:', e.message); }
   }, ROLLUP_INTERVAL_MS);
@@ -675,42 +675,34 @@ async function main() {
   if (persist.blocks) state.blocks = persist.blocks;
   if (persist.snapshots) state.snapshots = persist.snapshots;
   if (persist.webhooks) state.webhooks = persist.webhooks;
-  // v1.6.0: nostr identity + network-stats opt-in flag persist across restarts
   if (persist.nostrPrivkey) cfg.nostrPrivkey = persist.nostrPrivkey;
   if (persist.nostrInstallId) cfg.nostrInstallId = persist.nostrInstallId;
   if (typeof persist.networkStatsEnabled === 'boolean') cfg.networkStatsEnabled = persist.networkStatsEnabled;
-  // v1.7.2: device salt anchors encryption across container restarts
   if (persist.pulseDeviceSalt) cfg.pulseDeviceSalt = persist.pulseDeviceSalt;
-  // v1.7.1: Tor preference persists
   if (typeof persist.pulseTorEnabled === 'boolean') cfg.pulseTorEnabled = persist.pulseTorEnabled;
   state.privateMode = !!cfg.privateMode;
 
-  // Snapshots — restore from disk if present
   try {
     const loaded = await loadSnapshots(CONFIG_DIR);
     if (loaded) state.snapshots = loaded;
   } catch (e) { console.error('snapshot load failed:', e.message); }
 
-  // Main polls
   setInterval(pollBitcoind, 15000);
   setInterval(pollMempool,  60000);
   setInterval(pollBlocks,   120000);
   setInterval(pollPrices,   300000);
 
-  // Initial fetches
   await pollBitcoind();
   await pollMempool();
   await pollBlocks();
   await pollPrices();
 
-  // Boot status
   if (!cfg.payoutAddress) {
     state.status = 'no_address';
   } else {
     state.status = 'starting';
   }
 
-  // Webhooks
   await loadHooks();
 
   // Subsystems
@@ -723,7 +715,6 @@ async function main() {
   startShareWatcher({ state, logDir: CKPOOL_LOG_DIR, savePersist, broadcast });
   networkStatsController = startNetworkStats({ state, cfg, savePersist });
 
-  // Status set to running once polls produce data
   setTimeout(() => {
     if (state.status === 'starting' && cfg.payoutAddress) state.status = 'running';
   }, 5000);
@@ -734,7 +725,6 @@ async function main() {
   server.listen(PORT, () => {
     console.log(`[SoloStrike API v${state.version}] Listening on :${PORT} (privateMode=${state.privateMode})`);
   });
-
 }
 
 main().catch(e => {
