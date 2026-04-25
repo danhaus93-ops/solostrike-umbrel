@@ -841,10 +841,15 @@ async function boot() {
   if (persist.blocks) state.blocks = persist.blocks;
   if (persist.snapshots) state.snapshots = persist.snapshots;
   if (persist.webhooks) state.webhooks = persist.webhooks;
-  // v1.6.0: nostr identity + network-stats opt-in flag persist across restarts
+    // v1.6.0: nostr identity + network-stats opt-in flag persist across restarts
   if (persist.nostrPrivkey) cfg.nostrPrivkey = persist.nostrPrivkey;
   if (persist.nostrInstallId) cfg.nostrInstallId = persist.nostrInstallId;
   if (typeof persist.networkStatsEnabled === 'boolean') cfg.networkStatsEnabled = persist.networkStatsEnabled;
+  // v1.7.2: device salt anchors encryption across container restarts
+  if (persist.pulseDeviceSalt) cfg.pulseDeviceSalt = persist.pulseDeviceSalt;
+  // v1.7.1: Tor preference persists
+  if (typeof persist.pulseTorEnabled === 'boolean') cfg.pulseTorEnabled = persist.pulseTorEnabled;
+
   state.privateMode = !!cfg.privateMode;
 
   // Main polls
