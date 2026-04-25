@@ -1711,18 +1711,6 @@ function PulseTab({ networkStats, onRefresh }) {
     } catch (e) { setErr(e.message); setOptimistic(null); }
   };
 
-
-  const confirmEnable = async () => {
-    setBusy(true); setErr('');
-    try {
-      const r = await fetch('/api/network-stats/enable', { method: 'POST' });
-      if (!r.ok) throw new Error('server returned ' + r.status);
-      if (onRefresh) await onRefresh();
-      setShowConfirm(false);
-    } catch (e) { setErr(e.message); }
-    setBusy(false);
-  };
-
   const regenerate = async () => {
     if (!window.confirm('Reset your Pulse identity?\n\nA new anonymous keypair will be generated. Your pool will appear as a new participant to other Pulse observers. Your blocks, stats, and pool data are unaffected.\n\nThe API container will need to be restarted for the new identity to take effect.')) return;
     setBusy(true); setErr('');
