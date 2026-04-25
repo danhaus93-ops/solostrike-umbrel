@@ -424,6 +424,22 @@ wss.on('connection', (ws, req) => {
 
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfgPublic()));
+// Wizard alias for /api/config — accepts {payoutAddress} only
+app.post('/api/setup', async (req, res) => {
+  try {
+    const { payoutAddress } = req.body || {};
+    if (!payoutAddress) return res.status(400).json({ error: 'payoutAddress required' });
+    const t = String(payoutAddress).trim();
+    if (!isValidBtcAddress(t)) return res.status(400).json({ error: 'Invalid BTC address' });
+    cfg.payoutAddress = t;
+    await saveConfig();
+    if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
+    res.json({ ok: true });
+    broadcast({ type: 'CONFIG', data: cfgPublic() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.post('/api/config', async (req, res) => {
   try {
