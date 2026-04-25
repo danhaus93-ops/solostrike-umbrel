@@ -1685,6 +1685,9 @@ function PulseTab({ networkStats, onRefresh }) {
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = optimistic !== null ? optimistic : !!ns.enabled;
+  const [torOn, setTorOn] = useState(false);
+  const [backup, setBackup] = useState(null);
+  const [backupCopied, setBackupCopied] = useState(false);
 
   // Clear the optimistic override once the server has caught up
   useEffect(() => {
@@ -1825,17 +1828,108 @@ function PulseTab({ networkStats, onRefresh }) {
         </div>
       )}
 
-      {enabled && (
-        <div style={{padding:'0.7rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.5rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>Advanced</div>
-          <button onClick={regenerate} disabled={busy} style={{width:'100%',padding:'0.55rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',cursor:busy?'wait':'pointer',opacity:busy?0.5:1}}>
-            ⟲ Reset Pulse Identity
-          </button>
-          <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:6,lineHeight:1.4}}>
-            Generate a fresh random keypair. Your pool will appear as a new participant to other observers. Requires API restart to take effect.
+     {enabled && (
+        <>
+          {/* Tor routing toggle */}
+          <div style={{padding:'0.7rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.5rem'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>Privacy</div>
+            <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:6}}>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:'var(--text-1)',letterSpacing:'0.05em',marginBottom:3}}>🧅 Route via Tor</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.45}}>
+                  Send broadcasts through Tor so no relay learns your IP address. Adds latency. Requires Umbrel Tor service running.
+                </div>
+              </div>
+              <button
+                onClick={async()=>{
+                  const next = !torOn;
+                  setTorOn(next); setErr('');
+                  try {
+                    const r = await fetch('/api/network-stats/tor', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ enabled: next }) });
+                    if (!r.ok) throw new Error('server returned ' + r.status);
+                  } catch(e) { setErr(e.message); setTorOn(!next); }
+                }}
+                style={{flexShrink:0,width:46,height:24,borderRadius:12,background:torOn?'var(--cyan)':'var(--bg-deep)',border:'1px solid var(--border)',position:'relative',cursor:'pointer',transition:'background 0.2s'}}>
+                <div style={{position:'absolute',top:2,left:torOn?24:2,width:18,height:18,borderRadius:'50%',background:torOn?'#000':'var(--text-2)',transition:'left 0.2s'}}/>
+              </button>
+            </div>
+            {torOn && (
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--cyan)',padding:'0.4rem 0.55rem',background:'rgba(0,255,209,0.05)',border:'1px dashed rgba(0,255,209,0.3)',marginTop:6}}>
+                ⓘ Active on next relay reconnect (~30s). If Tor isn't reachable, broadcasts fall back to direct.
+              </div>
+            )}
+          </div>
+
+          {/* Advanced actions */}
+          <div style={{padding:'0.7rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.5rem'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>Advanced</div>
+            <button onClick={async()=>{
+              if (!window.confirm('Show your Pulse identity backup?\n\nThis reveals your private signing key. Anyone with this key can sign Pulse events as you.\n\nUse only if you intend to back it up offline (paper, encrypted vault).')) return;
+              setErr('');
+              try {
+                const r = await fetch('/api/network-stats/export-backup', { method:'POST' });
+                if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.error || 'server returned ' + r.status); }
+                const data = await r.json();
+                setBackup(data);
+              } catch(e) { setErr(e.message); }
+            }} style={{width:'100%',padding:'0.55rem',background:'transparent',border:'1px solid var(--cyan)',color:'var(--cyan)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer',marginBottom:'0.5rem'}}>
+              🔑 Backup Pulse Identity
+            </button>
+            <button onClick={regenerate} disabled={busy} style={{width:'100%',padding:'0.55rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',cursor:busy?'wait':'pointer',opacity:busy?0.5:1}}>
+              ⟲ Reset Pulse Identity
+            </button>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:6,lineHeight:1.4}}>
+              Backup saves your current identity. Reset generates a fresh keypair (requires API restart to apply).
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Backup display modal */}
+      {backup && (
+        <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:310,padding:'1rem'}} onClick={e=>e.target===e.currentTarget&&setBackup(null)}>
+          <div style={{width:'100%',maxWidth:480,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'1.25rem',boxShadow:'var(--glow-a)',maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:'0.6rem'}}>🔑 Pulse Identity Backup</div>
+            <div style={{background:'rgba(255,59,59,0.08)',border:'1px solid rgba(255,59,59,0.35)',padding:'0.6rem 0.8rem',marginBottom:'0.9rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--red)',fontWeight:700,marginBottom:4}}>⚠ Sensitive</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.5}}>
+                {backup.warning || 'Anyone with this key can sign events as you. Store offline — paper, hardware, or encrypted vault. Never paste into emails, screenshots, or chat.'}
+              </div>
+            </div>
+
+            <div style={{marginBottom:'0.8rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Pubkey</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--cyan)',background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.5rem 0.6rem',wordBreak:'break-all'}}>{backup.pubkey}</div>
+            </div>
+
+            <div style={{marginBottom:'0.8rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Install ID</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-1)',background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.5rem 0.6rem',wordBreak:'break-all'}}>{backup.installId}</div>
+            </div>
+
+            <div style={{marginBottom:'0.8rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--red)',marginBottom:4}}>Private Key (Hex)</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',background:'rgba(255,59,59,0.04)',border:'1px solid rgba(255,59,59,0.3)',padding:'0.6rem 0.7rem',wordBreak:'break-all',userSelect:'all'}}>{backup.privkeyHex}</div>
+            </div>
+
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={async()=>{
+                try { await navigator.clipboard.writeText(backup.privkeyHex); setBackupCopied(true); setTimeout(()=>setBackupCopied(false),2000); }
+                catch(e) { setErr('Copy failed: '+e.message); }
+              }} style={{flex:1,padding:'0.65rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>
+                {backupCopied?'✓ Copied':'Copy Private Key'}
+              </button>
+              <button onClick={()=>setBackup(null)} style={{flex:1,padding:'0.65rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>
+                Close
+              </button>
+            </div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:'0.6rem',textAlign:'center',lineHeight:1.4}}>
+              Closing this window erases the key from screen. The encrypted copy on disk stays unchanged.
+            </div>
           </div>
         </div>
       )}
+
 
       {err && <div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'0.5rem'}}>⚠ {err}</div>}
 
