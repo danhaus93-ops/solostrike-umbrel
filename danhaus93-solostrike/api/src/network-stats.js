@@ -1,4 +1,4 @@
-// ── SoloStrike Network Stats (v1.7.1) — Hardened ──────────────────────────
+// ── SoloStrike Network Stats (v1.7.2) — Hardened ──────────────────────────
 //
 // Publishes anonymous pool stats (hashrate, worker count, version,
 // blocks found) to the SoloStrike Network over nostr every 5 minutes.
@@ -102,20 +102,41 @@ const KEY_ROTATION_INTERVAL_MS = null; // not enabled by default; user must opt 
 // always produces the same derived key. A different machine cannot decrypt the
 // stored identity even if it has the persist.json file.
 
-function getDeviceFingerprint() {
+// Generate or retrieve the persistent device salt. This is stored in
+// persist.json (on the host volume, survives container recreation) and is
+// the primary anchor for our encryption key derivation. Without persistence
+// across container restarts, encrypted keys would become unreadable on
+// every redeploy. The salt is not secret — security comes from the
+// combination of salt + derivation algorithm + hardware identifiers.
+function ensureDeviceSalt(cfg) {
+  if (cfg.pulseDeviceSalt && typeof cfg.pulseDeviceSalt === 'string' && cfg.pulseDeviceSalt.length >= 32) {
+    return cfg.pulseDeviceSalt;
+  }
+  const salt = crypto.randomBytes(32).toString('hex');
+  cfg.pulseDeviceSalt = salt;
+  return salt;
+}
+
+function getDeviceFingerprint(cfg) {
   const sources = [];
 
-  // Linux machine-id is the gold standard — stable across boots, unique per
-  // machine, doesn't change on hostname/IP changes.
+  // PRIMARY: persisted device salt (stable across container recreation,
+  // survives docker pull/rm cycles because persist.json lives on host volume)
+  const salt = ensureDeviceSalt(cfg);
+  sources.push('salt:' + salt);
+
+  // Linux machine-id (often missing in containers, but use when available)
   try {
     const mid = fs.readFileSync('/etc/machine-id', 'utf8').trim();
     if (mid) sources.push('machine-id:' + mid);
-  } catch (_) { /* fall through to other sources */ }
+  } catch (_) { /* container without machine-id, fall through */ }
 
-  // Hostname provides moderate uniqueness
-  sources.push('host:' + (os.hostname() || 'unknown'));
+  // Hostname — unstable in Docker (changes on container recreate) but
+  // included for additional entropy. The salt is the real anchor.
+  const hn = os.hostname();
+  if (hn) sources.push('host:' + hn);
 
-  // First non-internal MAC address
+  // First non-zero MAC — also unstable in Docker but adds entropy
   try {
     const ifaces = os.networkInterfaces();
     const macs = [];
@@ -126,14 +147,9 @@ function getDeviceFingerprint() {
         }
       }
     }
-    macs.sort(); // deterministic ordering across boots
+    macs.sort();
     if (macs.length) sources.push('mac:' + macs[0]);
   } catch (_) { /* no network info available */ }
-
-  // Failsafe — guarantee at least one source
-  if (sources.length === 0) {
-    sources.push('fallback:solostrike-pulse-fingerprint');
-  }
 
   // HKDF-style derivation: sha256(domain || sha256(joined sources))
   const inner = crypto.createHash('sha256').update(sources.join('||')).digest();
@@ -143,8 +159,8 @@ function getDeviceFingerprint() {
     .digest();
 }
 
-function encryptIdentityKey(plaintextHex) {
-  const deviceKey = getDeviceFingerprint();
+function encryptIdentityKey(plaintextHex, cfg) {
+  const deviceKey = getDeviceFingerprint(cfg);
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', deviceKey, iv);
   const ct = Buffer.concat([cipher.update(plaintextHex, 'utf8'), cipher.final()]);
@@ -154,7 +170,7 @@ function encryptIdentityKey(plaintextHex) {
   return 'v1:' + Buffer.concat([iv, tag, ct]).toString('base64');
 }
 
-function decryptIdentityKey(encrypted) {
+function decryptIdentityKey(encrypted, cfg) {
   if (!encrypted || typeof encrypted !== 'string') {
     throw new Error('decryptIdentityKey: empty input');
   }
@@ -168,7 +184,7 @@ function decryptIdentityKey(encrypted) {
   const iv = buf.slice(0, 12);
   const tag = buf.slice(12, 28);
   const ct = buf.slice(28);
-  const deviceKey = getDeviceFingerprint();
+  const deviceKey = getDeviceFingerprint(cfg);
   const decipher = crypto.createDecipheriv('aes-256-gcm', deviceKey, iv);
   decipher.setAuthTag(tag);
   const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
@@ -286,13 +302,13 @@ function startNetworkStats({ state, cfg, savePersist }) {
   if (!cfg.nostrPrivkey) {
     const sk = generateSecretKey();
     const plaintextHex = Buffer.from(sk).toString('hex');
-    cfg.nostrPrivkey = encryptIdentityKey(plaintextHex);
+    cfg.nostrPrivkey = encryptIdentityKey(plaintextHex, cfg);
     cfg.nostrInstallId = crypto.randomUUID();
     console.log('[network-stats] Generated new nostr identity (encrypted at rest)');
   } else if (isPlaintextHexKey(cfg.nostrPrivkey)) {
     // Legacy plaintext key — migrate to encrypted form
     try {
-      const encrypted = encryptIdentityKey(cfg.nostrPrivkey);
+      const encrypted = encryptIdentityKey(cfg.nostrPrivkey, cfg);
       cfg.nostrPrivkey = encrypted;
       console.log('[network-stats] Migrated plaintext identity key to encrypted storage');
     } catch (e) {
@@ -310,7 +326,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     if (isPlaintextHexKey(cfg.nostrPrivkey)) {
       plaintextForBackup = cfg.nostrPrivkey;
     } else {
-      plaintextForBackup = decryptIdentityKey(cfg.nostrPrivkey);
+      plaintextForBackup = decryptIdentityKey(cfg.nostrPrivkey, cfg);
     }
     privkeyBytes = Buffer.from(plaintextForBackup, 'hex');
   } catch (e) {
@@ -319,7 +335,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     const sk = generateSecretKey();
     plaintextForBackup = Buffer.from(sk).toString('hex');
     privkeyBytes = sk;
-    cfg.nostrPrivkey = encryptIdentityKey(plaintextForBackup);
+    cfg.nostrPrivkey = encryptIdentityKey(plaintextForBackup, cfg);
     cfg.nostrInstallId = crypto.randomUUID();
   }
 
@@ -644,6 +660,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
       savePersist({
         nostrPrivkey: cfg.nostrPrivkey, // already encrypted
         nostrInstallId: cfg.nostrInstallId,
+        pulseDeviceSalt: cfg.pulseDeviceSalt, // anchor for encryption
         networkStatsEnabled: !!cfg.networkStatsEnabled,
         pulseTorEnabled: !!cfg.pulseTorEnabled,
       });
@@ -672,7 +689,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
       seenEvents.delete(pubkey);
       const sk = generateSecretKey();
       const plaintext = Buffer.from(sk).toString('hex');
-      cfg.nostrPrivkey = encryptIdentityKey(plaintext);
+      cfg.nostrPrivkey = encryptIdentityKey(plaintext, cfg);
       cfg.nostrInstallId = crypto.randomUUID();
       saveIdentity();
       console.log('[network-stats] Regenerated identity — restart API to apply');
@@ -734,7 +751,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
   // Persist any migrations that happened during boot
   saveIdentity();
 
-  console.log(`[network-stats v1.7.1] Started: participating=${!!cfg.networkStatsEnabled}, ` +
+  console.log(`[network-stats v1.7.2] Started: participating=${!!cfg.networkStatsEnabled}, ` +
     `relays=${DEFAULT_RELAYS.length}, tor=${state.networkStats.security.torEnabled}, ` +
     `encryption=v1`);
 
