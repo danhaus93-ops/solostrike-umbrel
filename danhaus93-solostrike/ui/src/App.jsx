@@ -1715,413 +1715,336 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
   return (
     <>
-      <div style={{display:'flex', alignItems:'center', gap:12, padding:'0.75rem', background:'var(--bg-raised)', border:`1px solid ${privateMode?'var(--cyan)':'var(--border)'}`, marginBottom:14}}>
-        <span style={{fontSize:'1.4rem', color: privateMode?'var(--cyan)':'var(--text-3)'}}>{privateMode?'🔒':'🔓'}</span>
-        <div style={{flex:1, minWidth:0}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600, marginBottom:3}}>Private Mode</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.4}}>
-            Hides your worker count, total hashrate, BTC price, and worker fingerprints from screenshots & shoulder-surfers. ZMQ badge becomes generic. Mining continues unchanged.
+      <div style={{padding:'1rem',background:'var(--bg-raised)',border:'1px solid var(--border)', marginBottom:'0.75rem'}}>
+        <label style={{display:'flex',alignItems:'center',gap:'0.75rem',cursor:'pointer'}}>
+          <input type="checkbox" checked={privateMode} onChange={e=>setPrivateMode(e.target.checked)}
+            style={{width:18,height:18,accentColor:'var(--cyan)',cursor:'pointer'}}/>
+          <div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.75rem',color:'var(--text-1)',fontWeight:600,letterSpacing:'0.05em'}}>🔒 Private Mode</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-2)',marginTop:4,lineHeight:1.5}}>
+              Keep your operation off the radar. Hides BTC price, all USD values, mempool data, and any external network calls. Locks the dashboard down for screenshots, demos, or simply staying invisible.
+            </div>
           </div>
-        </div>
-        <button onClick={()=>setPrivateMode(!privateMode)}
-          style={{width:44, height:24, borderRadius:12, background: privateMode?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
-          <div style={{position:'absolute', top:1, left: privateMode?22:2, width:20, height:20, borderRadius:'50%', background: privateMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </label>
+      </div>
+      <div style={{display:'flex',justifyContent:'flex-end', marginTop:14}}>
+        <button onClick={submit} disabled={loading}
+          style={{padding:'0.7rem 1.4rem',background:saved?'var(--green)':'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
+          {loading?'SAVING…':saved?'✓ SAVED':'SAVE'}
         </button>
       </div>
-      <button onClick={submit} disabled={loading}
-        style={{width:'100%', padding:'0.7rem', background:saved?'var(--green)':'var(--amber)', color:'#000', border:'none', fontFamily:'var(--fd)', fontWeight:700, letterSpacing:'0.1em', fontSize:'0.7rem', cursor:loading?'wait':'pointer', textTransform:'uppercase', opacity:loading?0.6:1}}>
-        {loading?'SAVING…':saved?'✓ SAVED':'SAVE PRIVACY'}
-      </button>
     </>
   );
 }
 
 // ── Pulse tab ─────────────────────────────────────────────────────────────────
 function PulseTab({ networkStats, onRefresh }) {
+  const [tab, setTab] = useState('overview');
   const [busy, setBusy] = useState(false);
-  const [showBackup, setShowBackup] = useState(false);
-  const [showRegen, setShowRegen] = useState(false);
-  const [backupData, setBackupData] = useState(null);
-  const [torMode, setTorMode] = useState({ state: networkStats?.torEnabled ? 'on' : 'off', error: null });
+  const [torBusy, setTorBusy] = useState(false);
+  const [torError, setTorError] = useState('');
+  const [showRevealKey, setShowRevealKey] = useState(false);
 
-  // Poll Tor health every 8s when on
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const r = await fetch('/api/network-stats/security');
-        if (!r.ok) return;
-        const j = await r.json();
-        if (cancelled) return;
-        const health = j?.torHealth?.state;
-        if (j?.torEnabled) {
-          if (health === 'ready') setTorMode({ state: 'on', error: null });
-          else if (health === 'fallback') setTorMode({ state: 'fallback', error: 'Tor unhealthy — temporarily routing direct' });
-          else if (health === 'checking') setTorMode({ state: 'checking', error: null });
-        } else {
-          setTorMode({ state: 'off', error: null });
-        }
-      } catch {}
-    };
-    tick();
-    const id = setInterval(tick, 8000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [networkStats?.torEnabled]);
-
-  const torEnabled = !!networkStats?.torEnabled;
-
-  const setEnabled = async (enable) => {
+  const apiCall = useCallback(async (path, method = 'POST', body = null) => {
     setBusy(true);
     try {
-      const url = enable ? '/api/network-stats/enable' : '/api/network-stats/disable';
-      await fetch(url, { method:'POST' });
-      onRefresh && onRefresh();
-    } catch (e) { console.error(e); }
-    finally { setBusy(false); }
-  };
-
-  const toggleTor = async () => {
-    const next = !torEnabled;
-    setBusy(true);
-    setTorMode({ state: next ? 'checking' : 'off', error: null });
-    try {
-      const r = await fetch('/api/network-stats/tor', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ enabled: next }),
-      });
-      const j = await r.json().catch(()=>null);
-      if (j && j.ok) {
-        if (next) setTorMode({ state: 'on', error: null });
-        else setTorMode({ state: 'off', error: null });
-      } else {
-        // Reachability failure — server kept Tor off
-        setTorMode({ state: 'off', error: j?.error || 'Tor unreachable' });
-      }
-      onRefresh && onRefresh();
-    } catch (e) {
-      setTorMode({ state: 'off', error: e.message || 'Network error' });
-    }
-    finally { setBusy(false); }
-  };
-
-  const regenerate = async () => {
-    setBusy(true);
-    try {
-      await fetch('/api/network-stats/regenerate', { method:'POST' });
-      onRefresh && onRefresh();
-      setShowRegen(false);
-    } catch (e) { console.error(e); }
-    finally { setBusy(false); }
-  };
-
-  const exportBackup = async () => {
-    setBusy(true);
-    try {
-      const r = await fetch('/api/network-stats/export-backup', { method:'POST' });
+      const opts = { method, headers: { 'Content-Type':'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      const r = await fetch(path, opts);
+      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || `HTTP ${r.status}`); }
       const data = await r.json();
-      setBackupData(data);
-      setShowBackup(true);
-    } catch (e) { console.error(e); }
-    finally { setBusy(false); }
-  };
+      onRefresh();
+      return data;
+    } catch (e) {
+      console.error('Pulse action failed:', e);
+      alert(`Action failed: ${e.message}`);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  }, [onRefresh]);
 
-  const copyBackup = async () => {
-    if (!backupData) return;
+  const enable = () => apiCall('/api/network-stats/enable');
+  const disable = () => {
+    if (!confirm('Stop participating? Your stats will no longer contribute to the network and you will lose your read/write keys unless you back them up.')) return;
+    apiCall('/api/network-stats/disable');
+  };
+  const regenerate = () => {
+    if (!confirm('Generate fresh anonymous identity? Your old keys will be permanently deleted. This is irreversible.')) return;
+    apiCall('/api/network-stats/regenerate');
+  };
+  const exportBackup = async () => {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(backupData, null, 2));
+      const data = await apiCall('/api/network-stats/export-backup');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `solostrike-pulse-keys-${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
     } catch {}
   };
 
-  const enabled = !!networkStats?.enabled;
-  const ident   = networkStats?.identity || {};
-  const stats   = networkStats?.stats    || {};
+  const setTorEnabled = async (enabled) => {
+    setTorError('');
+    setTorBusy(true);
+    try {
+      const r = await fetch('/api/network-stats/tor', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ enabled })
+      });
+      const data = await r.json().catch(()=>({}));
+      if (!r.ok || data.ok === false) {
+        setTorError(data.error || `HTTP ${r.status}`);
+      }
+      onRefresh();
+    } catch (e) {
+      setTorError(e.message || 'Network error');
+    } finally {
+      setTorBusy(false);
+    }
+  };
 
-  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.15em', color:'var(--amber)', textTransform:'uppercase', marginTop:'1.25rem', marginBottom:'0.6rem' };
+  const enabled = !!networkStats?.enabled;
+  const conn = networkStats?.connections;
+  const sec  = networkStats?.security;
+
+  // Tor state for banner display
+  const torEnabled = !!sec?.torEnabled;
+  const torHealth = sec?.torHealth?.state;
+  const torRelays = networkStats?.connections?.relayDetails || [];
+  const torRelayCount = torRelays.filter(r => r.via === 'tor').length;
+  const directRelayCount = torRelays.filter(r => r.via !== 'tor').length;
+
+  const tabBtn = (id, label) => (
+    <button onClick={()=>setTab(id)} style={{
+      flex:1, padding:'0.55rem',
+      background:tab===id?'var(--bg-raised)':'transparent',
+      border:'none', borderBottom: tab===id?'2px solid var(--amber)':'2px solid transparent',
+      color:tab===id?'var(--amber)':'var(--text-2)',
+      fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em',
+      cursor:'pointer', textTransform:'uppercase'
+    }}>{label}</button>
+  );
+
+  if (!enabled) {
+    return (
+      <div>
+        <div style={{padding:'1.2rem',background:'linear-gradient(135deg, rgba(0,255,209,0.04) 0%, rgba(245,166,35,0.04) 100%)',border:'1px solid var(--border)', marginBottom:'1rem'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'1rem',color:'var(--cyan)',fontWeight:700,letterSpacing:'0.05em',marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
+            <span style={{filter:'drop-shadow(0 0 6px var(--cyan))'}}>📡</span>
+            <span>Join the Pulse</span>
+          </div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',lineHeight:1.6,marginBottom:'0.75rem'}}>
+            See <strong>which solo miners are out there</strong>, where blocks are being struck, and how your firepower compares to the global solo network — all <strong>fully anonymous</strong>.
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-2)',marginBottom:'1rem'}}>
+            <div>🔐 <strong style={{color:'var(--text-1)'}}>Anonymous by default.</strong> No address. No name. Just an unlinkable key per device.</div>
+            <div>🌐 <strong style={{color:'var(--text-1)'}}>Decentralized.</strong> Broadcasts via 5+ Nostr relays. No central server.</div>
+            <div>📊 <strong style={{color:'var(--text-1)'}}>Optional.</strong> One-click pause/leave. Full control of your data.</div>
+            <div>🔥 <strong style={{color:'var(--text-1)'}}>Worth it.</strong> See what the solo movement looks like in real time.</div>
+          </div>
+          <button onClick={enable} disabled={busy}
+            style={{width:'100%',padding:'0.85rem',background:'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.8rem',cursor:busy?'wait':'pointer',textTransform:'uppercase',opacity:busy?0.6:1, boxShadow:'0 0 16px rgba(0,255,209,0.2)'}}>
+            {busy?'JOINING…':'⚡ Join the Pulse'}
+          </button>
+        </div>
+        <details style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-2)',lineHeight:1.6}}>
+          <summary style={{fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--cyan)',letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>🔒 What gets shared?</summary>
+          <div style={{marginTop:8,paddingLeft:6}}>
+            <div style={{marginBottom:4}}>• Your hashrate (rounded), worker count, accept rate</div>
+            <div style={{marginBottom:4}}>• Your blocks found (height, height delta, block time) — never your address</div>
+            <div style={{marginBottom:4}}>• An anonymous identity hash (random per device, never tied to wallet)</div>
+            <div style={{color:'var(--green)',marginTop:8}}>✓ Never shared: payout address, IP, worker names, or anything that identifies you.</div>
+          </div>
+        </details>
+      </div>
+    );
+  }
 
   return (
     <>
-      {/* Master enable */}
-      <div style={{display:'flex', alignItems:'center', gap:12, padding:'0.75rem', background:'var(--bg-raised)', border:`1px solid ${enabled?'var(--cyan)':'var(--border)'}`, marginBottom:14}}>
-        <span style={{fontSize:'1.4rem', color: enabled?'var(--cyan)':'var(--text-3)'}}>{enabled?'🔥':'⏸'}</span>
-        <div style={{flex:1, minWidth:0}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600, marginBottom:3}}>SoloStrike Pulse</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.4}}>
-            Anonymous solo miner census. Broadcasts hashrate + worker count to verifiable Nostr relays. {enabled?'You are part of the heartbeat.':'Disabled. Join the swarm to share.'}
-          </div>
+      {/* Tor status banner — shows current state of routing */}
+      {torEnabled && torHealth === 'checking' && (
+        <div style={{padding:'0.6rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--cyan)',marginBottom:'0.75rem',fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--cyan)',display:'flex',alignItems:'center',gap:8}}>
+          <span>⏳</span>
+          <span>Testing Tor reachability…</span>
         </div>
-        <button onClick={()=>setEnabled(!enabled)} disabled={busy}
-          style={{width:44, height:24, borderRadius:12, background: enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor: busy?'wait':'pointer', flexShrink:0, opacity: busy?0.6:1}}>
-          <div style={{position:'absolute', top:1, left: enabled?22:2, width:20, height:20, borderRadius:'50%', background: enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-        </button>
+      )}
+      {torEnabled && torHealth === 'ready' && torRelayCount > 0 && (
+        <div style={{padding:'0.6rem 0.8rem',background:'rgba(57,255,106,0.05)',border:'1px solid rgba(57,255,106,0.3)',marginBottom:'0.75rem',fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--green)',display:'flex',alignItems:'center',gap:8}}>
+          <span>🟢</span>
+          <span>Routing all relays through Tor. Privacy active.</span>
+        </div>
+      )}
+      {torEnabled && torHealth === 'fallback' && (
+        <div style={{padding:'0.6rem 0.8rem',background:'rgba(245,166,35,0.05)',border:'1px solid rgba(245,166,35,0.3)',marginBottom:'0.75rem',fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--amber)',display:'flex',alignItems:'center',gap:8}}>
+          <span>🟡</span>
+          <span>Tor unhealthy — temporarily routing direct. Will retry automatically.</span>
+        </div>
+      )}
+      {torError && (
+        <div style={{padding:'0.6rem 0.8rem',background:'rgba(255,59,59,0.05)',border:'1px solid rgba(255,59,59,0.3)',marginBottom:'0.75rem',fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--red)',display:'flex',alignItems:'center',gap:8}}>
+          <span>⚠</span>
+          <span>Tor unreachable: {torError}</span>
+        </div>
+      )}
+
+      <div style={{display:'flex',gap:0,borderBottom:'1px solid var(--border)',marginBottom:14}}>
+        {tabBtn('overview','Overview')}
+        {tabBtn('identity','Identity')}
+        {tabBtn('keys','Keys & Backup')}
       </div>
 
-      {/* Tor toggle */}
-      <div style={{display:'flex', alignItems:'center', gap:12, padding:'0.75rem', background:'var(--bg-raised)', border:`1px solid ${torEnabled?'var(--cyan)':'var(--border)'}`, marginBottom:8, opacity: enabled?1:0.4}}>
-        <span style={{fontSize:'1.4rem'}}>🧅</span>
-        <div style={{flex:1, minWidth:0}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600, marginBottom:3}}>Route via Tor</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.4}}>
-            Hide your IP from relays. Requires Umbrel's tor_proxy.
-          </div>
-        </div>
-        <button onClick={toggleTor} disabled={busy || !enabled}
-          style={{width:44, height:24, borderRadius:12, background: torEnabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor: (busy||!enabled)?'not-allowed':'pointer', flexShrink:0, opacity: (busy||!enabled)?0.6:1}}>
-          <div style={{position:'absolute', top:1, left: torEnabled?22:2, width:20, height:20, borderRadius:'50%', background: torEnabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-        </button>
-      </div>
-
-      {/* Tor banners */}
-      {enabled && torMode.state === 'checking' && (
-        <div style={{padding:'0.5rem 0.7rem', background:'rgba(0,255,209,0.05)', border:'1px solid rgba(0,255,209,0.25)', fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--cyan)', marginBottom:14}}>
-          ⏳ Testing Tor reachability…
-        </div>
-      )}
-      {enabled && torMode.state === 'on' && (
-        <div style={{padding:'0.5rem 0.7rem', background:'rgba(57,255,106,0.05)', border:'1px solid rgba(57,255,106,0.25)', fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--green)', marginBottom:14}}>
-          🟢 Routing all relays through Tor. Privacy active.
-        </div>
-      )}
-      {enabled && torMode.state === 'fallback' && (
-        <div style={{padding:'0.5rem 0.7rem', background:'rgba(245,166,35,0.05)', border:'1px solid rgba(245,166,35,0.25)', fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--amber)', marginBottom:14}}>
-          🟡 {torMode.error}. Auto-recovering every 5min.
-        </div>
-      )}
-      {enabled && torMode.state === 'off' && torMode.error && (
-        <div style={{padding:'0.5rem 0.7rem', background:'rgba(255,59,59,0.05)', border:'1px solid rgba(255,59,59,0.25)', fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--red)', marginBottom:14}}>
-          ⚠ Tor unreachable: {torMode.error}. Make sure Umbrel's tor_proxy is running.
-        </div>
-      )}
-
-      {/* Identity section */}
-      {ident.pubkey && (
+      {tab==='overview' && (
         <>
-          <div style={sectionTitle}>▸ Your Anonymous Identity</div>
-          <div style={{padding:'0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:14}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5}}>
-              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase'}}>Public Key</span>
-              {ident.firstUsed && <span style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)'}}>since {new Date(ident.firstUsed).toLocaleDateString()}</span>}
-            </div>
-            <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--cyan)', wordBreak:'break-all', marginBottom:8}}>
-              {ident.pubkey}
-            </div>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:3}}>Identity</div>
-            <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', wordBreak:'break-all'}}>
-              {ident.installId || '—'}
+          <div style={{padding:'0.75rem',background:'rgba(57,255,106,0.05)',border:'1px solid rgba(57,255,106,0.3)', marginBottom:'1rem',display:'flex',alignItems:'center',gap:'0.6rem'}}>
+            <span style={{fontSize:'1.2rem'}}>📡</span>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.7rem',color:'var(--green)',fontWeight:700,letterSpacing:'0.05em'}}>Pulse Active</div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',marginTop:2}}>Broadcasting to {conn?.connected || 0} of {conn?.total || 0} relays</div>
             </div>
           </div>
 
-          <div style={{display:'flex', gap:6, marginBottom:14}}>
+          {/* Tor toggle */}
+          <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'1rem'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+              <span style={{fontSize:'1.3rem'}}>🧅</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',color:'var(--text-1)',fontWeight:600,letterSpacing:'0.05em'}}>Route via Tor</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
+                  Hide your IP from Nostr relays. Requires Tor app installed on your Umbrel.
+                </div>
+              </div>
+              <button onClick={()=>setTorEnabled(!torEnabled)} disabled={torBusy}
+                style={{width:40, height:22, borderRadius:11, background: torEnabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor: torBusy?'wait':'pointer', flexShrink:0, opacity: torBusy?0.5:1}}>
+                <div style={{position:'absolute', top:1, left: torEnabled?20:2, width:18, height:18, borderRadius:'50%', background: torEnabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+              </button>
+            </div>
+          </div>
+
+          {conn?.relayDetails && conn.relayDetails.length > 0 && (
+            <div style={{marginBottom:'1rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Relays</div>
+              <div style={{display:'flex',flexDirection:'column',gap:4,padding:6,background:'var(--bg-deep)',border:'1px solid var(--border)'}}>
+                {conn.relayDetails.map((r,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,fontFamily:'var(--fm)',fontSize:'0.68rem',padding:'4px 6px'}}>
+                    <span style={{
+                      width:7,height:7,borderRadius:'50%',
+                      background: r.connected ? 'var(--green)' : 'var(--red)',
+                      boxShadow: r.connected ? '0 0 4px var(--green)' : 'none',
+                      flexShrink:0,
+                    }}/>
+                    <span style={{flex:1,color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.url.replace('wss://','')}</span>
+                    {r.via === 'tor' && <span style={{fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--cyan)',letterSpacing:'0.1em',padding:'1px 4px',border:'1px solid rgba(0,255,209,0.4)'}}>TOR</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {networkStats?.broadcastStats && (
+            <div style={{marginBottom:'1rem'}}>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Broadcast Stats</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                <div style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:'var(--green)',fontWeight:700}}>{networkStats.broadcastStats.success || 0}</div>
+                  <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase',marginTop:2}}>Success</div>
+                </div>
+                <div style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',textAlign:'center'}}>
+                  <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:(networkStats.broadcastStats.failed||0)>0?'var(--amber)':'var(--text-2)',fontWeight:700}}>{networkStats.broadcastStats.failed || 0}</div>
+                  <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase',marginTop:2}}>Failed</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button onClick={disable} disabled={busy}
+            style={{width:'100%',padding:'0.65rem',background:'transparent',color:'var(--text-2)',border:'1px solid var(--border)',fontFamily:'var(--fd)',fontWeight:600,letterSpacing:'0.1em',fontSize:'0.62rem',cursor:busy?'wait':'pointer',textTransform:'uppercase',opacity:busy?0.6:1}}>
+            {busy ? 'STOPPING…' : 'Pause / Leave Pulse'}
+          </button>
+        </>
+      )}
+
+      {tab==='identity' && sec && (
+        <>
+          <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.75rem'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Pubkey (anonymous identity)</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',wordBreak:'break-all'}}>{sec.pubkey || '—'}</div>
+          </div>
+
+          <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.75rem'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Encryption</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--green)'}}>
+              {sec.encryption === 'v1' ? '✓ Encrypted at rest (AES-256-GCM)' : 'Plaintext (legacy)'}
+            </div>
+          </div>
+
+          <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.75rem'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Created</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)'}}>
+              {sec.createdAt ? new Date(sec.createdAt).toLocaleString() : '—'}
+            </div>
+          </div>
+
+          <button onClick={regenerate} disabled={busy}
+            style={{width:'100%',padding:'0.65rem',background:'transparent',color:'var(--red)',border:'1px solid var(--red)',fontFamily:'var(--fd)',fontWeight:600,letterSpacing:'0.1em',fontSize:'0.62rem',cursor:busy?'wait':'pointer',textTransform:'uppercase',opacity:busy?0.6:1, marginTop:8}}>
+            ⚠ Regenerate Identity
+          </button>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-3)',marginTop:6,lineHeight:1.5}}>
+            This deletes your old keys forever and creates a fresh anonymous identity. Useful if you suspect compromise.
+          </div>
+        </>
+      )}
+
+      {tab==='keys' && sec && (
+        <>
+          <div style={{padding:'0.75rem',background:'rgba(245,166,35,0.04)',border:'1px solid rgba(245,166,35,0.3)',marginBottom:'1rem'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.65rem',color:'var(--amber)',letterSpacing:'0.1em',marginBottom:6,fontWeight:700}}>🔑 Backup Your Keys</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)',lineHeight:1.5,marginBottom:8}}>
+              Your private signing key lives only in this Umbrel. If your hardware fails or you reinstall SoloStrike, exporting now keeps your reputation and history intact.
+            </div>
             <button onClick={exportBackup} disabled={busy}
-              style={{flex:1, padding:'0.55rem', background:'transparent', color:'var(--cyan)', border:'1px solid var(--border)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', cursor: busy?'wait':'pointer', textTransform:'uppercase'}}>
-              ⬇ Export Backup
-            </button>
-            <button onClick={()=>setShowRegen(true)} disabled={busy}
-              style={{flex:1, padding:'0.55rem', background:'transparent', color:'var(--red)', border:'1px solid rgba(255,59,59,0.3)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', cursor: busy?'wait':'pointer', textTransform:'uppercase'}}>
-              ⟳ Rotate Identity
+              style={{width:'100%',padding:'0.7rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:busy?'wait':'pointer',textTransform:'uppercase',opacity:busy?0.6:1}}>
+              {busy?'EXPORTING…':'⬇ Export Backup (.json)'}
             </button>
           </div>
+
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:8}}>Read Key (sharable)</div>
+          <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.75rem'}}>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-1)',wordBreak:'break-all',marginBottom:6}}>{sec.readKey || '—'}</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.5}}>
+              Share this with friends so they can verify your stats. Read-only — they can never sign as you.
+            </div>
+          </div>
+
+          {sec.privkeyEncrypted && (
+            <>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',color:'var(--red)',textTransform:'uppercase',marginBottom:8,marginTop:'1rem'}}>⚠ Encrypted Private Key</div>
+              <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--red)',marginBottom:'0.75rem'}}>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',marginBottom:8,lineHeight:1.5}}>
+                  Encrypted ciphertext only. Never share. Use export backup instead.
+                </div>
+                <button onClick={()=>setShowRevealKey(!showRevealKey)}
+                  style={{padding:'0.4rem 0.75rem',background:'transparent',color:'var(--red)',border:'1px solid var(--red)',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>
+                  {showRevealKey ? 'Hide' : 'Reveal Ciphertext'}
+                </button>
+                {showRevealKey && (
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-1)',wordBreak:'break-all',marginTop:8,padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)'}}>
+                    {sec.privkeyEncrypted}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </>
-      )}
-
-      {/* Stats section */}
-      {stats.totalBroadcasts > 0 && (
-        <>
-          <div style={sectionTitle}>▸ Activity</div>
-          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:14}}>
-            <div style={{padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:3}}>Total broadcasts</div>
-              <div style={{fontFamily:'var(--fd)', fontSize:'1rem', color:'var(--cyan)', fontWeight:700}}>{fmtNum(stats.totalBroadcasts || 0)}</div>
-            </div>
-            <div style={{padding:'0.55rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:3}}>Network peers</div>
-              <div style={{fontFamily:'var(--fd)', fontSize:'1rem', color:'var(--amber)', fontWeight:700}}>{fmtNum(stats.uniquePeers || 0)}</div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Backup modal */}
-      {showBackup && backupData && (
-        <div onClick={()=>setShowBackup(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem'}}>
-          <div onClick={e=>e.stopPropagation()} style={{maxWidth:520, width:'100%', background:'var(--bg-elevated, #15161a)', border:'1px solid var(--cyan)', padding:'1.4rem', maxHeight:'85vh', overflowY:'auto'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--cyan)', letterSpacing:'0.1em', marginBottom:8}}>🔑 Identity Backup</div>
-            <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', lineHeight:1.4, marginBottom:12}}>
-              Save this somewhere safe. To restore, drop it into your config dir as <code style={{color:'var(--amber)'}}>persist.json</code>.
-            </div>
-            <pre style={{background:'var(--bg-deep)', border:'1px solid var(--border)', padding:'0.7rem', fontSize:'0.6rem', color:'var(--text-1)', overflow:'auto', maxHeight:300, whiteSpace:'pre-wrap', wordBreak:'break-all'}}>
-              {JSON.stringify(backupData, null, 2)}
-            </pre>
-            <div style={{display:'flex', gap:6, marginTop:10}}>
-              <button onClick={copyBackup} style={{flex:1, padding:'0.55rem', background:'var(--cyan)', color:'#000', border:'none', fontFamily:'var(--fd)', fontWeight:700, letterSpacing:'0.1em', fontSize:'0.65rem', cursor:'pointer', textTransform:'uppercase'}}>📋 Copy</button>
-              <button onClick={()=>setShowBackup(false)} style={{flex:1, padding:'0.55rem', background:'transparent', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em', cursor:'pointer', textTransform:'uppercase'}}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Regen confirm */}
-      {showRegen && (
-        <div onClick={()=>setShowRegen(false)} style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem'}}>
-          <div onClick={e=>e.stopPropagation()} style={{maxWidth:440, width:'100%', background:'var(--bg-elevated, #15161a)', border:'1px solid var(--red)', padding:'1.4rem'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--red)', letterSpacing:'0.1em', marginBottom:8}}>⚠ Rotate Identity</div>
-            <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)', lineHeight:1.5, marginBottom:14}}>
-              Your old identity becomes orphaned. New broadcasts will appear as a fresh anonymous miner. <strong style={{color:'var(--amber)'}}>This cannot be undone</strong> — back up first if you want to keep continuity.
-            </div>
-            <div style={{display:'flex', gap:6}}>
-              <button onClick={regenerate} disabled={busy} style={{flex:1, padding:'0.55rem', background:'var(--red)', color:'#fff', border:'none', fontFamily:'var(--fd)', fontWeight:700, letterSpacing:'0.1em', fontSize:'0.65rem', cursor:busy?'wait':'pointer', textTransform:'uppercase', opacity:busy?0.6:1}}>{busy?'…':'Confirm Rotate'}</button>
-              <button onClick={()=>setShowRegen(false)} style={{flex:1, padding:'0.55rem', background:'transparent', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em', cursor:'pointer', textTransform:'uppercase'}}>Cancel</button>
-            </div>
-          </div>
-        </div>
       )}
     </>
   );
 }
 
-// ── PulsePanel — heartbeat card on the dashboard ─────────────────────────────
-function PulsePanel({ networkStats, onOpenSettings }) {
-  const canvasRef = useRef(null);
-  const stats   = networkStats?.stats || {};
-  const ident   = networkStats?.identity || {};
-  const enabled = !!networkStats?.enabled;
-  const torEnabled = !!networkStats?.torEnabled;
-
-  // EKG canvas animation
-  useEffect(() => {
-    if (!enabled) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    let rafId;
-    let phase = 0;
-
-    const resize = () => {
-      const r = canvas.getBoundingClientRect();
-      canvas.width  = r.width  * dpr;
-      canvas.height = r.height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
-
-    const draw = () => {
-      const r = canvas.getBoundingClientRect();
-      const w = r.width, h = r.height;
-      ctx.clearRect(0, 0, w, h);
-
-      // Soft baseline grid
-      ctx.strokeStyle = 'rgba(245,166,35,0.06)';
-      ctx.lineWidth = 1;
-      for (let y = h*0.25; y < h; y += h*0.25) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
-
-      // EKG waveform — primary trace (bright amber)
-      ctx.strokeStyle = '#F5A623';
-      ctx.lineWidth = 2;
-      ctx.shadowColor = 'rgba(245,166,35,0.7)';
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      const period = 110;
-      for (let x = 0; x <= w; x++) {
-        const localX = ((x + phase) % period);
-        let y;
-        if (localX < period * 0.4) {
-          y = h * 0.5;
-        } else if (localX < period * 0.45) {
-          y = h * 0.5 + (localX - period * 0.4) * (h * 0.05);
-        } else if (localX < period * 0.50) {
-          y = h * 0.6 - (localX - period * 0.45) * (h * 1.4);
-        } else if (localX < period * 0.55) {
-          y = h * -0.1 + (localX - period * 0.50) * (h * 1.5);
-        } else if (localX < period * 0.60) {
-          y = h * 0.65 - (localX - period * 0.55) * (h * 0.3);
-        } else {
-          y = h * 0.5;
-        }
-        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      phase = (phase + 1.4) % period;
-      rafId = requestAnimationFrame(draw);
-    };
-    draw();
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      ro.disconnect();
-    };
-  }, [enabled]);
-
-  return (
-    <div style={{...card, position:'relative', overflow:'hidden', minWidth:0, maxWidth:'100%', background:'linear-gradient(135deg, #0a0a0c 0%, #15161a 100%)', border:'1px solid var(--border-hot, rgba(245,166,35,0.4))', boxShadow:'0 0 24px rgba(245,166,35,0.08)'}}
-      className="fade-in">
-      {/* Stamp */}
-      <div style={{position:'absolute', bottom:8, right:10, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.18em', color:'rgba(245,166,35,0.35)', textTransform:'uppercase', border:'1px dashed rgba(245,166,35,0.3)', padding:'2px 6px', transform:'rotate(-3deg)'}}>
-        100% SOLO
-      </div>
-
-      <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <span>▸ SoloStrike Pulse</span>
-        <button onClick={onOpenSettings} style={{background:'transparent', border:'1px solid var(--border)', color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', padding:'2px 8px', cursor:'pointer', marginRight:'14px', textTransform:'uppercase'}}>
-          Manage
-        </button>
-      </div>
-
-      {/* Status pill row */}
-      <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:10, flexWrap:'wrap'}}>
-        <span style={{display:'inline-flex', alignItems:'center', gap:4, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color: enabled?'var(--green)':'var(--text-3)', textTransform:'uppercase'}}>
-          <span style={{width:6, height:6, borderRadius:'50%', background: enabled?'var(--green)':'var(--text-3)', boxShadow: enabled?'0 0 6px var(--green)':'none', animation: enabled?'pulse 2s ease-in-out infinite':'none'}}/>
-          {enabled?'PARTICIPATING':'DISABLED'}
-        </span>
-        {enabled && torEnabled && (
-          <span style={{display:'inline-flex', alignItems:'center', gap:4, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--cyan)', textTransform:'uppercase', border:'1px solid rgba(0,255,209,0.3)', padding:'1px 6px'}}>
-            🧅 TOR
-          </span>
-        )}
-      </div>
-
-      {/* EKG canvas */}
-      <div style={{position:'relative', width:'100%', height:90, background:'rgba(0,0,0,0.4)', border:'1px solid var(--border)', marginBottom:10}}>
-        <canvas ref={canvasRef} style={{position:'absolute', inset:0, width:'100%', height:'100%'}}/>
-        {!enabled && (
-          <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.15em', color:'var(--text-3)', textTransform:'uppercase'}}>
-            Pulse offline
-          </div>
-        )}
-      </div>
-
-      {/* Identity tag */}
-      {ident.pubkey && (
-        <div style={{padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:8}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:2}}>You</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--cyan)', wordBreak:'break-all'}}>
-            {ident.pubkey.slice(0, 24)}…
-          </div>
-        </div>
-      )}
-
-      {/* Stats grid */}
-      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6}}>
-        <div style={{padding:'0.5rem', background:'var(--bg-raised)', border:'1px solid var(--border)', textAlign:'center'}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase'}}>Broadcasts</div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'1rem', color:'var(--amber)', fontWeight:700, marginTop:3}}>{fmtNum(stats.totalBroadcasts || 0)}</div>
-        </div>
-        <div style={{padding:'0.5rem', background:'var(--bg-raised)', border:'1px solid var(--border)', textAlign:'center'}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase'}}>Peers Heard</div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'1rem', color:'var(--cyan)', fontWeight:700, marginTop:3}}>{fmtNum(stats.uniquePeers || 0)}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Aliases tab ───────────────────────────────────────────────────────────────
+// ── Pulse Panel — heartbeat card ──────────────────────────────────────────────
 function PulsePanel({ networkStats, onOpenSettings }) {
   const enabled = !!networkStats?.enabled;
   const conn = networkStats?.connections;
