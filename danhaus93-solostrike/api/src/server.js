@@ -38,6 +38,7 @@ const RPC_PASS = process.env.BITCOIN_RPC_PASS || '';
 
 // Internal Mempool app (private mode allowed) — UMBREL_INTERNAL_MEMPOOL_URL like 'http://mempool_mempool_1:8999'
 const INTERNAL_MEMPOOL = process.env.UMBREL_INTERNAL_MEMPOOL_URL || '';
+const ZMQ_HASHBLOCK_URL = process.env.BITCOIN_ZMQ_HASHBLOCK || null;
 
 // Status output URL (only used when private mode is OFF)
 const PUBLIC_FEES_URL    = 'https://mempool.space/api/v1/fees/recommended';
@@ -369,6 +370,36 @@ async function pollPrices() {
   if (prices && typeof prices === 'object') state.prices = prices;
 }
 
+// ── ZMQ client for instant block notifications ──────────────────────────────
+function startZmq() {
+  if (!ZMQ_HASHBLOCK_URL) {
+    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
+    return;
+  }
+  try {
+    const zmq = require('zeromq');
+    const sock = zmq.socket('sub');
+    sock.connect(ZMQ_HASHBLOCK_URL);
+    sock.subscribe('hashblock');
+    sock.on('message', () => {
+      state.zmq.lastBlockHeardAt = Date.now();
+      pollBitcoind();
+      pollBlocks();
+    });
+    sock.on('error', (e) => {
+      console.log('[ZMQ] socket error:', e.message);
+      try { sock.close(); } catch {}
+      state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
+      setTimeout(startZmq, 10000);
+    });
+    state.zmq = { enabled:true, lastBlockHeardAt:null, endpoint: ZMQ_HASHBLOCK_URL };
+    console.log(`[ZMQ] connected to ${ZMQ_HASHBLOCK_URL}`);
+  } catch (e) {
+    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
+    console.log('[zmq] unavailable:', e.message);
+  }
+}
+
 // ── HTTP/WS server ────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
@@ -683,6 +714,7 @@ async function main() {
   await loadHooks();
 
   // Subsystems
+  startZmq();
   startUaTailer({ configDir: CONFIG_DIR, logDir: CKPOOL_LOG_DIR });
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
   startSnapshotScheduler();
