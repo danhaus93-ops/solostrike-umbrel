@@ -1878,58 +1878,274 @@ function PulseTab({ networkStats, onRefresh }) {
   );
 }
 
-// ── PulsePanel (v1.6.0) — dashboard card variant ────────────────────────────
+// ── PulsePanel (v1.7.0) — Heartbeat dashboard card ──────────────────────────
 function PulsePanel({ networkStats, onOpenSettings }) {
+  const canvasRef = useRef(null);
+  const spikesRef = useRef([]);
+  const animFrameRef = useRef(null);
+  const canvasWidthRef = useRef(0);
+  const lastStatsRef = useRef({ pools: undefined, hashrate: undefined, workers: undefined });
+
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0 };
   const enabled = !!ns.enabled;
 
   const fmtPulseHr = (hr) => {
     if (!hr) return '0';
-    if (hr >= 1e15) return (hr/1e15).toFixed(2) + ' PH/s';
-    if (hr >= 1e12) return (hr/1e12).toFixed(1) + ' TH/s';
-    if (hr >= 1e9) return (hr/1e9).toFixed(1) + ' GH/s';
-    return (hr/1e6).toFixed(0) + ' MH/s';
+    if (hr >= 1e15) return (hr / 1e15).toFixed(2) + ' PH/s';
+    if (hr >= 1e12) return (hr / 1e12).toFixed(1) + ' TH/s';
+    if (hr >= 1e9)  return (hr / 1e9).toFixed(1)  + ' GH/s';
+    return (hr / 1e6).toFixed(0) + ' MH/s';
   };
 
+  // Heartbeat wave animation
+  useEffect(() => {
+    if (!enabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const reduceMotion = typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const setupCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvasWidthRef.current = rect.width;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      return ctx;
+    };
+
+    let ctx = setupCanvas();
+    let frame = 0;
+
+    const animate = () => {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      canvasWidthRef.current = w;
+
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(245,166,35,0.05)';
+      ctx.lineWidth = 1;
+      for (let gx = ((-frame * 0.5) % 20 + 20) % 20; gx < w; gx += 20) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, h);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = 'rgba(245,166,35,0.08)';
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      const speed = reduceMotion ? 0.6 : 1.8;
+      const ageRate = reduceMotion ? 0.004 : 0.008;
+      spikesRef.current.forEach(s => {
+        s.x -= speed;
+        s.age += ageRate;
+      });
+      spikesRef.current = spikesRef.current.filter(s => s.x > -60 && s.age < 1);
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(245,166,35,0.85)';
+      ctx.lineWidth = 2;
+      if (!reduceMotion) {
+        ctx.shadowColor = 'rgba(245,166,35,0.6)';
+        ctx.shadowBlur = 4;
+      }
+
+      for (let x = 0; x <= w; x++) {
+        let y = h / 2 + (reduceMotion ? 0 : Math.sin((x + frame) * 0.04) * 1.8);
+
+        spikesRef.current.forEach(s => {
+          const dist = x - s.x;
+          if (Math.abs(dist) < 60) {
+            const decay = 1 - s.age;
+            const amplitude = (h / 2 - 4) * s.intensity * decay;
+            let shape;
+            if (dist < 0) {
+              shape = Math.exp(dist * 0.35);
+            } else {
+              shape = Math.exp(-dist * 0.09);
+            }
+            y -= amplitude * shape;
+          }
+        });
+
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      frame++;
+      animFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animFrameRef.current = requestAnimationFrame(animate);
+
+    const handleResize = () => { ctx = setupCanvas(); };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) {
+      spikesRef.current = [];
+      lastStatsRef.current = { pools: undefined, hashrate: undefined, workers: undefined };
+      return;
+    }
+    const t1 = setTimeout(() => {
+      if (canvasWidthRef.current > 0) {
+        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 1.4, age: 0 });
+      }
+    }, 600);
+    const t2 = setTimeout(() => {
+      if (canvasWidthRef.current > 0) {
+        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 0.9, age: 0 });
+      }
+    }, 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const last = lastStatsRef.current;
+    const isFirstRun = last.pools === undefined && last.hashrate === undefined && last.workers === undefined;
+
+    if (!isFirstRun) {
+      const poolsChanged    = last.pools !== ns.pools;
+      const hashrateChanged = Math.abs((last.hashrate || 0) - (ns.hashrate || 0)) > 1e9;
+      const workersChanged  = last.workers !== ns.workers;
+
+      if ((poolsChanged || hashrateChanged || workersChanged) && canvasWidthRef.current > 0) {
+        const intensity = (poolsChanged || workersChanged) ? 1.2 : 0.7;
+        spikesRef.current.push({ x: canvasWidthRef.current, intensity, age: 0 });
+      }
+    }
+
+    lastStatsRef.current = { pools: ns.pools, hashrate: ns.hashrate, workers: ns.workers };
+  }, [ns.pools, ns.hashrate, ns.workers, enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => {
+      if (canvasWidthRef.current > 0) {
+        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 1.3, age: 0 });
+      }
+    }, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [enabled]);
+
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ SoloStrike Pulse</div>
+    <div style={{ ...card, minWidth: 0, maxWidth: '100%', overflow: 'hidden', position: 'relative' }} className="fade-in">
+      <div style={{ ...cardTitle, color: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>▸ SoloStrike Pulse</span>
+        {enabled && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--green)', fontSize: '0.55rem', letterSpacing: '0.12em', marginRight: '14px' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 6px var(--green)', animation: 'pulse 2s ease-in-out infinite' }} />
+            LIVE
+          </span>
+        )}
+      </div>
+
       {!enabled ? (
-        <div onClick={onOpenSettings} style={{background:'var(--bg-raised)',border:'1px solid rgba(245,166,35,0.3)',padding:'1rem',cursor:'pointer',textAlign:'center'}}>
-          <div style={{fontSize:'1.8rem',marginBottom:6}}>📡</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:4}}>SEE HOW MANY ARE SOLO MINING</div>
-          <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'0.6rem'}}>
+        <div onClick={onOpenSettings} style={{ background: 'var(--bg-raised)', border: '1px solid rgba(245,166,35,0.3)', padding: '1rem', cursor: 'pointer', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.85rem', fontWeight: 700, color: 'var(--amber)', letterSpacing: '0.05em', marginBottom: 4 }}>SEE HOW MANY ARE SOLO MINING</div>
+          <div style={{ fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-2)', lineHeight: 1.5, marginBottom: '0.6rem' }}>
             Pulse is an anonymous count of every solo miner running SoloStrike. Tap to opt in.
           </div>
-          <div style={{display:'inline-block',padding:'0.45rem 0.9rem',background:'rgba(245,166,35,0.1)',border:'1px solid var(--amber)',fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.12em',textTransform:'uppercase'}}>
+          <div style={{ display: 'inline-block', padding: '0.45rem 0.9rem', background: 'rgba(245,166,35,0.1)', border: '1px solid var(--amber)', fontFamily: 'var(--fd)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--amber)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             Tap to Join →
           </div>
         </div>
       ) : (
         <>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'0.6rem'}}>
-            <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.75rem 0.5rem',textAlign:'center'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Pools</div>
-              <div style={{fontFamily:'var(--fd)',fontSize:'1.6rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{ns.pools || 0}</div>
+          <div style={{
+            position: 'relative',
+            width: '100%',
+            height: 64,
+            marginBottom: '0.875rem',
+            borderRadius: 2,
+            overflow: 'hidden',
+            background: 'linear-gradient(180deg, rgba(245,166,35,0.03), rgba(245,166,35,0.07))',
+            border: '1px solid rgba(245,166,35,0.2)',
+            boxShadow: 'inset 0 0 12px rgba(245,166,35,0.04)',
+          }}>
+            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.35)' }}>{ns.pools || 0}</div>
             </div>
-            <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.75rem 0.5rem',textAlign:'center'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Combined Hashrate</div>
-              <div style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{fmtPulseHr(ns.hashrate)}</div>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '1rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
+            </div>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.35)' }}>{ns.workers || 0}</div>
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem 0.7rem',marginBottom:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)'}}>Total Miners</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--cyan)'}}>{ns.workers || 0}</span>
-          </div>
+
           {ns.blocks > 0 && (
-            <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem 0.7rem',marginBottom:'0.5rem',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)'}}>Blocks Struck</span>
-              <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--green)'}}>{ns.blocks}</span>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.5rem 0.7rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-2)' }}>Blocks Struck</span>
+              <span style={{ fontFamily: 'var(--fd)', fontSize: '0.9rem', fontWeight: 700, color: 'var(--green)' }}>{ns.blocks}</span>
             </div>
           )}
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--green)',textAlign:'center',padding:'0.4rem 0',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-            <span style={{width:6,height:6,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)',animation:'pulse 2s ease-in-out infinite',display:'inline-block'}}/>
-            You are broadcasting
+
+          <div style={{
+            fontFamily: 'var(--fm)',
+            fontSize: '0.6rem',
+            color: 'var(--text-3)',
+            textAlign: 'left',
+            paddingTop: '0.5rem',
+            paddingRight: '78px',
+            borderTop: '1px dashed var(--border)',
+            marginTop: '0.4rem',
+            lineHeight: 1.5,
+            letterSpacing: '0.02em',
+          }}>
+            Pulse is a census, not a pool.<br />
+            Your blocks stay <span style={{ color: 'var(--amber)' }}>100% yours</span>.
+          </div>
+
+          <div style={{
+            position: 'absolute',
+            bottom: 14,
+            right: 14,
+            transform: 'rotate(-5deg)',
+            fontFamily: 'var(--fd)',
+            fontSize: '0.5rem',
+            fontWeight: 800,
+            letterSpacing: '0.14em',
+            color: 'var(--amber)',
+            border: '2px solid var(--amber)',
+            padding: '5px 9px',
+            background: 'rgba(245,166,35,0.04)',
+            boxShadow: '0 0 12px rgba(245,166,35,0.18), inset 0 0 8px rgba(245,166,35,0.06)',
+            textAlign: 'center',
+            lineHeight: 1.15,
+            pointerEvents: 'none',
+            userSelect: 'none',
+            textShadow: '0 0 6px rgba(245,166,35,0.4)',
+            animation: 'pulse 3.5s ease-in-out infinite',
+          }}>
+            100%<br />SOLO
           </div>
         </>
       )}
