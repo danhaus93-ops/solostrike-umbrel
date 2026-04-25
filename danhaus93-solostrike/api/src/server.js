@@ -728,9 +728,15 @@ async function main() {
     if (state.status === 'starting' && cfg.payoutAddress) state.status = 'running';
   }, 5000);
 
+  // Update uptime every 5 seconds so the dashboard can display it
+  setInterval(() => {
+    state.uptime = Math.floor((Date.now() - state.startedAt) / 1000);
+  }, 5000);
+
   server.listen(PORT, () => {
     console.log(`[SoloStrike API v${state.version}] Listening on :${PORT} (privateMode=${state.privateMode})`);
   });
+
 }
 
 main().catch(e => {
