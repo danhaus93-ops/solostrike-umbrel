@@ -949,15 +949,17 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
   const reasons = s.rejectReasons || {};
 
   const wl = Array.isArray(workers) ? workers : [];
-  let totalAccepted = 0, totalRejected = 0, totalStale = 0, bestSdiff = 0;
+  const sh = shares || {};
+  const totalAccepted = sh.acceptedCount || 0;
+  const totalRejected = sh.rejectedCount || 0;
+  const totalStale    = sh.stale || 0;
+  let bestSdiff = 0;
   for (const w of wl) {
     const se = w.shareEvents;
     if (!se) continue;
-    totalAccepted += (se.accepted || 0);
-    totalRejected += (se.rejected || 0);
-    totalStale    += (se.stale    || 0);
     if ((se.bestSdiff || 0) > bestSdiff) bestSdiff = se.bestSdiff;
   }
+
   const grandTotal = totalAccepted + totalRejected + totalStale || 1;
   const acceptPct = ((totalAccepted / grandTotal) * 100);
   const rejectPct = ((totalRejected / grandTotal) * 100);
