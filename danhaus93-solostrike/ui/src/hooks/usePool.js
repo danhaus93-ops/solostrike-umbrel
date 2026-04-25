@@ -68,7 +68,7 @@ export function usePool() {
   useEffect(() => { connect(); return () => { clearTimeout(retryRef.current); wsRef.current?.close(); }; }, [connect]);
 
   const saveConfig = useCallback(async (payload) => {
-    const res = await fetch('/api/settings', {
+    const res = await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
