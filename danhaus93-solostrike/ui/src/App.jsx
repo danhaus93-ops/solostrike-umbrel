@@ -686,62 +686,51 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
 
 // ── Closest Calls — pool-wide top 10 best-diff shares ever ──────────────────
 function ClosestCallsPanel({ closestCalls, aliases }) {
-  const list = closestCalls || [];
-  if (!list.length) {
+  if (!closestCalls || closestCalls.length === 0) {
     return (
       <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
         <div style={{...cardTitle, color:'var(--amber)'}}>▸ Near Strikes</div>
-        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
-          Building leaderboard…<br/>
-          <span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Shares tracked as they come in</span>
+        <div style={{textAlign:'center',padding:'1rem',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)',letterSpacing:'0.05em'}}>
+          No high-diff shares yet. Keep grinding…
         </div>
       </div>
     );
   }
-
-  const maxDiff = list[0]?.diff || 1;
-
+  const top10 = closestCalls.slice(0, 10);
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
-        <span>▸ Near Strikes</span>
-        <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
-      </div>
-      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
-        {list.map((c, i) => {
-          const pct = (c.diff / maxDiff) * 100;
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Near Strikes</div>
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {top10.map((c,i)=>{
           const disp = displayName(c.workerName, aliases);
-          const color = i === 0 ? 'var(--amber)' : i < 3 ? 'var(--cyan)' : 'var(--text-1)';
+          const pct = Math.min(100, ((c.diff || 0) / (top10[0].diff || 1)) * 100);
           return (
-            <div key={`${c.workerName}-${c.ts}`} style={{
-              padding:'0.55rem 0.7rem',
+            <div key={`${c.workerName}-${i}`} style={{
+              display:'flex',alignItems:'center',gap:8,
+              padding:'0.45rem 0.6rem',
               background:'var(--bg-raised)',
-              border:`1px solid ${i===0?'rgba(245,166,35,0.35)':i<3?'rgba(0,255,209,0.15)':'var(--border)'}`,
+              border: i===0 ? '1px solid var(--border-hot, rgba(245,166,35,0.4))' : '1px solid var(--border)',
               position:'relative',
               overflow:'hidden',
-              minWidth:0,
-              boxShadow: i===0 ? '0 0 10px rgba(245,166,35,0.12)' : 'none',
             }}>
-              <div style={{position:'absolute', inset:0, width:`${pct}%`, background: i===0?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)', transition:'width 0.6s ease'}}/>
-              <div style={{position:'relative', display:'flex', alignItems:'center', gap:'0.6rem'}}>
+              <div style={{position:'absolute', inset:0, width:`${pct}%`, background:'linear-gradient(90deg, rgba(245,166,35,0.05), rgba(245,166,35,0.01))', pointerEvents:'none'}}/>
+              <div style={{position:'relative',zIndex:1,display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0,overflow:'hidden'}}>
                 <span style={{
-                  fontFamily:'var(--fd)', fontSize:'0.72rem', fontWeight:700,
-                  color, minWidth:22, flexShrink:0,
+                  fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-3)',
+                  width:24,textAlign:'right',
                   textShadow: i===0 ? '0 0 8px rgba(245,166,35,0.5)' : 'none',
-                }}>#{i+1}</span>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontFamily:'var(--fm)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={c.workerName}>
+                }}>{i===0?'⚡':`#${i+1}`}</span>
+                <div style={{flex:1,minWidth:0,overflow:'hidden'}}>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-1)',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={c.workerName}>
                     {disp}
-                    {c.minerType && <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em', color:'var(--text-3)', marginLeft:6, textTransform:'uppercase'}}>{c.minerType}</span>}
+                    {c.minerType && <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-3)', marginLeft:6, letterSpacing:'0.1em', textTransform:'uppercase'}}>{c.minerType}</span>}
                   </div>
-                  <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-3)', marginTop:2}}>
-                    {c.ts ? timeAgo(c.ts) : '—'}
-                  </div>
+                  <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.05em',marginTop:2}}>{timeAgo(c.ts)}</div>
                 </div>
-                <span style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color, flexShrink:0, textShadow: i===0 ? '0 0 10px rgba(245,166,35,0.4)' : 'none'}}>
-                  {fmtDiff(c.diff)}
-                </span>
               </div>
+              <span style={{position:'relative',zIndex:1,fontFamily:'var(--fd)',fontSize:'0.95rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-1)',whiteSpace:'nowrap'}}>
+                {fmtDiff(c.diff)}
+              </span>
             </div>
           );
         })}
@@ -753,381 +742,294 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
 // ── Bitcoin Network ───────────────────────────────────────────────────────────
 function NetworkStats({ network, blockReward, mempool, prices, currency, privateMode }) {
   const price = prices?.[currency];
-  const rewardUsd = price && blockReward ? blockReward.totalBtc * price : null;
+  const reward = blockReward?.totalBtc || 0;
+  const fiatPrize = price ? reward * price : null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Bitcoin Network</div>
-      {[['Block Height', fmtNum(network?.height), 'var(--text-1)'],
-        ['Difficulty', fmtDiff(network?.difficulty), 'var(--text-1)'],
-        ['Net Hashrate', fmtHr(network?.hashrate), 'var(--cyan)']].map(([l,v,c])=>(
-        <div key={l} style={statRow}>
-          <span style={label}>{l}</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:c,textShadow:c==='var(--cyan)'?'0 0 10px rgba(0,255,209,0.3)':'none'}}>{v}</span>
-        </div>
-      ))}
-      <div style={{height:1,background:'var(--border)',margin:'0.7rem 0'}}/>
-      {blockReward && (
-        <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(245,166,35,0.25)'}}>
-          <span style={{...label, color:'var(--amber)'}}>🏆 Next Block Prize</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 12px rgba(245,166,35,0.4)',textAlign:'right'}}>
-            {fmtBtc(blockReward.totalBtc, 3)}
-            {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--green)',fontWeight:600,marginTop:2,textShadow:'0 0 8px rgba(57,255,106,0.2)'}}>{fmtFiat(rewardUsd, currency)}</div>}
-          </span>
-        </div>
-      )}
-      {!privateMode && price!=null && (
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Bitcoin Network</div>
+      <div style={statRow}>
+        <span style={label}>Block Height</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtNum(network?.height||0)}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Net Hashrate</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtHr(network?.hashrate||0)}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Difficulty</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtDiff(network?.difficulty||0)}</span>
+      </div>
+      {!privateMode && mempool?.feeRate!=null && (
         <div style={statRow}>
-          <span style={label}>BTC Price</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:'var(--cyan)'}}>{fmtFiat(price, currency)}</span>
+          <span style={label}>Fee Rate</span>
+          <span style={{fontFamily:'var(--fm)',color:'var(--cyan)'}}>{mempool.feeRate} sat/vB</span>
         </div>
       )}
-      {mempool?.totalFeesBtc>0 && (
-        <div style={statRow}>
-          <span style={label}>Mempool Fees</span>
-          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{fmtBtc(mempool.totalFeesBtc, 2)}</span>
-        </div>
-      )}
-      {mempool?.feeRate!=null && (
-        <div style={statRow}>
-          <span style={label}>Priority Fee</span>
-          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{mempool.feeRate} sat/vB</span>
-        </div>
-      )}
-      {privateMode && (
-        <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--cyan)',marginTop:'0.5rem',textAlign:'center',letterSpacing:'0.1em'}}>
-          🔒 PRICE HIDDEN — PRIVATE MODE
-        </div>
-      )}
+      <div style={{...statRow, borderColor:'var(--border-hot, rgba(245,166,35,0.3))'}}>
+        <span style={label}>Block Prize</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--amber)',fontWeight:600}}>{reward.toFixed(3)} BTC{fiatPrize && <span style={{color:'var(--text-2)',fontSize:'0.75em',marginLeft:6}}>({fmtFiat(fiatPrize, currency)})</span>}</span>
+      </div>
     </div>
   );
 }
 
-// ── Bitcoin Node ──────────────────────────────────────────────────────────────
+// ── Bitcoin Node panel ────────────────────────────────────────────────────────
 function BitcoinNodePanel({ nodeInfo }) {
-  const ni = nodeInfo || {};
-  const client = parseClient(ni.subversion);
-  const connected = ni.connected;
-  const relayStr = ni.relayFee != null ? `${(ni.relayFee * 1e5).toFixed(2)} sat/vB` : '—';
+  if (!nodeInfo) return null;
+  const c = parseClient(nodeInfo.subversion);
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <span>▸ Bitcoin Node</span>
-        <span style={{display:'inline-flex', alignItems:'center', gap:5, color: connected?'var(--green)':'var(--red)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>
-          <span style={{width:6, height:6, borderRadius:'50%', background: connected?'var(--green)':'var(--red)', boxShadow: `0 0 6px ${connected?'var(--green)':'var(--red)'}`, animation: connected?'pulse 2s ease-in-out infinite':'none'}}/>
-          {connected ? 'CONNECTED' : 'OFFLINE'}
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Bitcoin Node</div>
+      <div style={statRow}>
+        <span style={label}>Node Status</span>
+        <span style={{fontFamily:'var(--fm)',color: nodeInfo.connected?'var(--green)':'var(--red)',fontWeight:600,textShadow:nodeInfo.connected?'0 0 6px var(--green)':'none'}}>
+          {nodeInfo.connected?'● ONLINE':'○ OFFLINE'}
         </span>
       </div>
       <div style={statRow}>
         <span style={label}>Client</span>
-        <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',textAlign:'right'}}>
-          {client.name}
-          {client.version && <div style={{fontSize:'0.6rem',color:'var(--text-2)',marginTop:2}}>v{client.version}</div>}
-        </span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{c.name}{c.version&&<span style={{color:'var(--text-2)',marginLeft:6}}>{c.version}</span>}</span>
       </div>
       <div style={statRow}>
         <span style={label}>Peers</span>
-        <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:'var(--cyan)'}}>
-          {fmtNum(ni.peers || 0)}
-          {(ni.peersIn > 0 || ni.peersOut > 0) && <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',fontWeight:400,marginLeft:6}}>{ni.peersOut}↑ · {ni.peersIn}↓</span>}
-        </span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{nodeInfo.peers||0}{(nodeInfo.peersIn>0||nodeInfo.peersOut>0)&&<span style={{color:'var(--text-2)',marginLeft:6,fontSize:'0.9em'}}>({nodeInfo.peersIn||0}↑ {nodeInfo.peersOut||0}↓)</span>}</span>
       </div>
-      <div style={statRow}><span style={label}>Relay Fee</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{relayStr}</span></div>
-      <div style={statRow}><span style={label}>Mempool TXs</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(ni.mempoolCount || 0)}</span></div>
-      <div style={statRow}><span style={label}>Mempool Size</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--cyan)'}}>{fmtBytes(ni.mempoolBytes || 0)}</span></div>
+      <div style={statRow}>
+        <span style={label}>Mempool</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtNum(nodeInfo.mempoolCount||0)} <span style={{color:'var(--text-2)',marginLeft:4}}>{fmtBytes(nodeInfo.mempoolBytes||0)}</span></span>
+      </div>
     </div>
   );
 }
 
-// ── Odds ──────────────────────────────────────────────────────────────────────
+// ── Strike Odds ───────────────────────────────────────────────────────────────
 function OddsDisplay({ odds, hashrate, netHashrate }) {
-  const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0 } = odds||{};
-  const R=48, C=2*Math.PI*R;
-  const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
+  if (!odds || !hashrate || !netHashrate) return null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={card} className="fade-in">
       <div style={{...cardTitle, color:'var(--amber)'}}>▸ Strike Odds</div>
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.875rem'}}>
-        <div style={{position:'relative',width:110,height:110,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <svg width="110" height="110" viewBox="0 0 110 110" style={{position:'absolute'}}>
-            <circle cx="55" cy="55" r={R} fill="none" stroke="var(--bg-raised)" strokeWidth="7"/>
-            {[0,90,180,270].map(d=><line key={d} x1="55" y1="4" x2="55" y2="12" stroke="var(--border)" strokeWidth="1" transform={`rotate(${d} 55 55)`}/>)}
-            <circle cx="55" cy="55" r={R} fill="none" stroke="var(--amber)" strokeWidth="7" strokeLinecap="round"
-              strokeDasharray={`${C*scale} ${C}`} style={{filter:'drop-shadow(0 0 5px rgba(245,166,35,0.6))',transition:'stroke-dasharray 1.2s ease'}} transform="rotate(-90 55 55)"/>
-          </svg>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:'var(--amber)',lineHeight:1.2}}>
-              {perBlock>0?`${(perBlock*100).toExponential(1)}%`:'—'}
-            </div>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-2)',letterSpacing:'0.08em',textTransform:'uppercase',marginTop:2}}>per block</div>
-          </div>
-        </div>
-        {[['Expected', fmtOdds(expectedDays), 'var(--amber)'],
-          ['Per Day',   perDay>0?fmtPct(perDay*100,4):'—', 'var(--text-1)'],
-          ['Per Week',  perWeek>0?fmtPct(perWeek*100,3):'—', 'var(--text-1)'],
-          ['Per Month', perMonth>0?fmtPct(perMonth*100,2):'—','var(--cyan)'],
-          ['Pool Share', netHashrate>0&&hashrate>0?`${((hashrate/netHashrate)*100).toExponential(2)}%`:'—','var(--text-1)']
-        ].map(([l,v,c])=>(
-          <div key={l} style={{...statRow,width:'100%',marginBottom:0}}>
-            <span style={label}>{l}</span>
-            <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:c}}>{v}</span>
-          </div>
-        ))}
+      <div style={statRow}>
+        <span style={label}>Per Block</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtOdds(odds.perBlock)}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Avg. Time</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--cyan)'}}>{odds.expectedDays==null?'—':odds.expectedDays<1?`${(odds.expectedDays*24).toFixed(1)} h`:`${odds.expectedDays.toFixed(1)} d`}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>In 24h</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtPct(odds.perDay||0)}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>In 1 Week</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{fmtPct(odds.perWeek||0)}</span>
+      </div>
+      <div style={{...statRow, borderColor:'var(--border-hot, rgba(245,166,35,0.3))'}}>
+        <span style={label}>In 1 Month</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--amber)',fontWeight:600}}>{fmtPct(odds.perMonth||0)}</span>
       </div>
     </div>
   );
 }
 
-// ── Luck ──────────────────────────────────────────────────────────────────────
+// ── Hot Streak (luck) ─────────────────────────────────────────────────────────
 function LuckGauge({ luck }) {
-  const { progress=0, blocksExpected=0, blocksFound=0, luck: luckVal=null } = luck||{};
-  const visualPct = Math.min(300, progress);
-  const w = Math.min(100, visualPct/3);
-  const barColor = luckVal==null ? 'var(--amber)' : (luckVal>=100 ? 'var(--green)' : luckVal>=50 ? 'var(--amber)' : 'var(--red)');
+  if (!luck) return null;
+  const pct = Math.max(0, Math.min(100, luck.progress||0));
+  const luckPct = luck.luck;
+  let luckColor = 'var(--text-2)';
+  let luckLabel = '—';
+  if (luckPct != null) {
+    if (luckPct >= 100) { luckColor = 'var(--green)'; luckLabel = `${luckPct.toFixed(0)}% lucky`; }
+    else if (luckPct >= 50) { luckColor = 'var(--amber)'; luckLabel = `${luckPct.toFixed(0)}% lucky`; }
+    else { luckColor = 'var(--red)'; luckLabel = `${luckPct.toFixed(0)}% lucky`; }
+  }
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Hot Streak — Since Pool Start</div>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-        <div style={{textAlign:'center',padding:'0.6rem 0'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:barColor,textShadow:`0 0 20px ${barColor}50`,lineHeight:1}}>
-            {luckVal==null ? '—' : fmtPct(luckVal, 1)}
-          </div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:4}}>
-            {luckVal==null ? 'warming up' : luckVal>=100 ? 'lucky' : 'unlucky so far'}
-          </div>
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Hot Streak</div>
+      <div style={{position:'relative', height:20, background:'var(--bg-deep)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:8}}>
+        <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg, var(--amber-glow, rgba(245,166,35,0.4)) 0%, var(--amber) 100%)', boxShadow:'0 0 8px rgba(245,166,35,0.4)', transition:'width 0.4s ease' }}/>
+        <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em', color:'#000', fontWeight:700, mixBlendMode:'screen'}}>
+          {pct.toFixed(1)}% to next
         </div>
-        <div>
-          <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>
-            <span>Progress to next block</span>
-            <span style={{color:'var(--amber)'}}>{fmtPct(progress,2)}</span>
-          </div>
-          <div style={{height:4,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}>
-            <div style={{height:'100%',width:`${w}%`,background:barColor,boxShadow:`0 0 8px ${barColor}80`,transition:'width 0.6s ease'}}/>
-          </div>
-        </div>
-        <div style={{...statRow,marginBottom:0}}><span style={label}>Blocks Expected</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{blocksExpected.toFixed(3)}</span></div>
-        <div style={{...statRow,marginBottom:0}}><span style={label}>Blocks Found</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:blocksFound>0?'var(--green)':'var(--text-1)'}}>{blocksFound}</span></div>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Expected</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{(luck.blocksExpected||0).toFixed(2)}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Found</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--cyan)'}}>{luck.blocksFound||0}</span>
+      </div>
+      <div style={{...statRow, borderColor:'var(--border-hot, rgba(245,166,35,0.3))'}}>
+        <span style={label}>Streak</span>
+        <span style={{fontFamily:'var(--fm)',color:luckColor,fontWeight:600}}>{luckLabel}</span>
       </div>
     </div>
   );
 }
 
-// ── Retarget ──────────────────────────────────────────────────────────────────
+// ── Difficulty Retarget ───────────────────────────────────────────────────────
 function RetargetPanel({ retarget }) {
   if (!retarget) return null;
-  const { progressPercent=0, difficultyChange=0, remainingBlocks=0, remainingTime=0 } = retarget;
-  const changeColor = difficultyChange>=0 ? 'var(--red)' : 'var(--green)';
-  const pct = Math.max(0, Math.min(100, progressPercent));
+  const remainingDays = retarget.remainingTime ? retarget.remainingTime / (1000 * 60 * 60 * 24) : null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Difficulty Retarget</div>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
-        <div style={{textAlign:'center',padding:'0.25rem 0'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'1.6rem',fontWeight:700,color:changeColor,textShadow:`0 0 14px ${changeColor}50`,lineHeight:1}}>
-            {difficultyChange>=0?'+':''}{difficultyChange.toFixed(2)}%
-          </div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:4}}>estimated change</div>
-        </div>
-        <div>
-          <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>
-            <span>Epoch progress</span><span style={{color:'var(--cyan)'}}>{pct.toFixed(1)}%</span>
-          </div>
-          <div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}>
-            <div style={{height:'100%',width:`${pct}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)',transition:'width 0.6s ease'}}/>
-          </div>
-        </div>
-        <div style={{...statRow,marginBottom:0}}><span style={label}>Remaining Blocks</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(remainingBlocks)}</span></div>
-        <div style={{...statRow,marginBottom:0}}><span style={label}>ETA</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{fmtDurationMs(remainingTime)}</span></div>
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Difficulty Retarget</div>
+      <div style={{position:'relative', height:20, background:'var(--bg-deep)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:8}}>
+        <div style={{ height:'100%', width:`${retarget.progressPercent||0}%`, background:'linear-gradient(90deg, var(--cyan-glow, rgba(0,255,209,0.4)) 0%, var(--cyan) 100%)', boxShadow:'0 0 8px rgba(0,255,209,0.4)', transition:'width 0.4s ease' }}/>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Progress</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{(retarget.progressPercent||0).toFixed(2)}%</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>Blocks Left</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--cyan)'}}>{fmtNum(retarget.remainingBlocks||0)}</span>
+      </div>
+      <div style={statRow}>
+        <span style={label}>ETA</span>
+        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{remainingDays==null?'—':remainingDays<1?`${(remainingDays*24).toFixed(1)} h`:`${remainingDays.toFixed(1)} d`}</span>
+      </div>
+      <div style={{...statRow, borderColor: retarget.difficultyChange>=0 ? 'var(--border-hot, rgba(245,166,35,0.3))' : 'rgba(57,255,106,0.3)'}}>
+        <span style={label}>Δ Difficulty</span>
+        <span style={{fontFamily:'var(--fm)',color: retarget.difficultyChange>=0?'var(--amber)':'var(--green)',fontWeight:600}}>{retarget.difficultyChange>=0?'+':''}{(retarget.difficultyChange||0).toFixed(2)}%</span>
       </div>
     </div>
   );
 }
 
-// ── Share stats ───────────────────────────────────────────────────────────────
-// ── Share Stats Modal (v1.5.12+) ────────────────────────────────────────────
+// ── Share stats modal ─────────────────────────────────────────────────────────
 function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, trackingSince }) {
-  const s = shares || {};
-  const reasons = s.rejectReasons || {};
+  const [copied, setCopied] = useState('');
+  if (!shares) return null;
+  const total = (shares.acceptedCount || 0) + (shares.rejectedCount || 0);
+  const acceptPct = total > 0 ? ((shares.acceptedCount || 0) / total) * 100 : 100;
+  const rejectPct = total > 0 ? ((shares.rejectedCount || 0) / total) * 100 : 0;
+  const stalePct  = total > 0 ? ((shares.stale || 0) / total) * 100 : 0;
+  const reasons = Object.entries(shares.rejectReasons || {}).sort((a,b)=>b[1]-a[1]);
+  const totalReject = (shares.rejectedCount || 0) + (shares.stale || 0);
+  const trackedDur = trackingSince ? fmtDurationMs(Date.now() - trackingSince) : null;
 
-  const wl = Array.isArray(workers) ? workers : [];
-  const sh = shares || {};
-  const totalAccepted = sh.acceptedCount || 0;
-  const totalRejected = sh.rejectedCount || 0;
-  const totalStale    = sh.stale || 0;
-  let bestSdiff = 0;
-  for (const w of wl) {
-    const se = w.shareEvents;
-    if (!se) continue;
-    if ((se.bestSdiff || 0) > bestSdiff) bestSdiff = se.bestSdiff;
-  }
+  const workersWithRejects = (workers || [])
+    .filter(w => (w.rejected || 0) > 0 || (w.stale || 0) > 0 || w.lastRejectReason)
+    .sort((a,b) => ((b.rejected||0) + (b.stale||0)) - ((a.rejected||0) + (a.stale||0)));
 
-  const grandTotal = totalAccepted + totalRejected + totalStale || 1;
-  const acceptPct = ((totalAccepted / grandTotal) * 100);
-  const rejectPct = ((totalRejected / grandTotal) * 100);
-  const stalePct  = ((totalStale    / grandTotal) * 100);
-
-  const reasonRows = Object.entries(reasons).sort((a,b) => b[1] - a[1]);
-
-  const classifyReason = (reason) => {
-    if (/stale|invalid.?jobid|old.?job|expired/i.test(reason)) return 'var(--amber)';
-    if (/duplicate|bad.?nonce|coinbase/i.test(reason)) return 'var(--text-2)';
-    return 'var(--red)';
+  const copyAll = () => {
+    if (!reasons.length && !workersWithRejects.length) return;
+    const lines = [];
+    lines.push(`SoloStrike Share Diagnostics (${new Date().toLocaleString()})`);
+    if (trackedDur) lines.push(`Tracking: last ${trackedDur}`);
+    lines.push(`Total shares: ${fmtNum(total)} | Accepted: ${fmtNum(shares.acceptedCount||0)} (${acceptPct.toFixed(2)}%) | Rejected: ${fmtNum(shares.rejectedCount||0)} | Stale: ${fmtNum(shares.stale||0)}`);
+    lines.push('');
+    if (reasons.length) {
+      lines.push('Reject reasons:');
+      reasons.forEach(([r,c]) => {
+        const pct = totalReject > 0 ? ((c/totalReject)*100).toFixed(1) : '100.0';
+        lines.push(`  ${r}: ${fmtNum(c)} (${pct}%)`);
+      });
+      lines.push('');
+    }
+    if (workersWithRejects.length) {
+      lines.push('Per-worker:');
+      workersWithRejects.forEach(w => {
+        const disp = displayName(w.name, aliases);
+        const reasonNote = w.lastRejectReason ? ` last reason: ${w.lastRejectReason}` : '';
+        lines.push(`  ${disp}: ${fmtNum(w.rejected||0)} rejected, ${fmtNum(w.stale||0)} stale${reasonNote}`);
+      });
+    }
+    const text = lines.join('\n');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(()=>{ setCopied('all'); setTimeout(()=>setCopied(''), 1500); });
+    }
   };
 
-  const workerRows = wl
-    .filter(w => w.shareEvents)
-    .map(w => {
-      const se = w.shareEvents;
-      const tot = (se.accepted || 0) + (se.rejected || 0) + (se.stale || 0);
-      const ar = tot > 0 ? ((se.accepted || 0) / tot) * 100 : 100;
-      return { worker: w, se, tot, ar };
-    })
-    .filter(r => r.tot > 0)
-    .sort((a, b) => a.ar - b.ar);
-
-  const health = (ar) => ar >= 99.9 ? 'var(--green)' : ar >= 99 ? 'var(--amber)' : 'var(--red)';
-
-  const section = { marginBottom:'1rem' };
-  const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
-  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
-  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
-  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right' };
-  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
-  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
-  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, lineHeight:1 };
-
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
-        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
-            <span style={{fontSize:16,color:'var(--amber)'}}>📊</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>Share Diagnostics</span>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--border)',maxWidth:560,width:'100%',maxHeight:'90vh',overflowY:'auto',padding:'1.25rem'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+          <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.18em',color:'var(--amber)'}}>▸ Share Diagnostics</h3>
+          <div style={{display:'flex', alignItems:'center', gap:8}}>
+            <button onClick={copyAll} disabled={!reasons.length && !workersWithRejects.length} style={{background:'transparent',border:'1px solid var(--border)',color:copied==='all'?'var(--green)':'var(--text-2)',cursor:reasons.length||workersWithRejects.length?'pointer':'default',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',padding:'4px 8px',textTransform:'uppercase',opacity:reasons.length||workersWithRejects.length?1:0.3}}>
+              {copied==='all'?'COPIED':'COPY'}
+            </button>
+            <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.1rem',padding:0,lineHeight:1}}>✕</button>
           </div>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
         </div>
 
-        <div style={{padding:'1rem 1.25rem'}}>
-
-          <div style={section}>
-            <div style={secTitle}>▸ Pool Share Health</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem',marginBottom:'0.5rem'}}>
-              <div style={heroBox}><div style={heroLbl}>Accepted</div><div style={{...heroVal,color:'var(--green)'}}>{fmtNum(totalAccepted)}</div></div>
-              <div style={heroBox}><div style={heroLbl}>Rejected</div><div style={{...heroVal,color:totalRejected>0?'var(--red)':'var(--text-2)'}}>{fmtNum(totalRejected)}</div></div>
-              <div style={heroBox}><div style={heroLbl}>Stale</div><div style={{...heroVal,color:totalStale>0?'var(--amber)':'var(--text-2)'}}>{fmtNum(totalStale)}</div></div>
-            </div>
-            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:health(acceptPct)}}>{acceptPct.toFixed(3)}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Reject Rate</span><span style={{...kvVal,color:rejectPct<0.5?'var(--text-2)':'var(--red)'}}>{rejectPct.toFixed(3)}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Stale Rate</span><span style={{...kvVal,color:stalePct<0.5?'var(--text-2)':'var(--amber)'}}>{stalePct.toFixed(3)}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(bestSdiff)}</span></div>
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              {trackingSince ? <>Tracking since <span style={{color:'var(--amber)'}}>{new Date(trackingSince).toLocaleDateString(undefined,{month:'short',day:'numeric'})} {new Date(trackingSince).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>. Persists across restarts.</> : <>Session totals since share-watcher started. Persists across restarts.</>}
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',marginTop:'0.6rem'}}>
-              <button onClick={()=>{
-                if(!window.confirm('Reset all share statistics?\n\nThis zeros accepted/rejected/stale counts for every worker.\nHistorical sharelogs on disk are unaffected.\n\nAfter reset, only new shares from this moment forward are tracked.')) return;
-                fetch('/api/reset-share-stats',{method:'POST'})
-                  .then(r=>r.json())
-                  .then(d=>{ if(d.error) throw new Error(d.error); onClose && onClose(); })
-                  .catch(e=>window.alert('Reset failed: '+e.message));
-              }} style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',padding:'6px 12px',cursor:'pointer',textTransform:'uppercase'}}>⟲ Reset Session Stats</button>
-            </div>
+        {trackedDur && (
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:10}}>
+            Last {trackedDur} · {fmtNum(total)} total
           </div>
+        )}
 
-          <div style={section}>
-            <div style={secTitle}>▸ Reject Reasons</div>
-            {reasonRows.length === 0 ? (
-              <div style={{textAlign:'center',padding:'1rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>
-                No rejects yet ✓
-              </div>
-            ) : (
-              reasonRows.map(([reason, count]) => (
-                <div key={reason} style={kvRow}>
-                  <span style={{...kvLabel,textTransform:'none',letterSpacing:'0.02em',color:classifyReason(reason)}}>{reason}</span>
-                  <span style={{...kvVal,color:'var(--text-1)',fontWeight:600}}>{fmtNum(count)}</span>
-                </div>
-              ))
-            )}
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              <span style={{color:'var(--amber)'}}>amber</span> = stale/latency · <span style={{color:'var(--red)'}}>red</span> = hardware/config · <span style={{color:'var(--text-2)'}}>grey</span> = rare
+        {total > 0 ? (
+          <>
+            <div style={{height:14,display:'flex',background:'var(--bg-deep)',border:'1px solid var(--border)',marginBottom:6,overflow:'hidden'}}>
+              <div style={{width:`${acceptPct}%`,background:'var(--green)',transition:'width 0.4s'}}/>
+              <div style={{width:`${stalePct}%`,background:'var(--amber)',transition:'width 0.4s'}}/>
+              <div style={{width:`${rejectPct}%`,background:'var(--red)',transition:'width 0.4s'}}/>
             </div>
-          </div>
+            <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.08em',color:'var(--text-3)',marginBottom:14,textTransform:'uppercase'}}>
+              <span>Accepted {acceptPct.toFixed(2)}%</span>
+              {(shares.stale||0)>0 && <span>Stale {stalePct.toFixed(2)}%</span>}
+              <span>Rejected {rejectPct.toFixed(2)}%</span>
+            </div>
+          </>
+        ) : (
+          <div style={{textAlign:'center',padding:'1rem',color:'var(--text-2)',fontSize:'0.7rem'}}>No share activity yet</div>
+        )}
 
-          <div style={section}>
-            <div style={secTitle}>▸ Per-Worker Health ({workerRows.length})</div>
-            {workerRows.length === 0 ? (
-              <div style={{textAlign:'center',padding:'1rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>
-                Gathering data…
-              </div>
-            ) : (
-              workerRows.map(({worker, se, tot, ar}) => (
-                <div key={worker.name}
-                     onClick={() => { onClose(); onWorkerSelect && onWorkerSelect(worker); }}
-                     style={{...kvRow,cursor:'pointer',flexDirection:'column',alignItems:'stretch',gap:4}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <span style={{fontFamily:'var(--fd)',fontSize:'0.68rem',fontWeight:600,color:'var(--text-1)'}}>
-                      {worker.minerIcon || '▪'} {displayName(worker.name, aliases)}
-                    </span>
-                    <span style={{fontFamily:'var(--fm)',fontSize:'0.75rem',fontWeight:700,color:health(ar)}}>{ar.toFixed(2)}%</span>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+          <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Accepted</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.95rem',color:'var(--green)',fontWeight:700,marginTop:4}}>{fmtNum(shares.acceptedCount||0)}</div>
+          </div>
+          <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Rejected</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.95rem',color:(shares.rejectedCount||0)>0?'var(--red)':'var(--text-2)',fontWeight:700,marginTop:4}}>{fmtNum(shares.rejectedCount||0)}</div>
+          </div>
+          <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.5rem',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Stale</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.95rem',color:(shares.stale||0)>0?'var(--amber)':'var(--text-2)',fontWeight:700,marginTop:4}}>{fmtNum(shares.stale||0)}</div>
+          </div>
+        </div>
+
+        {reasons.length > 0 && (
+          <div style={{marginBottom:14}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Why rejects happened</div>
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              {reasons.map(([r,c])=>{
+                const pct = totalReject > 0 ? ((c/totalReject)*100) : 100;
+                return (
+                  <div key={r} style={{display:'flex',justifyContent:'space-between',padding:'0.45rem 0.6rem',background:'var(--bg-raised)',border:'1px solid var(--border)',fontFamily:'var(--fm)',fontSize:'0.7rem'}}>
+                    <span style={{color:'var(--text-1)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r}</span>
+                    <span style={{color:'var(--red)',marginLeft:8,whiteSpace:'nowrap'}}>{fmtNum(c)} <span style={{color:'var(--text-3)'}}>({pct.toFixed(1)}%)</span></span>
                   </div>
-                  <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)'}}>
-                    <span>
-                      <span style={{color:'var(--green)'}}>{fmtNum(se.accepted||0)}</span>
-                      {' · '}<span style={{color:(se.rejected||0) > 0 ? 'var(--red)' : 'var(--text-3)'}}>{fmtNum(se.rejected||0)} rej</span>
-                      {' · '}<span style={{color:(se.stale||0) > 0 ? 'var(--amber)' : 'var(--text-3)'}}>{fmtNum(se.stale||0)} stale</span>
-                    </span>
-                    <span>
-                      {se.port && <>:{se.port}</>}
-                      {se.lastRejectReason && <> · {se.lastRejectReason}</>}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              Sorted by accept rate (worst first). Tap a worker for full details.
+                );
+              })}
             </div>
           </div>
+        )}
 
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ShareStats({ shares, hashrate, bestshare, onOpen }) {
-  const s = shares || {};
-  const workAccepted = s.accepted || 0;
-  const workRejected = s.rejected || 0;
-  const stale = s.stale || 0;
-  const total = workAccepted + workRejected || 1;
-  const acceptRate = ((workAccepted / total) * 100).toFixed(2);
-  const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
-  return (
-    <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}} className="fade-in">
-      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span>▸ Share Stats</span>
-        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>
-      </div>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-        <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Work Accepted</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
-          <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',marginTop:6}}>
-            {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected</>}
-       <> · <span style={{color:stale>0?'var(--amber)':'var(--text-2)'}}>{fmtDiff(stale)}</span> stale</>
-            {workAccepted>0 && workRejected>0 && <> · <span style={{color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span> accept</>}
-          </div>
-        </div>
-        <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Best Difficulty</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.6rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
-        </div>
-        <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
-          <span>Shares / min (est.)</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
-        </div>
-        {onOpen && (
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--cyan)',textTransform:'uppercase',textAlign:'center',paddingTop:4,borderTop:'1px dashed var(--border)',marginTop:2}}>
-            Tap for diagnostics ↗
+        {workersWithRejects.length > 0 && (
+          <div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Per-worker</div>
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              {workersWithRejects.map(w => {
+                const disp = displayName(w.name, aliases);
+                const total = (w.rejected||0) + (w.stale||0);
+                return (
+                  <div key={w.name} onClick={()=>{onWorkerSelect&&onWorkerSelect(w); onClose();}} style={{display:'flex',justifyContent:'space-between',padding:'0.5rem 0.6rem',background:'var(--bg-raised)',border:'1px solid var(--border)',cursor:'pointer'}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-1)',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{disp}</div>
+                      {w.lastRejectReason && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{w.lastRejectReason}</div>}
+                    </div>
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--red)',whiteSpace:'nowrap',marginLeft:8}}>{fmtNum(total)}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -1135,67 +1037,101 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   );
 }
 
-// ── Leaderboard ───────────────────────────────────────────────────────────────
-function BestShareLeaderboard({ workers, poolBest, aliases }) {
-  const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
+// ── Share Stats card ──────────────────────────────────────────────────────────
+function ShareStats({ shares, hashrate, bestshare, onOpen }) {
+  if (!shares) return null;
+  const total = (shares.acceptedCount || 0) + (shares.rejectedCount || 0);
+  const acceptPct = total > 0 ? ((shares.acceptedCount || 0) / total) * 100 : 100;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Top Diggers — Best Difficulties</div>
-      {sorted.length === 0 ? (
-        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Keep mining ⛏</span></div>
-      ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
-          {sorted.map((w, i) => {
-            const on = w.status !== 'offline';
-            const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
-            return (
-              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
-                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:3}}>
-                  <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:20, flexShrink:0}}>#{i+1}</span>
-                  <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
-                  <span style={{fontFamily:'var(--fd)',fontSize:'0.82rem',fontWeight:700,color:i===0?'var(--amber)':'var(--cyan)', flexShrink:0}}>{fmtDiff(w.bestshare || 0)}</span>
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:25,fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)'}}>
-                  <div title={w.health||'unknown'} style={{width:6,height:6,borderRadius:'50%',background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 4px ${healthC}`:'none',flexShrink:0}}/>
-                  {w.minerType && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.55rem'}}>{w.minerType}</span><span style={{color:'var(--text-3)'}}>·</span></>}
-                  <span style={{color: on?'var(--amber)':'var(--text-3)'}}>{on ? fmtHr(w.hashrate) : 'offline'}</span>
-                </div>
-              </div>
-            );
-          })}
-          <div style={{...statRow,marginTop:'0.4rem',borderColor:'var(--border-hot)'}}>
-            <span style={label}>Pool Best</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>{fmtDiff(poolBest || 0)}</span>
-          </div>
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+        <span>▸ Share Stats</span>
+        {(shares.rejectedCount > 0 || shares.stale > 0 || (Object.keys(shares.rejectReasons||{}).length>0)) && (
+          <button onClick={onOpen} style={{background:'transparent', border:'1px solid var(--border)', color:'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', padding:'2px 8px', cursor:'pointer', marginRight:'14px'}}>DIAGNOSE</button>
+        )}
+      </div>
+      <div style={{textAlign:'center', marginBottom:8}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'2.4rem', fontWeight:700, color:'var(--green)', textShadow:'0 0 18px rgba(57,255,106,0.4)'}}>{acceptPct.toFixed(2)}%</div>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.18em', color:'var(--text-3)', textTransform:'uppercase', marginTop:2}}>Accept Rate</div>
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:6}}>
+        <div style={{textAlign:'center', padding:'0.4rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--green)', fontWeight:700}}>{fmtNum(shares.acceptedCount||0)}</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>Accepted</div>
+        </div>
+        <div style={{textAlign:'center', padding:'0.4rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color: (shares.rejectedCount||0)>0?'var(--red)':'var(--text-2)', fontWeight:700}}>{fmtNum(shares.rejectedCount||0)}</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>Rejected</div>
+        </div>
+        <div style={{textAlign:'center', padding:'0.4rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color: (shares.stale||0)>0?'var(--amber)':'var(--text-2)', fontWeight:700}}>{fmtNum(shares.stale||0)}</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase'}}>Stale</div>
+        </div>
+      </div>
+      {bestshare > 0 && (
+        <div style={{...statRow, marginTop:8, borderColor:'var(--border-hot, rgba(245,166,35,0.3))'}}>
+          <span style={label}>Best Share</span>
+          <span style={{fontFamily:'var(--fm)',color:'var(--amber)',fontWeight:600}}>{fmtDiff(bestshare)}</span>
         </div>
       )}
     </div>
   );
 }
 
-// ── Top Pool Finders ──────────────────────────────────────────────────────────
-function TopFindersPanel({ topFinders, netBlocks }) {
-  const list = topFinders || [];
-  const totalSample = (netBlocks||[]).length;
-  if (!list.length) return null;
-  const maxCount = list[0]?.count || 1;
+// ── Top Diggers (best share leaderboard) ──────────────────────────────────────
+function BestShareLeaderboard({ workers, poolBest, aliases }) {
+  const sorted = [...(workers||[])].filter(w=>w.bestshare>0).sort((a,b)=>b.bestshare-a.bestshare);
+  const top5 = sorted.slice(0,5);
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Claim Jumpers — Latest Strikes</div>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
-        {list.map((p,i)=>{
-          const pct = (p.count/maxCount)*100;
-          const color = p.isSolo ? 'var(--amber)' : (i===0 ? 'var(--cyan)' : 'var(--text-1)');
-          return (
-            <div key={p.name} style={{padding:'0.5rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(0,255,209,0.2)':'var(--border)'}`,position:'relative',overflow:'hidden', minWidth:0}}>
-              <div style={{position:'absolute',inset:0,width:`${pct}%`,background:p.isSolo?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)',transition:'width 0.6s ease'}}/>
-              <div style={{position:'relative',display:'flex',alignItems:'center',gap:'0.6rem'}}>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--cyan)':'var(--text-2)',width:18, flexShrink:0}}>#{i+1}</span>
-                <div style={{flex:1,minWidth:0,fontFamily:'var(--fd)',fontSize:'0.72rem',color,letterSpacing:'0.05em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textTransform:'uppercase'}}>
-                  {p.name}{p.isSolo && <span style={{fontSize:'0.5rem',color:'var(--amber)',marginLeft:6,border:'1px solid var(--amber)',padding:'0 4px'}}>SOLO</span>}
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Top Diggers</div>
+      {top5.length === 0 ? (
+        <div style={{textAlign:'center',padding:'1.5rem',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)',letterSpacing:'0.05em'}}>
+          No high-diff shares yet. Keep grinding…
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {top5.map((w,i)=>{
+            const disp = displayName(w.name, aliases);
+            return (
+              <div key={w.name} style={{display:'flex',alignItems:'center',gap:8,padding:'0.45rem 0.6rem',background:'var(--bg-raised)',border:i===0?'1px solid var(--border-hot, rgba(245,166,35,0.4))':'1px solid var(--border)'}}>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-3)',width:20,textAlign:'right'}}>{i===0?'👑':`#${i+1}`}</span>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-1)',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>
+                    {disp}
+                    {w.minerType && <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-3)', marginLeft:6, letterSpacing:'0.1em', textTransform:'uppercase'}}>{w.minerType}</span>}
+                  </div>
                 </div>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color, flexShrink:0}}>{p.count}</span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:600,color:i===0?'var(--amber)':'var(--text-1)'}}>{fmtDiff(w.bestshare)}</span>
               </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Top Finders ────────────────────────────────────────────────────────────────
+function TopFindersPanel({ topFinders, netBlocks }) {
+  if (!topFinders?.length) return null;
+  return (
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Claim Jumpers</div>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:6}}>Last {netBlocks?.length||30} blocks</div>
+      <div style={{display:'flex',flexDirection:'column',gap:5}}>
+        {topFinders.slice(0,5).map((f,i)=>{
+          const max = topFinders[0].count || 1;
+          const pct = (f.count/max)*100;
+          return (
+            <div key={f.name} style={{position:'relative',display:'flex',alignItems:'center',padding:'0.45rem 0.6rem',background:'var(--bg-raised)',border:'1px solid var(--border)',gap:8,overflow:'hidden'}}>
+              <div style={{position:'absolute',inset:0,width:`${pct}%`,background:f.isSolo?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)'}}/>
+              <span style={{position:'relative',fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:'var(--text-3)',width:18,textAlign:'right'}}>#{i+1}</span>
+              <span style={{position:'relative',flex:1,fontFamily:'var(--fm)',fontSize:'0.72rem',color:f.isSolo?'var(--amber)':'var(--text-1)',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                {f.name}
+                {f.isSolo && <span style={{marginLeft:6,fontFamily:'var(--fd)',fontSize:'0.48rem',letterSpacing:'0.1em',color:'var(--amber)',border:'1px solid var(--amber)',padding:'1px 4px'}}>SOLO</span>}
+              </span>
+              <span style={{position:'relative',fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,color:'var(--amber)'}}>{f.count}</span>
             </div>
           );
         })}
@@ -1204,29 +1140,26 @@ function TopFindersPanel({ topFinders, netBlocks }) {
   );
 }
 
-// ── Block feed ────────────────────────────────────────────────────────────────
+// ── Block feed (our strikes) ──────────────────────────────────────────────────
 function BlockFeed({ blocks, blockAlert }) {
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center', color:'var(--amber)'}}>
-        <span>▸ Gold Strikes — {(blocks||[]).length} total</span>
-        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>}
-      </div>
-      {!(blocks||[]).length?(
-        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>No gold struck yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem'}}>Keep digging ⛏</span></div>
-      ):(
-        <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',maxHeight:240,overflowY:'auto'}}>
-          {blocks.map((b,i)=>(
-            <div key={b.hash} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.7rem 1rem',background:'var(--bg-raised)',border:`1px solid ${blockAlert&&i===0?'var(--green)':'rgba(57,255,106,0.15)'}`,animation:blockAlert&&i===0?'blockBoom 0.6s ease':'none', minWidth:0}}>
-              <span style={{fontSize:16, flexShrink:0}}>💎</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:'var(--green)'}}>#{fmtNum(b.height)}</div>
-                <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.hash?.slice(0,24)}…</div>
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Gold Strikes</div>
+      {blocks?.length>0 ? (
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {blocks.slice(0,5).map(b=>(
+            <div key={b.hash} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.5rem 0.7rem',background:'var(--bg-raised)',border:'1px solid var(--amber)'}}>
+              <div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--cyan)',fontWeight:600}}>#{fmtNum(b.height)}</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)'}}>{timeAgo(b.ts)}</div>
               </div>
-              <span style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',flexShrink:0}}>{timeAgo(b.ts)}</span>
-              <a href={`https://mempool.space/block/${b.hash}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--text-2)',fontSize:12, flexShrink:0}}>↗</a>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:'var(--amber)',fontWeight:600}}>{(b.reward||0).toFixed(3)} BTC</div>
             </div>
           ))}
+        </div>
+      ) : (
+        <div style={{textAlign:'center',padding:'1.5rem',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)',letterSpacing:'0.05em'}}>
+          No strikes yet. Keep digging…
         </div>
       )}
     </div>
@@ -1235,27 +1168,24 @@ function BlockFeed({ blocks, blockAlert }) {
 
 // ── Recent network blocks ─────────────────────────────────────────────────────
 function RecentBlocksPanel({ netBlocks }) {
-  const list = netBlocks || [];
-  if (!list.length) return null;
+  if (!netBlocks?.length) return null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ The Goldfields — Solo Winners ⚡</div>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',maxHeight:300,overflowY:'auto'}}>
-        {list.slice(0,15).map(b=>(
-          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none', minWidth:0}}>
-            <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:600,color:b.isSolo?'var(--amber)':'var(--text-1)'}}>#{fmtNum(b.height)}</span>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',color:b.isSolo?'var(--amber)':'var(--text-2)',textTransform:'uppercase'}}>{b.pool}</span>
-                {b.isSolo && <span style={{fontFamily:'var(--fd)',fontSize:'0.52rem',color:'var(--amber)',border:'1px solid var(--amber)',padding:'1px 5px',letterSpacing:'0.12em'}}>SOLO</span>}
+    <div style={card} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ The Goldfields</div>
+      <div style={{display:'flex',flexDirection:'column',gap:4}}>
+        {netBlocks.slice(0,8).map(b=>(
+          <div key={b.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.4rem 0.6rem',background:'var(--bg-raised)',border:'1px solid var(--border)',gap:8}}>
+            <div style={{flex:1, minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--cyan)',fontWeight:600}}>#{fmtNum(b.height)}</span>
+                {b.isSolo && <span style={{fontFamily:'var(--fd)',fontSize:'0.45rem',letterSpacing:'0.1em',color:'var(--amber)',border:'1px solid var(--amber)',padding:'1px 3px'}}>SOLO</span>}
               </div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:2}}>
-                {fmtNum(b.tx_count||0)} tx · {blockTimeAgo(b.timestamp)}
-                {b.reward!=null && <> · <span style={{color:'var(--cyan)'}}>{fmtSats(b.reward)}</span></>}
-              </div>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:b.isSolo?'var(--amber)':'var(--text-2)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{b.pool}</div>
             </div>
-            <a href={`https://mempool.space/block/${b.id}`} target="_blank" rel="noopener noreferrer" style={{color:'var(--text-2)',fontSize:12,flexShrink:0}}>↗</a>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',fontSize:'0.6rem',fontFamily:'var(--fm)'}}>
+              <span style={{color:'var(--text-2)'}}>{blockTimeAgo(b.timestamp)}</span>
+              {b.reward && <span style={{color:'var(--green)',marginTop:1}}>{(b.reward/1e8).toFixed(3)}</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -1263,429 +1193,463 @@ function RecentBlocksPanel({ netBlocks }) {
   );
 }
 
+// ── Confetti / block alert ────────────────────────────────────────────────────
 function Confetti() {
-  const ref = useRef(null);
-  useEffect(()=>{
-    const canvas=ref.current; if(!canvas)return;
-    const ctx=canvas.getContext('2d'); canvas.width=window.innerWidth; canvas.height=window.innerHeight;
-    const colors=['#F5A623','#00FFD1','#39FF6A','#FF7A00','#fff'];
-    const pts=Array.from({length:150},()=>({x:Math.random()*canvas.width,y:-10,vy:3+Math.random()*5,vx:(Math.random()-.5)*4,s:3+Math.random()*6,c:colors[Math.floor(Math.random()*colors.length)],r:Math.random()*360,rv:(Math.random()-.5)*8,op:1}));
-    let frame; const draw=()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); let alive=false;
-      pts.forEach(p=>{p.y+=p.vy;p.x+=p.vx;p.r+=p.rv;p.op-=0.007; if(p.y<canvas.height&&p.op>0)alive=true;
-        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r*Math.PI/180);ctx.globalAlpha=Math.max(0,p.op);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s);ctx.restore();
-      }); if(alive)frame=requestAnimationFrame(draw); };
-    frame=requestAnimationFrame(draw); return ()=>cancelAnimationFrame(frame);
-  },[]);
-  return <canvas ref={ref} style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:500}}/>;
+  const pieces = useMemo(() => Array.from({length: 60}).map((_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 0.5,
+    duration: 2 + Math.random() * 1.5,
+    color: ['#F5A623', '#39FF6A', '#00FFD1', '#fff'][i % 4],
+  })), []);
+  return <div style={{position:'fixed', inset:0, pointerEvents:'none', zIndex:1000, overflow:'hidden'}}>{pieces.map(p=>(
+    <div key={p.id} style={{position:'absolute', top:'-20px', left:`${p.left}%`, width:6, height:14, background:p.color, animation:`confettiFall ${p.duration}s ${p.delay}s linear forwards`, transform:'rotate(0deg)'}}/>
+  ))}</div>;
 }
 function BlockAlert({ show, block, onDismiss }) {
-  useEffect(()=>{ if(show){const t=setTimeout(onDismiss,8000); return()=>clearTimeout(t);} },[show,onDismiss]);
-  if(!show||!block)return null;
-  return(
-    <div style={{position:'fixed',top:'8rem',left:'50%',transform:'translateX(-50%)',zIndex:300,background:'var(--bg-surface)',border:'2px solid var(--green)',padding:'1.5rem 2rem',boxShadow:'0 0 60px rgba(57,255,106,0.6)',animation:'fadeIn .5s ease',maxWidth:'90%'}}>
-      <div style={{fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.2em',color:'var(--green)',textTransform:'uppercase',marginBottom:'0.5rem',textAlign:'center'}}>✦ GOLD STRUCK ✦</div>
-      <div style={{fontFamily:'var(--fd)',fontSize:'2.5rem',fontWeight:700,color:'var(--amber)',textAlign:'center',textShadow:'0 0 20px var(--amber)'}}>#{fmtNum(block.height)}</div>
-      <button onClick={onDismiss} style={{width:'100%',marginTop:'1rem',padding:'0.5rem',background:'transparent',border:'1px solid var(--green)',color:'var(--green)',fontFamily:'var(--fd)',fontSize:'0.7rem',letterSpacing:'0.1em',cursor:'pointer'}}>DISMISS</button>
-    </div>
+  if (!show||!block) return null;
+  return (
+    <>
+      <Confetti/>
+      <div onClick={onDismiss} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',cursor:'pointer'}}>
+        <div style={{textAlign:'center',background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',padding:'2.4rem 2rem',maxWidth:420,boxShadow:'0 0 50px rgba(245,166,35,0.5)'}}>
+          <div style={{fontSize:60,animation:'pulse 1.2s infinite'}}>⚡</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.4rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>STRIKE!</div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'1.05rem',color:'var(--text-1)',marginTop:8}}>Block #{fmtNum(block.height||0)}</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'1.4rem',color:'var(--green)',fontWeight:700,marginTop:14,textShadow:'0 0 14px rgba(57,255,106,0.45)'}}>+{(block.reward||0).toFixed(3)} BTC</div>
+          <div style={{fontSize:'0.7rem',color:'var(--text-2)',marginTop:14,fontFamily:'var(--fd)',letterSpacing:'0.1em'}}>tap to dismiss</div>
+        </div>
+      </div>
+    </>
   );
 }
 
-// ── Setup form ────────────────────────────────────────────────────────────────
+// ── Setup Form ────────────────────────────────────────────────────────────────
 function SetupForm({ saveConfig }) {
-  const [addr,setAddr]=useState(''); const [error,setError]=useState(''); const [loading,setLoading]=useState(false);
-  const submit=async()=>{
-    setError('');const t=addr.trim();
-    if(!t){setError('Address required');return;}
-    if(!isValidBtcAddress(t)){setError("That doesn't look like a valid Bitcoin address.");return;}
+  const [a, setA] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const submit = async () => {
+    setErr('');
+    if (!isValidBtcAddress(a)) { setErr('Invalid BTC address'); return; }
     setLoading(true);
-    try{await saveConfig({payoutAddress:t});}catch(e){setError(e.message);}finally{setLoading(false);}
+    try { await saveConfig({ payoutAddress: a.trim() }); } catch (e) { setErr(e.message || 'Failed'); }
+    finally { setLoading(false); }
   };
   return (
-    <div style={{minHeight:'80vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'2rem 1rem'}}>
-      <div style={{width:'100%',maxWidth:440,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'2rem'}}>
-        <h2 style={{fontFamily:'var(--fd)',fontSize:'1.2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:'0.5rem',textShadow:'var(--glow-a)'}}>⛏ SoloStrike Setup</h2>
-        <p style={{fontFamily:'var(--fd)',fontSize:'0.72rem',color:'var(--text-2)',marginBottom:'1.5rem',letterSpacing:'0.05em',lineHeight:1.6}}>Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.</p>
-        <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem'}}>Bitcoin Payout Address</label>
-        <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${error?'rgba(255,59,59,0.5)':addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.82rem',padding:'0.75rem 1rem',outline:'none',boxSizing:'border-box'}}
-          type="text" placeholder="bc1q… or 1… or 3…" value={addr} onChange={e=>{setAddr(e.target.value);setError('');}} onKeyDown={e=>e.key==='Enter'&&submit()} spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
-        {error&&<div style={{background:'rgba(255,59,59,0.08)',border:'1px solid rgba(255,59,59,0.3)',padding:'0.6rem 0.875rem',fontSize:'0.75rem',color:'var(--red)',marginTop:'0.75rem'}}>⚠ {error}</div>}
-        <button onClick={submit} disabled={loading} style={{width:'100%',marginTop:'1.5rem',padding:'0.875rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,letterSpacing:'0.15em',textTransform:'uppercase',cursor:'pointer',opacity:loading?0.6:1}}>
-          {loading?'SAVING…':'START MINING →'}
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'1.5rem'}}>
+      <div style={{maxWidth:500, width:'100%', background:'var(--bg-surface)', border:'1px solid var(--amber)', padding:'1.8rem'}}>
+        <h2 style={{fontFamily:'var(--fd)', color:'var(--amber)', letterSpacing:'0.1em', fontSize:'1.1rem'}}>⛏ SoloStrike Setup</h2>
+        <p style={{color:'var(--text-2)', fontSize:'0.78rem', marginTop:8, lineHeight:1.5}}>Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.</p>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginTop:18, marginBottom:6}}>Bitcoin Payout Address</label>
+        <input type="text" value={a} onChange={e=>setA(e.target.value)} placeholder="bc1q..."
+          style={{width:'100%',padding:'0.7rem',background:'var(--bg-deep)',border:`1px solid ${err?'var(--red)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.85rem',outline:'none',boxSizing:'border-box'}}/>
+        {err && <div style={{color:'var(--red)', fontSize:'0.7rem', marginTop:6, fontFamily:'var(--fm)'}}>⚠ {err}</div>}
+        <button onClick={submit} disabled={loading} style={{width:'100%',padding:'0.85rem',marginTop:18,background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.85rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
+          {loading ? 'Saving…' : 'START MINING →'}
         </button>
       </div>
     </div>
   );
 }
 
-// ── Settings modal ────────────────────────────────────────────────────────────
+// ── Settings Modal ────────────────────────────────────────────────────────────
 function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh }) {
   const [tab, setTab] = useState('main');
-  const [addr,setAddr]=useState('');
-  const [poolName,setPoolName]=useState(currentConfig?.poolName||'SoloStrike');
+  const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
+  const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
   const [privateMode, setPrivateMode] = useState(!!currentConfig?.privateMode);
-  const [loading,setLoading]=useState(false);
-  const [saved,setSaved]=useState(false);
-  const [error,setError]=useState('');
-
-  useEffect(() => {
-    setPrivateMode(!!currentConfig?.privateMode);
-    setPoolName(currentConfig?.poolName || 'SoloStrike');
-  }, [currentConfig]);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    setLoading(true);setError('');setSaved(false);
-    try{
-      const p = { poolName, privateMode };
-      const trimmed=addr.trim();
-      if(trimmed){ if(!isValidBtcAddress(trimmed)){setError("That doesn't look like a valid Bitcoin address.");setLoading(false);return;} p.payoutAddress=trimmed; }
-      await saveConfig(p); setSaved(true); setAddr(''); setTimeout(()=>setSaved(false),3000);
-    } catch(e){setError(e.message);} finally{setLoading(false);}
+    setLoading(true);
+    try {
+      await saveConfig({ payoutAddress: addr || undefined, poolName, privateMode });
+      setSaved(true); setTimeout(()=>setSaved(false), 2000);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   };
 
-  const tabStyle = (active) => ({
-    padding:'0.5rem 0.55rem', background:active?'var(--bg-raised)':'transparent',
-    border:'1px solid', borderColor:active?'var(--border-hot)':'var(--border)',
-    color:active?'var(--amber)':'var(--text-2)',
-    fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em',
-    textTransform:'uppercase', cursor:'pointer', flex:1, textAlign:'center',
-  });
-
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,padding:'1rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:500,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'1.5rem',boxShadow:'var(--glow-a)',maxHeight:'92vh',overflowY:'auto'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--amber)'}}>⚙ Settings</span>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:18}}>✕</button>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:300,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'1rem',overflowY:'auto'}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--border)',maxWidth:680,width:'100%',padding:'1.4rem',marginTop:'2rem',marginBottom:'2rem'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+          <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.85rem',letterSpacing:'0.18em',color:'var(--amber)'}}>⛏ Settings</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem',lineHeight:1,padding:0}}>✕</button>
         </div>
-        <div style={{display:'flex',gap:3,marginBottom:'1rem',flexWrap:'wrap'}}>
-          <button onClick={()=>setTab('main')}     style={tabStyle(tab==='main')}>Main</button>
-          <button onClick={()=>setTab('display')}  style={tabStyle(tab==='display')}>Display</button>
-          <button onClick={()=>setTab('privacy')}  style={tabStyle(tab==='privacy')}>Privacy</button>
-          <button onClick={()=>setTab('pulse')}    style={tabStyle(tab==='pulse')}>Pulse</button>
-          <button onClick={()=>setTab('aliases')}  style={tabStyle(tab==='aliases')}>Names</button>
-          <button onClick={()=>setTab('hooks')}    style={tabStyle(tab==='hooks')}>Webhooks</button>
-        </div>
-        {saved&&<div style={{background:'rgba(57,255,106,0.06)',border:'1px solid rgba(57,255,106,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--green)',marginBottom:'1rem'}}>✓ Saved</div>}
-        {error&&<div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'1rem'}}>⚠ {error}</div>}
 
-        {tab==='main' && <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName} currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout} submit={submit} saved={saved} loading={loading}/>}
-        {tab==='display' && <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange} tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange} minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange} visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>}
-        {tab==='privacy' && <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode} submit={submit} saved={saved} loading={loading}/>}
-        {tab==='pulse' && <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}/>}
-        {tab==='aliases' && <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>}
-        {tab==='hooks' && <WebhooksTab />}
+        <div style={{display:'flex',gap:0,borderBottom:'1px solid var(--border)',marginBottom:14, flexWrap:'wrap'}}>
+          {[
+            ['main','Main'],
+            ['display','Display'],
+            ['privacy','Privacy'],
+            ['pulse','Pulse'],
+            ['aliases','Aliases'],
+            ['webhooks','Webhooks'],
+          ].map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)} style={{
+              padding:'8px 14px', background:tab===id?'var(--bg-raised)':'transparent',
+              border:'none', borderBottom: tab===id?'2px solid var(--amber)':'2px solid transparent',
+              color:tab===id?'var(--amber)':'var(--text-2)',
+              fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.12em',
+              cursor:'pointer', textTransform:'uppercase'
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {tab==='main' && (
+          <MainTab addr={addr} setAddr={setAddr} poolName={poolName} setPoolName={setPoolName}
+            currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout}
+            submit={submit} saved={saved} loading={loading}/>
+        )}
+        {tab==='display' && (
+          <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
+            tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
+            minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
+            visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}/>
+        )}
+        {tab==='privacy' && (
+          <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode}
+            submit={submit} saved={saved} loading={loading}/>
+        )}
+        {tab==='pulse' && (
+          <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}/>
+        )}
+        {tab==='aliases' && (
+          <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
+        )}
+        {tab==='webhooks' && (
+          <WebhooksTab/>
+        )}
       </div>
     </div>
   );
 }
 
+// ── Main settings tab ─────────────────────────────────────────────────────────
 function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,onResetLayout,submit,saved,loading}) {
-  const [show,setShow]=useState(false);
   return (
     <>
-      <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem'}}>New Payout Address</label>
-      <div style={{position:'relative'}}>
-        <input style={{width:'100%',background:'var(--bg-deep)',border:`1px solid ${addr?'var(--border-hot)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 2.5rem 0.7rem 0.875rem',outline:'none',boxSizing:'border-box'}} type={show?'text':'password'} placeholder="Leave blank to keep current" value={addr} onChange={e=>setAddr(e.target.value)} spellCheck={false} autoCorrect="off" autoCapitalize="off"/>
-        <button onClick={()=>setShow(v=>!v)} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:12}}>{show?'🙈':'👁'}</button>
+      <div style={{marginBottom:14}}>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Bitcoin Payout Address</label>
+        <input type="text" value={addr} onChange={e=>setAddr(e.target.value)} placeholder="bc1q..."
+          style={{width:'100%',padding:'0.55rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginTop:5}}>Where block rewards go. Use a fresh, dedicated address from your own wallet.</div>
       </div>
-      <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem',marginTop:'1rem'}}>Pool Name</label>
-      <input style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none',boxSizing:'border-box'}} maxLength={32} value={poolName} onChange={e=>setPoolName(e.target.value)}/>
-      <label style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.4rem',marginTop:'1rem'}}>BTC Price Currency</label>
-      <select value={currency} onChange={e=>onCurrencyChange(e.target.value)} style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.8rem',padding:'0.7rem 0.875rem',outline:'none',boxSizing:'border-box'}}>
-        {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-      </select>
-      <div style={{height:1,background:'var(--border)',margin:'1.25rem 0'}}/>
-      <button onClick={onResetLayout} style={{width:'100%',padding:'0.6rem',background:'var(--bg-raised)',color:'var(--text-2)',border:'1px solid var(--border)',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer',marginBottom:'0.75rem'}}>↺ Reset Card Layout</button>
-      <button onClick={submit} disabled={loading} style={{width:'100%',padding:'0.75rem',background:saved?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.8rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer',opacity:loading?0.6:1}}>
-        {loading?'SAVING…':saved?'✓ SAVED':'SAVE SETTINGS'}
-      </button>
+      <div style={{marginBottom:14}}>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Pool Name</label>
+        <input type="text" value={poolName} onChange={e=>setPoolName(e.target.value)} maxLength={32}
+          style={{width:'100%',padding:'0.55rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Currency</label>
+        <select value={currency} onChange={e=>onCurrencyChange(e.target.value)}
+          style={{width:'100%',padding:'0.55rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}>
+          {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div style={{display:'flex',gap:8, marginTop:18}}>
+        <button onClick={submit} disabled={loading}
+          style={{flex:1, padding:'0.7rem', background:saved?'var(--green)':'var(--amber)', color:'#000', border:'none', fontFamily:'var(--fd)', fontWeight:700, letterSpacing:'0.1em', fontSize:'0.7rem', cursor:loading?'wait':'pointer', textTransform:'uppercase', opacity:loading?0.6:1}}>
+          {loading?'SAVING…':saved?'✓ SAVED':'SAVE'}
+        </button>
+        <button onClick={onResetLayout}
+          style={{padding:'0.7rem 1rem', background:'transparent', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'var(--fd)', fontWeight:600, letterSpacing:'0.1em', fontSize:'0.65rem', cursor:'pointer', textTransform:'uppercase'}}>
+          Reset Layout
+        </button>
+      </div>
     </>
   );
 }
 
-// ── DisplayTab ────────────────────────────────────────────────────────────────
+// ── Display tab ───────────────────────────────────────────────────────────────
 function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange }) {
-  const toggleMetric = (id) => {
-    const next = stripSettings.metrics.includes(id) ? stripSettings.metrics.filter(x => x !== id) : [...stripSettings.metrics, id];
-    onStripSettingsChange({ ...stripSettings, metrics: next });
-  };
-  const moveMetric = (id, dir) => {
-    const idx = stripSettings.metrics.indexOf(id);
-    if (idx < 0) return;
+  const stripIds = stripSettings.metricIds;
+  const tickerIds = tickerSettings.metricIds;
+  const stripSet = new Set(stripIds);
+  const tickerSet = new Set(tickerIds);
+  const fadeSec = (stripSettings.fadeMs || DEFAULT_FADE_MS) / 1000;
+  const [draggedStrip, setDraggedStrip] = useState(null);
+  const [draggedTicker, setDraggedTicker] = useState(null);
+
+  const moveStrip = (idx, dir) => {
+    const next = [...stripIds];
     const swap = idx + dir;
-    if (swap < 0 || swap >= stripSettings.metrics.length) return;
-    const next = [...stripSettings.metrics];
-    const tmp = next[idx];
-    next[idx] = next[swap];
-    next[swap] = tmp;
-    onStripSettingsChange({ ...stripSettings, metrics: next });
+    if (swap < 0 || swap >= next.length) return;
+    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
+    onStripSettingsChange({ ...stripSettings, metricIds: next });
   };
-  const toggleCard = (id) => {
-    const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
-    onVisibleCardsChange(next);
+
+  const moveTicker = (idx, dir) => {
+    const next = [...tickerIds];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
+    onTickerSettingsChange({ ...tickerSettings, metricIds: next });
   };
-  const applyPreset = (preset) => onVisibleCardsChange([...preset]);
-  const matchesPreset = (preset) => {
-    if (!Array.isArray(visibleCards) || visibleCards.length !== preset.length) return false;
-    const a = [...visibleCards].sort();
-    const b = [...preset].sort();
-    return a.every((id, i) => id === b[i]);
+
+  const reorderStrip = (fromId, toId) => {
+    if (fromId === toId) return;
+    const fromIdx = stripIds.indexOf(fromId);
+    const toIdx = stripIds.indexOf(toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const next = [...stripIds];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    onStripSettingsChange({ ...stripSettings, metricIds: next });
   };
-  const presetBtnStyle = (active) => ({
-    flex:1, padding:'0.55rem',
-    background:'var(--bg-raised)',
-    border:`1px solid ${active?'var(--border-hot)':'var(--border)'}`,
-    color: active?'var(--amber)':'var(--text-1)',
-    fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700,
-    letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer',
-  });
+
+  const reorderTicker = (fromId, toId) => {
+    if (fromId === toId) return;
+    const fromIdx = tickerIds.indexOf(fromId);
+    const toIdx = tickerIds.indexOf(toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const next = [...tickerIds];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    onTickerSettingsChange({ ...tickerSettings, metricIds: next });
+  };
+
+  const toggleStripMetric = (id) => {
+    if (stripSet.has(id)) {
+      const next = stripIds.filter(x=>x!==id);
+      onStripSettingsChange({ ...stripSettings, metricIds: next });
+    } else {
+      onStripSettingsChange({ ...stripSettings, metricIds: [...stripIds, id] });
+    }
+  };
 
   const toggleTickerMetric = (id) => {
-    const current = tickerSettings.metrics || [];
-    const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
-    onTickerSettingsChange({ ...tickerSettings, metrics: next });
-  };
-  const moveTickerMetric = (id, dir) => {
-    const current = tickerSettings.metrics || [];
-    const idx = current.indexOf(id);
-    if (idx < 0) return;
-    const swap = idx + dir;
-    if (swap < 0 || swap >= current.length) return;
-    const next = [...current];
-    const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
-    onTickerSettingsChange({ ...tickerSettings, metrics: next });
-  };
-  const matchTickerToStrip = () => {
-    onTickerSettingsChange({ ...tickerSettings, metrics: [...(stripSettings.metrics || [])] });
+    if (tickerSet.has(id)) {
+      const next = tickerIds.filter(x=>x!==id);
+      onTickerSettingsChange({ ...tickerSettings, metricIds: next });
+    } else {
+      onTickerSettingsChange({ ...tickerSettings, metricIds: [...tickerIds, id] });
+    }
   };
 
-  const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem', marginTop:'1rem' };
-  const firstSectionTitle = { ...sectionTitle, marginTop:0 };
-  const rowLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:6 };
-  const btnBase = { padding:'4px 8px', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer', border:'1px solid var(--border)', background:'var(--bg-raised)', color:'var(--text-2)' };
+  const sectionStyle = { marginBottom: 18, paddingBottom: 14, borderBottom:'1px dashed var(--border)' };
+  const rowLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:6, textTransform:'uppercase' };
+  const inputStyle = { width:'100%', padding:'0.5rem', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.75rem', outline:'none', boxSizing:'border-box' };
+
+  // Card preset helpers
+  const applyPreset = (preset) => onVisibleCardsChange(preset);
+  const matchesPreset = (preset) => {
+    if (visibleCards.length !== preset.length) return false;
+    return preset.every(id => visibleCards.includes(id));
+  };
+  const toggleCard = (id) => {
+    if (visibleCards.includes(id)) {
+      onVisibleCardsChange(visibleCards.filter(x => x !== id));
+    } else {
+      onVisibleCardsChange([...visibleCards, id]);
+    }
+  };
+  const presetBtnStyle = (active) => ({
+    padding:'6px 12px', background:active?'var(--bg-raised)':'transparent',
+    border: active?'1px solid var(--amber)':'1px solid var(--border)',
+    color: active?'var(--amber)':'var(--text-2)',
+    fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em',
+    cursor:'pointer', textTransform:'uppercase'
+  });
 
   return (
     <>
-      <div style={firstSectionTitle}>▸ Minimal Mode</div>
-      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: minimalMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
-        <div style={{flex:1}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: minimalMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>Bare Bones UI</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
-            Hides ticker, block strips, status dot, and shows only Hashrate + Workers + Blocks cards.
-          </div>
+      <div style={sectionStyle}>
+        <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:6}}>
+          <input type="checkbox" id="minimal-mode" checked={minimalMode} onChange={e=>onMinimalModeChange(e.target.checked)} style={{accentColor:'var(--amber)'}}/>
+          <label htmlFor="minimal-mode" style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-1)', cursor:'pointer', letterSpacing:'0.05em'}}>Minimal mode</label>
         </div>
-        <button onClick={()=>onMinimalModeChange(!minimalMode)}
-          style={{width:46, height:26, borderRadius:13, background: minimalMode?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
-          <div style={{position:'absolute', top:2, left: minimalMode?22:2, width:20, height:20, borderRadius:'50%', background: minimalMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-        </button>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginLeft:24}}>Hides strips, ticker, and most cards. Just the essentials.</div>
       </div>
-      {minimalMode && (
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
-          🔇 Minimal Mode is on — settings below are overridden until you turn it off.
+
+      <div style={sectionStyle}>
+        <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:8}}>
+          <input type="checkbox" id="strip-enabled" checked={stripSettings.enabled} onChange={e=>onStripSettingsChange({...stripSettings, enabled:e.target.checked})} style={{accentColor:'var(--amber)'}}/>
+          <label htmlFor="strip-enabled" style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-1)', cursor:'pointer', letterSpacing:'0.05em'}}>Show top strip</label>
         </div>
-      )}
-
-      <div style={sectionTitle}>▸ Dashboard Cards</div>
-
-      <div style={rowLabel}>Quick presets</div>
-      <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
-        <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
-          Minimal (3)
-        </button>
-        <button onClick={()=>applyPreset(DEFAULT_PRESET)} style={presetBtnStyle(matchesPreset(DEFAULT_PRESET))}>
-          Default ({DEFAULT_PRESET.length})
-        </button>
-        <button onClick={()=>applyPreset(EVERYTHING_PRESET)} style={presetBtnStyle(matchesPreset(EVERYTHING_PRESET))}>
-          Everything ({EVERYTHING_PRESET.length})
-        </button>
-      </div>
-
-      <div style={rowLabel}>Individual cards (tap to toggle)</div>
-      <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-        {ALL_CARDS.map(c => {
-          const on = visibleCards.includes(c.id);
-          return (
-            <div key={c.id} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-              <button onClick={()=>toggleCard(c.id)}
-                style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
-                {on?'✓':''}
-              </button>
-              <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.78rem', color: on?'var(--text-1)':'var(--text-2)'}}>{c.label}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
-      </div>
-
-      <div style={sectionTitle}>▸ Top Strip</div>
-
-      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable top strip</span>
-        <button onClick={()=>onStripSettingsChange({ ...stripSettings, enabled: !stripSettings.enabled })}
-          style={{width:40, height:22, borderRadius:11, background: stripSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-          <div style={{position:'absolute', top:1, left: stripSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: stripSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-        </button>
-      </div>
-
-      <div style={rowLabel}>Metrics (tap to toggle, ↑↓ to reorder)</div>
-      <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-        {METRIC_CATEGORIES.map(cat => (
-          <div key={cat}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
-            {METRICS.filter(metric => metric.category === cat).map(metric => {
-              const on = stripSettings.metrics.includes(metric.id);
-              const order = on ? stripSettings.metrics.indexOf(metric.id) : -1;
-              return (
-                <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                  <button onClick={()=>toggleMetric(metric.id)}
-                    style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
-                    {on?'✓':''}
-                  </button>
-                  <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
-                  {on && (
-                    <>
-                      <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
-                      <button onClick={()=>moveMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
-                      <button onClick={()=>moveMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Selected: <span style={{color:'var(--amber)'}}>{stripSettings.metrics.length}</span> metric{stripSettings.metrics.length===1?'':'s'}
-      </div>
-
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>Show how many at a time (fade between groups)</div>
-      <div style={{display:'flex', gap:6}}>
-        {[1,2,3,4].map(n => (
-          <button key={n} onClick={()=>onStripSettingsChange({ ...stripSettings, chunkSize: n })}
-            style={{flex:1, padding:'0.55rem', background: stripSettings.chunkSize===n?'var(--bg-raised)':'transparent', border:`1px solid ${stripSettings.chunkSize===n?'var(--border-hot)':'var(--border)'}`, color: stripSettings.chunkSize===n?'var(--amber)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, cursor:'pointer'}}>
-            {n}
-          </button>
-        ))}
-      </div>
-
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>Fade interval: <span style={{color:'var(--amber)'}}>{(stripSettings.fadeMs/1000).toFixed(1)}s</span></div>
-      <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
-        style={{width:'100%', accentColor:'var(--amber)'}}/>
-
-      <div style={sectionTitle}>▸ Scrolling Ticker</div>
-
-      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Show scrolling ticker</span>
-        <button onClick={()=>onTickerSettingsChange({ ...tickerSettings, enabled: !tickerSettings.enabled })}
-          style={{width:40, height:22, borderRadius:11, background: tickerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-          <div style={{position:'absolute', top:1, left: tickerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: tickerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-        </button>
-      </div>
-
-      {tickerSettings.enabled && (
-        <>
-          <div style={{...rowLabel, marginTop:'0.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6}}>
-            <span>Ticker metrics (tap to toggle, ↑↓ to reorder)</span>
-            <button onClick={matchTickerToStrip}
-              title="Copy top strip selection into ticker"
-              style={{padding:'3px 7px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer'}}>
-              ⤴ Match Top Strip
-            </button>
-          </div>
-          <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-            {METRIC_CATEGORIES.map(cat => (
-              <div key={cat}>
-                <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
-                {METRICS.filter(metric => metric.category === cat).map(metric => {
-                  const on = (tickerSettings.metrics || []).includes(metric.id);
-                  const order = on ? tickerSettings.metrics.indexOf(metric.id) : -1;
-                  return (
-                    <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                      <button onClick={()=>toggleTickerMetric(metric.id)}
-                        style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
-                        {on?'✓':''}
-                      </button>
-                      <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
-                      {on && (
-                        <>
-                          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
-                          <button onClick={()=>moveTickerMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
-                          <button onClick={()=>moveTickerMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+        {stripSettings.enabled && (
+          <>
+            <div style={{display:'flex', gap:'0.6rem', marginBottom:10}}>
+              <div style={{flex:1}}>
+                <div style={rowLabel}>Per slide</div>
+                <input type="number" min="1" max="8" value={stripSettings.chunkSize} onChange={e=>onStripSettingsChange({...stripSettings, chunkSize:Math.max(1, Math.min(8, parseInt(e.target.value)||1))})} style={inputStyle}/>
               </div>
-            ))}
-          </div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-            Selected: <span style={{color:'var(--amber)'}}>{(tickerSettings.metrics || []).length}</span> metric{(tickerSettings.metrics || []).length===1?'':'s'}
-          </div>
+              <div style={{flex:1}}>
+                <div style={rowLabel}>Speed (sec)</div>
+                <input type="number" min="1" max="20" step="0.5" value={fadeSec} onChange={e=>onStripSettingsChange({...stripSettings, fadeMs:Math.round((parseFloat(e.target.value)||4)*1000)})} style={inputStyle}/>
+              </div>
+            </div>
+            <div style={rowLabel}>Selected ({stripIds.length}) — drag to reorder</div>
+            <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)', marginBottom:8}}>
+              {stripIds.length === 0 && <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', padding:'0.4rem'}}>No metrics selected</div>}
+              {stripIds.map((id, idx) => {
+                const m = METRIC_MAP[id];
+                if (!m) return null;
+                return (
+                  <div key={id} draggable
+                    onDragStart={()=>setDraggedStrip(id)}
+                    onDragOver={e=>{e.preventDefault();}}
+                    onDrop={()=>{ reorderStrip(draggedStrip, id); setDraggedStrip(null); }}
+                    onDragEnd={()=>setDraggedStrip(null)}
+                    style={{display:'flex', alignItems:'center', gap:8, padding:'5px 8px', background: draggedStrip===id ? 'var(--bg-raised)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)', cursor:'grab'}}>
+                    <span style={{color:'var(--text-3)', fontSize:14}}>≡</span>
+                    <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)'}}>{m.icon||''} {m.label}</span>
+                    <button onClick={()=>moveStrip(idx, -1)} disabled={idx===0} style={{background:'transparent', border:'1px solid var(--border)', color:idx===0?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===0?'default':'pointer'}}>↑</button>
+                    <button onClick={()=>moveStrip(idx, 1)} disabled={idx===stripIds.length-1} style={{background:'transparent', border:'1px solid var(--border)', color:idx===stripIds.length-1?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===stripIds.length-1?'default':'pointer'}}>↓</button>
+                    <button onClick={()=>toggleStripMetric(id)} style={{background:'transparent', border:'1px solid var(--red)', color:'var(--red)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:'pointer'}}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={rowLabel}>Available — tap to add</div>
+            <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
+              {Object.entries(METRIC_CATEGORIES).map(([cat, ids]) => {
+                const available = ids.filter(id => !stripSet.has(id));
+                if (!available.length) return null;
+                return (
+                  <React.Fragment key={cat}>
+                    <div style={{width:'100%', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', marginTop:6, marginBottom:2, textTransform:'uppercase'}}>{cat}</div>
+                    {available.map(id => {
+                      const m = METRIC_MAP[id];
+                      return (
+                        <button key={id} onClick={()=>toggleStripMetric(id)} style={{padding:'5px 8px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.65rem', cursor:'pointer'}}>+ {m.icon||''} {m.label}</button>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
 
-          <div style={{...rowLabel, marginTop:'0.9rem'}}>
-            Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
-            <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
-              ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
-            </span>
-          </div>
-          <input type="range" min="3" max="90" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
-            style={{width:'100%', accentColor:'var(--amber)'}}/>
-          <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--fm)', fontSize:'0.52rem', color:'var(--text-3)', marginTop:2}}>
-            <span>very fast</span><span>slow</span>
-          </div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
-            Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.
-          </div>
-        </>
-      )}
+      <div style={sectionStyle}>
+        <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:8}}>
+          <input type="checkbox" id="ticker-enabled" checked={tickerSettings.enabled} onChange={e=>onTickerSettingsChange({...tickerSettings, enabled:e.target.checked})} style={{accentColor:'var(--amber)'}}/>
+          <label htmlFor="ticker-enabled" style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-1)', cursor:'pointer', letterSpacing:'0.05em'}}>Show scrolling ticker</label>
+        </div>
+        {tickerSettings.enabled && (
+          <>
+            <div style={{display:'flex', gap:'0.6rem', marginBottom:10}}>
+              <div style={{flex:1}}>
+                <div style={rowLabel}>Speed (seconds for one cycle)</div>
+                <input type="number" min="3" max="120" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({...tickerSettings, speedSec:Math.max(3, Math.min(120, parseInt(e.target.value)||30))})} style={inputStyle}/>
+              </div>
+            </div>
+            <div style={rowLabel}>Selected ({tickerIds.length}) — drag to reorder</div>
+            <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)', marginBottom:8}}>
+              {tickerIds.length === 0 && <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', padding:'0.4rem'}}>No metrics selected</div>}
+              {tickerIds.map((id, idx) => {
+                const m = METRIC_MAP[id];
+                if (!m) return null;
+                return (
+                  <div key={id} draggable
+                    onDragStart={()=>setDraggedTicker(id)}
+                    onDragOver={e=>{e.preventDefault();}}
+                    onDrop={()=>{ reorderTicker(draggedTicker, id); setDraggedTicker(null); }}
+                    onDragEnd={()=>setDraggedTicker(null)}
+                    style={{display:'flex', alignItems:'center', gap:8, padding:'5px 8px', background: draggedTicker===id ? 'var(--bg-raised)' : 'transparent', borderBottom:'1px solid rgba(255,255,255,0.03)', cursor:'grab'}}>
+                    <span style={{color:'var(--text-3)', fontSize:14}}>≡</span>
+                    <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)'}}>{m.icon||''} {m.label}</span>
+                    <button onClick={()=>moveTicker(idx, -1)} disabled={idx===0} style={{background:'transparent', border:'1px solid var(--border)', color:idx===0?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===0?'default':'pointer'}}>↑</button>
+                    <button onClick={()=>moveTicker(idx, 1)} disabled={idx===tickerIds.length-1} style={{background:'transparent', border:'1px solid var(--border)', color:idx===tickerIds.length-1?'var(--text-3)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:idx===tickerIds.length-1?'default':'pointer'}}>↓</button>
+                    <button onClick={()=>toggleTickerMetric(id)} style={{background:'transparent', border:'1px solid var(--red)', color:'var(--red)', fontFamily:'var(--fd)', fontSize:'0.55rem', padding:'2px 5px', cursor:'pointer'}}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={rowLabel}>Available — tap to add</div>
+            <div style={{display:'flex', flexWrap:'wrap', gap:5}}>
+              {Object.entries(METRIC_CATEGORIES).map(([cat, ids]) => {
+                const available = ids.filter(id => !tickerSet.has(id));
+                if (!available.length) return null;
+                return (
+                  <React.Fragment key={cat}>
+                    <div style={{width:'100%', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-3)', marginTop:6, marginBottom:2, textTransform:'uppercase'}}>{cat}</div>
+                    {available.map(id => {
+                      const m = METRIC_MAP[id];
+                      return (
+                        <button key={id} onClick={()=>toggleTickerMetric(id)} style={{padding:'5px 8px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.65rem', cursor:'pointer'}}>+ {m.icon||''} {m.label}</button>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
 
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1rem', textAlign:'center', lineHeight:1.4}}>
-        Changes save automatically and persist on this device
+      <div style={sectionStyle}>
+        <div style={rowLabel}>Visible cards ({visibleCards.length}/{ALL_CARDS.length})</div>
+        <div style={{display:'flex', gap:5, marginBottom:8, flexWrap:'wrap'}}>
+          <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
+            Minimal ({MINIMAL_PRESET.length})
+          </button>
+          <button onClick={()=>applyPreset(DEFAULT_PRESET)} style={presetBtnStyle(matchesPreset(DEFAULT_PRESET))}>
+            Default ({DEFAULT_PRESET.length})
+          </button>
+          <button onClick={()=>applyPreset(EVERYTHING_PRESET)} style={presetBtnStyle(matchesPreset(EVERYTHING_PRESET))}>
+            Everything ({EVERYTHING_PRESET.length})
+          </button>
+        </div>
+
+        <div style={rowLabel}>Individual cards (tap to toggle)</div>
+        <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
+          {ALL_CARDS.map(c => {
+            const on = visibleCards.includes(c.id);
+            return (
+              <div key={c.id} style={{display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                <button onClick={()=>toggleCard(c.id)}
+                  style={{width:18, height:18, padding:0, background:on?'var(--amber)':'transparent', border:'1px solid '+(on?'var(--amber)':'var(--border)'), color:'#000', fontFamily:'var(--fd)', fontSize:'0.65rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                  {on ? '✓' : ''}
+                </button>
+                <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color:on?'var(--text-1)':'var(--text-3)'}}>{c.label}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </>
   );
 }
 
+// ── Privacy tab ───────────────────────────────────────────────────────────────
 function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
   return (
     <>
-      <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'1rem',marginBottom:'1rem'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.6rem'}}>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.8rem',fontWeight:700,color:privateMode?'var(--cyan)':'var(--text-1)',letterSpacing:'0.08em',textTransform:'uppercase'}}>🔒 Private Mode</span>
-          <button onClick={()=>setPrivateMode(!privateMode)} style={{width:48,height:26,borderRadius:13,background:privateMode?'var(--cyan)':'var(--bg-raised)',border:'1px solid var(--border)',position:'relative',cursor:'pointer',transition:'background 0.2s'}}>
-            <div style={{position:'absolute',top:2,left:privateMode?24:2,width:20,height:20,borderRadius:'50%',background:privateMode?'#000':'var(--text-2)',transition:'left 0.2s'}}/>
-          </button>
-        </div>
-        <p style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-2)',lineHeight:1.5,margin:0}}>
-          When enabled, SoloStrike stops all external API calls. No mempool.space, no price feeds. All data comes from your own Bitcoin Core and (if installed) your Umbrel Mempool app.
-        </p>
-        <div style={{marginTop:'0.8rem',padding:'0.6rem',background:privateMode?'rgba(0,255,209,0.06)':'rgba(245,166,35,0.06)',border:`1px solid ${privateMode?'rgba(0,255,209,0.25)':'rgba(245,166,35,0.25)'}`}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:privateMode?'var(--cyan)':'var(--amber)',marginBottom:4}}>Current state</div>
-          <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)'}}>
-            {privateMode ? 'Outbound calls: NONE. Your pool leaks zero metadata.' : 'Outbound calls: mempool.space (fees, blocks, prices).'}
+      <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,display:'flex',alignItems:'center',gap:'0.75rem'}}>
+        <input type="checkbox" id="priv-mode" checked={privateMode} onChange={e=>setPrivateMode(e.target.checked)} style={{accentColor:'var(--cyan)'}}/>
+        <div style={{flex:1}}>
+          <label htmlFor="priv-mode" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--cyan)',cursor:'pointer',letterSpacing:'0.05em'}}>🔒 Private Mode</label>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
+            Disables external API calls (mempool.space, prices). Pool gets its data exclusively from your local Bitcoin Core node. Some features (fee rates, top finders, fiat prices) become unavailable.
           </div>
         </div>
       </div>
-      <button onClick={submit} disabled={loading} style={{width:'100%',padding:'0.75rem',background:saved?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.8rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer',opacity:loading?0.6:1}}>
-        {loading?'SAVING…':saved?'✓ SAVED':'APPLY PRIVATE MODE'}
-      </button>
+      <div style={{display:'flex',gap:8,marginTop:14}}>
+        <button onClick={submit} disabled={loading} style={{flex:1,padding:'0.7rem',background:saved?'var(--green)':'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
+          {loading?'SAVING…':saved?'✓ SAVED':'SAVE'}
+        </button>
+      </div>
     </>
   );
 }
 
-// ── PulseTab (v1.6.0) ────────────────────────────────────────────────────────
+// ── Pulse tab ─────────────────────────────────────────────────────────────────
 function PulseTab({ networkStats, onRefresh }) {
-  const [busy, setBusy] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState('');
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = optimistic !== null ? optimistic : !!ns.enabled;
   const [torOn, setTorOn] = useState(false);
+  // v1.7.3 — track actual Tor routing state for UI banner
+  // null = no info yet, "tor" = routing through Tor, "direct" = fallback or off,
+  // "unreachable" = toggle on but Tor SOCKS unreachable, "checking" = probing
+  const [torMode, setTorMode] = useState(null);
+  const [torError, setTorError] = useState('');
   const [backup, setBackup] = useState(null);
   const [backupCopied, setBackupCopied] = useState(false);
 
@@ -1694,139 +1658,68 @@ function PulseTab({ networkStats, onRefresh }) {
     if (optimistic !== null && !!ns.enabled === optimistic) setOptimistic(null);
   }, [ns.enabled, optimistic]);
 
-  const doToggle = async () => {
-    if (enabled) {
-      setOptimistic(false); setErr('');
+  // v1.7.3 — load actual Tor state from server on mount + poll every 30s
+  // so the banner reflects reality (e.g., if Tor goes into fallback mode
+  // mid-session, UI updates without user interaction).
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
       try {
-        const r = await fetch('/api/network-stats/disable', { method: 'POST' });
-        if (!r.ok) throw new Error('server returned ' + r.status);
-        if (onRefresh) onRefresh();
-      } catch (e) { setErr(e.message); setOptimistic(null); }
-    } else {
-      setShowConfirm(true);
+        const r = await fetch('/api/network-stats/security');
+        if (!r.ok) return;
+        const j = await r.json();
+        if (cancelled) return;
+        const torConfigured = !!j.torEnabled || (j.torHealth && j.torHealth.state !== 'off');
+        setTorOn(torConfigured);
+        if (j.torHealth) {
+          if (j.torHealth.state === 'ready') setTorMode('tor');
+          else if (j.torHealth.state === 'fallback') setTorMode('direct');
+          else if (j.torHealth.state === 'checking') setTorMode('checking');
+          else setTorMode(null);
+          if (j.torHealth.lastError) setTorError(j.torHealth.lastError);
+        }
+      } catch (_) { /* network glitch — ignore */ }
+    };
+    refresh();
+    const id = setInterval(refresh, 30 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const toggle = async () => {
+    const next = !enabled;
+    setOptimistic(next);
+    setErr('');
+    try {
+      const r = await fetch('/api/network-stats/' + (next ? 'enable' : 'disable'), { method: 'POST' });
+      if (!r.ok) throw new Error('Failed to ' + (next ? 'enable' : 'disable'));
+      onRefresh && onRefresh();
+    } catch (e) {
+      setErr(e.message);
+      setOptimistic(!next);
     }
   };
 
-  const confirmEnable = async () => {
-    setOptimistic(true); setShowConfirm(false); setErr('');
-    try {
-      const r = await fetch('/api/network-stats/enable', { method: 'POST' });
-      if (!r.ok) throw new Error('server returned ' + r.status);
-      if (onRefresh) onRefresh();
-    } catch (e) { setErr(e.message); setOptimistic(null); }
-  };
-
   const regenerate = async () => {
-    if (!window.confirm('Reset your Pulse identity?\n\nA new anonymous keypair will be generated. Your pool will appear as a new participant to other Pulse observers. Your blocks, stats, and pool data are unaffected.\n\nThe API container will need to be restarted for the new identity to take effect.')) return;
-    setBusy(true); setErr('');
+    if (!window.confirm('Generate a new identity?\n\nYour Pulse identity is anonymous and persistent. Regenerating only useful if you want to reset history. Requires API restart.')) return;
+    setErr('');
     try {
       const r = await fetch('/api/network-stats/regenerate', { method: 'POST' });
-      if (!r.ok) throw new Error('server returned ' + r.status);
-      window.alert('Identity reset. Restart the SoloStrike app from Umbrel to apply.');
+      if (!r.ok) throw new Error('Failed');
+      alert('Identity regenerated. Restart the API container (Umbrel app menu → restart) to apply.');
     } catch (e) { setErr(e.message); }
-    setBusy(false);
-  };
-
-  const relayEntries = Object.entries(ns.relayStatus || {});
-  const relaysUp = relayEntries.filter(([,s]) => s === 'connected').length;
-
-  const fmtPulseHr = (hr) => {
-    if (!hr) return '0 H/s';
-    if (hr >= 1e15) return (hr/1e15).toFixed(2) + ' PH/s';
-    if (hr >= 1e12) return (hr/1e12).toFixed(1) + ' TH/s';
-    if (hr >= 1e9) return (hr/1e9).toFixed(1) + ' GH/s';
-    return (hr/1e6).toFixed(0) + ' MH/s';
   };
 
   return (
     <>
-      <div style={{background:enabled?'rgba(245,166,35,0.05)':'var(--bg-deep)',border:`1px solid ${enabled?'rgba(245,166,35,0.3)':'var(--border)'}`,padding:'1rem',marginBottom:'0.875rem'}}>
-        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem',marginBottom:'0.7rem'}}>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:4}}>📡 SoloStrike Pulse</div>
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-2)',fontStyle:'italic'}}>A heartbeat for the solo mining community.</div>
+      <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.6rem',display:'flex',alignItems:'center',gap:'0.75rem'}}>
+        <input type="checkbox" id="pulse-on" checked={enabled} onChange={toggle} style={{accentColor:'var(--amber)'}}/>
+        <div style={{flex:1}}>
+          <label htmlFor="pulse-on" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--amber)',cursor:'pointer',letterSpacing:'0.05em'}}>📡 Join Pulse</label>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
+            Broadcast your pool's anonymous stats to the SoloStrike Pulse network. See how many other solo pools exist. Opt-in, can be turned off any time.
           </div>
-          <button onClick={doToggle} disabled={busy} style={{flexShrink:0,width:48,height:26,borderRadius:13,background:enabled?'var(--amber)':'var(--bg-raised)',border:'1px solid var(--border)',position:'relative',cursor:busy?'wait':'pointer',transition:'background 0.2s',opacity:busy?0.5:1}}>
-            <div style={{position:'absolute',top:2,left:enabled?24:2,width:20,height:20,borderRadius:'50%',background:enabled?'#000':'var(--text-2)',transition:'left 0.2s'}}/>
-          </button>
         </div>
-
-        {!enabled ? (
-          <>
-            <p style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',lineHeight:1.6,margin:'0 0 0.7rem 0'}}>
-              Pulse broadcasts a signed, anonymous signal from your pool every five minutes. In exchange, you see a live count of every other solo pool doing the same.
-            </p>
-            <div style={{padding:'0.65rem 0.8rem',background:'rgba(0,255,209,0.06)',border:'1px solid rgba(0,255,209,0.2)',marginBottom:'0.5rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--cyan)',marginBottom:4}}>You stay 100% solo</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.5}}>
-                Pulse is a census, not a pool. No shared mining, no combined rewards, no affiliation. If you find a block, it's still yours — Pulse just lets you count yourself among the solo miners worldwide.
-              </div>
-            </div>
-            <div style={{padding:'0.6rem 0.8rem',background:'rgba(255,255,255,0.02)',border:'1px solid var(--border)'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>What gets broadcast</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-1)',lineHeight:1.5}}>
-                • Pool hashrate · worker count · app version · total blocks found<br/>
-                • <span style={{color:'var(--text-3)'}}>Never sent:</span> BTC address, IP, hostname, location, anything identifiable
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem',marginBottom:'0.75rem'}}>
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.5rem',textAlign:'center'}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}>Pools</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'1.3rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{ns.pools || 0}</div>
-              </div>
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.5rem',textAlign:'center'}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}>Hashrate</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{fmtPulseHr(ns.hashrate)}</div>
-              </div>
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.5rem',textAlign:'center'}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}>Miners</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'1.3rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{ns.workers || 0}</div>
-              </div>
-            </div>
-            <div style={{padding:'0.5rem 0.7rem',background:'rgba(57,255,106,0.04)',border:'1px solid rgba(57,255,106,0.2)',marginBottom:'0.5rem'}}>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',display:'flex',alignItems:'center',gap:6}}>
-                <span style={{width:6,height:6,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)',animation:'pulse 2s ease-in-out infinite',display:'inline-block'}}/>
-                Broadcasting. You are part of the Pulse.
-              </div>
-            </div>
-          </>
-        )}
       </div>
-
-      {relayEntries.length > 0 && (
-        <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.7rem 0.8rem',marginBottom:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.5rem'}}>
-            ▸ Relay Connections ({relaysUp}/{relayEntries.length})
-          </div>
-          <div style={{display:'flex',flexDirection:'column',gap:4}}>
-            {relayEntries.map(([url, status]) => (
-              <div key={url} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.3rem 0.5rem',background:'var(--bg-raised)',border:'1px solid var(--border)'}}>
-                <span style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{url.replace(/^wss:\/\//, '')}</span>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.52rem',letterSpacing:'0.1em',textTransform:'uppercase',color:status==='connected'?'var(--green)':status==='connecting'?'var(--amber)':'var(--red)',flexShrink:0,marginLeft:8}}>{status}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {enabled && ns.versions && Object.keys(ns.versions).length > 0 && (
-        <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.7rem 0.8rem',marginBottom:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:'0.5rem'}}>
-            ▸ Version Distribution
-          </div>
-          <div style={{display:'flex',flexDirection:'column',gap:3}}>
-            {Object.entries(ns.versions).sort((a,b) => b[1] - a[1]).map(([version, count]) => (
-              <div key={version} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.3rem 0.5rem',background:'var(--bg-raised)',border:'1px solid var(--border)'}}>
-                <span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)'}}>v{version}</span>
-                <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:600,color:'var(--amber)'}}>{count} pool{count===1?'':'s'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
      {enabled && (
         <>
@@ -1843,19 +1736,49 @@ function PulseTab({ networkStats, onRefresh }) {
               <button
                 onClick={async()=>{
                   const next = !torOn;
-                  setTorOn(next); setErr('');
+                  setTorOn(next); setErr(''); setTorError('');
+                  setTorMode(next ? 'checking' : 'direct');
                   try {
                     const r = await fetch('/api/network-stats/tor', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ enabled: next }) });
-                    if (!r.ok) throw new Error('server returned ' + r.status);
-                  } catch(e) { setErr(e.message); setTorOn(!next); }
+                    const j = await r.json().catch(()=>({}));
+                    if (!r.ok && r.status >= 500) throw new Error(j.error || ('server returned ' + r.status));
+                    // Backend returns ok=false WITH the reason if Tor unreachable.
+                    // Revert optimistic toggle and surface the error.
+                    if (next && j.ok === false) {
+                      setTorOn(false);
+                      setTorMode('unreachable');
+                      setTorError(j.error || 'Tor unreachable');
+                    } else if (next && j.ok) {
+                      setTorMode(j.mode || 'tor');
+                    } else if (!next && j.ok) {
+                      setTorMode('direct');
+                    }
+                  } catch(e) {
+                    setTorError(e.message); setTorOn(!next); setTorMode(null);
+                  }
                 }}
                 style={{flexShrink:0,width:46,height:24,borderRadius:12,background:torOn?'var(--cyan)':'var(--bg-deep)',border:'1px solid var(--border)',position:'relative',cursor:'pointer',transition:'background 0.2s'}}>
                 <div style={{position:'absolute',top:2,left:torOn?24:2,width:18,height:18,borderRadius:'50%',background:torOn?'#000':'var(--text-2)',transition:'left 0.2s'}}/>
               </button>
             </div>
-            {torOn && (
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--cyan)',padding:'0.4rem 0.55rem',background:'rgba(0,255,209,0.05)',border:'1px dashed rgba(0,255,209,0.3)',marginTop:6}}>
-                ⓘ Active on next relay reconnect (~30s). If Tor isn't reachable, broadcasts fall back to direct.
+            {torMode === 'checking' && (
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',padding:'0.4rem 0.55rem',background:'rgba(255,255,255,0.03)',border:'1px dashed var(--border)',marginTop:6}}>
+                ⏳ Testing Tor reachability…
+              </div>
+            )}
+            {torMode === 'tor' && (
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--green)',padding:'0.4rem 0.55rem',background:'rgba(0,255,128,0.05)',border:'1px dashed rgba(0,255,128,0.3)',marginTop:6}}>
+                🟢 Routing all relays through Tor. Privacy active.
+              </div>
+            )}
+            {torMode === 'unreachable' && (
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(245,166,35,0.06)',border:'1px dashed rgba(245,166,35,0.4)',marginTop:6,lineHeight:1.5}}>
+                ⚠ Tor unreachable: <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{torError || 'check Umbrel Tor service'}</span>. Pulse continues broadcasting direct.
+              </div>
+            )}
+            {torOn && torMode === 'direct' && (
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(245,166,35,0.06)',border:'1px dashed rgba(245,166,35,0.4)',marginTop:6}}>
+                🟡 Tor degraded — broadcasts using direct routing. Auto-recovery every 5 min.
               </div>
             )}
           </div>
@@ -1868,318 +1791,52 @@ function PulseTab({ networkStats, onRefresh }) {
               setErr('');
               try {
                 const r = await fetch('/api/network-stats/export-backup', { method:'POST' });
-                if (!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.error || 'server returned ' + r.status); }
-                const data = await r.json();
-                setBackup(data);
+                if (!r.ok) {
+                  const j = await r.json().catch(()=>({}));
+                  throw new Error(j.error || ('server returned ' + r.status));
+                }
+                const j = await r.json();
+                setBackup(j);
+                setBackupCopied(false);
               } catch(e) { setErr(e.message); }
-            }} style={{width:'100%',padding:'0.55rem',background:'transparent',border:'1px solid var(--cyan)',color:'var(--cyan)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer',marginBottom:'0.5rem'}}>
+            }}
+            style={{display:'block',width:'100%',padding:'0.5rem 0.7rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase',marginBottom:6}}>
               🔑 Backup Pulse Identity
             </button>
-            <button onClick={regenerate} disabled={busy} style={{width:'100%',padding:'0.55rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase',cursor:busy?'wait':'pointer',opacity:busy?0.5:1}}>
-              ⟲ Reset Pulse Identity
+            <button onClick={regenerate} style={{display:'block',width:'100%',padding:'0.5rem 0.7rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>
+              🔄 Regenerate Identity
             </button>
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:6,lineHeight:1.4}}>
-              Backup saves your current identity. Reset generates a fresh keypair (requires API restart to apply).
-            </div>
           </div>
+
+          {/* Backup display modal-style overlay */}
+          {backup && (
+            <div onClick={()=>setBackup(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',maxWidth:560,width:'100%',padding:'1.25rem',boxShadow:'0 0 30px rgba(245,166,35,0.3)'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+                  <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.18em',color:'var(--amber)'}}>🔑 Identity Backup</h3>
+                  <button onClick={()=>setBackup(null)} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem'}}>✕</button>
+                </div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--amber)',padding:'0.55rem',background:'rgba(245,166,35,0.06)',border:'1px solid rgba(245,166,35,0.3)',marginBottom:12,lineHeight:1.5}}>
+                  ⚠ {backup.warning}
+                </div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Public Key</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--border)',marginBottom:10,wordBreak:'break-all'}}>{backup.pubkey}</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Private Key (hex)</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--amber)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--amber)',marginBottom:10,wordBreak:'break-all'}}>{backup.privkeyHex}</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Install ID</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--border)',marginBottom:14,wordBreak:'break-all'}}>{backup.installId}</div>
+                <div style={{display:'flex',gap:6}}>
+                  <button onClick={()=>{ if(navigator.clipboard?.writeText){ navigator.clipboard.writeText(`pubkey: ${backup.pubkey}\nprivkey: ${backup.privkeyHex}\ninstallId: ${backup.installId}`).then(()=>{ setBackupCopied(true); setTimeout(()=>setBackupCopied(false), 2000); }); } }} style={{flex:1,padding:'0.55rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{backupCopied?'✓ COPIED':'COPY ALL'}</button>
+                  <button onClick={()=>setBackup(null)} style={{padding:'0.55rem 0.9rem',background:'transparent',color:'var(--text-2)',border:'1px solid var(--border)',fontFamily:'var(--fd)',fontWeight:600,fontSize:'0.62rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>CLOSE</button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* Backup display modal */}
-      {backup && (
-        <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:310,padding:'1rem'}} onClick={e=>e.target===e.currentTarget&&setBackup(null)}>
-          <div style={{width:'100%',maxWidth:480,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'1.25rem',boxShadow:'var(--glow-a)',maxHeight:'90vh',overflowY:'auto'}}>
-            <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:'0.6rem'}}>🔑 Pulse Identity Backup</div>
-            <div style={{background:'rgba(255,59,59,0.08)',border:'1px solid rgba(255,59,59,0.35)',padding:'0.6rem 0.8rem',marginBottom:'0.9rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--red)',fontWeight:700,marginBottom:4}}>⚠ Sensitive</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.5}}>
-                {backup.warning || 'Anyone with this key can sign events as you. Store offline — paper, hardware, or encrypted vault. Never paste into emails, screenshots, or chat.'}
-              </div>
-            </div>
-
-            <div style={{marginBottom:'0.8rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Pubkey</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--cyan)',background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.5rem 0.6rem',wordBreak:'break-all'}}>{backup.pubkey}</div>
-            </div>
-
-            <div style={{marginBottom:'0.8rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Install ID</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-1)',background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.5rem 0.6rem',wordBreak:'break-all'}}>{backup.installId}</div>
-            </div>
-
-            <div style={{marginBottom:'0.8rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--red)',marginBottom:4}}>Private Key (Hex)</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',background:'rgba(255,59,59,0.04)',border:'1px solid rgba(255,59,59,0.3)',padding:'0.6rem 0.7rem',wordBreak:'break-all',userSelect:'all'}}>{backup.privkeyHex}</div>
-            </div>
-
-            <div style={{display:'flex',gap:8}}>
-              <button onClick={async()=>{
-                try { await navigator.clipboard.writeText(backup.privkeyHex); setBackupCopied(true); setTimeout(()=>setBackupCopied(false),2000); }
-                catch(e) { setErr('Copy failed: '+e.message); }
-              }} style={{flex:1,padding:'0.65rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>
-                {backupCopied?'✓ Copied':'Copy Private Key'}
-              </button>
-              <button onClick={()=>setBackup(null)} style={{flex:1,padding:'0.65rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>
-                Close
-              </button>
-            </div>
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:'0.6rem',textAlign:'center',lineHeight:1.4}}>
-              Closing this window erases the key from screen. The encrypted copy on disk stays unchanged.
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {err && <div style={{background:'rgba(255,59,59,0.06)',border:'1px solid rgba(255,59,59,0.2)',padding:'0.5rem 0.75rem',fontSize:'0.72rem',color:'var(--red)',marginBottom:'0.5rem'}}>⚠ {err}</div>}
-
-      {showConfirm && (
-        <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:300,padding:'1rem'}} onClick={e=>e.target===e.currentTarget&&setShowConfirm(false)}>
-          <div style={{width:'100%',maxWidth:440,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',padding:'1.5rem',boxShadow:'var(--glow-a)'}}>
-            <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginBottom:'0.8rem'}}>📡 Join the Pulse?</div>
-            <p style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',lineHeight:1.6,marginBottom:'0.8rem'}}>
-              Every 5 minutes, your Umbrel will publish a signed, anonymous message containing:
-            </p>
-            <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.7rem 0.9rem',marginBottom:'0.8rem'}}>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.8}}>
-                • Pool hashrate<br/>
-                • Worker count (active only)<br/>
-                • App version<br/>
-                • Total blocks found
-              </div>
-            </div>
-            <div style={{background:'rgba(0,255,209,0.04)',border:'1px solid rgba(0,255,209,0.2)',padding:'0.7rem 0.9rem',marginBottom:'1rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--cyan)',marginBottom:4}}>Not sent</div>
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)'}}>
-                BTC address · IP · hostname · location · anything identifiable
-              </div>
-            </div>
-            <p style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'1rem',fontStyle:'italic'}}>
-              You can turn this off anytime. You'll still see the Pulse count while observing.
-            </p>
-            <div style={{display:'flex',gap:8}}>
-              <button onClick={()=>setShowConfirm(false)} disabled={busy} style={{flex:1,padding:'0.75rem',background:'transparent',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:600,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>
-                Cancel
-              </button>
-              <button onClick={confirmEnable} disabled={busy} style={{flex:1,padding:'0.75rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:busy?'wait':'pointer',opacity:busy?0.6:1}}>
-                {busy ? 'Starting…' : 'Start Broadcasting'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// ── PulsePanel (v1.7.0) — Heartbeat dashboard card ──────────────────────────
-function PulsePanel({ networkStats, onOpenSettings }) {
-  const canvasRef = useRef(null);
-  const spikesRef = useRef([]);
-  const animFrameRef = useRef(null);
-  const canvasWidthRef = useRef(0);
-  const lastStatsRef = useRef({ pools: undefined, hashrate: undefined, workers: undefined });
-
-  const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0 };
-  const enabled = !!ns.enabled;
-
-  const fmtPulseHr = (hr) => {
-    if (!hr) return '0';
-    if (hr >= 1e15) return (hr / 1e15).toFixed(2) + ' PH/s';
-    if (hr >= 1e12) return (hr / 1e12).toFixed(1) + ' TH/s';
-    if (hr >= 1e9)  return (hr / 1e9).toFixed(1)  + ' GH/s';
-    return (hr / 1e6).toFixed(0) + ' MH/s';
-  };
-
-  // Heartbeat wave animation
-  useEffect(() => {
-    if (!enabled) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const reduceMotion = typeof window !== 'undefined' &&
-      window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const setupCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvasWidthRef.current = rect.width;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      const ctx = canvas.getContext('2d');
-      ctx.scale(dpr, dpr);
-      return ctx;
-    };
-
-    let ctx = setupCanvas();
-    let frame = 0;
-
-    const animate = () => {
-      const rect = canvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
-      canvasWidthRef.current = w;
-
-      ctx.clearRect(0, 0, w, h);
-
-      ctx.strokeStyle = 'rgba(245,166,35,0.05)';
-      ctx.lineWidth = 1;
-      for (let gx = ((-frame * 0.5) % 20 + 20) % 20; gx < w; gx += 20) {
-        ctx.beginPath();
-        ctx.moveTo(gx, 0);
-        ctx.lineTo(gx, h);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = 'rgba(245,166,35,0.08)';
-      ctx.beginPath();
-      ctx.moveTo(0, h / 2);
-      ctx.lineTo(w, h / 2);
-      ctx.stroke();
-
-      const speed = reduceMotion ? 0.6 : 1.8;
-      const ageRate = reduceMotion ? 0.004 : 0.008;
-      spikesRef.current.forEach(s => {
-        s.x -= speed;
-        s.age += ageRate;
-      });
-      spikesRef.current = spikesRef.current.filter(s => s.x > -60 && s.age < 1);
-
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(245,166,35,0.85)';
-      ctx.lineWidth = 2;
-      if (!reduceMotion) {
-        ctx.shadowColor = 'rgba(245,166,35,0.6)';
-        ctx.shadowBlur = 4;
-      }
-
-      for (let x = 0; x <= w; x++) {
-        let y = h / 2 + (reduceMotion ? 0 : Math.sin((x + frame) * 0.04) * 1.8);
-
-        spikesRef.current.forEach(s => {
-          const dist = x - s.x;
-          if (Math.abs(dist) < 60) {
-            const decay = 1 - s.age;
-            const amplitude = (h / 2 - 4) * s.intensity * decay;
-            let shape;
-            if (dist < 0) {
-              shape = Math.exp(dist * 0.35);
-            } else {
-              shape = Math.exp(-dist * 0.09);
-            }
-            y -= amplitude * shape;
-          }
-        });
-
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      frame++;
-      animFrameRef.current = requestAnimationFrame(animate);
-    };
-
-    animFrameRef.current = requestAnimationFrame(animate);
-
-    const handleResize = () => { ctx = setupCanvas(); };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) {
-      spikesRef.current = [];
-      lastStatsRef.current = { pools: undefined, hashrate: undefined, workers: undefined };
-      return;
-    }
-    const t1 = setTimeout(() => {
-      if (canvasWidthRef.current > 0) {
-        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 1.4, age: 0 });
-      }
-    }, 600);
-    const t2 = setTimeout(() => {
-      if (canvasWidthRef.current > 0) {
-        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 0.9, age: 0 });
-      }
-    }, 1500);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const last = lastStatsRef.current;
-    const isFirstRun = last.pools === undefined && last.hashrate === undefined && last.workers === undefined;
-
-    if (!isFirstRun) {
-      const poolsChanged    = last.pools !== ns.pools;
-      const hashrateChanged = Math.abs((last.hashrate || 0) - (ns.hashrate || 0)) > 1e9;
-      const workersChanged  = last.workers !== ns.workers;
-
-      if ((poolsChanged || hashrateChanged || workersChanged) && canvasWidthRef.current > 0) {
-        const intensity = (poolsChanged || workersChanged) ? 1.2 : 0.7;
-        spikesRef.current.push({ x: canvasWidthRef.current, intensity, age: 0 });
-      }
-    }
-
-    lastStatsRef.current = { pools: ns.pools, hashrate: ns.hashrate, workers: ns.workers };
-  }, [ns.pools, ns.hashrate, ns.workers, enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const id = setInterval(() => {
-      if (canvasWidthRef.current > 0) {
-        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 1.3, age: 0 });
-      }
-    }, 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [enabled]);
-
-  return (
-    <div style={{ ...card, minWidth: 0, maxWidth: '100%', overflow: 'hidden', position: 'relative' }} className="fade-in">
-      <div style={{ ...cardTitle, color: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>▸ SoloStrike Pulse</span>
-        {enabled && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--green)', fontSize: '0.55rem', letterSpacing: '0.12em', marginRight: '14px' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 6px var(--green)', animation: 'pulse 2s ease-in-out infinite' }} />
-            LIVE
-          </span>
-        )}
-      </div>
-
-      {!enabled ? (
-        <div onClick={onOpenSettings} style={{ background: 'var(--bg-raised)', border: '1px solid rgba(245,166,35,0.3)', padding: '1rem', cursor: 'pointer', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
-          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.85rem', fontWeight: 700, color: 'var(--amber)', letterSpacing: '0.05em', marginBottom: 4 }}>SEE HOW MANY ARE SOLO MINING</div>
-          <div style={{ fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-2)', lineHeight: 1.5, marginBottom: '0.6rem' }}>
-            Pulse is an anonymous count of every solo miner running SoloStrike. Tap to opt in.
-          </div>
-          <div style={{ display: 'inline-block', padding: '0.45rem 0.9rem', background: 'rgba(245,166,35,0.1)', border: '1px solid var(--amber)', fontFamily: 'var(--fd)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--amber)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            Tap to Join →
-          </div>
-        </div>
-      ) : (
-        <>
-          <div style={{
-            position: 'relative',
-            width: '100%',
-            height: 64,
-            marginBottom: '0.875rem',
-            borderRadius: 2,
-            overflow: 'hidden',
-            background: 'linear-gradient(180deg, rgba(245,166,35,0.03), rgba(245,166,35,0.07))',
-            border: '1px solid rgba(245,166,35,0.2)',
-            boxShadow: 'inset 0 0 12px rgba(245,166,35,0.04)',
-          }}>
-            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-          </div>
-
+      {enabled && (
+        <div style={{ marginTop: '0.5rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
@@ -2195,658 +1852,756 @@ function PulsePanel({ networkStats, onOpenSettings }) {
             </div>
           </div>
 
-          {ns.blocks > 0 && (
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.5rem 0.7rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-2)' }}>Blocks Struck</span>
-              <span style={{ fontFamily: 'var(--fd)', fontSize: '0.9rem', fontWeight: 700, color: 'var(--green)' }}>{ns.blocks}</span>
-            </div>
-          )}
-
-          <div style={{
-            fontFamily: 'var(--fm)',
-            fontSize: '0.6rem',
-            color: 'var(--text-3)',
-            textAlign: 'left',
-            paddingTop: '0.5rem',
-            paddingRight: '78px',
-            borderTop: '1px dashed var(--border)',
-            marginTop: '0.4rem',
-            lineHeight: 1.5,
-            letterSpacing: '0.02em',
-          }}>
-            Pulse is a census, not a pool.<br />
-            Your blocks stay <span style={{ color: 'var(--amber)' }}>100% yours</span>.
-          </div>
-
-          <div style={{
-            position: 'absolute',
-            bottom: 14,
-            right: 14,
-            transform: 'rotate(-5deg)',
-            fontFamily: 'var(--fd)',
-            fontSize: '0.5rem',
-            fontWeight: 800,
-            letterSpacing: '0.14em',
-            color: 'var(--amber)',
-            border: '2px solid var(--amber)',
-            padding: '5px 9px',
-            background: 'rgba(245,166,35,0.04)',
-            boxShadow: '0 0 12px rgba(245,166,35,0.18), inset 0 0 8px rgba(245,166,35,0.06)',
-            textAlign: 'center',
-            lineHeight: 1.15,
-            pointerEvents: 'none',
-            userSelect: 'none',
-            textShadow: '0 0 6px rgba(245,166,35,0.4)',
-            animation: 'pulse 3.5s ease-in-out infinite',
-          }}>
-            100%<br />SOLO
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function AliasesTab({workers, aliases, onAliasesChange}) {
-  const [localAliases, setLocalAliases] = useState(aliases || {});
-  useEffect(()=>setLocalAliases(aliases||{}), [aliases]);
-  const updateAlias = (name, val) => {
-    const next = { ...localAliases };
-    if (!val.trim()) delete next[name]; else next[name] = val.trim().slice(0, 32);
-    setLocalAliases(next);
-  };
-  const save = () => { onAliasesChange(localAliases); };
-  return (
-    <>
-      <p style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'0.75rem'}}>
-        Rename workers in the UI (saved on this device). Leave blank to use the default suffix name.
-      </p>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.5rem',maxHeight:'50vh',overflowY:'auto'}}>
-        {(workers||[]).map(w => (
-          <div key={w.name} style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.6rem 0.75rem'}}>
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',marginBottom:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{w.name}</div>
-            <input type="text" value={localAliases[w.name] || ''} placeholder={stripAddr(w.name)} onChange={e=>updateAlias(w.name, e.target.value)} maxLength={32}
-              style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
-          </div>
-        ))}
-      </div>
-      <button onClick={save} style={{width:'100%',marginTop:'1rem',padding:'0.7rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.75rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Aliases</button>
-    </>
-  );
-}
-
-function WebhooksTab() {
-  const [hooks, setHooks] = useState([]);
-  const [newUrl, setNewUrl] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newEvents, setNewEvents] = useState(['block_found']);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const load = useCallback(async () => {
-    try { const r = await fetch('/api/webhooks'); const j = await r.json(); setHooks(j.hooks || []); } catch {}
-  }, []);
-  useEffect(()=>{ load(); }, [load]);
-  const add = async () => {
-    setErr('');
-    if (!/^https?:\/\//i.test(newUrl.trim())) { setErr('URL must start with http:// or https://'); return; }
-    setBusy(true);
-    try {
-    const r = await fetch('/api/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ op:'add', name:newName || 'Webhook', url:newUrl.trim(), events:newEvents }) });
-      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || 'Add failed'); }
-      setNewUrl(''); setNewName(''); setNewEvents(['block_found']);
-      await load();
-    } catch(e){ setErr(e.message); } finally { setBusy(false); }
-  };
-  const del = async (id) => { await fetch('/api/webhooks', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ op:'remove', id }) }); await load(); };
-  const EVENT_LABELS = { block_found:'Block Found', worker_offline:'Worker Offline', worker_online:'Worker Online' };
-  const toggleEvent = (ev) => setNewEvents(list => list.includes(ev) ? list.filter(x=>x!==ev) : [...list, ev]);
-  return (
-    <>
-      <p style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:'0.75rem'}}>
-        POST JSON events to any URL. Use with Discord webhooks, Telegram bots, ntfy.sh topics, Home Assistant, etc.
-      </p>
-      {hooks.length > 0 && (
-        <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',marginBottom:'1rem'}}>
-          {hooks.map(h => (
-            <div key={h.id} style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.55rem 0.7rem',display:'flex',alignItems:'center',gap:8}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',color:'var(--text-1)',fontWeight:600}}>{h.name}</div>
-                <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.url}</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--cyan)',letterSpacing:'0.08em',textTransform:'uppercase',marginTop:2}}>{(h.events||[]).map(e=>EVENT_LABELS[e]||e).join(' · ')}</div>
-              </div>
-              <button onClick={()=>del(h.id)} style={{background:'none',border:'1px solid rgba(255,59,59,0.4)',color:'var(--red)',padding:'4px 8px',cursor:'pointer',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em'}}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{background:'var(--bg-deep)',border:'1px solid var(--border)',padding:'0.8rem',display:'flex',flexDirection:'column',gap:'0.5rem'}}>
-        <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)'}}>Add Webhook</div>
-        <input type="text" value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Name (e.g. Discord)" maxLength={50}
-          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
-        <input type="text" value={newUrl} onChange={e=>setNewUrl(e.target.value)} placeholder="https://discord.com/api/webhooks/..." spellCheck={false} autoCorrect="off" autoCapitalize="off"
-          style={{background:'var(--bg-raised)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.72rem',padding:'0.5rem 0.7rem',outline:'none',boxSizing:'border-box'}}/>
-        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-          {Object.keys(EVENT_LABELS).map(ev => (
-            <button key={ev} onClick={()=>toggleEvent(ev)}
-              style={{padding:'0.35rem 0.6rem',background:newEvents.includes(ev)?'var(--bg-raised)':'transparent',border:`1px solid ${newEvents.includes(ev)?'var(--cyan)':'var(--border)'}`,color:newEvents.includes(ev)?'var(--cyan)':'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer'}}>
-              {EVENT_LABELS[ev]}
-            </button>
-          ))}
-        </div>
-        {err && <div style={{fontSize:'0.7rem',color:'var(--red)'}}>⚠ {err}</div>}
-        <button onClick={add} disabled={busy || !newUrl.trim() || !newEvents.length}
-          style={{padding:'0.55rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer',opacity:(busy||!newUrl.trim()||!newEvents.length)?0.5:1}}>
-          {busy?'ADDING…':'+ ADD WEBHOOK'}
-        </button>
-      </div>
-    </>
-  );
-}
-
-// ── Worker Detail Modal — NOW WITH CLICKABLE IP LINK ─────────────────────────
-function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
-  const [copied, setCopied] = useState('');
-  const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
-  const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    setAliasVal(aliases[worker.name] || '');
-    setNoteVal(notes[worker.name] || '');
-    setDirty(false);
-  }, [worker.name, aliases, notes]);
-
-  const w = worker;
-  const on = w.status !== 'offline';
-  const raw = w.sharesCount || 0;
-  const rawRej = w.rejectedCount || 0;
-  const work = w.shares || 0;
-  const workRej = w.rejected || 0;
-  const totalWork = work + workRej || 1;
-  const acceptRate = ((work / totalWork) * 100).toFixed(2);
-  const rejectRatio = ((workRej / totalWork) * 100).toFixed(3);
-  const se = w.shareEvents || null;
-  const seAcc = se?.accepted || 0;
-  const seRej = se?.rejected || 0;
-  const seStale = se?.stale || 0;
-  const seTot = seAcc + seRej + seStale;
-  const seAcceptRate = seTot > 0 ? ((seAcc / seTot) * 100).toFixed(3) : null;
-  const seReasons = se?.rejectReasons || {};
-  const seReasonRows = Object.entries(seReasons).sort((a,b) => b[1] - a[1]);
-  const classifySeReason = (reason) => {
-    if (/stale|invalid.?jobid|old.?job|expired/i.test(reason)) return 'var(--amber)';
-    if (/duplicate|bad.?nonce|coinbase/i.test(reason)) return 'var(--text-2)';
-    return 'var(--red)';
-  };
-  const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
-  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
-  const freshness = (() => {
-    const age = Date.now() - (w.lastSeen || 0);
-    if (age < 2*60*1000) return 'fresh (<2m)';
-    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
-    return `offline (${Math.floor(age/60000)}m)`;
-  })();
-
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
-  const stratumUrl      = `stratum+tcp://${host}:3333`;
-  const stratumUrlHobby = `stratum+tcp://${host}:3334`;
-  const minerUrl        = w.ip ? `http://${w.ip}` : null;
-
-  const copy = async (val, lbl) => {
-    try {
-      await navigator.clipboard.writeText(val);
-      setCopied(lbl); setTimeout(() => setCopied(''), 2000);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = val; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); setCopied(lbl); setTimeout(()=>setCopied(''),2000); } catch {}
-      document.body.removeChild(ta);
-    }
-  };
-
-  const save = () => {
-    const nextA = { ...aliases };
-    if (!aliasVal.trim()) delete nextA[w.name]; else nextA[w.name] = aliasVal.trim().slice(0, 32);
-    onAliasesChange(nextA);
-    const nextN = { ...notes };
-    if (!noteVal.trim()) delete nextN[w.name]; else nextN[w.name] = noteVal.trim().slice(0, 200);
-    onNotesChange(nextN);
-    setDirty(false);
-  };
-
-  const exportCsv = () => {
-    const rows = [
-      ['# generated_at_utc', new Date().toISOString()],
-      ['# worker', w.name],
-      ['field','value'],
-      ['hashrate_hps', w.hashrate || 0],
-      ['current_difficulty', w.diff || 0],
-      ['best_share', Math.round(w.bestshare || 0)],
-      ['work_accepted', work],
-      ['work_rejected', workRej],
-      ['ip', w.ip || ''],
-    ];
-    const csv = rows.map(r => r.map(v => {
-      const s = String(v == null ? '' : v);
-      if (/[,"\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
-      return s;
-    }).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `solostrike-worker-${stripAddr(w.name).replace(/[^A-Za-z0-9]/g,'_')}-${Date.now()}.csv`;
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-  };
-
-  const section = { marginBottom:'1rem' };
-  const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
-  const kvRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
-  const kvLabel = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
-  const kvVal = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'65%' };
-  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
-  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
-  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)', lineHeight:1 };
-  const btn = { padding:'0.55rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer', flex:1, minWidth:'48%' };
-  const inputStyle = { width:'100%', background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.78rem', padding:'0.55rem 0.7rem', outline:'none', boxSizing:'border-box' };
-
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto'}}>
-        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem'}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:4}}>
-              <span style={{fontSize:16,color:'var(--cyan)'}}>{w.minerIcon || '▪'}</span>
-              <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
-            </div>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
-              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
-            </div>
-            <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
-              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
-              <span style={{color:on?'var(--green)':'var(--red)'}}>{on?'ONLINE':'OFFLINE'}</span>
-              <span style={{color:'var(--text-3)',marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):'—'}</span>
-            </div>
-          </div>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px',flexShrink:0}}>✕</button>
-        </div>
-
-        <div style={{padding:'1rem 1.25rem'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
-            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
-          </div>
-
-          {minerUrl && (
-            <div style={{...section, marginBottom:'1.25rem'}}>
-              <a href={minerUrl} target="_blank" rel="noopener noreferrer" style={{
-                display:'flex', alignItems:'center', gap:'0.7rem',
-                padding:'0.8rem 1rem',
-                background:'linear-gradient(90deg, rgba(0,255,209,0.1) 0%, rgba(0,255,209,0.02) 100%)',
-                border:'1px solid rgba(0,255,209,0.35)',
-                textDecoration:'none', cursor:'pointer',
-                boxShadow:'0 0 12px rgba(0,255,209,0.08)',
-              }}>
-                <span style={{fontSize:22, flexShrink:0}}>🌐</span>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>OPEN MINER WEB UI</div>
-                  <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{minerUrl}</div>
-                </div>
-                <span style={{color:'var(--cyan)', fontSize:16, fontFamily:'var(--fm)', flexShrink:0}}>↗</span>
-              </a>
-            </div>
-          )}
-
-          <div style={section}>
-            <div style={secTitle}>▸ Shares</div>
-            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
-            {workRej > 0 && (
-              <>
-                <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
-              </>
-            )}
-            {se && seTot > 0 && (
-              <>
-                <div style={kvRow}><span style={kvLabel}>Accepted (session)</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Rejected (session)</span><span style={{...kvVal,color:seRej > 0 ? 'var(--red)' : 'var(--text-2)'}}>{fmtNum(seRej)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Stale (session)</span><span style={{...kvVal,color:seStale > 0 ? 'var(--amber)' : 'var(--text-2)'}}>{fmtNum(seStale)}</span></div>
-                {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>Accept Rate (session)</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
-                {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
-              </>
-            )}
-            {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
-            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
-            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
-          </div>
-
-          {seReasonRows.length > 0 && (
-            <div style={section}>
-              <div style={secTitle}>▸ Reject Reasons</div>
-              {seReasonRows.map(([reason, count]) => (
-                <div key={reason} style={kvRow}>
-                  <span style={{...kvLabel,textTransform:'none',letterSpacing:'0.02em',color:classifySeReason(reason)}}>{reason}</span>
-                  <span style={{...kvVal,color:'var(--text-1)',fontWeight:600}}>{fmtNum(count)}</span>
+          <div style={{ padding: '0.65rem', background: 'var(--bg-deep)', border: '1px solid var(--border)', marginBottom: '0.6rem' }}>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 6 }}>Relay status (8 relays)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+              {Object.entries(ns.relayStatus || {}).map(([url, status]) => (
+                <div key={url} style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--fm)', fontSize: '0.6rem' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: (status==='connected'||status==='connected-tor'||status==='connected-direct') ? 'var(--green)' : status === 'connecting' ? 'var(--amber)' : 'var(--red)' }} />
+                  <span style={{ color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {url.replace('wss://', '').replace('relay.', '')}
+                  </span>
                 </div>
               ))}
-              {se && se.lastRejectAt && (
-                <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem'}}>
-                  Last reject: {fmtAgoShort(se.lastRejectAt)}
-                </div>
-              )}
+            </div>
+          </div>
+
+          {Object.keys(ns.versions || {}).length > 0 && (
+            <div style={{ padding: '0.55rem', background: 'var(--bg-deep)', border: '1px solid var(--border)' }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 5 }}>Versions in network</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {Object.entries(ns.versions).map(([v, count]) => (
+                  <div key={v} style={{ fontFamily: 'var(--fm)', fontSize: '0.62rem', padding: '2px 6px', background: 'var(--bg-raised)', border: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--text-2)' }}>v{v}</span>
+                    <span style={{ color: 'var(--amber)', marginLeft: 4 }}>×{count}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+        </div>
+      )}
 
-          <div style={section}>
-            <div style={secTitle}>▸ Connection</div>
-            <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
-            <div style={kvRow}>
-              <span style={kvLabel}>Miner IP</span>
-              {w.ip ? (
-                <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{...kvVal, color:'var(--cyan)', textDecoration:'underline', cursor:'pointer', fontWeight:600}}>
-                  {w.ip} ↗
-                </a>
-              ) : (
-                <span style={{...kvVal, color:'var(--text-3)'}}>— <span style={{fontSize:'0.6rem'}}>(waiting for auth)</span></span>
-              )}
-            </div>
-            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
+      {err && (
+        <div style={{ marginTop: 10, padding: '0.5rem', background: 'rgba(255,59,59,0.1)', border: '1px solid var(--red)', fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--red)' }}>
+          ⚠ {err}
+        </div>
+      )}
+    </>
+  );
+}
+function fmtPulseHr(h) {
+  if (!h) return '0 H/s';
+  if (h >= 1e15) return (h / 1e15).toFixed(1) + ' PH/s';
+  if (h >= 1e12) return (h / 1e12).toFixed(1) + ' TH/s';
+  if (h >= 1e9) return (h / 1e9).toFixed(1) + ' GH/s';
+  if (h >= 1e6) return (h / 1e6).toFixed(1) + ' MH/s';
+  if (h >= 1e3) return (h / 1e3).toFixed(1) + ' KH/s';
+  return Math.round(h) + ' H/s';
+}
+
+// ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
+function PulsePanel({ networkStats, onOpenSettings }) {
+  const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
+  const enabled = !!ns.enabled;
+
+  // Canvas refs for the EKG-style waveform
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const phaseRef = useRef(0);
+  const spikesRef = useRef([]);
+  const lastTickRef = useRef(performance.now());
+  const lastBroadcastRef = useRef({ hashrate: 0, pools: 0, workers: 0 });
+  const canvasWidthRef = useRef(0);
+  const canvasHeightRef = useRef(0);
+  const dprRef = useRef(window.devicePixelRatio || 1);
+
+  // Set up the canvas — handles HiDPI properly so the waveform stays crisp on retina screens
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const resize = () => {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      dprRef.current = dpr;
+      const cssWidth = Math.max(120, rect.width);
+      const cssHeight = 96;
+      canvas.style.width = cssWidth + 'px';
+      canvas.style.height = cssHeight + 'px';
+      canvas.width = Math.round(cssWidth * dpr);
+      canvas.height = Math.round(cssHeight * dpr);
+      canvasWidthRef.current = cssWidth;
+      canvasHeightRef.current = cssHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    let ro;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(resize);
+      ro.observe(container);
+    } else {
+      window.addEventListener('resize', resize);
+    }
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  // The waveform draw loop — runs at 60fps when card is visible.
+  // - Idle state: gentle sine undulation (alive but quiet)
+  // - Spike state: superimposed peaks travelling left when broadcasts happen
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = (now) => {
+      const dt = Math.min(0.05, (now - lastTickRef.current) / 1000); // cap dt to avoid jumps
+      lastTickRef.current = now;
+      phaseRef.current += dt * (enabled ? 0.7 : 0.25); // slower phase if Pulse is off
+
+      const W = canvasWidthRef.current;
+      const H = canvasHeightRef.current;
+      if (!W || !H) {
+        animationFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
+      // Background grid — very subtle
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = 'rgba(245,166,35,0.06)';
+      ctx.lineWidth = 1;
+      const gridStep = 16;
+      ctx.beginPath();
+      for (let x = 0; x < W; x += gridStep) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+      }
+      for (let y = 0; y < H; y += gridStep) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+      }
+      ctx.stroke();
+
+      // Build the waveform
+      const midY = H / 2;
+      const baseAmp = enabled ? 6 : 2;
+
+      // Move spikes leftward and age them out
+      spikesRef.current = spikesRef.current
+        .map(s => ({ ...s, x: s.x - dt * 60, age: s.age + dt }))
+        .filter(s => s.x > -50 && s.age < 4);
+
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = enabled ? '#F5A623' : 'rgba(245,166,35,0.4)';
+      ctx.shadowColor = enabled ? 'rgba(245,166,35,0.6)' : 'transparent';
+      ctx.shadowBlur = enabled ? 8 : 0;
+
+      ctx.beginPath();
+      const samples = Math.max(W, 200);
+      for (let i = 0; i <= samples; i++) {
+        const x = (i / samples) * W;
+        const t = phaseRef.current;
+        const idle = Math.sin((x / W) * Math.PI * 2 + t) * baseAmp;
+        // Layer in spike contributions — Gaussian peak around each spike's x
+        let spikeY = 0;
+        for (const s of spikesRef.current) {
+          const dx = x - s.x;
+          const sigma = 18;
+          const peak = Math.exp(-(dx * dx) / (2 * sigma * sigma));
+          spikeY -= peak * s.intensity * 18 * Math.max(0, 1 - s.age / 4);
+        }
+        const y = midY + idle + spikeY;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      animationFrameRef.current = requestAnimationFrame(draw);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(draw);
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [enabled]);
+
+  // Trigger a spike whenever broadcast values change (i.e. a real heartbeat happened)
+  useEffect(() => {
+    const last = lastBroadcastRef.current;
+    const isFirstRun = last.pools === undefined && last.hashrate === undefined && last.workers === undefined;
+    if (!isFirstRun && enabled) {
+      const hashrateChanged = last.hashrate !== ns.hashrate;
+      const poolsChanged   = last.pools !== ns.pools;
+      const workersChanged  = last.workers !== ns.workers;
+      if (hashrateChanged || poolsChanged || workersChanged) {
+        spikesRef.current.push({ x: canvasWidthRef.current, intensity: 1.3, age: 0 });
+      }
+    }
+    lastBroadcastRef.current = { hashrate: ns.hashrate, pools: ns.pools, workers: ns.workers };
+  }, [ns.hashrate, ns.pools, ns.workers, enabled]);
+
+  // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
+  const StampSolo = () => (
+    <div style={{
+      position:'absolute', right:'1rem', bottom:'1rem',
+      transform:'rotate(-12deg)',
+      fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
+      letterSpacing:'0.18em', textTransform:'uppercase',
+      color:'rgba(245,166,35,0.65)',
+      border:'2px solid rgba(245,166,35,0.5)',
+      padding:'4px 10px',
+      pointerEvents:'none',
+      textShadow:'0 0 8px rgba(245,166,35,0.6)',
+      boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
+      background:'rgba(245,166,35,0.03)',
+      lineHeight:1.2,
+      textAlign:'center',
+      animation:'pulse 4s ease-in-out infinite',
+    }}>
+      <div>100%</div>
+      <div>SOLO</div>
+    </div>
+  );
+
+  if (!enabled) {
+    return (
+      <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+        <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+          <span>▸ SoloStrike Pulse</span>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>OFF</span>
+        </div>
+        <div style={{textAlign:'center', padding:'1.5rem 0.75rem', color:'var(--text-2)'}}>
+          <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>Pulse is offline</div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5, maxWidth:300, margin:'0 auto'}}>
+            See how many other solo pools are running, combined hashrate, and miner count across the network.
           </div>
+          <button
+            onClick={onOpenSettings}
+            style={{
+              marginTop:'0.9rem',
+              padding:'0.55rem 1rem',
+              background:'var(--amber)', color:'#000',
+              border:'none', cursor:'pointer',
+              fontFamily:'var(--fd)', fontSize:'0.65rem', fontWeight:700,
+              letterSpacing:'0.12em', textTransform:'uppercase',
+              boxShadow:'0 0 14px rgba(245,166,35,0.35)',
+            }}>
+            JOIN PULSE
+          </button>
+        </div>
+        <StampSolo/>
+      </div>
+    );
+  }
 
-          <div style={section}>
-            <div style={secTitle}>▸ Health</div>
-            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
-            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
-            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
-          </div>
+  return (
+    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+        <span>▸ SoloStrike Pulse</span>
+        <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
+          <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite'}}/>
+          LIVE
+        </span>
+      </div>
 
-          <div style={section}>
-            <div style={secTitle}>▸ Options</div>
-            <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
-              <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
-            </div>
-            <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
-              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
-            </div>
-            {dirty && (
-              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
-            )}
-          </div>
+      {/* The heartbeat waveform itself */}
+      <div ref={containerRef} style={{
+        width:'100%', height:96,
+        background:'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(245,166,35,0.02) 100%)',
+        border:'1px solid var(--border)',
+        marginBottom:'0.7rem',
+        position:'relative', overflow:'hidden',
+      }}>
+        <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
+      </div>
 
-          <div style={section}>
-            <div style={secTitle}>▸ Actions</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
-              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
-              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?'✓ Copied':'Copy Miner IP'}</button>}
-              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
-              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
-            </div>
+      {/* The 3 stat tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
+        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.pools || 0}</div>
+        </div>
+        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
+        </div>
+        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.workers || 0}</div>
+        </div>
+      </div>
+
+      {/* Footer tagline */}
+      <div style={{
+        borderTop:'1px dashed rgba(245,166,35,0.18)',
+        paddingTop:'0.5rem',
+        fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)',
+        lineHeight:1.5, paddingRight:'4rem' /* leave room for the rotated stamp */,
+      }}>
+        Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+      </div>
+      <StampSolo/>
+    </div>
+  );
+}
+
+// ── Aliases tab ───────────────────────────────────────────────────────────────
+function AliasesTab({workers, aliases, onAliasesChange}) {
+  const updateAlias = (workerName, alias) => {
+    const next = { ...aliases };
+    if (alias && alias.trim()) next[workerName] = alias.trim();
+    else delete next[workerName];
+    onAliasesChange(next);
+  };
+  const sorted = [...(workers||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  return (
+    <>
+      <div style={{padding:'0.65rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.5}}>
+        Give your workers friendly names. Aliases are stored locally in your browser and only visible to you.
+      </div>
+      {sorted.length === 0 ? (
+        <div style={{textAlign:'center',padding:'2rem',color:'var(--text-2)',fontSize:'0.75rem'}}>No workers yet.</div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {sorted.map(w=>{
+            const stripped = stripAddr(w.name);
+            return (
+              <div key={w.name} style={{display:'flex',alignItems:'center',gap:8,padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:'1px solid var(--border)'}}>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{stripped}</div>
+                </div>
+                <input type="text" value={aliases[w.name]||''} onChange={e=>updateAlias(w.name, e.target.value)} placeholder="alias…"
+                  style={{width:140,padding:'0.4rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.7rem',outline:'none'}}/>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Webhooks tab ──────────────────────────────────────────────────────────────
+function WebhooksTab() {
+  const [hooks, setHooks] = useState([]);
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const [events, setEvents] = useState({block_found:true, worker_offline:true, worker_online:false});
+  const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    try {
+      const r = await fetch('/api/webhooks');
+      const j = await r.json();
+      setHooks(j.hooks || []);
+    } catch (e) { /* swallow */ }
+  };
+  useEffect(()=>{ load(); }, []);
+
+  const add = async () => {
+    setErr('');
+    if (!url.trim()) { setErr('URL required'); return; }
+    const evList = Object.entries(events).filter(([,v])=>v).map(([k])=>k);
+    if (!evList.length) { setErr('Select at least one event'); return; }
+    setLoading(true);
+    try {
+      const r = await fetch('/api/webhooks', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({op:'add', name: name||'Webhook', url, events: evList}),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Failed');
+      setName(''); setUrl(''); load();
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  };
+  const remove = async (id) => {
+    if (!window.confirm('Remove this webhook?')) return;
+    try {
+      const r = await fetch('/api/webhooks', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({op:'remove', id}),
+      });
+      if (!r.ok) throw new Error('Failed');
+      load();
+    } catch (e) { alert(e.message); }
+  };
+
+  return (
+    <>
+      <div style={{padding:'0.65rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.5}}>
+        Get a HTTP POST when blocks are found or workers go offline. Use Discord, Slack, custom endpoint, etc.
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Name</label>
+        <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="My Discord"
+          style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box'}}/>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>URL</label>
+        <input type="text" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."
+          style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box'}}/>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Events</label>
+        {[
+          ['block_found','Block found (strike)'],
+          ['worker_offline','Worker offline'],
+          ['worker_online','Worker online'],
+        ].map(([k,v])=>(
+          <label key={k} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',cursor:'pointer'}}>
+            <input type="checkbox" checked={!!events[k]} onChange={e=>setEvents({...events, [k]:e.target.checked})} style={{accentColor:'var(--amber)'}}/>
+            <span style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-1)'}}>{v}</span>
+          </label>
+        ))}
+      </div>
+      {err && <div style={{padding:'0.5rem', background:'rgba(255,59,59,0.1)', border:'1px solid var(--red)', fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--red)', marginBottom:10}}>⚠ {err}</div>}
+      <button onClick={add} disabled={loading} style={{width:'100%',padding:'0.6rem',background:'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',marginBottom:14}}>
+        {loading ? 'Adding…' : '+ Add Webhook'}
+      </button>
+      {hooks.length > 0 && (
+        <div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:6, textTransform:'uppercase'}}>Configured ({hooks.length})</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {hooks.map(h=>(
+              <div key={h.id} style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',display:'flex',gap:8}}>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',fontWeight:600}}>{h.name}</div>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.url}</div>
+                  <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:3,letterSpacing:'0.05em',textTransform:'uppercase'}}>{(h.events||[]).join(' · ')}</div>
+                </div>
+                <button onClick={()=>remove(h.id)} style={{background:'transparent',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.55rem',padding:'4px 8px',cursor:'pointer',letterSpacing:'0.1em'}}>REMOVE</button>
+              </div>
+            ))}
           </div>
         </div>
+      )}
+    </>
+  );
+}
+
+// ── Worker detail modal ───────────────────────────────────────────────────────
+function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
+  const [aliasEdit, setAliasEdit] = useState(aliases?.[worker?.name] || '');
+  const [noteEdit, setNoteEdit] = useState(notes?.[worker?.name] || '');
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  if (!worker) return null;
+
+  const save = () => {
+    const newAliases = { ...aliases };
+    if (aliasEdit.trim()) newAliases[worker.name] = aliasEdit.trim();
+    else delete newAliases[worker.name];
+    onAliasesChange(newAliases);
+
+    const newNotes = { ...notes };
+    if (noteEdit.trim()) newNotes[worker.name] = noteEdit.trim();
+    else delete newNotes[worker.name];
+    onNotesChange(newNotes);
+
+    setSavedFlash(true);
+    setTimeout(()=>setSavedFlash(false), 1500);
+  };
+
+  const stripped = stripAddr(worker.name);
+  const total = (worker.shares||0) + (worker.rejected||0);
+  const acceptPct = total > 0 ? ((worker.shares||0)/total*100) : 100;
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:300,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'1rem',overflowY:'auto'}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--border)',maxWidth:520,width:'100%',padding:'1.4rem',marginTop:'2rem'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+          <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.85rem',letterSpacing:'0.18em',color:'var(--amber)'}}>▸ Worker Details</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem'}}>✕</button>
+        </div>
+
+        <div style={{padding:'0.75rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase',marginBottom:3}}>Worker Name</div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.8rem',color:'var(--text-1)',fontWeight:600,wordBreak:'break-all'}}>{stripped}</div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+          <div style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Status</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:worker.status==='offline'?'var(--text-2)':'var(--green)',fontWeight:700,marginTop:4}}>{worker.status==='offline'?'OFFLINE':'ONLINE'}</div>
+          </div>
+          <div style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Hashrate</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:'var(--amber)',fontWeight:700,marginTop:4}}>{worker.status==='offline'?'—':fmtHr(worker.hashrate)}</div>
+          </div>
+          <div style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Best Share</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:'var(--amber)',fontWeight:700,marginTop:4}}>{worker.bestshare?fmtDiff(worker.bestshare):'—'}</div>
+          </div>
+          <div style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',textAlign:'center'}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.12em',color:'var(--text-3)',textTransform:'uppercase'}}>Accept</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.85rem',color:acceptPct>99?'var(--green)':acceptPct>95?'var(--amber)':'var(--red)',fontWeight:700,marginTop:4}}>{acceptPct.toFixed(2)}%</div>
+          </div>
+        </div>
+
+        {worker.lastRejectReason && (
+          <div style={{padding:'0.55rem',background:'rgba(255,59,59,0.05)',border:'1px solid rgba(255,59,59,0.3)',marginBottom:14}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.12em',color:'var(--red)',textTransform:'uppercase',marginBottom:3}}>Last Reject Reason</div>
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)'}}>{worker.lastRejectReason}</div>
+          </div>
+        )}
+
+        <div style={{marginBottom:12}}>
+          <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-2)', marginBottom:5, textTransform:'uppercase'}}>Alias (private to you)</label>
+          <input type="text" value={aliasEdit} onChange={e=>setAliasEdit(e.target.value)} placeholder="e.g. Garage S19"
+            style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box'}}/>
+        </div>
+
+        <div style={{marginBottom:14}}>
+          <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-2)', marginBottom:5, textTransform:'uppercase'}}>Notes</label>
+          <textarea value={noteEdit} onChange={e=>setNoteEdit(e.target.value)} rows={3} placeholder="Maintenance notes, location, model details…"
+            style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box',resize:'vertical'}}/>
+        </div>
+
+        <button onClick={save} style={{width:'100%',padding:'0.6rem',background:savedFlash?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:'pointer',textTransform:'uppercase'}}>
+          {savedFlash ? '✓ SAVED' : 'SAVE'}
+        </button>
       </div>
     </div>
   );
 }
 
-// ── Card order + currency helpers ─────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate', 'workers', 'network', 'node', 'odds', 'luck', 'retarget', 'shares', 'best', 'closestcalls', 'blocks', 'topfinders', 'recent', 'pulse'];
+// ── Layout helpers ────────────────────────────────────────────────────────────
+const DEFAULT_ORDER = ['hashrate','workers','network','node','odds','luck','retarget','shares','best','closestcalls','blocks','topfinders','recent','pulse'];
 function loadOrder() {
   try {
-    const saved = localStorage.getItem(LS_CARD_ORDER);
-    if (!saved) return DEFAULT_ORDER;
-    const parsed = JSON.parse(saved);
+    const s = localStorage.getItem(LS_CARD_ORDER);
+    if (!s) return DEFAULT_ORDER;
+    const parsed = JSON.parse(s);
     if (!Array.isArray(parsed)) return DEFAULT_ORDER;
-    const merged = [...parsed];
-    DEFAULT_ORDER.forEach(k => { if (!merged.includes(k)) merged.push(k); });
-    return merged.filter(k => DEFAULT_ORDER.includes(k));
+    const known = parsed.filter(id => DEFAULT_ORDER.includes(id));
+    DEFAULT_ORDER.forEach(id => { if (!known.includes(id)) known.push(id); });
+    return known;
   } catch { return DEFAULT_ORDER; }
 }
 function saveOrder(order) { try { localStorage.setItem(LS_CARD_ORDER, JSON.stringify(order)); } catch {} }
 function loadCurrency() { try { return localStorage.getItem(LS_CURRENCY) || 'USD'; } catch { return 'USD'; } }
 function saveCurrency(c) { try { localStorage.setItem(LS_CURRENCY, c); } catch {} }
 
-// ── App ───────────────────────────────────────────────────────────────────────
+// ── App root ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const { state, connected, blockAlert, saveConfig, getConfig } = usePool();
+  const { connected, state: poolState, lastBlock, blockAlert, setBlockAlert, saveConfig, refreshConfig } = usePool();
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsCfg, setSettingsCfg] = useState(null);
-  const [dismissedAlert, setDismissedAlert] = useState(false);
-  const [order, setOrder] = useState(loadOrder);
-  const [currency, setCurrency] = useState(loadCurrency);
+  const [showShareStats, setShowShareStats] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [order, setOrder] = useState(loadOrder());
   const [draggedId, setDraggedId] = useState(null);
-  const [, setDragOverId] = useState(null);
-  const [aliases, setAliases] = useState(loadAliases);
-  const [notes, setNotes] = useState(loadNotes);
+  const [overId, setOverId] = useState(null);
+  const [currency, setCurrencyState] = useState(loadCurrency());
+  const [aliases, setAliases] = useState(loadAliases());
+  const [notes, setNotes] = useState(loadNotes());
   const [selectedWorker, setSelectedWorker] = useState(null);
-  const [shareStatsOpen, setShareStatsOpen] = useState(false);
+  const [stripSettings, setStripSettings] = useState({
+    enabled: loadStripEnabled(), metricIds: loadStripMetrics(),
+    chunkSize: loadStripChunk(), fadeMs: loadStripFade(),
+  });
+  const [tickerSettings, setTickerSettings] = useState({
+    enabled: loadTickerEnabled(), speedSec: loadTickerSpeed(), metricIds: loadTickerMetrics(),
+  });
+  const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
+  const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
 
-  const [stripSettings, setStripSettings] = useState(() => ({
-    enabled: loadStripEnabled(),
-    metrics: loadStripMetrics(),
-    chunkSize: loadStripChunk(),
-    fadeMs: loadStripFade(),
-  }));
-  const [tickerSettings, setTickerSettings] = useState(() => ({
-    enabled: loadTickerEnabled(),
-    speedSec: loadTickerSpeed(),
-    metrics: loadTickerMetrics(),
-  }));
-  const [minimalMode, setMinimalMode]     = useState(loadMinimalMode);
-  const [visibleCards, setVisibleCards]   = useState(loadVisibleCards);
+  const onCurrencyChange = (c) => { setCurrencyState(c); saveCurrency(c); };
+  const onResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
+  const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
+  const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
+  const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
+  const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
-  const [tickerSnapshot, setTickerSnapshot] = useState('');
-  const [tickerTick, setTickerTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTickerTick(t => t + 1), 30000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Stratum port health — polls /api/stratum-health every 30s (v1.5.4+)
-  const [stratumHealth, setStratumHealth] = useState({ ports: {} });
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchHealth() {
-      try {
-        const r = await fetch('/api/stratum-health', { cache: 'no-store' });
-        if (!r.ok) return;
-        const j = await r.json();
-        if (!cancelled) setStratumHealth(j || { ports: {} });
-      } catch (_) { /* network blip — keep last known state */ }
-    }
-    fetchHealth();
-    const id = setInterval(fetchHealth, 30000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
-
-  // SoloStrike Pulse — polls /api/network-stats every 30s (v1.6.0+)
-  const [networkStats, setNetworkStats] = useState({ enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
-  const refreshNetworkStats = useCallback(async () => {
-    try {
-      const r = await fetch('/api/network-stats', { cache: 'no-store' });
-      if (!r.ok) return;
-      const j = await r.json();
-      setNetworkStats(j || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} });
-    } catch (_) { /* network blip — keep last known state */ }
-  }, []);
-  useEffect(() => {
-    refreshNetworkStats();
-    const id = setInterval(refreshNetworkStats, 30000);
-    return () => clearInterval(id);
-  }, [refreshNetworkStats]);
-  // Expose to state so metrics renderer can read it for the ticker
-  useEffect(() => { state.networkStats = networkStats; }, [networkStats, state]);
-  useEffect(() => {
-    const hasData = (state.workers || []).length > 0 || (state.network?.height || 0) > 0;
-    if (!hasData) return;
-    const selected = (tickerSettings.metrics || []).map(id => METRIC_MAP[id]).filter(Boolean);
-    if (!selected.length) { setTickerSnapshot(''); return; }
-    const items = selected.map(m => {
-      const out = m.render(state, aliases, currency, state.uptime) || {};
-      const value = out.value != null ? out.value : '—';
-      const prefix = out.prefix != null ? out.prefix : m.label.toUpperCase();
-      return `${prefix} ${value}`;
-    });
-    setTickerSnapshot(items.join('   ·   '));
-  }, [state, aliases, currency, tickerSettings.metrics, tickerTick]);
-
-  const handleStripSettingsChange = (next) => {
+  const onStripSettingsChange = useCallback((next) => {
     setStripSettings(next);
     saveStripEnabled(next.enabled);
-    saveStripMetrics(next.metrics);
+    saveStripMetrics(next.metricIds);
     saveStripChunk(next.chunkSize);
     saveStripFade(next.fadeMs);
-  };
-  const handleTickerSettingsChange = (next) => {
+  }, []);
+  const onTickerSettingsChange = useCallback((next) => {
     setTickerSettings(next);
     saveTickerEnabled(next.enabled);
     saveTickerSpeed(next.speedSec);
-    saveTickerMetrics(next.metrics);
-  };
-  const handleMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
-  const handleVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
-
-  useEffect(()=>{ if(blockAlert) setDismissedAlert(false); }, [blockAlert]);
-
-  const openSettings = async () => {
-    try { const c=await getConfig(); setSettingsCfg(c); } catch {}
-    setShowSettings(true);
-  };
-  const handleCurrencyChange = (c) => { setCurrency(c); saveCurrency(c); };
-  const handleResetLayout = () => {
-    setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER);
-    setVisibleCards(EVERYTHING_PRESET); saveVisibleCards(EVERYTHING_PRESET);
-  };
-
-  const handleAliasesChange = (a) => { setAliases(a); saveAliases(a); };
-  const handleNotesChange = (n) => { setNotes(n); saveNotes(n); };
-
-  const onDragStart = (id) => setDraggedId(id);
-  const onDragOver  = (id) => setDragOverId(id);
-  const onDrop      = (targetId) => {
-    if (!draggedId || draggedId === targetId) { setDraggedId(null); setDragOverId(null); return; }
-    const next = [...order];
-    const from = next.indexOf(draggedId);
-    const to   = next.indexOf(targetId);
-    if (from < 0 || to < 0) { setDraggedId(null); setDragOverId(null); return; }
-    next.splice(from, 1); next.splice(to, 0, draggedId);
-    setOrder(next); saveOrder(next); setDraggedId(null); setDragOverId(null);
-  };
-  useEffect(() => {
-    const endDrag = () => { setDraggedId(null); setDragOverId(null); };
-    window.addEventListener('dragend', endDrag);
-    return () => window.removeEventListener('dragend', endDrag);
+    saveTickerMetrics(next.metricIds);
   }, []);
 
-  if (state.status==='loading') return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.2em',color:'var(--text-2)',textTransform:'uppercase',animation:'pulse 1.5s ease-in-out infinite'}}>
-      Connecting to pool…
-    </div>
-  );
-  if (state.status==='no_address'||state.status==='setup') {
-    if (!hasCompletedWizard()) return <OnboardingWizard onComplete={()=>window.location.reload()}/>;
-    return <SetupForm saveConfig={saveConfig}/>;
+  // First-time onboarding
+  useEffect(() => {
+    if (poolState && !poolState.payoutAddress && !hasCompletedWizard()) {
+      setShowOnboarding(true);
+    }
+  }, [poolState?.payoutAddress]);
 
-  }
-
-  const cards = {
-    hashrate:     { spanTwo:true,  el:<HashrateChart history={state.hashrate?.history} week={state.hashrate?.week} current={state.hashrate?.current}/> },
-    workers:      { spanTwo:true,  el:<WorkerGrid workers={state.workers} aliases={aliases} onWorkerClick={setSelectedWorker}/> },
-    network:      { spanTwo:false, el:<NetworkStats network={state.network} blockReward={state.blockReward} mempool={state.mempool} prices={state.prices} currency={currency} privateMode={state.privateMode}/> },
-    node:         { spanTwo:false, el:<BitcoinNodePanel nodeInfo={state.nodeInfo}/> },
-    odds:         { spanTwo:false, el:<OddsDisplay odds={state.odds} hashrate={state.hashrate?.current} netHashrate={state.network?.hashrate}/> },
-    luck:         { spanTwo:false, el:<LuckGauge luck={state.luck}/> },
-    retarget:     { spanTwo:false, el:<RetargetPanel retarget={state.retarget}/> },
-    shares:       { spanTwo:false, el:<ShareStats shares={state.shares} hashrate={state.hashrate?.current} bestshare={state.bestshare} onOpen={()=>setShareStatsOpen(true)}/> },
-    best:         { spanTwo:false, el:<BestShareLeaderboard workers={state.workers} poolBest={state.bestshare} aliases={aliases}/> },
-    closestcalls: { spanTwo:false, el:<ClosestCallsPanel closestCalls={state.snapshots?.closestCalls} aliases={aliases}/> },
-    blocks:       { spanTwo:false, el:<BlockFeed blocks={state.blocks} blockAlert={blockAlert&&!dismissedAlert?blockAlert:null}/> },
-    topfinders:   { spanTwo:false, el:<TopFindersPanel topFinders={state.topFinders} netBlocks={state.netBlocks}/> },
-    recent:       { spanTwo:true,  el:<RecentBlocksPanel netBlocks={state.netBlocks}/> },
-    pulse:        { spanTwo:false, el:<PulsePanel networkStats={networkStats} onOpenSettings={openSettings}/> },
+  // Drag handlers
+  const onDragStart = (id) => setDraggedId(id);
+  const onDragOver = (id) => setOverId(id);
+  const onDrop = (id) => {
+    if (!draggedId || draggedId === id) { setDraggedId(null); setOverId(null); return; }
+    const next = [...order];
+    const fromIdx = next.indexOf(draggedId);
+    const toIdx = next.indexOf(id);
+    if (fromIdx >= 0 && toIdx >= 0) {
+      next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, draggedId);
+      setOrder(next);
+      saveOrder(next);
+    }
+    setDraggedId(null); setOverId(null);
   };
 
-  const effectiveVisibleCards = minimalMode ? MINIMAL_PRESET : visibleCards;
-  const tickerVisible        = !minimalMode && tickerSettings.enabled;
-  const latestBlockVisible   = !minimalMode;
-  const customStripVisible   = !minimalMode && stripSettings.enabled;
+  // Filter workers: build sorted live array
+  const workers = useMemo(() => Object.values(poolState?.workers || {}), [poolState?.workers]);
+
+  // Build ticker text
+  const tickerText = useMemo(() => {
+    if (!tickerSettings.enabled || !tickerSettings.metricIds?.length) return '';
+    return tickerSettings.metricIds.map(id => {
+      const m = METRIC_MAP[id];
+      if (!m) return null;
+      const out = m.render(poolState||{}, aliases, currency, poolState?.uptime) || {};
+      const v = out.value != null ? out.value : '—';
+      const p = out.prefix != null ? out.prefix : m.label.toUpperCase();
+      return `${p} ${v}`;
+    }).filter(Boolean).join('   ·   ');
+  }, [tickerSettings, poolState, aliases, currency]);
+
+  if (!connected && !poolState) {
+    return (
+      <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-2)',fontFamily:'var(--fd)',letterSpacing:'0.15em',fontSize:'0.85rem'}}>
+        ⛏ Connecting to pool…
+      </div>
+    );
+  }
+
+  if (showOnboarding) {
+    return (
+      <OnboardingWizard
+        onComplete={async (data) => {
+          await saveConfig(data);
+          setShowOnboarding(false);
+        }}
+        onSkip={() => setShowOnboarding(false)}
+      />
+    );
+  }
+
+  if (poolState && !poolState.payoutAddress) {
+    return (
+      <>
+        <Header connected={connected} status="setup" onSettings={()=>setShowSettings(true)} privateMode={!!poolState.privateMode} minimalMode={minimalMode} zmq={poolState?.zmq}/>
+        <SetupForm saveConfig={saveConfig}/>
+        {showSettings && (
+          <SettingsModal
+            onClose={()=>setShowSettings(false)}
+            saveConfig={saveConfig}
+            currentConfig={poolState}
+            currency={currency} onCurrencyChange={onCurrencyChange}
+            onResetLayout={onResetLayout}
+            workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}
+            stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
+            tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
+            minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
+            visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
+            networkStats={poolState?.networkStats}
+            onNetworkStatsRefresh={refreshConfig}
+          />
+        )}
+      </>
+    );
+  }
+
+  const status = poolState?.status || 'loading';
+  const ns = poolState?.networkStats || {};
+
+  const cardComponents = {
+    hashrate: <HashrateChart history={poolState?.hashrate?.history} week={poolState?.hashrate?.week} current={poolState?.hashrate?.current||0}/>,
+    workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
+    network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode}/>,
+    node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
+    odds: <OddsDisplay odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate}/>,
+    luck: <LuckGauge luck={poolState?.luck}/>,
+    retarget: <RetargetPanel retarget={poolState?.retarget}/>,
+    shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
+    best: <BestShareLeaderboard workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
+    closestcalls: <ClosestCallsPanel closestCalls={poolState?.closestCalls} aliases={aliases}/>,
+    blocks: <BlockFeed blocks={poolState?.blocks} blockAlert={blockAlert}/>,
+    topfinders: <TopFindersPanel topFinders={poolState?.topFinders} netBlocks={poolState?.netBlocks}/>,
+    recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
+    pulse: <PulsePanel networkStats={poolState?.networkStats} onOpenSettings={()=>setShowSettings(true)}/>,
+  };
+
+  const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
+  const renderableOrder = order.filter(id => visibleSet.has(id) && cardComponents[id]);
 
   return (
     <>
-      <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',width:'100%',maxWidth:'100%',overflowX:'clip'}}>
-        <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
-          <Header connected={connected} status={state.status} onSettings={openSettings} privateMode={state.privateMode} minimalMode={minimalMode} zmq={state.zmq}/>
-          <Ticker snapshotText={tickerSnapshot} enabled={tickerVisible} speedSec={tickerSettings.speedSec}/>
-          {latestBlockVisible && <LatestBlockStrip netBlocks={state.netBlocks} blockReward={state.blockReward}/>}
+      <Header connected={connected} status={status} onSettings={()=>setShowSettings(true)} privateMode={!!poolState?.privateMode} minimalMode={minimalMode} zmq={poolState?.zmq}/>
+      {!minimalMode && (
+        <>
           <CustomizableTopStrip
-            state={state}
+            state={poolState}
             aliases={aliases}
             currency={currency}
-            uptime={state.uptime}
-            enabled={customStripVisible}
-            metricIds={stripSettings.metrics}
+            uptime={poolState?.uptime}
+            enabled={stripSettings.enabled}
+            metricIds={stripSettings.metricIds}
             chunkSize={stripSettings.chunkSize}
             fadeMs={stripSettings.fadeMs}
           />
-          <SyncWarningBanner sync={state.sync}/>
+          <LatestBlockStrip netBlocks={poolState?.netBlocks} blockReward={poolState?.blockReward}/>
+          <SyncWarningBanner sync={poolState?.sync}/>
+          <Ticker snapshotText={tickerText} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
+        </>
+      )}
+      <main style={{padding:'0.65rem'}}>
+        <div className="ss-grid">
+          {renderableOrder.map(id => (
+            <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} draggedId={draggedId}>
+              {cardComponents[id]}
+            </DraggableCard>
+          ))}
         </div>
-        <main style={{flex:1,padding:'1rem',width:'100%',maxWidth:'100%',boxSizing:'border-box',margin:0,overflowX:'clip'}}>
-          <div className="ss-grid" style={{minWidth:0,maxWidth:'100%'}}>
-            {order.map(id=>{
-              if (!effectiveVisibleCards.includes(id)) return null;
-              const c = cards[id];
-              if (!c || !c.el) return null;
-              return (
-                <DraggableCard key={id} id={id} spanTwo={c.spanTwo} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} draggedId={draggedId}>
-                  {c.el}
-                </DraggableCard>
-              );
-            })}
-          </div>
-        </main>
-        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-          <span>SoloStrike v1.7.0 — ckpool-solo{state.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
-          <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-            </svg>
-          </a>
-          <span>Ports <PortLight health={stratumHealth} port="3333"/> · <PortLight health={stratumHealth} port="3334"/> · 🔒 <PortLight health={stratumHealth} port="4333"/></span>
-        </footer>
-      </div>
-      {showSettings&&<SettingsModal
-        onClose={()=>setShowSettings(false)}
-        saveConfig={saveConfig}
-        currentConfig={settingsCfg}
-        currency={currency}
-        onCurrencyChange={handleCurrencyChange}
-        onResetLayout={handleResetLayout}
-        workers={state.workers}
-        aliases={aliases}
-        onAliasesChange={handleAliasesChange}
-        stripSettings={stripSettings}
-        onStripSettingsChange={handleStripSettingsChange}
-        tickerSettings={tickerSettings}
-        onTickerSettingsChange={handleTickerSettingsChange}
-        minimalMode={minimalMode}
-        onMinimalModeChange={handleMinimalModeChange}
-        visibleCards={visibleCards}
-        onVisibleCardsChange={handleVisibleCardsChange}
-        networkStats={networkStats}
-        onNetworkStatsRefresh={refreshNetworkStats}
-      />}
-      {blockAlert&&!dismissedAlert&&<BlockAlert block={blockAlert} onDismiss={()=>setDismissedAlert(true)}/>}
-      <OfflineToasts workers={state.workers} aliases={aliases}/>
-      {selectedWorker && (() => {
-        const live = (state.workers || []).find(w => w.name === selectedWorker.name) || selectedWorker;
-        return <WorkerDetailModal worker={live} onClose={()=>setSelectedWorker(null)} aliases={aliases} onAliasesChange={handleAliasesChange} notes={notes} onNotesChange={handleNotesChange}/>;
-      })()}
-      {shareStatsOpen && <ShareStatsModal shares={state.shares} workers={state.workers} aliases={aliases} trackingSince={state.shareStatsStartedAt} onClose={()=>setShareStatsOpen(false)} onWorkerSelect={(w)=>setSelectedWorker(w)}/>}
+      </main>
+      <BlockAlert show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
+      <OfflineToasts workers={workers} aliases={aliases}/>
+      {selectedWorker && (
+        <WorkerDetailModal worker={selectedWorker} onClose={()=>setSelectedWorker(null)}
+          aliases={aliases} onAliasesChange={onAliasesChange}
+          notes={notes} onNotesChange={onNotesChange}/>
+      )}
+      {showShareStats && (
+        <ShareStatsModal shares={poolState?.shares} workers={workers} aliases={aliases}
+          onClose={()=>setShowShareStats(false)} onWorkerSelect={setSelectedWorker}
+          trackingSince={poolState?.shareStatsStartedAt}/>
+      )}
+      {showSettings && (
+        <SettingsModal
+          onClose={()=>setShowSettings(false)}
+          saveConfig={saveConfig}
+          currentConfig={poolState}
+          currency={currency} onCurrencyChange={onCurrencyChange}
+          onResetLayout={onResetLayout}
+          workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}
+          stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
+          tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
+          minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
+          visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
+          networkStats={poolState?.networkStats}
+          onNetworkStatsRefresh={refreshConfig}
+        />
+      )}
     </>
   );
 }
