@@ -508,7 +508,7 @@ app.get('/api/stratum-health', (req, res) => {
 
 // Webhooks API
 app.get('/api/webhooks', (req, res) => {
-  // Don't return URLs in list endpoint? For now, return everything since this is local-only.
+// Don't return URLs in list endpoint? For now, return everything since this is local-only.
   res.json({ hooks: state.webhooks || [] });
 });
 app.post('/api/webhooks', async (req, res) => {
@@ -727,6 +727,9 @@ async function main() {
   setTimeout(() => {
     if (state.status === 'starting' && cfg.payoutAddress) state.status = 'running';
   }, 5000);
+  // UI expects uptime as a Unix millisecond timestamp of boot time.
+  // It computes (Date.now() - state.uptime) to get elapsed time client-side.
+  state.uptime = state.startedAt;
 
   server.listen(PORT, () => {
     console.log(`[SoloStrike API v${state.version}] Listening on :${PORT} (privateMode=${state.privateMode})`);
