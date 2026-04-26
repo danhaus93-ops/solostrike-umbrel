@@ -58,7 +58,7 @@ const DEFAULT_RELAYS = [
   'wss://nos.lol',
   'wss://relay.primal.net',
   'wss://nostr.mom',
-  'wss://nostr.fmt.wiz.biz',
+  'wss://nostr.mutinywallet.com ',
   'wss://nostr.bitcoiner.social',
   'wss://nostr.oxtr.dev',
   'wss://nostr-pub.wellorder.net',
