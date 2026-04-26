@@ -26,13 +26,14 @@ export function usePool() {
   const wsRef       = useRef(null);
   const retryRef    = useRef(null);
   const retryCount  = useRef(0);
-    fetch('/api/state')
-  .then(r => r.json())
-  .then(d => setState(p => ({ ...p, ...d, _loaded: true })))
-  .catch(() => setState(p => ({ ...p, _loaded: true })));
-
+    
   useEffect(() => {
-    fetch('/api/state').then(r => r.json()).then(d => setState(p => ({ ...p, ...d }))).catch(() => {});
+    fetch('/api/state')
+      .then(r => r.json())
+      .then(d => setState(p => ({ ...p, ...d, _loaded: true })))
+      .catch(() => setState(p => ({ ...p, _loaded: true })));
+  }, []);
+
   }, []);
 
   const connect = useCallback(() => {
