@@ -15,6 +15,8 @@ const DEF = {
   mempool:   { feeRate:null, size:null, unconfirmedCount:null },
   privateMode: false,
   uptime:    Date.now(),
+  payoutAddress: null,           // ← add this line
+  _loaded: false,
 };
 
 export function usePool() {
@@ -24,6 +26,10 @@ export function usePool() {
   const wsRef       = useRef(null);
   const retryRef    = useRef(null);
   const retryCount  = useRef(0);
+    fetch('/api/state')
+  .then(r => r.json())
+  .then(d => setState(p => ({ ...p, ...d, _loaded: true })))
+  .catch(() => setState(p => ({ ...p, _loaded: true })));
 
   useEffect(() => {
     fetch('/api/state').then(r => r.json()).then(d => setState(p => ({ ...p, ...d }))).catch(() => {});
