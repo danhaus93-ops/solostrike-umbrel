@@ -830,12 +830,17 @@ function startNetworkStats({ state, cfg, savePersist }) {
 
   schedulePublish(15 * 1000);
 
-  if (KEY_ROTATION_INTERVAL_MS) {
-    setInterval(() => {
-      console.log('[network-stats] Auto-rotating identity (90 days elapsed)');
-      controller.regenerateIdentity();
-    }, KEY_ROTATION_INTERVAL_MS);
-  }
+  // Auto-rotation disabled. The original 90-day interval (7.776e9 ms) exceeds
+  // setInterval's MAX_INT32 ceiling (~2.147e9 ms / 24.8 days), so Node silently
+  // clamps it to 1ms and fires the rotation thousands of times per second —
+  // continuously regenerating the identity, thrashing persist.json, and making
+  // the install invisible in its own Strikers roster.
+  //
+  // If you want long-term rotation, gate it on a wall-clock check at boot:
+  // load lastRotatedAt from persist.json; if (Date.now() - lastRotatedAt) >
+  // 90 days, rotate once at startup. NEVER schedule with setInterval beyond
+  // ~24 days. For now, manual rotation only via the UI button.
+
 
   saveIdentity();
 
