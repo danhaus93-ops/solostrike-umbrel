@@ -839,13 +839,25 @@ function BitcoinNodePanel({ nodeInfo }) {
 }
 
 // ── Strike Odds ───────────────────────────────────────────────────────────────
-function OddsDisplay({ odds, hashrate, netHashrate }) {
+function OddsDisplay({ odds, hashrate, netHashrate, onOpen }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0 } = odds||{};
   const R=48, C=2*Math.PI*R;
   const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
-  return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Strike Odds</div>
+    return (
+    <div
+      style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}}
+      className="fade-in"
+      onClick={onOpen}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } } : undefined}
+      title={onOpen ? 'Tap to open The Reckoning' : undefined}
+    >
+      <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <span>▸ Strike Odds</span>
+        {onOpen && <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--amber)', letterSpacing:'0.12em', opacity:0.75}}>▸ RECKONING</span>}
+      </div>
+
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.875rem'}}>
         <div style={{position:'relative',width:110,height:110,display:'flex',alignItems:'center',justifyContent:'center'}}>
           <svg width="110" height="110" viewBox="0 0 110 110" style={{position:'absolute'}}>
@@ -872,6 +884,18 @@ function OddsDisplay({ odds, hashrate, netHashrate }) {
             <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:c}}>{v}</span>
           </div>
         ))}
+        {onOpen && (
+          <div style={{
+            width:'100%',
+            borderTop:'1px dashed rgba(245,166,35,0.18)',
+            paddingTop:'0.5rem',
+            marginTop:'0.25rem',
+            fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--amber)',
+            letterSpacing:'0.12em', textAlign:'center',
+          }}>
+            ▸ TAP FOR THE RECKONING
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2417,6 +2441,351 @@ function StrikersModal({ networkStats, onClose }) {
   );
 }
 
+// ── ReckoningModal — Strike Forecast simulator (v1.7.6) ───────────────────
+// "The Reckoning" — drill-down from the Strike Odds card. Lets the user
+// see when their next strike is statistically likely, slide their hashrate
+// to simulate hardware additions, and visualize the probability curve.
+//
+// Math primer: solo block-finding is a Bernoulli trial with per-block
+// probability p = yourHash / netHash. Probability of >=1 strike over N
+// blocks is 1 - (1-p)^N. Inverting:
+//   blocks-to-X-percent = log(1-X) / log(1-p)
+// Bitcoin produces 1 block per 10 minutes on average, so:
+//   days-to-X-percent = (blocks * 10) / (60 * 24)
+function ReckoningModal({ poolState, currency, onClose }) {
+  const baseHash = poolState?.hashrate?.current || 0;
+  const netHash = poolState?.network?.hashrate || 0;
+  const blockReward = poolState?.blockReward || 3.125; // BTC
+  const prices = poolState?.prices || {};
+  const fiatPrice = prices[currency] || prices.USD || 0;
+
+  // Slider state — multiplier on baseHash. 1.0 = current. Range 0.1x to 10x.
+  // Default to current (1.0).
+  const [hashMult, setHashMult] = useState(1.0);
+
+  // Reset slider whenever the modal reopens or baseHash changes meaningfully
+  useEffect(() => { setHashMult(1.0); }, [baseHash]);
+
+  const simHash = baseHash * hashMult;
+  const haveData = baseHash > 0 && netHash > 0;
+
+  // ── Probability core ──
+  // p = per-block strike probability at simulated hashrate
+  const p = haveData ? Math.min(1, simHash / netHash) : 0;
+  // Days until cumulative probability of strike reaches X
+  const daysToX = (x) => {
+    if (!haveData || p <= 0) return null;
+    if (x >= 1) return null;
+    // log(1-x) / log(1-p) = blocks. * 10 min / (60*24) = days
+    const blocks = Math.log(1 - x) / Math.log(1 - p);
+    return blocks * 10 / (60 * 24);
+  };
+
+  const horizon = {
+    p25: daysToX(0.25),
+    p50: daysToX(0.50),
+    p75: daysToX(0.75),
+    p90: daysToX(0.90),
+  };
+
+  // Daily / weekly / monthly strike chance at simulated hashrate
+  const blocksPerDay = 144;
+  const blocksPerWeek = 144 * 7;
+  const blocksPerMonth = 144 * 30;
+  const probDay = haveData ? 1 - Math.pow(1 - p, blocksPerDay) : 0;
+  const probWeek = haveData ? 1 - Math.pow(1 - p, blocksPerWeek) : 0;
+  const probMonth = haveData ? 1 - Math.pow(1 - p, blocksPerMonth) : 0;
+
+  // Baseline (current hashrate) 50% horizon — for the "moves from X → Y" hint
+  const baseP = haveData ? Math.min(1, baseHash / netHash) : 0;
+  const baselineP50 = (haveData && baseP > 0 && baseP < 1)
+    ? (Math.log(0.5) / Math.log(1 - baseP)) * 10 / (60 * 24)
+    : null;
+
+  // Reward calc — block subsidy + ~0.1 BTC fees average
+  const rewardBtc = blockReward;
+  const rewardFiat = rewardBtc * fiatPrice;
+
+  // Pool share (your slice of total network)
+  const poolSharePct = haveData ? (simHash / netHash) * 100 : 0;
+  const basePoolSharePct = haveData ? (baseHash / netHash) * 100 : 0;
+
+  // ── Network rank from Pulse data ──
+  const peers = poolState?.networkStats?.peers || [];
+  const ownPubkey = poolState?.networkStats?.ownPubkey || '';
+  const peersSorted = [...peers].filter(p => !p.filtered).sort((a, b) => b.hashrate - a.hashrate);
+  const myRank = peersSorted.findIndex(p => p.isOwn || p.pubkey === ownPubkey);
+  const totalPeers = peersSorted.length;
+
+  // ── Helpers ──
+  const fmtDays = (d) => {
+    if (d == null || !isFinite(d)) return '—';
+    if (d < 1) return Math.round(d * 24) + 'h';
+    if (d < 365) return Math.round(d) + 'd';
+    if (d < 365 * 10) return (d / 365).toFixed(1) + 'y';
+    return Math.round(d / 365) + 'y';
+  };
+  const fmtDate = (d) => {
+    if (d == null || !isFinite(d)) return '—';
+    const ms = Date.now() + d * 86400 * 1000;
+    const dt = new Date(ms);
+    return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+  const fmtPctSafe = (v, digits = 2) => {
+    if (!isFinite(v) || v <= 0) return '—';
+    if (v < 0.01) return v.toExponential(2) + '%';
+    return v.toFixed(digits) + '%';
+  };
+
+  // Slider math — log scale from 0.1x to 10x, mapped to 0–100 control range
+  const sliderMin = 0.1, sliderMax = 10;
+  const logMin = Math.log(sliderMin), logMax = Math.log(sliderMax);
+  const sliderToMult = (s) => Math.exp(logMin + (s / 100) * (logMax - logMin));
+  const multToSlider = (m) => ((Math.log(m) - logMin) / (logMax - logMin)) * 100;
+
+  // Style tokens — match Strikers modal readability standards
+  const section = { marginBottom: '1rem' };
+  const secTitle = { fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--amber)', marginBottom: '0.55rem' };
+  const heroBox = { background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem', textAlign: 'center' };
+  const heroLbl = { fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 };
+  const heroVal = { fontFamily: 'var(--fd)', fontSize: '1.05rem', fontWeight: 700, lineHeight: 1.1, color: 'var(--amber)' };
+
+  // Horizon row component — one milestone in the timeline
+  const HorizonRow = ({ pct, days, label, accent }) => {
+    const visualBar = days != null && isFinite(days) && horizon.p90 ? Math.min(100, (days / horizon.p90) * 100) : 0;
+    return (
+      <div style={{ marginBottom: '0.65rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+          <span style={{ fontFamily: 'var(--fd)', fontSize: '0.78rem', fontWeight: 700, color: accent || 'var(--text-1)', letterSpacing: '0.05em' }}>
+            {label} <span style={{ fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-2)', fontWeight: 400, letterSpacing: 0 }}>({pct}% chance)</span>
+          </span>
+          <span style={{ fontFamily: 'var(--fd)', fontSize: '0.85rem', fontWeight: 700, color: accent || 'var(--text-1)' }}>
+            {fmtDays(days)}
+          </span>
+        </div>
+        <div style={{ height: 6, background: 'var(--bg-deep)', border: '1px solid var(--border)', overflow: 'hidden', position: 'relative' }}>
+          <div style={{
+            width: `${visualBar}%`,
+            height: '100%',
+            background: accent === 'var(--amber)'
+              ? 'linear-gradient(90deg, rgba(245,166,35,0.4), var(--amber))'
+              : 'linear-gradient(90deg, rgba(245,166,35,0.2), rgba(245,166,35,0.6))',
+            transition: 'width 0.4s ease',
+          }} />
+        </div>
+        <div style={{ fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-2)', marginTop: 3 }}>
+          by {fmtDate(days)}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:600,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto',position:'relative'}}>
+        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+            <span style={{fontSize:18,color:'var(--amber)'}}>⚡</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>The Reckoning</span>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem 4.5rem 1.25rem'}}>
+
+          {!haveData && (
+            <div style={{textAlign:'center', padding:'2rem 1rem', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.85rem'}}>
+              The Reckoning needs your hashrate and the current network hashrate to forecast your strike. Waiting for first data…
+            </div>
+          )}
+
+          {haveData && (
+            <>
+              {/* The "if you struck right now" hero */}
+              <div style={section}>
+                <div style={secTitle}>▸ If You Struck Right Now</div>
+                <div style={{
+                  background:'linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.02) 100%)',
+                  border:'1px solid var(--amber)',
+                  boxShadow:'0 0 14px rgba(245,166,35,0.18)',
+                  padding:'1rem',
+                  textAlign:'center',
+                }}>
+                  <div style={{ fontFamily:'var(--fd)', fontSize:'2rem', fontWeight:800, color:'var(--amber)', lineHeight:1.1, textShadow:'0 0 12px rgba(245,166,35,0.5)' }}>
+                    {rewardBtc.toFixed(3)} <span style={{fontSize:'1rem'}}>BTC</span>
+                  </div>
+                  {fiatPrice > 0 && (
+                    <div style={{ fontFamily:'var(--fd)', fontSize:'1.15rem', fontWeight:700, color:'var(--text-1)', marginTop:5 }}>
+                      ≈ {fmtFiat(rewardFiat, currency)}
+                    </div>
+                  )}
+                  <div style={{ fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', marginTop:6, lineHeight:1.5 }}>
+                    Block subsidy at current height. <span style={{color:'var(--amber)'}}>100% yours.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hashrate slider — the simulator */}
+              <div style={section}>
+                <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                  <span>▸ Firepower Simulator</span>
+                  <span style={{fontFamily:'var(--fd)', fontSize:'0.65rem', color: hashMult === 1 ? 'var(--text-2)' : 'var(--amber)', fontWeight:700, letterSpacing:'0.05em'}}>
+                    {hashMult.toFixed(2)}× current
+                  </span>
+                </div>
+                <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.85rem 1rem'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
+                    <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-2)', letterSpacing:'0.08em'}}>SIMULATED HASHRATE</span>
+                    <span style={{fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)'}}>{fmtHr(simHash)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={multToSlider(hashMult)}
+                    onChange={(e) => setHashMult(sliderToMult(parseFloat(e.target.value)))}
+                    style={{
+                      width:'100%',
+                      accentColor:'var(--amber)',
+                      cursor:'pointer',
+                      height: 6,
+                    }}
+                  />
+                  <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', marginTop:4}}>
+                    <span>0.1× ({fmtHr(baseHash * 0.1)})</span>
+                    <button
+                      onClick={() => setHashMult(1.0)}
+                      style={{
+                        background:'none',
+                        border:'1px solid var(--border)',
+                        color: hashMult === 1 ? 'var(--amber)' : 'var(--text-2)',
+                        fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em',
+                        padding:'2px 8px', cursor:'pointer', textTransform:'uppercase',
+                        borderColor: hashMult === 1 ? 'var(--amber)' : 'var(--border)',
+                      }}>
+                      RESET
+                    </button>
+                    <span>10× ({fmtHr(baseHash * 10)})</span>
+                  </div>
+                  {hashMult !== 1.0 && (
+                    <div style={{
+                      marginTop:'0.55rem',
+                      paddingTop:'0.55rem',
+                      borderTop:'1px dashed rgba(245,166,35,0.18)',
+                      fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)',
+                      textAlign:'center', lineHeight:1.5,
+                    }}>
+                      {simHash > baseHash ? 'Adding ' : 'Removing '}
+                      <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(Math.abs(simHash - baseHash))}</span> moves your strike horizon from
+                      <span style={{color:'var(--text-2)'}}> {fmtDays(baselineP50)}</span>
+                      <span style={{color:'var(--text-2)'}}> → </span>
+                      <span style={{color: simHash > baseHash ? 'var(--amber)' : 'var(--text-1)', fontWeight:700}}>{fmtDays(horizon.p50)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* The horizon — probability waterfall */}
+              <div style={section}>
+                <div style={secTitle}>▸ Strike Horizon</div>
+                <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.9rem 1rem' }}>
+                  <HorizonRow pct={25} days={horizon.p25} label="First strike likely" accent="var(--text-1)"/>
+                  <HorizonRow pct={50} days={horizon.p50} label="Coin flip" accent="var(--amber)"/>
+                  <HorizonRow pct={75} days={horizon.p75} label="Probably struck" accent="var(--text-1)"/>
+                  <HorizonRow pct={90} days={horizon.p90} label="Almost certain" accent="var(--text-1)"/>
+                </div>
+                <div style={{ marginTop:'0.55rem', fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', lineHeight:1.5 }}>
+                  Each bar shows how long until your cumulative strike probability reaches that mark, at the simulated hashrate. The 50% line is your "expected" strike — half of all installs at this hashrate would have struck by then.
+                </div>
+              </div>
+
+              {/* Short-term probabilities */}
+              <div style={section}>
+                <div style={secTitle}>▸ Short-Term Strike Chance</div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.55rem'}}>
+                  <div style={heroBox}>
+                    <div style={heroLbl}>This Day</div>
+                    <div style={{...heroVal, fontSize: probDay >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probDay * 100, 4)}</div>
+                  </div>
+                  <div style={heroBox}>
+                    <div style={heroLbl}>This Week</div>
+                    <div style={{...heroVal, fontSize: probWeek >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probWeek * 100, 3)}</div>
+                  </div>
+                  <div style={heroBox}>
+                    <div style={heroLbl}>This Month</div>
+                    <div style={{...heroVal, fontSize: probMonth >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probMonth * 100, 2)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Network rank — only if Pulse is active */}
+              {totalPeers > 0 && (
+                <div style={section}>
+                  <div style={secTitle}>▸ Your Standing</div>
+                  <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.85rem 1rem' }}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6}}>
+                      <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'0.05em'}}>
+                        Strikers Ranking
+                      </span>
+                      <span style={{fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, color:'var(--amber)'}}>
+                        {myRank >= 0 ? `#${myRank + 1} of ${totalPeers}` : `— of ${totalPeers}`}
+                      </span>
+                    </div>
+                    <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', lineHeight:1.5}}>
+                      Your <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(baseHash)}</span> is{' '}
+                      {basePoolSharePct >= 1
+                        ? <span style={{color:'var(--amber)', fontWeight:600}}>{basePoolSharePct.toFixed(1)}%</span>
+                        : <span style={{color:'var(--amber)', fontWeight:600}}>{basePoolSharePct.toExponential(2)}%</span>
+                      } of all SoloStrike Pulse hashrate. Pulse is anonymous — rank is based on broadcast hashrate alone.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer description */}
+              <div style={{
+                borderTop:'1px dashed rgba(245,166,35,0.18)',
+                paddingTop:'0.7rem',
+                fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)',
+                lineHeight:1.5,
+                paddingRight:'5rem',
+              }}>
+                The Reckoning is a forecast, not a promise. <span style={{color:'var(--amber)', fontWeight:600}}>The next block is always a coin flip.</span>
+                <div style={{marginTop:6, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
+                  Math assumes constant network difficulty and your simulated hashrate. Real strikes can come tomorrow or in a decade — the math is the average across many possible timelines, not yours specifically.
+                </div>
+              </div>
+
+              {/* 100% SOLO badge */}
+              <div style={{
+                position:'absolute', right:'1rem', bottom:'1rem',
+                transform:'rotate(-12deg)',
+                fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
+                letterSpacing:'0.18em', textTransform:'uppercase',
+                color:'rgba(245,166,35,0.65)',
+                border:'2px solid rgba(245,166,35,0.5)',
+                padding:'4px 10px',
+                pointerEvents:'none',
+                textShadow:'0 0 8px rgba(245,166,35,0.6)',
+                boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
+                background:'rgba(245,166,35,0.03)',
+                lineHeight:1.2,
+                textAlign:'center',
+                animation:'pulse 4s ease-in-out infinite',
+              }}>
+                <div>100%</div>
+                <div>SOLO</div>
+              </div>
+            </>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Aliases tab ───────────────────────────────────────────────────────────────
 function AliasesTab({workers, aliases, onAliasesChange}) {
   const updateAlias = (workerName, alias) => {
@@ -2830,6 +3199,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showShareStats, setShowShareStats] = useState(false);
   const [showStrikers, setShowStrikers] = useState(false);
+  const [showReckoning, setShowReckoning] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [order, setOrder] = useState(loadOrder());
   const [draggedId, setDraggedId] = useState(null);
@@ -2977,7 +3347,7 @@ export default function App() {
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
-    odds: <OddsDisplay odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate}/>,
+    odds: <OddsDisplay odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate} onOpen={()=>setShowReckoning(true)}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
@@ -3046,10 +3416,16 @@ export default function App() {
           onClose={()=>setShowShareStats(false)} onWorkerSelect={setSelectedWorker}
           trackingSince={poolState?.shareStatsStartedAt}/>
       )}
-      {showStrikers && (
+       {showStrikers && (
         <StrikersModal
           networkStats={poolState?.networkStats}
           onClose={()=>setShowStrikers(false)}/>
+      )}
+      {showReckoning && (
+        <ReckoningModal
+          poolState={poolState}
+          currency={currency}
+          onClose={()=>setShowReckoning(false)}/>
       )}
 
       {showSettings && (
