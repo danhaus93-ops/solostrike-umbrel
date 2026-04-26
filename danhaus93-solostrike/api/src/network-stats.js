@@ -519,13 +519,19 @@ function startNetworkStats({ state, cfg, savePersist }) {
       return;
     }
 
-    // Per-pubkey rate limit (Tier 1)
-    const lastSeen = lastSeenPerPubkey.get(result.pubkey);
-    if (lastSeen && (result.created_at - lastSeen) < MIN_PUBKEY_INTERVAL_SEC) {
-      recordDrop('rate-limited-pubkey');
-      return;
+    // Per-pubkey rate limit (Tier 1) — exempt our own pubkey since we
+    // publish to 5/8 relays and receive 5 echoes back per cycle. The
+    // dedup-on-created_at check below already handles the duplicate
+    // echoes; no need to throttle ourselves out of our own visibility.
+    if (result.pubkey !== pubkey) {
+      const lastSeen = lastSeenPerPubkey.get(result.pubkey);
+      if (lastSeen && (result.created_at - lastSeen) < MIN_PUBKEY_INTERVAL_SEC) {
+        recordDrop('rate-limited-pubkey');
+        return;
+      }
+      lastSeenPerPubkey.set(result.pubkey, result.created_at);
     }
-    lastSeenPerPubkey.set(result.pubkey, result.created_at);
+
 
     const existing = seenEvents.get(result.pubkey);
     if (existing && existing.receivedAt >= result.created_at) {
