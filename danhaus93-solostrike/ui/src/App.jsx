@@ -2797,24 +2797,27 @@ export default function App() {
 
   return (
     <>
-      <Header connected={connected} status={status} onSettings={()=>setShowSettings(true)} privateMode={!!poolState?.privateMode} minimalMode={minimalMode} zmq={poolState?.zmq}/>
-      {!minimalMode && (
-        <>
-          <CustomizableTopStrip
-            state={poolState}
-            aliases={aliases}
-            currency={currency}
-            uptime={poolState?.uptime}
-            enabled={stripSettings.enabled}
-            metricIds={stripSettings.metricIds}
-            chunkSize={stripSettings.chunkSize}
-            fadeMs={stripSettings.fadeMs}
-          />
-          <LatestBlockStrip netBlocks={poolState?.netBlocks} blockReward={poolState?.blockReward}/>
-          <SyncWarningBanner sync={poolState?.sync}/>
-          <Ticker snapshotText={tickerText} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
-        </>
-      )}
+     <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden' }}>
+        <Header connected={connected} status={status} onSettings={()=>setShowSettings(true)} privateMode={!!poolState?.privateMode} minimalMode={minimalMode} zmq={poolState?.zmq}/>
+        {!minimalMode && (
+          <>
+            <Ticker snapshotText={tickerText} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
+            <LatestBlockStrip netBlocks={poolState?.netBlocks} blockReward={poolState?.blockReward}/>
+            <CustomizableTopStrip
+              state={poolState}
+              aliases={aliases}
+              currency={currency}
+              uptime={poolState?.uptime}
+              enabled={stripSettings.enabled}
+              metricIds={stripSettings.metricIds}
+              chunkSize={stripSettings.chunkSize}
+              fadeMs={stripSettings.fadeMs}
+            />
+            <SyncWarningBanner sync={poolState?.sync}/>
+          </>
+        )}
+      </div>
+
       <main style={{padding:'0.65rem'}}>
         <div className="ss-grid">
           {renderableOrder.map(id => (
