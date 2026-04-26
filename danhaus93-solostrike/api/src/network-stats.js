@@ -57,12 +57,13 @@ const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
-  'wss://relay.snort.social',
-  'wss://nostr.wine',
+  'wss://nostr.mom',
+  'wss://offchain.pub',
   'wss://nostr.bitcoiner.social',
-  'wss://relay.nostr.band',
+  'wss://relay.nostr.bg',
   'wss://nostr-pub.wellorder.net',
 ];
+
 // Per-broadcast subset size — picks N random relays each cycle
 const PUBLISH_SUBSET_SIZE = 5;
 
