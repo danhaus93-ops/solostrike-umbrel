@@ -2785,7 +2785,7 @@ export default function App() {
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
     best: <BestShareLeaderboard workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
-    closestcalls: <ClosestCallsPanel closestCalls={poolState?.closestCalls} aliases={aliases}/>,
+    closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases}/>,
     blocks: <BlockFeed blocks={poolState?.blocks} blockAlert={blockAlert}/>,
     topfinders: <TopFindersPanel topFinders={poolState?.topFinders} netBlocks={poolState?.netBlocks}/>,
     recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
