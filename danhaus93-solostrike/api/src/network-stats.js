@@ -60,7 +60,7 @@ const DEFAULT_RELAYS = [
   'wss://nostr.mom',
   'wss://offchain.pub',
   'wss://nostr.bitcoiner.social',
-  'wss://nostr.oxtr.dev'
+  'wss://nostr.oxtr.dev',
   'wss://nostr-pub.wellorder.net',
 ];
 
