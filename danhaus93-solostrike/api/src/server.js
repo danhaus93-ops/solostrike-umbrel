@@ -422,6 +422,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => { wsClients--; });
 });
 
+app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfgPublic()));
 // Wizard alias for /api/config — accepts {payoutAddress} only
