@@ -78,7 +78,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.6.0',
+  version: '1.7.5',
 };
 
 let cfg = {};
