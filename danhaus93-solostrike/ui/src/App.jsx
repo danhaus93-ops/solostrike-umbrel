@@ -2292,9 +2292,6 @@ function StrikersModal({ networkStats, onClose }) {
             }}>
               {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
             </span>
-            {isOwn && (
-              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--green)', letterSpacing:'0.12em', background:'rgba(57,255,106,0.1)', border:'1px solid var(--green)', padding:'1px 6px'}}>● THIS INSTALL</span>
-            )}
             {p.filtered && !isOwn && (
               <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
             )}
