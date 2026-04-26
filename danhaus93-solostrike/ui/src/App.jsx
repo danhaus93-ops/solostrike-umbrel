@@ -1968,7 +1968,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -2180,6 +2180,15 @@ function PulsePanel({ networkStats, onOpenSettings }) {
         </span>
       </div>
 
+      {/* Clickable region — whole body opens Strikers modal */}
+      <div
+        onClick={onOpenStrikers}
+        role={onOpenStrikers ? 'button' : undefined}
+        tabIndex={onOpenStrikers ? 0 : undefined}
+        onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
+        style={{ cursor: onOpenStrikers ? 'pointer' : 'default' }}
+        title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
+      >
       {/* The heartbeat waveform itself */}
       <div ref={containerRef} style={{
         width:'100%', height:96,
@@ -2215,8 +2224,207 @@ function PulsePanel({ networkStats, onOpenSettings }) {
         lineHeight:1.5, paddingRight:'4rem' /* leave room for the rotated stamp */,
       }}>
         Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+        {onOpenStrikers && (ns.peers && ns.peers.length > 0) && (
+          <span style={{display:'block', marginTop:4, color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>▸ TAP TO SEE STRIKERS</span>
+        )}
+      </div>
       </div>
       <StampSolo/>
+    </div>
+  );
+}
+
+// ── StrikersModal — Per-peer breakdown of the Pulse network (v1.7.5) ─────
+// Shows every Striker (anonymous SoloStrike operator) currently on the network.
+// You're pinned at the top, then everyone else by hashrate descending.
+// Outlier-filtered peers hidden by default; toggle reveals them.
+function StrikersModal({ networkStats, onClose }) {
+  const [showFiltered, setShowFiltered] = useState(false);
+
+  const ns = networkStats || {};
+  const allPeers = Array.isArray(ns.peers) ? ns.peers : [];
+  const ownPubkey = ns.ownPubkey || '';
+
+  const ownPeer = allPeers.find(p => p.isOwn || p.pubkey === ownPubkey) || null;
+  const others = allPeers.filter(p => p !== ownPeer);
+  const visibleOthers = showFiltered ? others : others.filter(p => !p.filtered);
+  const filteredCount = others.filter(p => p.filtered).length;
+
+  const shownPeers = ownPeer ? [ownPeer, ...visibleOthers] : visibleOthers;
+  const dispHash = shownPeers.reduce((s, p) => s + p.hashrate, 0);
+  const dispWorkers = shownPeers.reduce((s, p) => s + p.workers, 0);
+  const dispCount = shownPeers.length;
+
+  const fmtAgo = (sec) => {
+    if (!sec || sec < 60) return 'now';
+    if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+    return Math.floor(sec / 3600) + 'h ago';
+  };
+
+  const section = { marginBottom:'1rem' };
+  const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const heroBox = { background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.7rem', textAlign:'center' };
+  const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
+  const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, lineHeight:1, color:'var(--amber)' };
+
+  const RowYou = ({ p }) => (
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'space-between',
+      padding:'0.7rem 0.8rem',
+      background:'rgba(245,166,35,0.08)',
+      border:'1px solid var(--amber)',
+      boxShadow:'0 0 12px rgba(245,166,35,0.2)',
+      marginBottom:'0.5rem',
+    }}>
+      <div style={{display:'flex', flexDirection:'column', gap:2, minWidth:0, flex:'1 1 auto'}}>
+        <div style={{display:'flex', alignItems:'center', gap:6}}>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.08em'}}>YOU</span>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--green)', letterSpacing:'0.12em', background:'rgba(57,255,106,0.1)', border:'1px solid var(--green)', padding:'1px 6px'}}>● THIS INSTALL</span>
+        </div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)'}}>
+          {p ? `${p.workers} worker${p.workers===1?'':'s'} · v${p.version || '?'}` : 'broadcasting…'}
+        </div>
+      </div>
+      <div style={{textAlign:'right', flexShrink:0}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, color:'var(--amber)', lineHeight:1}}>
+          {p ? fmtPulseHr(p.hashrate) : '—'}
+        </div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-3)', marginTop:2}}>
+          {p ? fmtAgo(p.lastSeenAgoSec) : ''}
+        </div>
+      </div>
+    </div>
+  );
+
+  const RowStriker = ({ p, idx }) => (
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'space-between',
+      padding:'0.6rem 0.8rem',
+      background:'var(--bg-raised)',
+      border:'1px solid var(--border)',
+      marginBottom:'0.35rem',
+      opacity: p.filtered ? 0.55 : 1,
+    }}>
+      <div style={{display:'flex', flexDirection:'column', gap:2, minWidth:0, flex:'1 1 auto'}}>
+        <div style={{display:'flex', alignItems:'center', gap:6}}>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'0.08em'}}>
+            STRIKER {String(idx + 1).padStart(2, '0')}
+          </span>
+          {p.filtered && (
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-3)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
+          )}
+        </div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)'}}>
+          {p.workers} worker{p.workers===1?'':'s'} · v{p.version || '?'}
+        </div>
+      </div>
+      <div style={{textAlign:'right', flexShrink:0}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:p.filtered ? 'var(--text-2)' : 'var(--amber)', lineHeight:1}}>
+          {fmtPulseHr(p.hashrate)}
+        </div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-3)', marginTop:2}}>
+          {fmtAgo(p.lastSeenAgoSec)}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'95vh',overflowY:'auto',position:'relative'}}>
+        <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+            <span style={{fontSize:16,color:'var(--amber)'}}>📡</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>SoloStrike Strikers</span>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
+        </div>
+
+        <div style={{padding:'1rem 1.25rem 4.5rem 1.25rem'}}>
+
+          <div style={section}>
+            <div style={secTitle}>▸ Network Snapshot</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
+              <div style={heroBox}><div style={heroLbl}>Strikers</div><div style={heroVal}>{dispCount}</div></div>
+              <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={{...heroVal, fontSize:'0.95rem'}}>{fmtPulseHr(dispHash)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>Miners</div><div style={heroVal}>{dispWorkers}</div></div>
+            </div>
+          </div>
+
+          <div style={section}>
+            <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <span>▸ Roster</span>
+              {filteredCount > 0 && (
+                <button
+                  onClick={() => setShowFiltered(v => !v)}
+                  style={{
+                    background:'none',
+                    border:'1px solid var(--border)',
+                    color:showFiltered ? 'var(--amber)' : 'var(--text-2)',
+                    fontFamily:'var(--fd)',
+                    fontSize:'0.55rem',
+                    letterSpacing:'0.12em',
+                    padding:'4px 10px',
+                    cursor:'pointer',
+                    textTransform:'uppercase',
+                    transition:'color 0.1s, border-color 0.1s',
+                    borderColor: showFiltered ? 'var(--amber)' : 'var(--border)',
+                  }}
+                >
+                  {showFiltered ? '◉ HIDE FILTERED' : `◯ SHOW ${filteredCount} FILTERED`}
+                </button>
+              )}
+            </div>
+
+            <RowYou p={ownPeer}/>
+
+            {visibleOthers.length === 0 && !ownPeer && (
+              <div style={{textAlign:'center', padding:'1.25rem 0.5rem', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.7rem'}}>
+                No Strikers visible yet. The first broadcast cycle takes a few minutes after Pulse goes live.
+              </div>
+            )}
+
+            {visibleOthers.map((p, i) => (
+              <RowStriker key={p.pubkey} p={p} idx={i}/>
+            ))}
+          </div>
+
+          <div style={{
+            borderTop:'1px dashed rgba(245,166,35,0.18)',
+            paddingTop:'0.7rem',
+            fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)',
+            lineHeight:1.5,
+            paddingRight:'5rem',
+          }}>
+            Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+            <div style={{marginTop:6, fontSize:'0.58rem', color:'var(--text-3)', lineHeight:1.5}}>
+              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr.
+              No names, no IPs, no pool — just a heartbeat. Identities rotate every 90 days.
+            </div>
+          </div>
+
+          <div style={{
+            position:'absolute', right:'1rem', bottom:'1rem',
+            transform:'rotate(-12deg)',
+            fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
+            letterSpacing:'0.18em', textTransform:'uppercase',
+            color:'rgba(245,166,35,0.65)',
+            border:'2px solid rgba(245,166,35,0.5)',
+            padding:'4px 10px',
+            pointerEvents:'none',
+            textShadow:'0 0 8px rgba(245,166,35,0.6)',
+            boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
+            background:'rgba(245,166,35,0.03)',
+            lineHeight:1.2,
+            textAlign:'center',
+            animation:'pulse 4s ease-in-out infinite',
+          }}>
+            <div>100%</div>
+            <div>SOLO</div>
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }
@@ -2633,6 +2841,7 @@ export default function App() {
   const refreshConfig = () => { fetch('/api/state').then(r=>r.json()).catch(()=>{}); };
   const [showSettings, setShowSettings] = useState(false);
   const [showShareStats, setShowShareStats] = useState(false);
+  const [showStrikers, setShowStrikers] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [order, setOrder] = useState(loadOrder());
   const [draggedId, setDraggedId] = useState(null);
@@ -2789,7 +2998,7 @@ export default function App() {
     blocks: <BlockFeed blocks={poolState?.blocks} blockAlert={blockAlert}/>,
     topfinders: <TopFindersPanel topFinders={poolState?.topFinders} netBlocks={poolState?.netBlocks}/>,
     recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
-    pulse: <PulsePanel networkStats={poolState?.networkStats} onOpenSettings={()=>setShowSettings(true)}/>,
+    pulse: <PulsePanel networkStats={poolState?.networkStats} onOpenSettings={()=>setShowSettings(true)} onOpenStrikers={()=>setShowStrikers(true)}/>,
   };
 
   const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
@@ -2828,7 +3037,7 @@ export default function App() {
         </div>
       </main>
       <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',letterSpacing:'0.08em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'wrap',width:'100%',maxWidth:'100%',boxSizing:'border-box'}}>
-        <span>SoloStrike v1.7.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.7.5 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -2844,11 +3053,17 @@ export default function App() {
           aliases={aliases} onAliasesChange={onAliasesChange}
           notes={notes} onNotesChange={onNotesChange}/>
       )}
-      {showShareStats && (
+        {showShareStats && (
         <ShareStatsModal shares={poolState?.shares} workers={workers} aliases={aliases}
           onClose={()=>setShowShareStats(false)} onWorkerSelect={setSelectedWorker}
           trackingSince={poolState?.shareStatsStartedAt}/>
       )}
+      {showStrikers && (
+        <StrikersModal
+          networkStats={poolState?.networkStats}
+          onClose={()=>setShowStrikers(false)}/>
+      )}
+
       {showSettings && (
         <SettingsModal
           onClose={()=>setShowSettings(false)}
