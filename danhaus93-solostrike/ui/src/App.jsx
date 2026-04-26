@@ -2727,7 +2727,7 @@ export default function App() {
     }).filter(Boolean).join('   ·   ');
   }, [tickerSettings, poolState, aliases, currency]);
 
-  if (!connected && !poolState) {
+  if (!poolState._loaded) {
     return (
       <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-2)',fontFamily:'var(--fd)',letterSpacing:'0.15em',fontSize:'0.85rem'}}>
         ⛏ Connecting to pool…
