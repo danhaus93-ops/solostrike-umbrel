@@ -2455,7 +2455,8 @@ function StrikersModal({ networkStats, onClose }) {
 function ReckoningModal({ poolState, currency, onClose }) {
   const baseHash = poolState?.hashrate?.current || 0;
   const netHash = poolState?.network?.hashrate || 0;
-  const blockReward = poolState?.blockReward || 3.125; // BTC
+// blockReward is an object { subsidyBtc, feesBtc, totalBtc, totalSats } — use totalBtc
+  const blockReward = poolState?.blockReward?.totalBtc || 3.125; // BTC
   const prices = poolState?.prices || {};
   const fiatPrice = prices[currency] || prices.USD || 0;
 
