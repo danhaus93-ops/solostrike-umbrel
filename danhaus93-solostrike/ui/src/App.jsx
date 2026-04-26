@@ -2267,67 +2267,59 @@ function StrikersModal({ networkStats, onClose }) {
   const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
   const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, lineHeight:1, color:'var(--amber)' };
 
-  const RowYou = ({ p }) => (
-    <div style={{
-      display:'flex', alignItems:'center', justifyContent:'space-between',
-      padding:'0.7rem 0.8rem',
-      background:'rgba(245,166,35,0.08)',
-      border:'1px solid var(--amber)',
-      boxShadow:'0 0 12px rgba(245,166,35,0.2)',
-      marginBottom:'0.5rem',
-    }}>
-      <div style={{display:'flex', flexDirection:'column', gap:2, minWidth:0, flex:'1 1 auto'}}>
-        <div style={{display:'flex', alignItems:'center', gap:6}}>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, color:'var(--amber)', letterSpacing:'0.08em'}}>YOU</span>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--green)', letterSpacing:'0.12em', background:'rgba(57,255,106,0.1)', border:'1px solid var(--green)', padding:'1px 6px'}}>● THIS INSTALL</span>
+  // Single row component — handles both "you" (highlighted gold treatment)
+  // and other Strikers (standard treatment) via the p.isOwn flag.
+  const Row = ({ p, idx }) => {
+  const isOwn = !!p.isOwn;
+    return (
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding: isOwn ? '0.7rem 0.8rem' : '0.6rem 0.8rem',
+        background: isOwn ? 'rgba(245,166,35,0.08)' : 'var(--bg-raised)',
+        border: isOwn ? '1px solid var(--amber)' : '1px solid var(--border)',
+        boxShadow: isOwn ? '0 0 12px rgba(245,166,35,0.2)' : 'none',
+        marginBottom: isOwn ? '0.5rem' : '0.35rem',
+        opacity: p.filtered && !isOwn ? 0.55 : 1,
+      }}>
+        <div style={{display:'flex', flexDirection:'column', gap:3, minWidth:0, flex:'1 1 auto'}}>
+          <div style={{display:'flex', alignItems:'center', gap:6, flexWrap:'wrap'}}>
+            <span style={{
+              fontFamily:'var(--fd)',
+              fontSize:'0.78rem',
+              fontWeight:700,
+              color: isOwn ? 'var(--amber)' : 'var(--text-1)',
+              letterSpacing:'0.08em',
+            }}>
+              {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
+            </span>
+            {isOwn && (
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--green)', letterSpacing:'0.12em', background:'rgba(57,255,106,0.1)', border:'1px solid var(--green)', padding:'1px 6px'}}>● THIS INSTALL</span>
+            )}
+            {p.filtered && !isOwn && (
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
+            )}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)'}}>
+            {p.workers} worker{p.workers===1?'':'s'} · v{p.version || '?'}
+          </div>
         </div>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)'}}>
-          {p ? `${p.workers} worker${p.workers===1?'':'s'} · v${p.version || '?'}` : 'broadcasting…'}
-        </div>
-      </div>
-      <div style={{textAlign:'right', flexShrink:0}}>
-        <div style={{fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, color:'var(--amber)', lineHeight:1}}>
-          {p ? fmtPulseHr(p.hashrate) : '—'}
-        </div>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-3)', marginTop:2}}>
-          {p ? fmtAgo(p.lastSeenAgoSec) : ''}
-        </div>
-      </div>
-    </div>
-  );
-
-  const RowStriker = ({ p, idx }) => (
-    <div style={{
-      display:'flex', alignItems:'center', justifyContent:'space-between',
-      padding:'0.6rem 0.8rem',
-      background:'var(--bg-raised)',
-      border:'1px solid var(--border)',
-      marginBottom:'0.35rem',
-      opacity: p.filtered ? 0.55 : 1,
-    }}>
-      <div style={{display:'flex', flexDirection:'column', gap:2, minWidth:0, flex:'1 1 auto'}}>
-        <div style={{display:'flex', alignItems:'center', gap:6}}>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'0.08em'}}>
-            STRIKER {String(idx + 1).padStart(2, '0')}
-          </span>
-          {p.filtered && (
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-3)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
-          )}
-        </div>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)'}}>
-          {p.workers} worker{p.workers===1?'':'s'} · v{p.version || '?'}
-        </div>
-      </div>
-      <div style={{textAlign:'right', flexShrink:0}}>
-        <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:p.filtered ? 'var(--text-2)' : 'var(--amber)', lineHeight:1}}>
-          {fmtPulseHr(p.hashrate)}
-        </div>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-3)', marginTop:2}}>
-          {fmtAgo(p.lastSeenAgoSec)}
+        <div style={{textAlign:'right', flexShrink:0}}>
+          <div style={{
+            fontFamily:'var(--fd)',
+            fontSize: isOwn ? '1.05rem' : '1rem',
+            fontWeight:700,
+            color: (p.filtered && !isOwn) ? 'var(--text-2)' : 'var(--amber)',
+            lineHeight:1,
+          }}>
+            {fmtPulseHr(p.hashrate)}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', marginTop:3}}>
+            {fmtAgo(p.lastSeenAgoSec)}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:250,padding:'0.75rem'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -2376,32 +2368,31 @@ function StrikersModal({ networkStats, onClose }) {
               )}
             </div>
 
-            <RowYou p={ownPeer}/>
-
-            {visibleOthers.length === 0 && !ownPeer && (
-              <div style={{textAlign:'center', padding:'1.25rem 0.5rem', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.7rem'}}>
+            {shownPeers.length === 0 && (
+              <div style={{textAlign:'center', padding:'1.25rem 0.5rem', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.75rem'}}>
                 No Strikers visible yet. The first broadcast cycle takes a few minutes after Pulse goes live.
               </div>
             )}
 
-            {visibleOthers.map((p, i) => (
-              <RowStriker key={p.pubkey} p={p} idx={i}/>
+            {shownPeers.map((p, i) => (
+              <Row key={p.pubkey} p={p} idx={i}/>
             ))}
+
           </div>
 
           <div style={{
             borderTop:'1px dashed rgba(245,166,35,0.18)',
             paddingTop:'0.7rem',
-            fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)',
+            fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
             lineHeight:1.5,
             paddingRight:'5rem',
           }}>
             Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
-            <div style={{marginTop:6, fontSize:'0.58rem', color:'var(--text-3)', lineHeight:1.5}}>
-              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr.
-              No names, no IPs, no pool — just a heartbeat. Identities rotate every 90 days.
+            <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
+              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool — just a heartbeat. Identities rotate every 90 days.
             </div>
           </div>
+
 
           <div style={{
             position:'absolute', right:'1rem', bottom:'1rem',
