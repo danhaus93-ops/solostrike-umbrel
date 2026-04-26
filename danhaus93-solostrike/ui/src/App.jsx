@@ -2720,29 +2720,30 @@ function ReckoningModal({ poolState, currency, onClose }) {
                 </div>
               </div>
 
-              {/* Network rank — only if Pulse is active */}
-              {totalPeers > 0 && (
+             {/* Your slice of the entire Bitcoin network */}
+              {haveData && (
                 <div style={section}>
-                  <div style={secTitle}>▸ Your Standing</div>
+                  <div style={secTitle}>▸ Your Slice</div>
                   <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.85rem 1rem' }}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
                       <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'0.05em'}}>
-                        Strikers Ranking
+                        Of the global Bitcoin network
                       </span>
                       <span style={{fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, color:'var(--amber)'}}>
-                        {myRank >= 0 ? `#${myRank + 1} of ${totalPeers}` : `— of ${totalPeers}`}
+                        1 in {(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}
                       </span>
                     </div>
                     <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', lineHeight:1.5}}>
                       Your <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(baseHash)}</span> is{' '}
-                      {basePoolSharePct >= 1
-                        ? <span style={{color:'var(--amber)', fontWeight:600}}>{basePoolSharePct.toFixed(1)}%</span>
-                        : <span style={{color:'var(--amber)', fontWeight:600}}>{basePoolSharePct.toExponential(2)}%</span>
-                      } of all SoloStrike Pulse hashrate. Pulse is anonymous — rank is based on broadcast hashrate alone.
+                      <span style={{color:'var(--amber)', fontWeight:600}}>
+                        {basePoolSharePct >= 0.0001 ? basePoolSharePct.toFixed(6) + '%' : basePoolSharePct.toExponential(2) + '%'}
+                      </span>{' '}
+                      of all Bitcoin hashrate worldwide ({fmtHr(netHash)}). Every block, you're one of <span style={{color:'var(--amber)', fontWeight:600}}>{(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}</span> tickets in the lottery — and yours pays the full <span style={{color:'var(--amber)', fontWeight:600}}>{rewardBtc.toFixed(3)} BTC</span> if it wins.
                     </div>
                   </div>
                 </div>
               )}
+
 
               {/* Footer description */}
               <div style={{
@@ -2756,27 +2757,6 @@ function ReckoningModal({ poolState, currency, onClose }) {
                 <div style={{marginTop:6, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
                   Math assumes constant network difficulty and your simulated hashrate. Real strikes can come tomorrow or in a decade — the math is the average across many possible timelines, not yours specifically.
                 </div>
-              </div>
-
-              {/* 100% SOLO badge */}
-              <div style={{
-                position:'absolute', right:'1rem', bottom:'1rem',
-                transform:'rotate(-12deg)',
-                fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
-                letterSpacing:'0.18em', textTransform:'uppercase',
-                color:'rgba(245,166,35,0.65)',
-                border:'2px solid rgba(245,166,35,0.5)',
-                padding:'4px 10px',
-                pointerEvents:'none',
-                textShadow:'0 0 8px rgba(245,166,35,0.6)',
-                boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
-                background:'rgba(245,166,35,0.03)',
-                lineHeight:1.2,
-                textAlign:'center',
-                animation:'pulse 4s ease-in-out infinite',
-              }}>
-                <div>100%</div>
-                <div>SOLO</div>
               </div>
             </>
           )}
