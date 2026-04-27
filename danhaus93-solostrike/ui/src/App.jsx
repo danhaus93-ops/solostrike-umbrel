@@ -3024,13 +3024,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
   // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
   const StampSolo = () => (
     <div style={{
-      position:'absolute', right:'1rem', bottom:'1rem',
+      position:'absolute', right:'0.4rem', bottom:'0.4rem',
       transform:'rotate(-12deg)',
-      fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
+      fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:800,
       letterSpacing:'0.18em', textTransform:'uppercase',
       color:'rgba(245,166,35,0.65)',
       border:'2px solid rgba(245,166,35,0.5)',
-      padding:'4px 10px',
+      padding:'3px 8px',
       pointerEvents:'none',
       textShadow:'0 0 8px rgba(245,166,35,0.6)',
       boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
