@@ -346,7 +346,7 @@ widgets:
     type: "four-stats"
     name: "SoloStrike Stats"
     refresh: "10s"
-    endpoint: "danhaus93-solostrike_ui_1:80/api/widget/four-stats"
+    endpoint: "ui:80/api/widget/four-stats"
     items:
       - label: "Pool Hashrate"
         jsonPath: "items[0].text"
