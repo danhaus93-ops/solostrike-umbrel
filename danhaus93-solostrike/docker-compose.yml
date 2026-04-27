@@ -82,5 +82,7 @@ services:
   ui:
     image: ghcr.io/danhaus93-ops/solostrike-ui:latest
     restart: unless-stopped
+    container_name: danhaus93-solostrike_ui_1
     depends_on:
       - api
+
