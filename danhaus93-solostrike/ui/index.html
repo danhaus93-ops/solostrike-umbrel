@@ -70,13 +70,10 @@
             });
         });
 
-        // Reload when a new SW takes control
-        var refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', function () {
-          if (refreshing) return;
-          refreshing = true;
-          window.location.reload();
-        });
+        // No auto-reload on controllerchange — the update banner manually
+        // calls window.location.reload() after the user taps it. Auto-reload
+        // here would race the banner and never let it render.
+
       }
     </script>
   </body>
