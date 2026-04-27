@@ -1,0 +1,472 @@
+manifestVersion: 1
+id: danhaus93-solostrike
+category: bitcoin
+name: SoloStrike
+version: "1.7.11"
+tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
+description: >-
+  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
+  dashboard.
+
+
+  Connect your ASICs directly to your own Bitcoin node and keep 100% of every
+  block you find — no pool fees, no custody risk, no middleman.
+
+
+  v1.3.0 introduces Private Mode — toggle one switch and the entire app goes
+  airgapped. No mempool.space calls, no price feeds, no outbound traffic of
+  any kind. Your mining activity is yours alone.
+
+
+  Features:
+
+  • 🔒 Private Mode — fully local operation, zero external API calls when enabled
+
+  • 🌐 SoloStrike Pulse (v1.6.0+) — opt-in anonymous community counter over nostr, with per-peer Strikers roster (v1.7.5)
+
+  • 🛡️ Tor routing for Pulse (v1.7.3) — broadcasts and subscriptions optionally route through Umbrel's tor_proxy
+
+  • ⚡ The Vein (v1.7.6) — block reward + fee tiers + statistical earnings + odds, all in one tap-to-drill card
+
+  • 🎯 The Reckoning (v1.7.5) — strike forecast simulator with hashrate slider, probability waterfall, and global network rank
+
+  • 🔥 The Burn (v1.7.7) — power cost integration: net profit per strike + break-even electricity rate
+
+  • ⚙ Stratum Connection card (v1.7.6) — copy-button setup for ASIC / hobby / SSL ports with live port status
+
+  • Real-time hashrate waveform with 24h history, 7-day trends, axis labels, and peak tracking
+
+  • Near Strikes leaderboard — historical top 10 best-diff shares across your fleet
+
+  • Daily hashrate snapshots — 90 days of avg/peak history
+
+  • Sticky header cluster — pool status, ticker, latest block, sync warnings, ZMQ indicator
+
+  • Automatic miner-type detection (BitAxe Gamma/Supra/Ultra, NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals)
+
+  • Worker search, miner rename aliases, per-worker last-share timestamps
+
+  • Click miner IP to open its web UI in a new tab
+
+  • Worker offline toast notifications — catch outages the moment they happen
+
+  • Bitcoin Core sync warning banner when your node falls behind
+
+  • Bitcoin Node panel — Core version, total/in/out peers, relay fee, mempool size
+
+  • Strike Odds — daily, weekly, and monthly block probability + expected time
+
+  • Hot Streak gauge, difficulty retarget countdown, Claim Jumpers leaderboard
+
+  • Latest Block hero strip — most recently mined block, pool, and reward
+
+  • The Goldfields — recent network blocks feed with solo-winner highlighting
+
+  • Block reward, BTC price (7 currencies), and mempool fees under Bitcoin Network
+
+  • Drag-and-drop card reordering — layout persists per-device
+
+  • Mobile-first responsive layout — 1 / 2 / 4 columns based on screen size
+
+  • Top Diggers leaderboard — worker, miner type, hashrate, best diff, status
+
+  • CSV export for workers and found blocks
+
+  • Webhooks — POST events to Discord, ntfy.sh, Home Assistant, Telegram bots, etc.
+
+  • Prometheus /metrics endpoint for Grafana, Home Assistant, and custom monitoring
+
+  • Public read-only API — share your pool stats externally
+
+  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+
+  • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
+
+  • Works with any Stratum V1 miner — one-time setup, miners connect automatically
+
+
+  100% self-custody. Truly zero fees. Your node, your rules, your blocks.
+releaseNotes: >-
+  v1.7.11 — Self-Updating Banner.
+
+
+  NEW: SOLOSTRIKE TELLS YOU WHEN UPDATES ARE READY
+
+  No more checking Umbrel to see if a new version dropped. SoloStrike
+  now shows a banner inside the app the moment a new version is
+  available — and lets you apply it with one tap.
+
+
+  TWO BANNER TIERS:
+
+  ⚡ SOFT UPDATE (amber)
+     UI/code changes only. Tap the banner and the app reloads with
+     the new version. Takes about 2 seconds. No Umbrel trip needed.
+
+  🔧 INFRASTRUCTURE UPDATE (cyan)
+     For releases that change the underlying app config (new env vars,
+     compose changes, new containers). Banner explains what to do —
+     open Umbrel App Store, find SoloStrike, tap Update. Mining keeps
+     hashing through the update.
+
+
+  EXPANDABLE RELEASE NOTES:
+
+  Tap the chevron on any banner to see what's actually in the update
+  — what's new, what's fixed, what changed. Pulled live from the API
+  so you always see the latest notes without any external lookup.
+
+
+  DISMISSIBLE:
+
+  Tap the × to dismiss a banner until the next version drops. The app
+  remembers your choice in localStorage. Critical security/mining-
+  affecting updates can't be dismissed (this is a feature, not a bug).
+
+
+  TECHNICAL FOUNDATION:
+
+  - composeVersion field added to API state — bumps only when manifest
+    or compose actually changes, so the UI knows soft vs hard
+  - urgency field added (normal | recommended | critical) — drives
+    banner styling, set per release
+  - Service worker dispatches sw:update-available event when new
+    bundle ready, banner listens and offers reload
+  - All custom inline SVGs in your amber/cyan palette — no extra deps
+
+
+  This is the foundation for self-managing SoloStrike installs. Future
+  releases will ship to your phone and announce themselves in the app
+  itself. Open Umbrel only when you actually need to.
+
+
+  v1.7.10 — Progressive Web App.
+
+
+  NEW: INSTALL TO HOME SCREEN
+
+  SoloStrike is now a real Progressive Web App. On iPhone, tap Share →
+  Add to Home Screen and SoloStrike installs as a real app icon. Launch
+  it directly from your home screen and it opens fullscreen — no Safari
+  URL bar, no tabs, no browser chrome. Pure mining dashboard.
+
+
+  WHAT YOU GET WITH PWA:
+
+  - Real app icon on iPhone home screen, not a Safari bookmark
+
+  - Full-screen launch — no browser chrome eating screen space
+
+  - Faster perceived load times — the app shell caches locally via
+    a service worker
+
+  - Offline shell — if your Umbrel reboots or network drops, the UI
+    still loads instead of blanking to white. Live data resumes the
+    moment connectivity returns.
+
+  - App switcher integration — SoloStrike gets its own card in iOS
+    multitasking, separate from Safari
+
+
+  HOW TO INSTALL ON IPHONE:
+
+  1. Open SoloStrike in Safari on your iPhone
+
+  2. Tap the Share button (square with up-arrow at the bottom)
+
+  3. Scroll down and tap "Add to Home Screen"
+
+  4. Confirm — SoloStrike icon now lives next to your other apps
+
+
+  NOTES:
+
+  - Live mining data (hashrate, workers, blocks) is NEVER cached. Only
+    the UI shell is cached for fast loading. You always see fresh stats.
+
+  - This is the foundation for the v1.8.0 mobile redesign coming next.
+
+
+  v1.7.8 — Widget Hotfix (for real this time).
+
+
+  FIXED: HOME-SCREEN WIDGET (FOR REAL)
+
+  Three actual bugs were keeping the widget broken since v1.5.13:
+
+
+  1. Widget endpoint URL pointed at "api:3001" — a hostname Umbrel's
+  widget loader can't resolve. Umbrel's app_proxy only exposes a single
+  backend (APP_HOST/APP_PORT), so reaching the API container directly
+  doesn't work. Fixed by routing through the UI container, which already
+  has nginx proxying /api/* to api:3001.
+
+
+  2. The widgets[].items array with jsonPath mappings was missing.
+  Without it, Umbrel doesn't know how to extract data from the JSON
+  response and falls back to the example forever. Now declared, mirroring
+  the working GoBrrr pool widget config.
+
+
+  3. PROXY_APP_EXTRAS / PROXY_AUTH_WHITELIST env vars in docker-compose
+  were a wild goose chase — Umbrel's app-proxy README only documents
+  APP_HOST / APP_PORT / PROXY_AUTH_*. Removed.
+
+
+  Forced version bump to 1.7.8 to make Umbrel re-sync these files into
+  the working app directory. Local sed edits to the deployed copy were
+  getting wiped on every app restart because Umbrel re-reads from the
+  installed manifest, not the live filesystem.
+
+
+  v1.7.7 — The Burn + Widget Fix.
+
+
+  NEW: THE BURN
+
+  Power cost integration in The Reckoning modal. Enter your rig's total
+  wattage and your $/kWh electricity rate. The Burn computes daily,
+  monthly, and yearly power cost; total electricity spent on the way to
+  the 50% strike horizon; net profit (or loss) if you strike at that
+  horizon; and your break-even electricity rate — the maximum $/kWh at
+  which mining still pays for itself when you strike. Inputs persist in
+  localStorage so you don't re-enter them every session. PROFITABLE /
+  BURNING badge in the section header gives you the answer at a glance.
+
+
+  FIXED: HOME-SCREEN WIDGET
+
+  The four-stats Umbrel widget was showing dashes because the
+  /api/widget/four-stats endpoint declared in umbrel-app.yml was never
+  actually implemented in the API. Now serves live data: Pool Hashrate
+  with auto-scaled units (TH/s, PH/s, etc.), online worker count, blocks
+  found, and best difficulty. Also added PROXY_APP_EXTRAS and
+  PROXY_AUTH_WHITELIST to docker-compose so the home-screen widget
+  loader can reach the endpoint without auth (it has no session token).
+
+
+  v1.7.6 — The Vein + Stratum Connection + Header Polish.
+
+
+  NEW: THE VEIN
+
+  Replaces the old Strike Odds card. Same orbital probability gauge at the
+  top, but now fused with a Block Reward hero showing total BTC + fiat
+  value + a subsidy/fees breakdown, a live Fast/Mid/Low fee tier strip
+  pulled from mempool.space, and a 2x2 stats grid with Expected, Pool
+  Share, Daily Chance, and statistical sats-per-day. Tap to open The
+  Reckoning — same flow as before. Density quadrupled, no extra cards.
+
+
+  NEW: STRATUM CONNECTION CARD
+
+  No more "how do I connect a miner?" questions. New always-on card shows
+  three port rows (3333 ASIC, 3334 hobby, 4333 SSL) with live port-light
+  status dots, copy buttons on every stratum URL, an auto-filled USER row
+  showing your_address.workername, and a PASS row with the d=XXXX
+  difficulty hint. If your payout address isn't set yet, the card warns
+  you instead of crashing.
+
+
+  NEW: HEADER STRIKES + RETARGET BADGES
+
+  Glance-friendly upgrades to the top bar. STRIKES counter shows your
+  total blocks-found inline, with a lightning bolt and amber glow once
+  you hit one. RETARGET shows the difficulty adjustment percentage with
+  green/red color and a tooltip listing blocks-remaining-to-retarget.
+  Both hidden in Minimal Mode. Header now wraps on narrow screens.
+
+
+  UNDER THE HOOD
+
+  • API exposes Fast/Mid/Low fee tiers from mempool.space recommended
+  fees endpoint (fastestFee / halfHourFee / hourFee with economyFee
+  fallback). Old single feeRate field still populated for back-compat.
+
+  • localStorage migration silently renames the "odds" card id to "vein"
+  in saved layouts. Existing testers don't lose their card order or
+  visibility settings on upgrade. Migration is idempotent.
+
+  • DEFAULT_PRESET updated — new installs get Stratum Connection +
+  The Vein in their default lineup, alongside the existing Firepower /
+  Crew / Network / Share Stats / Top Diggers / Near Strikes / Strikes.
+
+  • Footer version bumped to 1.7.6; package.json files bumped; server.js
+  state.version bumped so Pulse broadcasts reflect the running release.
+
+
+  v1.7.5 — Strikers Roster + UX Polish.
+
+
+  NEW: SOLOSTRIKE STRIKERS
+
+  Tap the SoloStrike Pulse card to open the Strikers modal — a per-peer
+  anonymous breakdown of every operator currently broadcasting on the
+  Pulse network. Your install is pinned at the top with a green THIS
+  INSTALL badge. All other operators appear as anonymous numbered
+  Strikers (STRIKER 01, STRIKER 02, ...) sorted by hashrate descending.
+  Each row shows hashrate, worker count, app version, and time since
+  last seen. Outlier-filtered peers are hidden by default; an instant
+  toggle reveals them with a FILTERED tag and dimmed styling. Same 100%
+  SOLO badge and "Pulse is a census, not a pool" tagline as the card.
+  No names, no IPs, no identifying information ever exposed — Strikers
+  are stable per-broadcast cycle but all identities rotate every 90 days.
+
+
+  FIXED: STICKY HEADER
+
+  Header cluster (status bar, ticker, latest block strip, top metrics
+  strip, sync warning) now stays pinned at the top of the viewport
+  while you scroll the dashboard, with backdrop blur restoring the
+  cool effect from v1.5.x. Cards scroll behind the header. The pinned
+  region was lost during the v1.7.4 card restoration merge.
+
+
+  FIXED: SETUP SCREEN FLASH
+
+  The "SoloStrike Setup" form briefly flashed on every page load and
+  refresh because the UI rendered before the initial /api/state fetch
+  completed. State now defaults payoutAddress to null and tracks a
+  _loaded flag — the dashboard waits for the first state response,
+  shows a "Connecting to pool…" placeholder, and never flashes the
+  setup form unless the API actually has no payout address configured.
+
+
+  FIXED: API CRASH FROM RELAY LIST EDIT
+
+  Adding a new nostr relay without a comma after the previous entry
+  caused the API container to crash-loop with "SyntaxError: Unexpected
+  string". Cosmetic but very important — anyone editing the relay
+  list could brick their install. Comma added on existing relay,
+  no functional change.
+
+
+  UNDER THE HOOD
+
+  • Per-peer breakdown is computed in network-stats.js recomputeAggregates
+  alongside the existing aggregates. seenEvents Map already tracked
+  per-pubkey hashrate/workers/blocks/version — now exposed via
+  state.networkStats.peers[] with filtered + isOwn flags. Outlier
+  detection logic unchanged.
+
+  • state.networkStats.ownPubkey added so the UI can reliably identify
+  which row is the user's own broadcast (it's a peer like any other —
+  we see ourselves echoed back from relays).
+
+  • Footer version bumped to 1.7.5; package.json files bumped; server.js
+  state.version bumped so Pulse broadcasts reflect the running release.
+
+
+  v1.7.4 — Card Restoration + Tor Pulse Integration.
+
+
+  RESTORED: 12 RICH DASHBOARD CARDS
+
+  Merged the v1.7.0 cards (HashrateChart, WorkerGrid, NetworkStats,
+  BitcoinNodePanel, OddsDisplay, LuckGauge, RetargetPanel, ShareStats,
+  BestShareLeaderboard, ClosestCallsPanel, BlockFeed, TopFindersPanel,
+  RecentBlocksPanel) and the full WorkerDetailModal back on top of the
+  v1.7.3 Tor base. Mining never stopped during the rebuild.
+
+
+  FIXED
+
+  • /api/settings → /api/config in usePool hook (was 404'ing).
+
+  • state.payoutAddress now syncs alongside cfg.payoutAddress on save.
+
+  • DisplayTab METRIC_CATEGORIES iteration crash (array vs object).
+
+  • App() destructure mismatch on lastBlock/setBlockAlert/refreshConfig.
+
+  • Docker healthcheck now passes — added /api/health endpoint.
+
+  • Deleted orphan legacy solostrike.json config file.
+
+
+  v1.7.3 — Tor Routing for Pulse.
+
+
+  Pulse broadcasts and subscriptions now route through Umbrel's
+  tor_proxy:9050 SOCKS5 proxy when enabled. Hot-swap reconnect on
+  toggle, reachability pre-flight test, auto-recovery every 5 min if
+  Tor goes degraded. UI banner shows ready / fallback / unreachable /
+  checking states. Identity backup/regenerate flow added.
+
+
+  v1.7.0 — Rich Card UI Era.
+
+
+  14+ dashboard cards including HashrateChart, WorkerGrid, NetworkStats,
+  BitcoinNodePanel, OddsDisplay, LuckGauge, RetargetPanel, ShareStats,
+  BestShareLeaderboard, ClosestCallsPanel, BlockFeed, TopFindersPanel,
+  RecentBlocksPanel, PulsePanel. WorkerDetailModal with hashrate, best
+  diff, work done, miner web UI link, full share event tracking, reject
+  reasons, CSV export. Customizable top strip + scrolling ticker with
+  metric selection. Drag-to-reorder cards with persistence. Aliases +
+  private notes per worker. Onboarding wizard. Webhook system. Minimal
+  Mode + visibility toggles + presets.
+
+
+  v1.6.0 — SoloStrike Network (backend). A new opt-in community counter
+  lets your pool see and contribute to a live total of all SoloStrike
+  pools running worldwide. Every install that opts in publishes a
+  signed, anonymous event to public nostr relays every 5 minutes.
+  Payload is tiny: pool hashrate, worker count, app version, total
+  blocks found. No BTC address, no IP, no hostname, no location.
+
+
+  v1.5.13 — Recursive Sharelog Discovery + Gold-Rush Rebrand.
+
+
+  CRITICAL: share-watcher was only tracking 50 files out of 1,700+ on
+  disk. Rewrote file discovery to recursively walk the entire log tree,
+  re-scan every 15 seconds for new block-height directories, removed
+  the 50-file tracking cap. Plus: gold-rush themed card naming
+  (Firepower, The Crew, Strike Odds, Hot Streak, Top Diggers, Near
+  Strikes, Gold Strikes, Claim Jumpers, The Goldfields).
+developer: danhaus93-ops
+website: https://github.com/danhaus93-ops/solostrike-umbrel
+dependencies:
+  - bitcoin
+repo: https://github.com/danhaus93-ops/solostrike-umbrel
+support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
+port: 1234
+gallery:
+  - 1.png
+  - 2.png
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: danhaus93-ops
+submission: https://github.com/danhaus93-ops/solostrike-umbrel
+widgets:
+  - id: "stats"
+    type: "four-stats"
+    name: "SoloStrike Stats"
+    refresh: "10s"
+    endpoint: "ui:80/api/widget/four-stats"
+    items:
+      - label: "Pool Hashrate"
+        jsonPath: "items[0].text"
+      - label: "Workers"
+        jsonPath: "items[1].text"
+      - label: "Blocks Found"
+        jsonPath: "items[2].text"
+      - label: "Best Diff"
+        jsonPath: "items[3].text"
+    example:
+      type: "four-stats"
+      link: ""
+      items:
+        - title: "Pool Hashrate"
+          text: "542.8"
+          subtext: "GH/s"
+        - title: "Workers"
+          text: "3"
+        - title: "Blocks Found"
+          text: "0"
+        - title: "Best Diff"
+          text: "1.2B"
+icon: https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/icon.svg
