@@ -2,7 +2,7 @@
 // Caches the app shell so it loads instantly even on shaky connections.
 // Never caches API or WebSocket traffic — those always go to the network.
 
-const CACHE_NAME = 'solostrike-v1.7.10';
+const CACHE_NAME = 'solostrike-v1.7.12';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
