@@ -30,7 +30,7 @@ self.addEventListener('activate', (event) => {
           .filter((key) => key.startsWith('solostrike-') && key !== CACHE_NAME)
           .map((key) => caches.delete(key))
       )
-    ).then(() => self.clients.claim())
+    )
   );
 });
 
