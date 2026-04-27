@@ -962,9 +962,9 @@ function HashrateChart({ history, week, current, compact = false }) {
   const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
   const [p0, p1] = fmtHr(current).split(' ');
 
-  const chartHeight = compact ? 90 : 140;
-  const numberSize = compact ? '1.9rem' : '2.6rem';
-  const numberMarginBottom = compact ? '0.5rem' : '0.8rem';
+  const chartHeight = compact ? 130 : 140;
+  const numberSize = compact ? '2.3rem' : '2.6rem';
+  const numberMarginBottom = compact ? '0.7rem' : '0.8rem';
 
   const rangeBtn = (key, label) => (
     <button key={key} onClick={() => setRange(key)}
@@ -3024,7 +3024,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
   // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
   const StampSolo = () => (
     <div style={{
-      position:'absolute', right:'0.4rem', bottom:'0.4rem',
+      position:'absolute', right:'0.2rem', bottom:'0.2rem',
       transform:'rotate(-12deg)',
       fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:800,
       letterSpacing:'0.18em', textTransform:'uppercase',
@@ -3096,28 +3096,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
         >
         {/* Smaller waveform for embedded mode */}
         <div ref={containerRef} style={{
-          width:'100%', height:64,
+          width:'100%', height:88,
           background:'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(245,166,35,0.02) 100%)',
           border:'1px solid var(--border)',
-          marginBottom:'0.5rem',
+          marginBottom:'0.6rem',
           position:'relative', overflow:'hidden',
         }}>
+
           <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
         </div>
 
         {/* The 3 stat tiles — compact */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem', marginBottom: '0.5rem' }}>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.45rem 0.3rem', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.46rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 3 }}>Pools</div>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.2rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.pools || 0}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
+          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.pools || 0}</div>
           </div>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.45rem 0.3rem', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.46rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 3 }}>Hashrate</div>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.85rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
+          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '1rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
           </div>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.45rem 0.3rem', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.46rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 3 }}>Miners</div>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.2rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.workers || 0}</div>
+          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.workers || 0}</div>
           </div>
         </div>
 
