@@ -1,4 +1,4 @@
-:root {
+i'm:root {
   --bg-void:#060708;--bg-deep:#0b0d0f;--bg-surface:#101316;--bg-raised:#161b20;--bg-elevated:#1c2129;
   --amber:#F5A623;--amber-hot:#FF7A00;--amber-dim:#6B4710;
   --btc-orange:#F7931A;--btc-orange-glow:rgba(247,147,26,0.45);
@@ -129,9 +129,8 @@ body * {
 .ss-carousel .ss-card {
   margin: 0;
   width: 100%;
-  height: auto;
-  flex: 0 0 auto;
-  min-height: 0;
+  height: 100%;
+  min-height: min-content;
   max-width: 100%;
 }
 
