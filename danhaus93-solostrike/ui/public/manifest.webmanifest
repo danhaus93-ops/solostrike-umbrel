@@ -1,12 +1,16 @@
 {
   "name": "SoloStrike",
   "short_name": "SoloStrike",
-  "description": "Zero-fee solo Bitcoin mining pool",
+  "description": "Zero-fee solo Bitcoin mining pool with airgapped Private Mode",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#060708",
   "theme_color": "#F5A623",
+  "lang": "en-US",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -27,5 +31,21 @@
       "purpose": "maskable"
     }
   ],
-  "categories": ["finance", "utilities"]
+  "categories": ["finance", "utilities"],
+  "shortcuts": [
+    {
+      "name": "The Vein",
+      "short_name": "Vein",
+      "description": "View block reward and odds",
+      "url": "/?card=vein",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "The Reckoning",
+      "short_name": "Reckoning",
+      "description": "Forecast your next strike",
+      "url": "/?modal=reckoning",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }
