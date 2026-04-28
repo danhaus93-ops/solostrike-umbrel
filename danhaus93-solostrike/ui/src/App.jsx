@@ -3555,9 +3555,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         }
       }
 
+      // Scale drop density to canvas height — tall canvases need more drops
+      // per column to stay visually full. ~14 rows fits at 160px → up to 6 drops.
+      const rowsOnScreen = Math.max(8, Math.floor(H / CHAR_H));
+      const maxDropsPerCol = Math.max(3, Math.ceil(rowsOnScreen / 2.5));
+      // Faster cadence on taller canvases so drops don't drain out before refilling
+      const spawnGap = Math.max(0.25, 1.6 / (rowsOnScreen / 8));
+
       for (const col of canvas._columns) {
         col.spawnAccum -= dt * (fallSpeed / 60);
-        if (col.spawnAccum <= 0 && col.drops.length < 3) {
+        if (col.spawnAccum <= 0 && col.drops.length < maxDropsPerCol) {
           const len = 6 + Math.floor(Math.random() * 14);
           const chars = [];
           for (let i = 0; i < len; i++) chars.push(HEX_CHARS[Math.floor(Math.random() * 16)]);
@@ -3568,7 +3575,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             sinceChange: 0,
             goldIdx: Math.random() < 0.25 ? Math.floor(Math.random() * len) : -1,
           });
-          col.spawnAccum = 0.6 + Math.random() * 1.2;
+          col.spawnAccum = (spawnGap * 0.4) + Math.random() * spawnGap;
         }
         for (let i = col.drops.length - 1; i >= 0; i--) {
           const d = col.drops[i];
