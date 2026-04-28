@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
-import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
+import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 
@@ -961,7 +961,91 @@ function HashrateTrend({ history, current }) {
 }
 
 // ── Hashrate chart ────────────────────────────────────────────────────────────
-function HashrateChart({ history, week, current, compact = false }) {
+// ── HashrateAverages — rolling hashrate averages bar list (iter26) ───────
+// Renders a Gobrrr-style "Pool Stats" averages strip: one row per window
+// (1m, 5m, 1h, 24h, 7d) with a horizontal bar showing relative magnitude
+// and the formatted hashrate value on the right. All five values come
+// pre-computed from the API in `state.hashrate.averages` (status-poller.js).
+function HashrateAverages({ averages, current, peak }) {
+  if (!averages) return null;
+  const rows = [
+    { key: 'hr1m',  label: '1M'  },
+    { key: 'hr5m',  label: '5M'  },
+    { key: 'hr15m', label: '15M' },
+    { key: 'hr1h',  label: '1H'  },
+    { key: 'hr6h',  label: '6H'  },
+    { key: 'hr24h', label: '24H' },
+    { key: 'hr7d',  label: '7D'  },
+  ];
+  // Normalize bars against the largest of: peak, current, and any avg —
+  // keeps every bar < 100% width so values never get clipped on the right.
+  const vals = rows.map(r => averages[r.key] || 0);
+  const maxAvg = Math.max(0, ...vals);
+  const denom  = Math.max(maxAvg, peak || 0, current || 0) || 1;
+  const anyData = vals.some(v => v > 0);
+  if (!anyData) return null;
+  return (
+    <div style={{
+      marginTop: '0.85rem',
+      paddingTop: '0.7rem',
+      borderTop: '1px dashed rgba(245,166,35,0.18)',
+    }}>
+      <div style={{
+        fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.18em',
+        textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: '0.5rem',
+      }}>
+        ▸ Hashrate Averages
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.32rem'}}>
+        {rows.map(r => {
+          const v = averages[r.key] || 0;
+          const pct = denom > 0 ? Math.min(100, (v / denom) * 100) : 0;
+          const formatted = fmtHr(v);
+          return (
+            <div key={r.key} style={{
+              display:'grid',
+              gridTemplateColumns:'2.1rem 1fr auto',
+              alignItems:'center',
+              gap:'0.55rem',
+              minWidth:0,
+            }}>
+              <span style={{
+                fontFamily:'var(--fd)', fontSize:'0.6rem', fontWeight:700,
+                letterSpacing:'0.08em', color:'var(--text-2)',
+              }}>{r.label}</span>
+              <div style={{
+                position:'relative',
+                height:6,
+                background:'var(--bg-deep)',
+                border:'1px solid var(--border)',
+                overflow:'hidden',
+                minWidth:0,
+              }}>
+                <div style={{
+                  width:`${pct}%`,
+                  height:'100%',
+                  background:'linear-gradient(90deg, rgba(245,166,35,0.35), var(--amber))',
+                  transition:'width 0.5s ease',
+                }}/>
+              </div>
+              <span style={{
+                fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700,
+                color: v > 0 ? 'var(--amber)' : 'var(--text-3)',
+                whiteSpace:'nowrap',
+                textAlign:'right',
+                minWidth:'4.6rem',
+              }}>
+                {v > 0 ? formatted : '—'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HashrateChart({ history, week, current, averages, compact = false }) {
   const [range, setRange] = useState('1h');
 
   const windowMs = { '1h': 60*60*1000, '6h': 6*60*60*1000, '24h': 24*60*60*1000, '7d': 7*24*60*60*1000 }[range];
@@ -1041,6 +1125,9 @@ function HashrateChart({ history, week, current, compact = false }) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      {!compact && averages && (
+        <HashrateAverages averages={averages} current={current} peak={peak}/>
+      )}
     </>
   );
 
@@ -1200,9 +1287,14 @@ function ClosestCallsPanel({ closestCalls, aliases }) {
 }
 
 // ── Bitcoin Network ───────────────────────────────────────────────────────────
-function NetworkStats({ network, blockReward, mempool, prices, currency, privateMode }) {
+function NetworkStats({ network, blockReward, mempool, prices, currency, privateMode, latestBlock }) {
   const price = prices?.[currency];
   const rewardUsd = price && blockReward ? blockReward.totalBtc * price : null;
+  // iter26: latest block weight + tx count (data from mempool.space netBlocks).
+  // Subsidy/fees breakdown and fee tiers live in the Vein card — not duplicated here.
+  const lb = latestBlock || {};
+  const blkWeight = lb.weight || lb.blockWeight || null;
+  const blkTxs    = lb.txCount || lb.txs || lb.tx_count || null;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Bitcoin Network</div>
@@ -1214,6 +1306,23 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
           <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:c,textShadow:c==='var(--cyan)'?'0 0 10px rgba(0,255,209,0.3)':'none'}}>{v}</span>
         </div>
       ))}
+      {/* iter26: latest block weight + tx count */}
+      {(blkWeight || blkTxs) && (
+        <>
+          {blkWeight && (
+            <div style={statRow}>
+              <span style={label}>Block Weight</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(blkWeight)} WU</span>
+            </div>
+          )}
+          {blkTxs != null && (
+            <div style={statRow}>
+              <span style={label}>Block Txs</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(blkTxs)}</span>
+            </div>
+          )}
+        </>
+      )}
       <div style={{height:1,background:'var(--border)',margin:'0.7rem 0'}}/>
       {blockReward && (
         <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(245,166,35,0.25)'}}>
@@ -1234,12 +1343,6 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
         <div style={statRow}>
           <span style={label}>Mempool Fees</span>
           <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{fmtBtc(mempool.totalFeesBtc, 2)}</span>
-        </div>
-      )}
-      {mempool?.feeRate!=null && (
-        <div style={statRow}>
-          <span style={label}>Priority Fee</span>
-          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{mempool.feeRate} sat/vB</span>
         </div>
       )}
       {privateMode && (
@@ -1268,9 +1371,11 @@ function BitcoinNodePanel({ nodeInfo }) {
       </div>
       <div style={statRow}>
         <span style={label}>Client</span>
-        <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',textAlign:'right'}}>
+        <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',textAlign:'right', minWidth:0, overflow:'hidden'}}>
           {client.name}
           {client.version && <div style={{fontSize:'0.6rem',color:'var(--text-2)',marginTop:2}}>v{client.version}</div>}
+          {/* iter26: full subversion string (typically /Satoshi:29.2.0/) when present */}
+          {ni.subversion && <div style={{fontSize:'0.55rem',color:'var(--text-3)',marginTop:1, fontFamily:'var(--fm)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'14rem'}}>{ni.subversion.replace(/^\/|\/$/g,'')}</div>}
         </span>
       </div>
       <div style={statRow}>
@@ -1765,7 +1870,7 @@ function CarouselDots({ count, activeIndex, onJump }) {
 // All three persist to localStorage. The HOST value is also exported via
 // useStratumHost() so the footer ports and any other stratum URL builder
 // uses the same configured value.
-function StratumPanel({ payoutAddress, stratumHealth }) {
+function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
   const [copied, setCopied] = useState('');
 
   // Persistent fields — load from localStorage, save on blur.
@@ -2008,6 +2113,42 @@ function StratumPanel({ payoutAddress, stratumHealth }) {
       }}>
         Connect any Stratum V1 miner. Workers show up in <span style={{color:'var(--amber)', fontWeight:600}}>The Crew</span> automatically once they start hashing.
       </div>
+      {/* iter26: Pool uptime + started date strip */}
+      <PoolUptimeStrip startedAt={startedAt}/>
+    </div>
+  );
+}
+
+// iter26: Renders pool uptime + started timestamp at the bottom of the
+// Stratum card. Pulls from the global `state.shareStatsStartedAt` timestamp
+// which is the closest thing we have to "when did this pool start tracking."
+function PoolUptimeStrip({ startedAt }) {
+  // Read shareStatsStartedAt from window state if available — pulled in by
+  // a parent prop in main render. Falls back to startedAt prop or null.
+  const ts = startedAt || (typeof window !== 'undefined' && window.__solostrikeStartedAt) || null;
+  if (!ts) return null;
+  const sinceMs = Date.now() - ts;
+  const days = Math.floor(sinceMs / 86400000);
+  const hrs  = Math.floor((sinceMs % 86400000) / 3600000);
+  const uptimeStr = days > 0 ? `${days}d ${hrs}h` : `${hrs}h`;
+  const startedStr = new Date(ts).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+  return (
+    <div style={{
+      marginTop:'0.7rem',
+      paddingTop:'0.55rem',
+      borderTop:'1px dashed rgba(245,166,35,0.18)',
+      display:'grid',
+      gridTemplateColumns:'1fr 1fr',
+      gap:'0.5rem',
+    }}>
+      <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.13em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:3}}>Uptime</div>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:'var(--green)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{uptimeStr}</div>
+      </div>
+      <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.13em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:3}}>Started</div>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', fontWeight:700, color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{startedStr}</div>
+      </div>
     </div>
   );
 }
@@ -2052,9 +2193,14 @@ function LuckGauge({ luck }) {
 // ── Difficulty Retarget ───────────────────────────────────────────────────────
 function RetargetPanel({ retarget }) {
   if (!retarget) return null;
-  const { progressPercent=0, difficultyChange=0, remainingBlocks=0, remainingTime=0 } = retarget;
+  const { progressPercent=0, difficultyChange=0, remainingBlocks=0, remainingTime=0, prevDifficultyChange=null } = retarget;
   const changeColor = difficultyChange>=0 ? 'var(--red)' : 'var(--green)';
   const pct = Math.max(0, Math.min(100, progressPercent));
+  // iter26: previous epoch's adjustment color uses inverse semantics (last
+  // change is historic, doesn't affect "do I want easy diff?" framing)
+  const prevColor = prevDifficultyChange == null
+    ? 'var(--text-2)'
+    : prevDifficultyChange >= 0 ? 'var(--red)' : 'var(--green)';
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       <div style={cardTitle}>▸ Difficulty Retarget</div>
@@ -2064,6 +2210,12 @@ function RetargetPanel({ retarget }) {
             {difficultyChange>=0?'+':''}{difficultyChange.toFixed(2)}%
           </div>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:4}}>estimated change</div>
+          {/* iter26: previous epoch comparison */}
+          {prevDifficultyChange != null && (
+            <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:6}}>
+              Last epoch: <span style={{color:prevColor, fontWeight:600}}>{prevDifficultyChange>=0?'+':''}{prevDifficultyChange.toFixed(2)}%</span>
+            </div>
+          )}
         </div>
         <div>
           <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>
@@ -2237,9 +2389,20 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   const workAccepted = s.accepted || 0;
   const workRejected = s.rejected || 0;
   const stale = s.stale || 0;
-  const total = workAccepted + workRejected || 1;
-  const acceptRate = ((workAccepted / total) * 100).toFixed(2);
-  const sharesPerMin = hashrate > 0 ? (hashrate / 4294967296 * 60).toFixed(1) : '0';
+  // iter26: prefer real SPS from ckpool's pool.status (sps1m); fall back to
+  // hashrate-derived estimate if the API field isn't yet populated.
+  const realSps = s.sps1m || 0;
+  const estSps  = hashrate > 0 ? (hashrate / 4294967296) : 0;
+  const useSps  = realSps > 0 ? realSps : estSps;
+  const sharesPerMin = (useSps * 60).toFixed(1);
+  const spsLabel = realSps > 0 ? 'Shares / min' : 'Shares / min (est.)';
+  // iter26: top-line reject rate %. Counts include stale shares as rejected
+  // for the headline accuracy figure (matches Gobrrr methodology).
+  const lifeAccepted = s.acceptedCount || 0;
+  const lifeRejected = s.rejectedCount || 0;
+  const lifeStale    = s.stale || 0;
+  const lifeTotal = lifeAccepted + lifeRejected + lifeStale;
+  const rejectPct = lifeTotal > 0 ? (((lifeRejected + lifeStale) / lifeTotal) * 100) : null;
   return (
     <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}} className="fade-in">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -2253,15 +2416,35 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
           <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',marginTop:6}}>
             {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected</>}
        <> · <span style={{color:stale>0?'var(--amber)':'var(--text-2)'}}>{fmtDiff(stale)}</span> stale</>
-            {workAccepted>0 && workRejected>0 && <> · <span style={{color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span> accept</>}
           </div>
         </div>
+        {/* iter26: Reject Rate top-line + lifetime share counter */}
+        {(rejectPct !== null || lifeAccepted > 0) && (
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem'}}>
+            {rejectPct !== null && (
+              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Reject Rate</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1.15rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                  {rejectPct < 0.001 ? rejectPct.toExponential(1) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
+                </div>
+              </div>
+            )}
+            {lifeAccepted > 0 && (
+              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Lifetime Shares</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1.15rem',fontWeight:700,lineHeight:1,color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                  {fmtNum(lifeAccepted)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Best Difficulty</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.6rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
         </div>
         <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
-          <span>Shares / min (est.)</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
+          <span>{spsLabel}</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
         </div>
         {onOpen && (
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--cyan)',textTransform:'uppercase',textAlign:'center',paddingTop:4,borderTop:'1px dashed var(--border)',marginTop:2}}>
@@ -5629,6 +5812,7 @@ export default function App() {
       history={poolState?.hashrate?.history}
       week={poolState?.hashrate?.week}
       current={poolState?.hashrate?.current||0}
+      averages={poolState?.hashrate?.averages}
     />,
     pulse: <PulsePanel
       networkStats={poolState?.networkStats}
@@ -5639,9 +5823,9 @@ export default function App() {
       useBitcoinSymbols={useBitcoinSymbols}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
-    network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode}/>,
+    network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
-    stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth}/>,
+    stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
     vein: <VeinPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} onOpen={()=>setShowReckoning(true)}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
