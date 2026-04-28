@@ -3182,15 +3182,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // BPM label in corner — small, subtle
-      if (enabled) {
-        ctx.fillStyle = 'rgba(245,166,35,0.55)';
-        ctx.font = '600 10px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`${Math.round(bpm)} BPM`, 6, 4);
-      }
-
       animationFrameRef.current = requestAnimationFrame(draw);
     };
 
