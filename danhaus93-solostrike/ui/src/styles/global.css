@@ -1,26 +1,145 @@
+/* SoloStrike global styles ------------------------------------------------ */
+
 :root {
-  --bg-void:#060708;--bg-deep:#0b0d0f;--bg-surface:#101316;--bg-raised:#161b20;--bg-elevated:#1c2129;
-  --amber:#F5A623;--amber-hot:#FF7A00;--amber-dim:#6B4710;
-  --btc-orange:#F7931A;--btc-orange-glow:rgba(247,147,26,0.45);
-  --cyan:#00FFD1;--red:#FF3B3B;--green:#39FF6A;
-  --text-1:#EAD9C0;--text-2:#6B6050;--text-3:#302C27;
-  --border:rgba(245,166,35,0.1);--border-hot:rgba(245,166,35,0.35);
-  --fd:'Chakra Petch',sans-serif;--fm:'JetBrains Mono',monospace;
-  --glow-a:0 0 24px rgba(245,166,35,0.25);
+  /* Backgrounds — warm dark tiers from v1.5.9 (slightly less black than the
+     v1.7.x rewrite, so cards and surfaces actually have visible separation) */
+  --bg-void:     #060708;
+  --bg-deep:     #0b0d0f;
+  --bg-surface:  #101316;
+  --bg-raised:   #161b20;
+  --bg-elevated: #1c2129;
+
+  /* Amber palette — the SoloStrike accent */
+  --amber:     #F5A623;
+  --amber-hot: #FF7A00;
+  --amber-dim: #6B4710;
+
+  /* BTC brand orange — used for the Latest Block icon and BTC-specific accents.
+     This was missing from the v1.7.x rewrite, which made the B icon render
+     white in fallback. Keep it. */
+  --btc-orange:      #F7931A;
+  --btc-orange-glow: rgba(247,147,26,0.45);
+
+  /* Status colors */
+  --cyan:  #00FFD1;
+  --red:   #FF3B3B;
+  --green: #39FF6A;
+
+  /* Text — warm cream tones from v1.5.9. The v1.7.x cool grays made the UI
+     feel cold and clinical; warm tones keep it cohesive with the amber
+     accent palette. */
+  --text-1: #EAD9C0;
+  --text-2: #a89788;
+  --text-3: #7a6d5e;
+
+  /* Borders — amber tinted */
+  --border:     rgba(245,166,35,0.10);
+  --border-hot: rgba(245,166,35,0.35);
+
+  /* Fonts — Chakra Petch is the angular tech display face that defines the
+     SoloStrike feel. JetBrains Mono is the monospace.
+     Both are already imported in index.html. */
+  --fd: 'Chakra Petch', sans-serif;
+  --fm: 'JetBrains Mono', monospace;
+
+  /* Subtle amber glow used for cards and borders */
+  --glow-a: 0 0 24px rgba(245,166,35,0.25);
 }
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
-  background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%)}
-::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--bg-deep)}::-webkit-scrollbar-thumb{background:var(--amber-dim)}
-::selection{background:rgba(245,166,35,0.2)}
 
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
-@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-.fade-in{animation:slideUp .35s ease both}
+* { box-sizing: border-box; }
 
-/* --- Responsive grid: mobile-first -------------------------------------- */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-void);
+  color: var(--text-1);
+  font-family: var(--fm);
+  overflow-x: hidden;
+}
+
+body {
+  font-size: 14px;
+  background-image: radial-gradient(ellipse 80% 40% at 50% -5%, rgba(245,166,35,0.05) 0%, transparent 60%);
+}
+
+/* ─── Layout mode sizing (v1.7.22-iter) ────────────────────────────────────
+   The React app toggles `ss-mode-carousel` / `ss-mode-vertical` on <body>
+   based on the active layout. Each mode needs different root sizing. */
+
+/* Vertical mode (default-ish, also desktop) — natural body scroll */
+body.ss-mode-vertical,
+body.ss-mode-vertical #root {
+  min-height: 100vh;
+  height: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+html:has(body.ss-mode-vertical),
+html.ss-mode-vertical {
+  min-height: 100vh;
+  height: auto;
+  overflow: auto;
+}
+
+/* Carousel mode — body fits its container exactly, no body scroll.
+   Inside Umbrel's iframe, 100% = iframe height (correct).
+   Inside Safari/PWA, 100% = device viewport (also correct).
+   Either way, no overflow at the bottom because body matches container.
+   Both :has() and html.ss-mode-carousel selectors are present so this works
+   in Umbrel's webview (which may not support :has()) AND modern Safari. */
+html:has(body.ss-mode-carousel),
+html.ss-mode-carousel {
+  height: 100%;
+  overflow: hidden;
+}
+body.ss-mode-carousel {
+  height: 100%;
+  overflow: hidden;
+}
+body.ss-mode-carousel #root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* In carousel mode, the <main> wrapper grows to fill space between header
+   and footer. min-height: 0 lets the carousel inside scroll without forcing
+   main to overflow. Header and footer are flex-shrink: 0 so they never
+   compress when space gets tight (was clipping the top strip). */
+body.ss-mode-carousel #root > main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+body.ss-mode-carousel #root > div:first-of-type,
+body.ss-mode-carousel #root > footer {
+  flex: 0 0 auto;
+}
+
+/* Fallback for browsers without :has() support — older iOS Safari etc.
+   The default html sizing (no override) lets body's min-height work,
+   so vertical mode is the safe fallback. The carousel mode body class
+   still applies its own height:100% which most browsers respect even
+   without html being constrained. */
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--amber-dim); }
+::selection { background: rgba(245,166,35,0.2); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+
+/* Standard responsive grid */
 .ss-grid{display:grid;gap:0.75rem;grid-template-columns:1fr}
 @media (min-width:640px){.ss-grid{gap:0.875rem;grid-template-columns:repeat(2,1fr)}}
 @media (min-width:1024px){.ss-grid{grid-template-columns:repeat(4,1fr)}}
@@ -37,26 +156,8 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 .ss-drag-handle:hover{color:var(--amber)}
 .ss-drag-handle:active{cursor:grabbing}
 
-/* Hide drag handle on small screens to reduce clutter; cards still tap/hold */
-@media (max-width:639px){
-  .ss-drag-handle{font-size:12px;opacity:0.5}
-}
-
-/* Touch target for mobile header controls */
-button{touch-action:manipulation}
-
-/* ============================================================
-   Hard viewport width lockdown — prevents ANY overflow on iOS
-   ============================================================ */
-.ss-hide-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
-.ss-hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-html, body, #root {
-  width: 100vw !important;
-  max-width: 100vw !important;
-  overflow-x: clip !important;
-  margin: 0 !important;
-}
+/* Drag handle is visible on all screen sizes (v1.7.22 — restored on mobile
+   after user reported it was missing). */
 
 /* No descendant is allowed to exceed viewport width */
 body * {
@@ -80,16 +181,9 @@ body * {
 }
 
 /* ─── Carousel layout (v1.7.17) ─────────────────────────────────────────────
-   Mobile-only horizontal scroll-snap carousel. Each card fills viewport
-   between sticky header and sticky footer. Native iOS Safari scroll-snap.
-   Activated by adding .ss-carousel className to the grid container.
-
-   Math:
-   - 100dvh   = full dynamic viewport (handles iOS bottom-bar correctly)
-   - --hdr-h  = sticky header total height (set inline by App.jsx, varies
-                with minimal mode etc — defaults handled in CSS too)
-   - --ftr-h  = sticky footer height (~32-40px)
-   - The carousel area takes whatever's left in between
+   Mobile-only horizontal scroll-snap carousel. Each card slot fills the
+   viewport between sticky header and sticky footer. Native iOS Safari
+   scroll-snap. Height calculated as 100dvh minus approximate header+footer.
 */
 .ss-carousel {
   display: flex;
@@ -101,9 +195,7 @@ body * {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* Fill space between header (~210px) and footer (~36px). Inline style on
-     <main> may override --carousel-h with a more accurate value. */
-  height: var(--carousel-h, calc(100dvh - 246px));
+  height: 100%;
   scrollbar-width: none;
   padding: 0;
 }
@@ -115,65 +207,86 @@ body * {
   scroll-snap-align: center;
   scroll-snap-stop: always;
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 0.65rem;
+  padding: 0.65rem 0.65rem 4px 0.65rem;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .ss-carousel > *::-webkit-scrollbar { width: 0; }
 
-/* Inside a carousel item, the card fills available height naturally.
-   Cards don't need to set their own height — flex-flow handles it. */
+/* Cards size to fit the carousel slot. With max-height: 100%, the card
+   never exceeds the slot, so the slot's overflow-y:auto never engages and
+   inner scrollable regions (Crew list, Near Strikes) become the only scroll
+   surface inside the card. min-height: 0 lets flex children with maxHeight
+   actually constrain their height (without it, flex:1 children can overflow). */
 .ss-carousel .ss-card {
   margin: 0;
-  height: auto;
-  min-height: min-content;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The actual card-content div inside DraggableCard (everything in fade-in).
+   Fills the wrapper, becomes a flex column itself. With min-height:0 set
+   here AND flex:1 on internal scroll lists (Crew, Near Strikes), the lists
+   become the only place that overflow can occur — they scroll, card doesn't. */
+.ss-carousel .ss-card > .fade-in {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-/* Position dots — small floating indicator at the bottom of the carousel
-   showing which card you're on. */
+/* Dots — small floating row at the bottom of the carousel, no pill background.
+   Just bare dots above the footer so they don't eat content space. */
 .ss-dots {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  bottom: 2px;
   transform: translateX(-50%);
   display: flex;
-  gap: 6px;
+  gap: 3px;
   z-index: 5;
   pointer-events: auto;
-  background: rgba(6,7,8,0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(245,166,35,0.18);
+  background: transparent;
+  padding: 2px 4px;
 }
 .ss-dot {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: var(--text-3);
+  background: rgba(245,166,35,0.25);
+  transition: all 0.2s ease;
   cursor: pointer;
   border: none;
   padding: 0;
-  transition: all 0.25s ease;
-  opacity: 0.6;
 }
 .ss-dot.active {
+  width: 12px;
+  border-radius: 2px;
   background: var(--amber);
-  width: 22px;
-  border-radius: 4px;
-  opacity: 1;
-  box-shadow: 0 0 8px rgba(245,166,35,0.5);
+  box-shadow: 0 0 4px rgba(245,166,35,0.5);
 }
 
-/* Carousel area is positioned relative so dots can absolutely position */
+/* Carousel area is positioned relative so dots can absolutely position.
+   When carousel mode is on, this main has class ss-carousel-wrap and needs
+   to expose its full flex-allocated height to the carousel inside. */
 .ss-carousel-wrap {
   position: relative;
+  height: 100%;
+  overflow: hidden;
 }
 
-/* Desktop (≥768px): never carousel, always stack/grid even if class present */
+/* Desktop (≥768px): never carousel, always stack/grid */
 @media (min-width: 768px) {
   .ss-carousel {
     display: grid;
@@ -191,6 +304,7 @@ body * {
     overflow: visible;
     padding: 0;
     scroll-snap-align: none;
+    display: block;
   }
   .ss-dots { display: none; }
 }
