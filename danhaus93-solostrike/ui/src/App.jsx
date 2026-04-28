@@ -32,7 +32,8 @@ const DEFAULT_TICKER_SPEED = 30;
 const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'worker_health', 'accept_rate', 'next_block_prize', 'btc_price', 'time_since_block', 'halving', 'blocks_found_total'];
 
 const ALL_CARDS = [
-  { id:'hashpulse',     label:'Firepower + Pulse' },
+  { id:'hashrate',      label:'Firepower' },
+  { id:'pulse',         label:'Solostrike Pulse' },
   { id:'workers',       label:'The Crew' },
   { id:'stratum',       label:'Stratum Connection' },
   { id:'vein',          label:'The Vein' },
@@ -47,8 +48,8 @@ const ALL_CARDS = [
   { id:'recent',        label:'The Goldfields' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
-const MINIMAL_PRESET  = ['hashpulse', 'workers', 'jumpers'];
-const DEFAULT_PRESET  = ['hashpulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers'];
+const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
+const DEFAULT_PRESET  = ['hashrate', 'pulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers'];
 const EVERYTHING_PRESET = [...ALL_CARD_IDS];
 
 // v1.7.6 migration — rename "odds" card id to "vein" in any persisted layouts.
@@ -60,17 +61,24 @@ function migrateCardIds(arr) {
   for (const id of arr) {
     // v1.7.x migrations:
     //   'odds'       -> 'vein'        (older rename)
-    //   'hashrate'   -> 'hashpulse'   (v1.7.20: merged Firepower + Pulse)
-    //   'pulse'      -> 'hashpulse'   (v1.7.20: merged Firepower + Pulse)
+    //   'hashpulse'  -> 'hashrate' + 'pulse' (v1.7.22-iter23: split back into two cards)
     //   'topfinders' -> 'jumpers'     (v1.7.22: merged Claim Jumpers + Gold Strikes)
     //   'blocks'     -> 'jumpers'     (v1.7.22: merged Claim Jumpers + Gold Strikes)
     //   'netstrikes' -> 'network'     (v1.7.22: split unwound; the strikes
     //                                  half goes into 'jumpers', so we add
     //                                  jumpers separately below)
+    if (id === 'odds') {
+      if (!seen.has('vein')) { seen.add('vein'); out.push('vein'); }
+      continue;
+    }
+    if (id === 'hashpulse') {
+      // Split the merged card back into its two original parts, in order
+      if (!seen.has('hashrate')) { seen.add('hashrate'); out.push('hashrate'); }
+      if (!seen.has('pulse'))    { seen.add('pulse');    out.push('pulse');    }
+      continue;
+    }
     let next = id;
-    if (id === 'odds') next = 'vein';
-    else if (id === 'hashrate' || id === 'pulse') next = 'hashpulse';
-    else if (id === 'topfinders' || id === 'blocks') next = 'jumpers';
+    if (id === 'topfinders' || id === 'blocks') next = 'jumpers';
     else if (id === 'netstrikes') next = 'network';
     if (!seen.has(next)) { seen.add(next); out.push(next); }
     // If we mapped netstrikes -> network, also add jumpers (the strikes half)
@@ -1660,6 +1668,13 @@ function loadPulseAnim() {
   } catch { return PULSE_ANIM_DEFAULT; }
 }
 function savePulseAnim(v) { try { localStorage.setItem(LS_PULSE_ANIM, String(v)); } catch {} }
+const LS_PULSE_BITCOIN_SYMBOLS = 'ss_pulse_btc_v1';
+function loadPulseBitcoinSymbols() {
+  try { return localStorage.getItem(LS_PULSE_BITCOIN_SYMBOLS) === 'true'; } catch { return false; }
+}
+function savePulseBitcoinSymbols(v) {
+  try { localStorage.setItem(LS_PULSE_BITCOIN_SYMBOLS, String(!!v)); } catch {}
+}
 
 // Detects whether the user is on a "mobile" viewport. Returns true for
 // any width below the 768px breakpoint. Hook re-runs on resize/orientation.
@@ -2459,7 +2474,7 @@ function SetupForm({ saveConfig }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
@@ -2520,7 +2535,9 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             submit={submit} saved={saved} loading={loading}/>
         )}
         {tab==='pulse' && (
-          <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}/>
+          <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
+            pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
+            useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}/>
         )}
         {tab==='aliases' && (
           <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
@@ -2857,7 +2874,7 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
 }
 
 // ── Pulse tab ─────────────────────────────────────────────────────────────────
-function PulseTab({ networkStats, onRefresh }) {
+function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange }) {
   const [err, setErr] = useState('');
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
@@ -3105,6 +3122,74 @@ function PulseTab({ networkStats, onRefresh }) {
           ⚠ {err}
         </div>
       )}
+
+      {/* ─── Pulse animation picker (v1.7.22-iter23) ────────────────────── */}
+      {onPulseAnimChange && (
+        <div style={{
+          marginTop: 18, paddingTop: 14,
+          borderTop: '1px solid var(--border)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
+            color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
+          }}>
+            Pulse Animation Style
+          </div>
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
+          }}>
+            {PULSE_ANIM_OPTIONS.map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => onPulseAnimChange(opt.id)}
+                style={{
+                  background: pulseAnim === opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+                  border: `1px solid ${pulseAnim === opt.id ? 'var(--amber)' : 'var(--border)'}`,
+                  color: pulseAnim === opt.id ? 'var(--amber)' : 'var(--text-2)',
+                  fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.08em',
+                  textTransform: 'uppercase', padding: '0.45rem 0.7rem',
+                  cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 2,
+                  transition: 'all 0.15s ease',
+                }}
+              >{opt.label}</button>
+            ))}
+          </div>
+          <div style={{
+            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+            marginTop: 6,
+          }}>
+            Choose how the SoloStrike Pulse network is visualized.
+          </div>
+        </div>
+      )}
+
+      {/* ─── Bitcoin Symbols toggle (v1.7.22-iter23) ───────────────────── */}
+      {onBitcoinSymbolsChange && (
+        <div style={{ marginTop: 14 }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={!!useBitcoinSymbols}
+              onChange={e => onBitcoinSymbolsChange(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: 'var(--amber)' }}
+            />
+            <span style={{
+              fontFamily: 'var(--fd)', fontSize: '0.7rem', letterSpacing: '0.08em',
+              color: 'var(--text-1)', textTransform: 'uppercase',
+            }}>
+              Bitcoin Symbols (₿)
+            </span>
+          </label>
+          <div style={{
+            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+            marginTop: 4, marginLeft: 24,
+          }}>
+            Replace gold flakes / embers / glints with Bitcoin (₿) symbols.
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -3119,7 +3204,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', onPulseAnimChange, compact = false }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -3285,9 +3370,18 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const b = Math.round(35 + f.shade * 80);
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
         ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
-        ctx.beginPath();
-        ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
-        ctx.fill();
+        if (useBitcoinSymbols) {
+          // Render as ₿ — use size to drive font size (1.6-3.2 range → 8-14px)
+          const fontPx = Math.max(8, Math.round(5 + f.size * 2.4));
+          ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('₿', f.x, f.y);
+        } else {
+          ctx.beginPath();
+          ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.shadowBlur = 0;
     };
@@ -3375,14 +3469,24 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.shadowColor = `rgba(${r},${gC},${b},0.9)`;
         ctx.shadowBlur = g.gold ? 14 : 8;
 
-        // Center bright dot
-        ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
-        ctx.beginPath();
-        ctx.arc(g.x, g.y, g.maxR * (alpha * 0.6 + 0.4), 0, Math.PI * 2);
-        ctx.fill();
+        if (useBitcoinSymbols) {
+          // Render center as ₿ symbol
+          const fontPx = Math.max(8, Math.round(g.maxR * 3.2));
+          ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
+          ctx.fillText('₿', g.x, g.y);
+        } else {
+          // Center bright dot
+          ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
+          ctx.beginPath();
+          ctx.arc(g.x, g.y, g.maxR * (alpha * 0.6 + 0.4), 0, Math.PI * 2);
+          ctx.fill();
+        }
 
-        // 4-point star rays at peak
-        if (alpha > 0.3) {
+        // 4-point star rays at peak (still drawn in both modes for emphasis)
+        if (alpha > 0.3 && !useBitcoinSymbols) {
           ctx.strokeStyle = `rgba(${r},${gC},${b},${alpha * 0.7})`;
           ctx.lineWidth = 0.8;
           ctx.beginPath();
@@ -3510,7 +3614,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               ctx.shadowBlur = 0;
             }
             ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
-            ctx.fillText(d.chars[i], col.x, charY);
+            // In Bitcoin mode, replace gold winner chars with ₿; non-winners stay hex
+            const renderChar = (useBitcoinSymbols && isGold) ? '₿' : d.chars[i];
+            ctx.fillText(renderChar, col.x, charY);
           }
         }
       }
@@ -3617,9 +3723,18 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           ctx.fillStyle = c.big ? `rgba(255, 230, 130, ${0.95 * goldDim})` : `rgba(245, 180, 60, ${0.85 * goldDim})`;
           ctx.shadowColor = c.big ? 'rgba(255,230,130,0.9)' : 'rgba(245,180,60,0.6)';
           ctx.shadowBlur = c.big ? 6 : 3;
-          ctx.beginPath();
-          ctx.arc(spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, spot.r, 0, Math.PI * 2);
-          ctx.fill();
+          if (useBitcoinSymbols) {
+            // Render gold spots as tiny ₿ glyphs
+            const fontPx = Math.max(7, Math.round(4 + spot.r * 3));
+            ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('₿', spot.dx * c.w * 0.4, spot.dy * c.h * 0.4);
+          } else {
+            ctx.beginPath();
+            ctx.arc(spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, spot.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         ctx.shadowBlur = 0;
         ctx.restore();
@@ -3717,9 +3832,17 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
         ctx.shadowColor = `rgba(${r},${g + 40},${b + 30},${alpha * 0.9})`;
         ctx.shadowBlur = e.big ? 8 : 5;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
-        ctx.fill();
+        if (useBitcoinSymbols) {
+          const fontPx = Math.max(8, Math.round(5 + e.size * 2.5));
+          ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('₿', e.x, e.y);
+        } else {
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.shadowBlur = 0;
     };
@@ -3747,7 +3870,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, pulseAnim]);
+  }, [enabled, ns.hashrate, pulseAnim, useBitcoinSymbols]);
 
 
 
@@ -3855,29 +3978,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
         </div>
 
-        {/* Animation picker — compact horizontal row, click to switch */}
-        {onPulseAnimChange && (
-          <div style={{
-            display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'0.25rem',
-            marginBottom:'0.6rem', padding:'0.2rem 0',
-          }}>
-            {PULSE_ANIM_OPTIONS.map(opt => (
-              <button
-                key={opt.id}
-                onClick={(e)=>{ e.stopPropagation(); onPulseAnimChange(opt.id); }}
-                style={{
-                  background: pulseAnim===opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
-                  border: `1px solid ${pulseAnim===opt.id ? 'var(--amber)' : 'var(--border)'}`,
-                  color: pulseAnim===opt.id ? 'var(--amber)' : 'var(--text-2)',
-                  fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.06em',
-                  textTransform:'uppercase', padding:'0.2rem 0.45rem',
-                  cursor:'pointer', whiteSpace:'nowrap', borderRadius:2,
-                  transition:'all 0.15s ease',
-                }}
-              >{opt.label}</button>
-            ))}
-          </div>
-        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
@@ -3929,7 +4029,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       >
       {/* The heartbeat waveform itself */}
       <div ref={containerRef} style={{
-        width:'100%', height:96,
+        width:'100%', height:160,
         background:'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(245,166,35,0.02) 100%)',
         border:'1px solid var(--border)',
         marginBottom:'0.7rem',
@@ -3937,30 +4037,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       }}>
         <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
       </div>
-
-      {/* Animation picker — compact horizontal row, click to switch */}
-      {onPulseAnimChange && (
-        <div style={{
-          display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'0.3rem',
-          marginBottom:'0.7rem', padding:'0.2rem 0',
-        }}>
-          {PULSE_ANIM_OPTIONS.map(opt => (
-            <button
-              key={opt.id}
-              onClick={(e)=>{ e.stopPropagation(); onPulseAnimChange(opt.id); }}
-              style={{
-                background: pulseAnim===opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
-                border: `1px solid ${pulseAnim===opt.id ? 'var(--amber)' : 'var(--border)'}`,
-                color: pulseAnim===opt.id ? 'var(--amber)' : 'var(--text-2)',
-                fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.06em',
-                textTransform:'uppercase', padding:'0.25rem 0.55rem',
-                cursor:'pointer', whiteSpace:'nowrap', borderRadius:2,
-                transition:'all 0.15s ease',
-              }}
-            >{opt.label}</button>
-          ))}
-        </div>
-      )}
 
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
@@ -5146,7 +5222,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashpulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent'];
+const DEFAULT_ORDER = ['hashrate','pulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent'];
 function loadOrder() {
   try {
     const s = localStorage.getItem(LS_CARD_ORDER);
@@ -5349,6 +5425,11 @@ export default function App() {
     savePulseAnim(v);
     setPulseAnim(v);
   }, []);
+  const [useBitcoinSymbols, setUseBitcoinSymbols] = useState(() => loadPulseBitcoinSymbols());
+  const onBitcoinSymbolsChange = useCallback((v) => {
+    savePulseBitcoinSymbols(v);
+    setUseBitcoinSymbols(!!v);
+  }, []);
   const useCarousel = isMobile && carouselEnabled;
   const carouselRef = useRef(null);
   const headerRef = useRef(null);
@@ -5521,6 +5602,8 @@ export default function App() {
             networkStats={poolState?.networkStats}
             onNetworkStatsRefresh={refreshConfig}
             carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
+            pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
+            useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
           />
         )}
       </>
@@ -5531,15 +5614,18 @@ export default function App() {
   const ns = poolState?.networkStats || {};
 
   const cardComponents = {
-    hashpulse: <HashPulsePanel
+    hashrate: <HashrateChart
       history={poolState?.hashrate?.history}
       week={poolState?.hashrate?.week}
       current={poolState?.hashrate?.current||0}
+    />,
+    pulse: <PulsePanel
       networkStats={poolState?.networkStats}
       onOpenSettings={()=>setShowSettings(true)}
       onOpenStrikers={()=>setShowStrikers(true)}
       pulseAnim={pulseAnim}
       onPulseAnimChange={onPulseAnimChange}
+      useBitcoinSymbols={useBitcoinSymbols}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode}/>,
@@ -5681,6 +5767,8 @@ export default function App() {
           networkStats={poolState?.networkStats}
           onNetworkStatsRefresh={refreshConfig}
           carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
+          pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
+          useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
         />
       )}
     </>
