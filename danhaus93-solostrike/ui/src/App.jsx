@@ -3154,39 +3154,88 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
     };
   }, []);
 
-  // Sluice box stream — gold mining themed animation.
-  // - Background: 3 layers of dark slate-blue water/gravel ripples flowing left
-  // - Foreground: tiny gold flakes carried in the current (small bright dots)
-  // - Bottom: classic sluice riffles (notches) — fixed reference bar
-  // - Stream SPEED scales linearly with hashrate (visibly so)
-  // - Flake DENSITY also scales with hashrate (more activity → more found gold)
-  // - Stat-change broadcasts inject a burst of extra flakes (vein hit!)
+  // Vein Reveal Pulse — gold mining themed animation.
+  // - A horizontal main vein is always present (the host rock seam)
+  // - Periodically a new BRANCH sprouts from an existing point on the network
+  //   and animates its growth over ~1.5s, then settles into the static layer
+  // - Older branches gradually fade so the network doesn't infinitely fill
+  // - Junction points (where branches share an origin) develop gold blooms
+  // - Sprout rate scales LINEARLY with hashrate (visibly tied)
+  // - Stat-change broadcasts trigger a BIG branch (3x length, brighter gold)
+  // - The whole network gently pulses opacity to feel "alive"
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Persistent state on the canvas element
-    if (!canvas._flakes) canvas._flakes = [];
-    if (canvas._flakeAccum === undefined) canvas._flakeAccum = 0;
-    if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
+    // Persistent state on the canvas element itself
+    if (!canvas._branches) {
+      canvas._branches = [];
+      canvas._anchorPoints = []; // candidate origin points for new branches
+      canvas._sprouts = [];      // currently animating-in branches
+      canvas._sproutAccum = 0;
+      canvas._timeAccum = 0;
+      canvas._needsInit = true;
+    }
 
-    // Map ns.hashrate (raw H/s) → stream pixels-per-second AND flake spawn rate.
-    // Linear scaling so the difference between 30 TH/s and 60 TH/s is OBVIOUS.
-    // 0 TH/s    → 60 px/s  · 0.5 flakes/s
-    // 30 TH/s   → 105 px/s · 5.0 flakes/s
-    // 60 TH/s   → 150 px/s · 9.5 flakes/s
-    // 100 TH/s  → 210 px/s · 15 flakes/s
-    const calcStreamSpeed = () => {
-      if (!enabled) return 25;
-      const ths = (ns.hashrate || 0) / 1e12;
-      return 60 + Math.min(180, ths * 1.5);
-    };
-    const calcFlakeRate = () => {
+    // Linear sprouts-per-second mapping (NO log compression)
+    // 0 TH/s   → 0.4 sprouts/s  (~1 every 2.5s, ambient)
+    // 30 TH/s  → 4   sprouts/s
+    // 60 TH/s  → 7.6 sprouts/s
+    // 100 TH/s → 12.4 sprouts/s
+    const calcSproutRate = () => {
       if (!enabled) return 0.15;
       const ths = (ns.hashrate || 0) / 1e12;
-      return 0.5 + Math.min(15, ths * 0.15);
+      return 0.4 + Math.min(12, ths * 0.12);
+    };
+
+    // Initialize the main horizontal trunk (the "host" seam)
+    const initTrunk = () => {
+      const W = canvasWidthRef.current || 300;
+      const H = canvasHeightRef.current || 60;
+      const baselineY = H * 0.55;
+      // 5 segments forming a slightly meandering horizontal trunk
+      const trunkPoints = [];
+      const segs = 6;
+      for (let i = 0; i <= segs; i++) {
+        const x = (i / segs) * W;
+        const y = baselineY + Math.sin(i * 0.7) * 4;
+        trunkPoints.push({ x, y });
+      }
+      for (let i = 0; i < trunkPoints.length - 1; i++) {
+        canvas._branches.push({
+          x1: trunkPoints[i].x, y1: trunkPoints[i].y,
+          x2: trunkPoints[i+1].x, y2: trunkPoints[i+1].y,
+          width: 2.6, age: 0, life: Infinity, // trunk never dies
+          isTrunk: true,
+        });
+      }
+      // Use trunk vertices as initial anchor points for sprouts
+      canvas._anchorPoints = trunkPoints.map(p => ({ x: p.x, y: p.y, generations: 0 }));
+      canvas._needsInit = false;
+    };
+
+    // Spawn a new branch from a random anchor point
+    const sprout = (big = false) => {
+      if (canvas._anchorPoints.length === 0) return;
+      const pool = canvas._anchorPoints;
+      const origin = pool[Math.floor(Math.random() * pool.length)];
+      const baseLen = big ? 36 + Math.random() * 16 : 14 + Math.random() * 14;
+      // Direction biased upward or downward from the trunk, with sideways drift
+      const upward = origin.generations === 0 ? (Math.random() < 0.55 ? -1 : 1) : (Math.random() < 0.5 ? -1 : 1);
+      const angle = (-Math.PI/2 * upward) + (Math.random() - 0.5) * 1.2;
+      const endX = origin.x + Math.cos(angle) * baseLen;
+      const endY = origin.y + Math.sin(angle) * baseLen;
+
+      canvas._sprouts.push({
+        x1: origin.x, y1: origin.y,
+        x2: endX, y2: endY,
+        progress: 0, // 0..1, animation progress
+        duration: big ? 1.8 : 1.2,
+        width: big ? 2.4 : 1.0 + Math.random() * 0.8,
+        big,
+      });
     };
 
     const draw = (now) => {
@@ -3201,120 +3250,157 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
         return;
       }
 
-      const speed = calcStreamSpeed();
-      const flakeRate = calcFlakeRate();
+      // Initialize trunk on first frame with valid dimensions
+      if (canvas._needsInit) initTrunk();
 
-      // ─── Spawn flakes ─────────────────────────────────────────
-      // Use a stochastic accumulator so frame-rate doesn't bias the count.
-      canvas._flakeAccum += dt * flakeRate;
-      while (canvas._flakeAccum >= 1) {
-        canvas._flakeAccum -= 1;
-        canvas._flakes.push({
-          x: -3,
-          y: Math.random() * (H - 8) + 4, // anywhere in the stream area
-          // Flakes drift faster than the background (they're carried by the current)
-          vx: speed * (1.1 + Math.random() * 0.4),
-          // Slight vertical drift for realism
-          vy: (Math.random() - 0.5) * 8,
-          size: 0.8 + Math.random() * 1.6,
-          // Random gold tint variation
-          shade: Math.random(),
-          life: 0,
-        });
+      // Stochastic sprout spawning
+      const rate = calcSproutRate();
+      canvas._sproutAccum += dt * rate;
+      while (canvas._sproutAccum >= 1) {
+        canvas._sproutAccum -= 1;
+        sprout(false);
       }
 
-      // Drain pending broadcast bursts
+      // Drain broadcast events into BIG sprouts
       spikesRef.current = spikesRef.current
         .map(s => ({ ...s, age: s.age + dt }))
         .filter(s => s.age < 0.3);
       for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) {
-          // Fresh broadcast: inject a CLUSTER of flakes (vein hit!)
-          for (let i = 0; i < 12; i++) {
-            canvas._flakes.push({
-              x: -3 - Math.random() * 20,
-              y: Math.random() * (H - 8) + 4,
-              vx: speed * (1.2 + Math.random() * 0.6),
-              vy: (Math.random() - 0.5) * 16,
-              size: 1.2 + Math.random() * 2.0,
-              shade: 0.7 + Math.random() * 0.3, // brighter
-              life: 0,
-              burst: true,
-            });
-          }
+        if (s.age < dt * 1.5) sprout(true);
+      }
+
+      // Animate sprouts. When complete, promote to a permanent branch
+      // and add its endpoint as a new anchor for future sprouts.
+      for (let i = canvas._sprouts.length - 1; i >= 0; i--) {
+        const s = canvas._sprouts[i];
+        s.progress += dt / s.duration;
+        if (s.progress >= 1) {
+          canvas._branches.push({
+            x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2,
+            width: s.width, age: 0,
+            life: s.big ? 24 : 12, // big branches last longer
+            big: s.big, isTrunk: false,
+          });
+          // Add endpoint as a new anchor (limit pool size)
+          canvas._anchorPoints.push({ x: s.x2, y: s.y2, generations: 1 });
+          if (canvas._anchorPoints.length > 60) canvas._anchorPoints.shift();
+          canvas._sprouts.splice(i, 1);
         }
       }
 
-      // Update and prune flakes
-      const flakes = canvas._flakes;
-      for (let i = flakes.length - 1; i >= 0; i--) {
-        const f = flakes[i];
-        f.x += f.vx * dt;
-        f.y += f.vy * dt;
-        f.life += dt;
-        if (f.x > W + 5) flakes.splice(i, 1);
+      // Age and prune branches (trunk never ages)
+      const branches = canvas._branches;
+      for (let i = branches.length - 1; i >= 0; i--) {
+        const b = branches[i];
+        if (b.isTrunk) continue;
+        b.age += dt;
+        if (b.age > b.life) branches.splice(i, 1);
+      }
+      // Hard cap to prevent runaway accumulation at very high hashrates
+      if (branches.length > 180) {
+        // Remove oldest non-trunk branches
+        for (let i = 0; i < branches.length && branches.length > 180; i++) {
+          if (!branches[i].isTrunk) { branches.splice(i, 1); i--; }
+        }
       }
 
       // ─── Render ───────────────────────────────────────────────
       ctx.clearRect(0, 0, W, H);
 
-      // Subtle dark background tint (sluice-box water)
+      // Subtle dark rock background
       ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
       ctx.fillRect(0, 0, W, H);
 
-      // Background flow layers — 3 dark slate-blue ripple waves moving left.
-      // Each layer has its own y-baseline, amplitude, frequency, and phase,
-      // creating a turbulent water surface look.
-      const layers = [
-        { y: H * 0.35, amp: 4,  freq: 0.018, color: 'rgba(60,80,100,0.20)', speedMul: 0.7 },
-        { y: H * 0.55, amp: 6,  freq: 0.022, color: 'rgba(80,100,120,0.18)', speedMul: 0.85 },
-        { y: H * 0.75, amp: 5,  freq: 0.026, color: 'rgba(100,120,140,0.14)', speedMul: 1.0 },
-      ];
-      for (const layer of layers) {
-        const phaseShift = canvas._timeAccum * speed * layer.speedMul * 0.05;
-        ctx.strokeStyle = layer.color;
-        ctx.lineWidth = 1.4;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        for (let x = 0; x <= W; x += 4) {
-          const y = layer.y + Math.sin(x * layer.freq + phaseShift) * layer.amp +
-                              Math.sin(x * layer.freq * 1.7 + phaseShift * 0.6) * (layer.amp * 0.4);
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+      // Network breathing: gentle global opacity pulse (0.85 → 1.0 → 0.85)
+      const breath = 0.85 + Math.sin(canvas._timeAccum * 1.3) * 0.075 + 0.075;
+
+      // Render permanent branches
+      for (const b of branches) {
+        let alpha;
+        if (b.isTrunk) {
+          alpha = 1 * breath;
+        } else {
+          // Fade in over first 0.3s, full for middle, fade out last 30%
+          const lifeT = b.age / b.life;
+          if (b.age < 0.3) alpha = (b.age / 0.3) * breath;
+          else if (lifeT > 0.7) alpha = ((1 - lifeT) / 0.3) * breath;
+          else alpha = breath;
         }
+        if (!enabled) alpha *= 0.45;
+
+        const baseColor = b.big
+          ? `rgba(255, 215, 90, ${alpha})`
+          : `rgba(245, 166, 35, ${alpha * 0.92})`;
+
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = b.width;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = b.big ? 'rgba(255,215,90,0.6)' : 'rgba(245,166,35,0.4)';
+        ctx.shadowBlur = (b.big ? 6 : 3) * (enabled ? 1 : 0.4);
+        ctx.beginPath();
+        ctx.moveTo(b.x1, b.y1);
+        ctx.lineTo(b.x2, b.y2);
         ctx.stroke();
       }
+      ctx.shadowBlur = 0;
 
-      // Bottom riffles — fixed notches across the bottom edge (classic sluice box)
-      // These are the wooden cleats that catch the heavy gold particles.
-      ctx.strokeStyle = 'rgba(100,80,50,0.45)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      const riffleSpacing = 14;
-      const riffleHeight = 6;
-      for (let x = 0; x < W; x += riffleSpacing) {
-        ctx.moveTo(x, H);
-        ctx.lineTo(x, H - riffleHeight);
-      }
-      // Connecting bottom rail
-      ctx.moveTo(0, H - 0.5);
-      ctx.lineTo(W, H - 0.5);
-      ctx.stroke();
+      // Render currently-growing sprouts (animated reveal)
+      for (const s of canvas._sprouts) {
+        const t = s.progress;
+        // Eased out cubic — fast at start, slows as it settles
+        const eased = 1 - Math.pow(1 - t, 3);
+        const tipX = s.x1 + (s.x2 - s.x1) * eased;
+        const tipY = s.y1 + (s.y2 - s.y1) * eased;
 
-      // Gold flakes — bright dots with glow. Color shifts from amber to bright
-      // gold based on the random `shade` value. Slightly elongated in motion.
-      ctx.shadowBlur = enabled ? 6 : 0;
-      for (const f of flakes) {
-        const alpha = enabled ? Math.min(1, f.life * 8) : 0.4;
-        const r = Math.round(245 + f.shade * 10);
-        const g = Math.round(166 + f.shade * 45);
-        const b = Math.round(35 + f.shade * 80);
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-        ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
-        // Draw as small ellipse, elongated horizontally for motion blur effect
+        // The growing line itself — bright at the leading tip
+        const grad = ctx.createLinearGradient(s.x1, s.y1, tipX, tipY);
+        const grow = enabled ? 1 : 0.5;
+        grad.addColorStop(0, `rgba(245, 166, 35, ${0.9 * grow})`);
+        grad.addColorStop(0.7, `rgba(255, 200, 80, ${0.95 * grow})`);
+        grad.addColorStop(1, `rgba(255, 240, 180, ${1.0 * grow})`); // bright leading tip
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = s.big ? 2.6 : 1.4;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = s.big ? 'rgba(255,215,90,0.8)' : 'rgba(245,166,35,0.7)';
+        ctx.shadowBlur = enabled ? 8 : 2;
         ctx.beginPath();
-        ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+
+        // Glowing dot at the leading tip while it's growing
+        if (t < 0.95) {
+          ctx.fillStyle = `rgba(255, 240, 180, ${0.9 * grow})`;
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(tipX, tipY, s.big ? 2.5 : 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.shadowBlur = 0;
+
+      // Render junction blooms — small gold pools at points where 3+ branches meet.
+      // Compute on-the-fly: bucket branch endpoints by rounded position; any bucket
+      // with 3+ entries is a junction.
+      const jBuckets = new Map();
+      for (const b of branches) {
+        for (const pt of [{x: b.x1, y: b.y1}, {x: b.x2, y: b.y2}]) {
+          const key = `${Math.round(pt.x / 4)}_${Math.round(pt.y / 4)}`;
+          if (!jBuckets.has(key)) jBuckets.set(key, { x: pt.x, y: pt.y, count: 0 });
+          jBuckets.get(key).count += 1;
+        }
+      }
+      for (const j of jBuckets.values()) {
+        if (j.count >= 3) {
+          const r = Math.min(3.5, 1.2 + j.count * 0.3);
+          const a = breath * (enabled ? 0.85 : 0.4);
+          ctx.fillStyle = `rgba(255, 200, 80, ${a})`;
+          ctx.shadowColor = 'rgba(255,200,80,0.7)';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.ellipse(j.x, j.y, r, r * 0.7, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.shadowBlur = 0;
 
@@ -3326,6 +3412,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
   }, [enabled, ns.hashrate]);
+
+
+
 
   // Trigger an emphasis bump when broadcast values change (i.e. a real event)
   useEffect(() => {
