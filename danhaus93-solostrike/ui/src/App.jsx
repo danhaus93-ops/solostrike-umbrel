@@ -3154,72 +3154,45 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
     };
   }, []);
 
-  // The waveform draw loop — scrolling EKG-style heartbeat.
-  // - Beat rate tracks the SoloStrike Pulse network hashrate
-  //   (more activity → faster heart). 50 BPM at 0 TH/s up to ~130 at peak.
-  // - Each beat is a classic P-Q-R-S-T waveform shape
-  // - The trace continuously scrolls left like a real EKG monitor
-  // - Stat-change broadcasts still trigger an extra emphasis bump (an
-  //   ectopic beat overlay) so meaningful events are visible
+  // Sluice box stream — gold mining themed animation.
+  // - Background: 3 layers of dark slate-blue water/gravel ripples flowing left
+  // - Foreground: tiny gold flakes carried in the current (small bright dots)
+  // - Bottom: classic sluice riffles (notches) — fixed reference bar
+  // - Stream SPEED scales linearly with hashrate (visibly so)
+  // - Flake DENSITY also scales with hashrate (more activity → more found gold)
+  // - Stat-change broadcasts inject a burst of extra flakes (vein hit!)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Trail buffer of {x, y} points. Each frame: shift left, add new point on right.
-    if (!canvas._trail) canvas._trail = [];
-    if (canvas._beatPhase === undefined) canvas._beatPhase = 0;
+    // Persistent state on the canvas element
+    if (!canvas._flakes) canvas._flakes = [];
+    if (canvas._flakeAccum === undefined) canvas._flakeAccum = 0;
+    if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
 
-    // Map ns.hashrate (raw H/s) to BPM via log scale on TH/s.
-    // 50 BPM at 0 TH/s, +28 BPM per decade of TH/s, capped at 130 BPM.
-    // Disabled state: slow ~28 BPM (alive but quiet).
-    const calcBPM = () => {
-      if (!enabled) return 28;
+    // Map ns.hashrate (raw H/s) → stream pixels-per-second AND flake spawn rate.
+    // Linear scaling so the difference between 30 TH/s and 60 TH/s is OBVIOUS.
+    // 0 TH/s    → 60 px/s  · 0.5 flakes/s
+    // 30 TH/s   → 105 px/s · 5.0 flakes/s
+    // 60 TH/s   → 150 px/s · 9.5 flakes/s
+    // 100 TH/s  → 210 px/s · 15 flakes/s
+    const calcStreamSpeed = () => {
+      if (!enabled) return 25;
       const ths = (ns.hashrate || 0) / 1e12;
-      const extra = Math.min(80, Math.log10(1 + Math.max(0, ths)) * 28);
-      return Math.max(48, Math.min(130, 50 + extra));
+      return 60 + Math.min(180, ths * 1.5);
     };
-
-    // Classic EKG beat shape — given t ∈ [0,1] for one full beat cycle,
-    // returns y-offset from baseline (negative = up on canvas, since y grows down).
-    // Anatomy: P wave (small bump) → PR segment (flat) → QRS complex (big spike)
-    //          → ST segment (flat) → T wave (rounded recovery bump) → flat
-    const beatShape = (t) => {
-      if (t < 0 || t > 1) return 0;
-      // P wave (small upward bump): 0.05 .. 0.18
-      if (t >= 0.05 && t < 0.18) {
-        const k = (t - 0.05) / 0.13;
-        return -Math.sin(k * Math.PI) * 4;
-      }
-      // Q (small downward dip): 0.30 .. 0.34
-      if (t >= 0.30 && t < 0.34) {
-        const k = (t - 0.30) / 0.04;
-        return Math.sin(k * Math.PI) * 3;
-      }
-      // R (big upward spike): 0.34 .. 0.40
-      if (t >= 0.34 && t < 0.40) {
-        const k = (t - 0.34) / 0.06;
-        return -Math.sin(k * Math.PI) * 30;
-      }
-      // S (sharp downward dip): 0.40 .. 0.46
-      if (t >= 0.40 && t < 0.46) {
-        const k = (t - 0.40) / 0.06;
-        return Math.sin(k * Math.PI) * 10;
-      }
-      // T wave (rounded recovery bump): 0.55 .. 0.78
-      if (t >= 0.55 && t < 0.78) {
-        const k = (t - 0.55) / 0.23;
-        return -Math.sin(k * Math.PI) * 6;
-      }
-      return 0;
+    const calcFlakeRate = () => {
+      if (!enabled) return 0.15;
+      const ths = (ns.hashrate || 0) / 1e12;
+      return 0.5 + Math.min(15, ths * 0.15);
     };
-
-    const PIXELS_PER_SECOND = 70; // scroll speed of the trace
 
     const draw = (now) => {
       const dt = Math.min(0.05, (now - lastTickRef.current) / 1000);
       lastTickRef.current = now;
+      canvas._timeAccum += dt;
 
       const W = canvasWidthRef.current;
       const H = canvasHeightRef.current;
@@ -3227,68 +3200,122 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
         animationFrameRef.current = requestAnimationFrame(draw);
         return;
       }
-      const midY = H / 2;
 
-      // Advance beat phase. phase wraps 0..1 per heartbeat.
-      const bpm = calcBPM();
-      const beatsPerSecond = bpm / 60;
-      canvas._beatPhase = (canvas._beatPhase + dt * beatsPerSecond) % 1;
-      const beatT = canvas._beatPhase;
+      const speed = calcStreamSpeed();
+      const flakeRate = calcFlakeRate();
 
-      // Compute the new sample at the right edge of the trace
-      let yOffset = beatShape(beatT) * (enabled ? 1 : 0.4);
+      // ─── Spawn flakes ─────────────────────────────────────────
+      // Use a stochastic accumulator so frame-rate doesn't bias the count.
+      canvas._flakeAccum += dt * flakeRate;
+      while (canvas._flakeAccum >= 1) {
+        canvas._flakeAccum -= 1;
+        canvas._flakes.push({
+          x: -3,
+          y: Math.random() * (H - 8) + 4, // anywhere in the stream area
+          // Flakes drift faster than the background (they're carried by the current)
+          vx: speed * (1.1 + Math.random() * 0.4),
+          // Slight vertical drift for realism
+          vy: (Math.random() - 0.5) * 8,
+          size: 0.8 + Math.random() * 1.6,
+          // Random gold tint variation
+          shade: Math.random(),
+          life: 0,
+        });
+      }
 
-      // Layer in any active stat-change spikes (decays with age)
+      // Drain pending broadcast bursts
       spikesRef.current = spikesRef.current
         .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 1.2);
+        .filter(s => s.age < 0.3);
       for (const s of spikesRef.current) {
-        const decay = Math.max(0, 1 - s.age / 1.2);
-        // Brief emphasis dome layered on top of the beat
-        yOffset += -Math.sin(Math.min(1, s.age / 0.4) * Math.PI) * 8 * s.intensity * decay;
+        if (s.age < dt * 1.5) {
+          // Fresh broadcast: inject a CLUSTER of flakes (vein hit!)
+          for (let i = 0; i < 12; i++) {
+            canvas._flakes.push({
+              x: -3 - Math.random() * 20,
+              y: Math.random() * (H - 8) + 4,
+              vx: speed * (1.2 + Math.random() * 0.6),
+              vy: (Math.random() - 0.5) * 16,
+              size: 1.2 + Math.random() * 2.0,
+              shade: 0.7 + Math.random() * 0.3, // brighter
+              life: 0,
+              burst: true,
+            });
+          }
+        }
       }
 
-      // Scroll existing trail left
-      const shift = PIXELS_PER_SECOND * dt;
-      const trail = canvas._trail;
-      for (let i = 0; i < trail.length; i++) trail[i].x -= shift;
-      // Drop points that scrolled off
-      while (trail.length > 0 && trail[0].x < -2) trail.shift();
-      // Append the new point at the right edge
-      trail.push({ x: W, y: midY + yOffset });
+      // Update and prune flakes
+      const flakes = canvas._flakes;
+      for (let i = flakes.length - 1; i >= 0; i--) {
+        const f = flakes[i];
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        f.life += dt;
+        if (f.x > W + 5) flakes.splice(i, 1);
+      }
 
-      // ─── Render ─────────────────────────────────────────────────────────
+      // ─── Render ───────────────────────────────────────────────
       ctx.clearRect(0, 0, W, H);
 
-      // Background grid
-      ctx.strokeStyle = 'rgba(245,166,35,0.06)';
-      ctx.lineWidth = 1;
-      const gridStep = 16;
+      // Subtle dark background tint (sluice-box water)
+      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Background flow layers — 3 dark slate-blue ripple waves moving left.
+      // Each layer has its own y-baseline, amplitude, frequency, and phase,
+      // creating a turbulent water surface look.
+      const layers = [
+        { y: H * 0.35, amp: 4,  freq: 0.018, color: 'rgba(60,80,100,0.20)', speedMul: 0.7 },
+        { y: H * 0.55, amp: 6,  freq: 0.022, color: 'rgba(80,100,120,0.18)', speedMul: 0.85 },
+        { y: H * 0.75, amp: 5,  freq: 0.026, color: 'rgba(100,120,140,0.14)', speedMul: 1.0 },
+      ];
+      for (const layer of layers) {
+        const phaseShift = canvas._timeAccum * speed * layer.speedMul * 0.05;
+        ctx.strokeStyle = layer.color;
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let x = 0; x <= W; x += 4) {
+          const y = layer.y + Math.sin(x * layer.freq + phaseShift) * layer.amp +
+                              Math.sin(x * layer.freq * 1.7 + phaseShift * 0.6) * (layer.amp * 0.4);
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      // Bottom riffles — fixed notches across the bottom edge (classic sluice box)
+      // These are the wooden cleats that catch the heavy gold particles.
+      ctx.strokeStyle = 'rgba(100,80,50,0.45)';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      for (let x = 0; x < W; x += gridStep) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, H);
+      const riffleSpacing = 14;
+      const riffleHeight = 6;
+      for (let x = 0; x < W; x += riffleSpacing) {
+        ctx.moveTo(x, H);
+        ctx.lineTo(x, H - riffleHeight);
       }
-      for (let y = 0; y < H; y += gridStep) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(W, y);
-      }
+      // Connecting bottom rail
+      ctx.moveTo(0, H - 0.5);
+      ctx.lineTo(W, H - 0.5);
       ctx.stroke();
 
-      // The trace
-      ctx.lineWidth = 2.2;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = enabled ? '#F5A623' : 'rgba(245,166,35,0.4)';
-      ctx.shadowColor = enabled ? 'rgba(245,166,35,0.6)' : 'transparent';
-      ctx.shadowBlur = enabled ? 8 : 0;
-      ctx.beginPath();
-      for (let i = 0; i < trail.length; i++) {
-        const p = trail[i];
-        if (i === 0) ctx.moveTo(p.x, p.y);
-        else ctx.lineTo(p.x, p.y);
+      // Gold flakes — bright dots with glow. Color shifts from amber to bright
+      // gold based on the random `shade` value. Slightly elongated in motion.
+      ctx.shadowBlur = enabled ? 6 : 0;
+      for (const f of flakes) {
+        const alpha = enabled ? Math.min(1, f.life * 8) : 0.4;
+        const r = Math.round(245 + f.shade * 10);
+        const g = Math.round(166 + f.shade * 45);
+        const b = Math.round(35 + f.shade * 80);
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+        ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
+        // Draw as small ellipse, elongated horizontally for motion blur effect
+        ctx.beginPath();
+        ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.stroke();
       ctx.shadowBlur = 0;
 
       animationFrameRef.current = requestAnimationFrame(draw);
@@ -4861,6 +4888,24 @@ export default function App() {
     document.documentElement.classList.toggle('ss-mode-vertical', !useCarousel);
   }, [useCarousel]);
 
+  // Detect if we're rendering inside an iframe (i.e. Umbrel's webview).
+  // Same code runs both in iOS Safari/PWA and in Umbrel — but Umbrel embeds
+  // us inside an iframe, while Safari/PWA doesn't. window.self !== window.top
+  // is the simplest reliable signal. Cross-origin throw means YES iframe.
+  // Adds `ss-in-iframe` class to <body> so CSS can apply Umbrel-only tweaks
+  // (currently: small top inset on the header to push it below Umbrel's chrome).
+  useEffect(() => {
+    let inIframe = false;
+    try {
+      inIframe = window.self !== window.top;
+    } catch (_) {
+      // Cross-origin access throws — that means we're definitely in an iframe
+      inIframe = true;
+    }
+    document.body.classList.toggle('ss-in-iframe', inIframe);
+    document.documentElement.classList.toggle('ss-in-iframe', inIframe);
+  }, []);
+
   // Track which card is centered as the user swipes
   useEffect(() => {
     if (!useCarousel) return;
@@ -5044,7 +5089,7 @@ export default function App() {
 
   return (
     <>
-     <div ref={headerRef} style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden', paddingTop:'env(safe-area-inset-top)' }}>
+     <div ref={headerRef} className="ss-app-header" style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden', paddingTop:'env(safe-area-inset-top)' }}>
         {updateTier && !bannerSuppressed && (
           <UpdateBanner
             tier={updateTier}
