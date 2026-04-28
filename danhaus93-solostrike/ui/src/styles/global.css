@@ -123,17 +123,20 @@ body * {
 }
 .ss-carousel > *::-webkit-scrollbar { width: 0; }
 
-/* Inside a carousel item, the card fills available height naturally.
-   Cards don't need to set their own height — flex-flow handles it. */
+/* Inside a carousel item, cards fill the slot vertically. min-height: 100%
+   means the card stretches to slot height when content is shorter (so no
+   empty black space between card content and the dots/footer); when content
+   is taller than the slot, the card grows naturally and slot's overflow-y:
+   auto handles inner scrolling. height: auto allows the natural-content path. */
 .ss-carousel .ss-card {
   margin: 0;
   height: auto;
-  min-height: min-content;
+  min-height: 100%;
 }
 
 /* Position dots — tiny floating indicator at the bottom of the carousel.
    No pill, no backdrop-blur, no border. Just bare dots that don't compete
-   with content for space. */
+   with content for space. Fades out after inactivity (see ss-dots-hidden). */
 .ss-dots {
   position: absolute;
   left: 50%;
@@ -145,6 +148,12 @@ body * {
   pointer-events: auto;
   background: transparent;
   padding: 2px 4px;
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+.ss-dots.ss-dots-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 .ss-dot {
   width: 4px;
