@@ -1640,10 +1640,26 @@ function saveStratumPass(v)      { try { localStorage.setItem(LS_STRATUM_PASS, v
 // ── Carousel + Stratum rotation helpers (v1.7.17) ───────────────────────────
 const LS_CAROUSEL_ENABLED        = 'ss_carousel_enabled_v1';
 const LS_STRATUM_ROTATED         = 'ss_stratum_rotated_v1';   // '1' once we've moved Stratum to last
+const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'sluice' | 'glimmers' | 'ticker' | 'conveyor' | 'embers'
 function loadCarouselEnabled() { try { const v = localStorage.getItem(LS_CAROUSEL_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveCarouselEnabled(v){ try { localStorage.setItem(LS_CAROUSEL_ENABLED, String(!!v)); } catch {} }
 function loadStratumRotated()  { try { return localStorage.getItem(LS_STRATUM_ROTATED) === '1'; } catch { return false; } }
 function saveStratumRotated()  { try { localStorage.setItem(LS_STRATUM_ROTATED, '1'); } catch {} }
+const PULSE_ANIM_OPTIONS = [
+  { id: 'sluice',   label: 'Sluice Box' },
+  { id: 'glimmers', label: 'Cave Glimmers' },
+  { id: 'ticker',   label: 'Hash Ticker' },
+  { id: 'conveyor', label: 'Conveyor of Ore' },
+  { id: 'embers',   label: 'Forge Embers' },
+];
+const PULSE_ANIM_DEFAULT = 'ticker';
+function loadPulseAnim() {
+  try {
+    const v = localStorage.getItem(LS_PULSE_ANIM);
+    return PULSE_ANIM_OPTIONS.some(o => o.id === v) ? v : PULSE_ANIM_DEFAULT;
+  } catch { return PULSE_ANIM_DEFAULT; }
+}
+function savePulseAnim(v) { try { localStorage.setItem(LS_PULSE_ANIM, String(v)); } catch {} }
 
 // Detects whether the user is on a "mobile" viewport. Returns true for
 // any width below the 768px breakpoint. Hook re-runs on resize/orientation.
@@ -3103,7 +3119,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = false }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', onPulseAnimChange, compact = false }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -3153,257 +3169,577 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
       else window.removeEventListener('resize', resize);
     };
   }, []);
-
-  // Vein Reveal Pulse — gold mining themed animation.
-  // - A horizontal main vein is always present (the host rock seam)
-  // - Periodically a new BRANCH sprouts from an existing point on the network
-  //   and animates its growth over ~1.5s, then settles into the static layer
-  // - Older branches gradually fade so the network doesn't infinitely fill
-  // - Junction points (where branches share an origin) develop gold blooms
-  // - Sprout rate scales LINEARLY with hashrate (visibly tied)
-  // - Stat-change broadcasts trigger a BIG branch (3x length, brighter gold)
-  // - The whole network gently pulses opacity to feel "alive"
+  // ────────────────────────────────────────────────────────────────────
+  //  Pulse animation dispatcher
+  //  ‒ One useEffect, switches based on `pulseAnim` prop
+  //  ‒ All draw functions share: enabled, ns.hashrate, lastTickRef,
+  //    canvasWidthRef, canvasHeightRef, animationFrameRef, spikesRef,
+  //    canvas (persisted state stored on canvas._foo)
+  //  ‒ Common pattern: a draw(now) function called via requestAnimationFrame
+  //  ‒ Stat-change broadcasts trigger an "event burst" pertinent to each animation
+  // ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Persistent state on the canvas element itself
-    if (!canvas._branches) {
-      canvas._branches = [];
-      canvas._anchorPoints = []; // candidate origin points for new branches
-      canvas._sprouts = [];      // currently animating-in branches
-      canvas._sproutAccum = 0;
-      canvas._timeAccum = 0;
-      canvas._needsInit = true;
-    }
+    // Reset persistent state when switching animations so the new one starts clean
+    canvas._flakes = undefined;
+    canvas._flakeAccum = undefined;
+    canvas._timeAccum = undefined;
+    canvas._columns = undefined;
+    canvas._winnerAccum = undefined;
+    canvas._embers = undefined;
+    canvas._emberAccum = undefined;
+    canvas._chunks = undefined;
+    canvas._chunkAccum = undefined;
+    canvas._glints = undefined;
+    canvas._glintAccum = undefined;
 
-    // Linear sprouts-per-second mapping (NO log compression)
-    // 0 TH/s   → 0.4 sprouts/s  (~1 every 2.5s, ambient)
-    // 30 TH/s  → 4   sprouts/s
-    // 60 TH/s  → 7.6 sprouts/s
-    // 100 TH/s → 12.4 sprouts/s
-    const calcSproutRate = () => {
-      if (!enabled) return 0.15;
-      const ths = (ns.hashrate || 0) / 1e12;
-      return 0.4 + Math.min(12, ths * 0.12);
-    };
+    // ─── Sluice Box Stream ────────────────────────────────────
+    const drawSluice = (dt, W, H) => {
+      if (!canvas._flakes) canvas._flakes = [];
+      if (canvas._flakeAccum === undefined) canvas._flakeAccum = 0;
+      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
+      canvas._timeAccum += dt;
 
-    // Initialize the main horizontal trunk (the "host" seam)
-    const initTrunk = () => {
-      const W = canvasWidthRef.current || 300;
-      const H = canvasHeightRef.current || 60;
-      const baselineY = H * 0.55;
-      // 5 segments forming a slightly meandering horizontal trunk
-      const trunkPoints = [];
-      const segs = 6;
-      for (let i = 0; i <= segs; i++) {
-        const x = (i / segs) * W;
-        const y = baselineY + Math.sin(i * 0.7) * 4;
-        trunkPoints.push({ x, y });
-      }
-      for (let i = 0; i < trunkPoints.length - 1; i++) {
-        canvas._branches.push({
-          x1: trunkPoints[i].x, y1: trunkPoints[i].y,
-          x2: trunkPoints[i+1].x, y2: trunkPoints[i+1].y,
-          width: 2.6, age: 0, life: Infinity, // trunk never dies
-          isTrunk: true,
+      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
+      const speed = enabled ? 60 + Math.min(180, ths * 1.5) : 25;
+      const flakeRate = enabled ? 0.5 + Math.min(15, ths * 0.15) : 0.15;
+
+      canvas._flakeAccum += dt * flakeRate;
+      while (canvas._flakeAccum >= 1) {
+        canvas._flakeAccum -= 1;
+        canvas._flakes.push({
+          x: -3, y: Math.random() * (H - 8) + 4,
+          vx: speed * (1.1 + Math.random() * 0.4),
+          vy: (Math.random() - 0.5) * 8,
+          size: 0.8 + Math.random() * 1.6,
+          shade: Math.random(), life: 0,
         });
       }
-      // Use trunk vertices as initial anchor points for sprouts
-      canvas._anchorPoints = trunkPoints.map(p => ({ x: p.x, y: p.y, generations: 0 }));
-      canvas._needsInit = false;
+
+      spikesRef.current = spikesRef.current
+        .map(s => ({ ...s, age: s.age + dt }))
+        .filter(s => s.age < 0.3);
+      for (const s of spikesRef.current) {
+        if (s.age < dt * 1.5) {
+          for (let i = 0; i < 12; i++) {
+            canvas._flakes.push({
+              x: -3 - Math.random() * 20,
+              y: Math.random() * (H - 8) + 4,
+              vx: speed * (1.2 + Math.random() * 0.6),
+              vy: (Math.random() - 0.5) * 16,
+              size: 1.2 + Math.random() * 2.0,
+              shade: 0.7 + Math.random() * 0.3,
+              life: 0, burst: true,
+            });
+          }
+        }
+      }
+
+      const flakes = canvas._flakes;
+      for (let i = flakes.length - 1; i >= 0; i--) {
+        const f = flakes[i];
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        f.life += dt;
+        if (f.x > W + 5) flakes.splice(i, 1);
+      }
+
+      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      ctx.fillRect(0, 0, W, H);
+
+      const layers = [
+        { y: H * 0.35, amp: 4,  freq: 0.018, color: 'rgba(60,80,100,0.20)', speedMul: 0.7 },
+        { y: H * 0.55, amp: 6,  freq: 0.022, color: 'rgba(80,100,120,0.18)', speedMul: 0.85 },
+        { y: H * 0.75, amp: 5,  freq: 0.026, color: 'rgba(100,120,140,0.14)', speedMul: 1.0 },
+      ];
+      for (const layer of layers) {
+        const phaseShift = canvas._timeAccum * speed * layer.speedMul * 0.05;
+        ctx.strokeStyle = layer.color;
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let x = 0; x <= W; x += 4) {
+          const y = layer.y + Math.sin(x * layer.freq + phaseShift) * layer.amp +
+                              Math.sin(x * layer.freq * 1.7 + phaseShift * 0.6) * (layer.amp * 0.4);
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = 'rgba(100,80,50,0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let x = 0; x < W; x += 14) { ctx.moveTo(x, H); ctx.lineTo(x, H - 6); }
+      ctx.moveTo(0, H - 0.5); ctx.lineTo(W, H - 0.5);
+      ctx.stroke();
+
+      ctx.shadowBlur = enabled ? 6 : 0;
+      for (const f of flakes) {
+        const alpha = enabled ? Math.min(1, f.life * 8) : 0.4;
+        const r = Math.round(245 + f.shade * 10);
+        const g = Math.round(166 + f.shade * 45);
+        const b = Math.round(35 + f.shade * 80);
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+        ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
+        ctx.beginPath();
+        ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
     };
 
-    // Spawn a new branch from a random anchor point
-    const sprout = (big = false) => {
-      if (canvas._anchorPoints.length === 0) return;
-      const pool = canvas._anchorPoints;
-      const origin = pool[Math.floor(Math.random() * pool.length)];
-      const baseLen = big ? 36 + Math.random() * 16 : 14 + Math.random() * 14;
-      // Direction biased upward or downward from the trunk, with sideways drift
-      const upward = origin.generations === 0 ? (Math.random() < 0.55 ? -1 : 1) : (Math.random() < 0.5 ? -1 : 1);
-      const angle = (-Math.PI/2 * upward) + (Math.random() - 0.5) * 1.2;
-      const endX = origin.x + Math.cos(angle) * baseLen;
-      const endY = origin.y + Math.sin(angle) * baseLen;
+    // ─── Cave Glimmers ────────────────────────────────────────
+    const drawGlimmers = (dt, W, H) => {
+      if (!canvas._glints) canvas._glints = [];
+      if (canvas._glintAccum === undefined) canvas._glintAccum = 0;
+      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
+      canvas._timeAccum += dt;
 
-      canvas._sprouts.push({
-        x1: origin.x, y1: origin.y,
-        x2: endX, y2: endY,
-        progress: 0, // 0..1, animation progress
-        duration: big ? 1.8 : 1.2,
-        width: big ? 2.4 : 1.0 + Math.random() * 0.8,
-        big,
-      });
+      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
+      // Glints per second: 0.8 base + 0.2 per TH/s
+      const rate = enabled ? 0.8 + Math.min(20, ths * 0.2) : 0.3;
+
+      canvas._glintAccum += dt * rate;
+      while (canvas._glintAccum >= 1) {
+        canvas._glintAccum -= 1;
+        canvas._glints.push({
+          x: 4 + Math.random() * (W - 8),
+          y: 4 + Math.random() * (H - 8),
+          age: 0,
+          life: 0.6 + Math.random() * 1.2,
+          maxR: 1.6 + Math.random() * 2.4,
+          shade: Math.random(),
+          gold: false,
+        });
+      }
+
+      spikesRef.current = spikesRef.current
+        .map(s => ({ ...s, age: s.age + dt }))
+        .filter(s => s.age < 0.3);
+      for (const s of spikesRef.current) {
+        if (s.age < dt * 1.5) {
+          // Big glint cluster — like a big find
+          for (let i = 0; i < 6; i++) {
+            canvas._glints.push({
+              x: 4 + Math.random() * (W - 8),
+              y: 4 + Math.random() * (H - 8),
+              age: 0, life: 1.4 + Math.random() * 0.8,
+              maxR: 3 + Math.random() * 2,
+              shade: 0.8, gold: true,
+            });
+          }
+        }
+      }
+
+      const glints = canvas._glints;
+      for (let i = glints.length - 1; i >= 0; i--) {
+        glints[i].age += dt;
+        if (glints[i].age > glints[i].life) glints.splice(i, 1);
+      }
+
+      // Dark cave-rock background with subtle vignette
+      ctx.fillStyle = 'rgba(14, 16, 20, 0.95)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Faint cave-wall texture (deterministic pseudo-noise lines)
+      ctx.strokeStyle = 'rgba(60, 50, 40, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 0; x < W; x += 12) {
+        const y1 = (Math.sin(x * 0.13) + Math.sin(x * 0.07)) * 4 + H * 0.3;
+        const y2 = (Math.cos(x * 0.11) + Math.sin(x * 0.05)) * 5 + H * 0.7;
+        ctx.moveTo(x, y1); ctx.lineTo(x + 8, y1 + 1);
+        ctx.moveTo(x + 4, y2); ctx.lineTo(x + 12, y2 + 1.5);
+      }
+      ctx.stroke();
+
+      // Render glints
+      for (const g of glints) {
+        const t = g.age / g.life;
+        // 3-stage envelope: fade in (0-0.2) → peak (0.2-0.6) → fade out (0.6-1.0)
+        let alpha;
+        if (t < 0.2) alpha = t / 0.2;
+        else if (t < 0.6) alpha = 1;
+        else alpha = (1 - t) / 0.4;
+        if (!enabled) alpha *= 0.45;
+
+        const r = g.gold ? 255 : Math.round(245 + g.shade * 10);
+        const gC = g.gold ? 230 : Math.round(166 + g.shade * 50);
+        const b = g.gold ? 130 : Math.round(35 + g.shade * 90);
+
+        // Star-burst rays + center dot
+        ctx.shadowColor = `rgba(${r},${gC},${b},0.9)`;
+        ctx.shadowBlur = g.gold ? 14 : 8;
+
+        // Center bright dot
+        ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, g.maxR * (alpha * 0.6 + 0.4), 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4-point star rays at peak
+        if (alpha > 0.3) {
+          ctx.strokeStyle = `rgba(${r},${gC},${b},${alpha * 0.7})`;
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          const rayLen = g.maxR * 2.5;
+          ctx.moveTo(g.x - rayLen, g.y); ctx.lineTo(g.x + rayLen, g.y);
+          ctx.moveTo(g.x, g.y - rayLen); ctx.lineTo(g.x, g.y + rayLen);
+          ctx.stroke();
+        }
+      }
+      ctx.shadowBlur = 0;
     };
 
+    // ─── Hash Ticker (Matrix Rain) ────────────────────────────
+    const HEX_CHARS = '0123456789abcdef';
+    const drawTicker = (dt, W, H) => {
+      if (!canvas._columns) canvas._columns = [];
+      if (canvas._winnerAccum === undefined) canvas._winnerAccum = 0;
+      const CHAR_W = 9;
+      const CHAR_H = 11;
+
+      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
+      const maxColumns = Math.floor(W / CHAR_W);
+      const columnCount = Math.min(maxColumns, 10 + Math.floor(ths * 0.4));
+      const fallSpeed = enabled ? 35 + Math.min(120, ths * 0.8) : 12;
+      const winnerRate = enabled ? 0.3 + Math.min(8, ths * 0.04) : 0.1;
+
+      while (canvas._columns.length < columnCount) {
+        canvas._columns.push({ drops: [], spawnAccum: Math.random() });
+      }
+      while (canvas._columns.length > columnCount) canvas._columns.pop();
+      const spacing = columnCount > 0 ? W / columnCount : W;
+      for (let i = 0; i < canvas._columns.length; i++) {
+        canvas._columns[i].x = spacing * i + spacing / 2;
+      }
+
+      canvas._winnerAccum += dt * winnerRate;
+      while (canvas._winnerAccum >= 1) {
+        canvas._winnerAccum -= 1;
+        if (canvas._columns.length > 0) {
+          const col = canvas._columns[Math.floor(Math.random() * canvas._columns.length)];
+          if (col.drops.length > 0) {
+            col.drops[0].isWinner = true;
+            col.drops[0].winnerLife = 0;
+          }
+        }
+      }
+
+      spikesRef.current = spikesRef.current
+        .map(s => ({ ...s, age: s.age + dt }))
+        .filter(s => s.age < 0.3);
+      for (const s of spikesRef.current) {
+        if (s.age < dt * 1.5) {
+          const numFlash = Math.min(4, canvas._columns.length);
+          const indices = new Set();
+          while (indices.size < numFlash && indices.size < canvas._columns.length) {
+            indices.add(Math.floor(Math.random() * canvas._columns.length));
+          }
+          for (const idx of indices) {
+            const col = canvas._columns[idx];
+            if (col.drops.length > 0) {
+              col.drops[0].isWinner = true;
+              col.drops[0].isBroadcast = true;
+              col.drops[0].winnerLife = 0;
+            }
+          }
+        }
+      }
+
+      for (const col of canvas._columns) {
+        col.spawnAccum -= dt * (fallSpeed / 60);
+        if (col.spawnAccum <= 0 && col.drops.length < 3) {
+          const len = 6 + Math.floor(Math.random() * 14);
+          const chars = [];
+          for (let i = 0; i < len; i++) chars.push(HEX_CHARS[Math.floor(Math.random() * 16)]);
+          col.drops.push({
+            y: -CHAR_H * len, chars,
+            speedMul: 0.85 + Math.random() * 0.4,
+            nextChange: 0.05 + Math.random() * 0.15,
+            sinceChange: 0,
+            goldIdx: Math.random() < 0.25 ? Math.floor(Math.random() * len) : -1,
+          });
+          col.spawnAccum = 0.6 + Math.random() * 1.2;
+        }
+        for (let i = col.drops.length - 1; i >= 0; i--) {
+          const d = col.drops[i];
+          d.y += fallSpeed * d.speedMul * dt;
+          d.sinceChange += dt;
+          if (d.sinceChange >= d.nextChange) {
+            d.chars[Math.floor(Math.random() * d.chars.length)] = HEX_CHARS[Math.floor(Math.random() * 16)];
+            d.sinceChange = 0;
+            d.nextChange = 0.05 + Math.random() * 0.15;
+          }
+          if (d.isWinner !== undefined) d.winnerLife += dt;
+          if (d.y > H + CHAR_H * d.chars.length) col.drops.splice(i, 1);
+        }
+      }
+
+      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'center';
+
+      for (const col of canvas._columns) {
+        for (const d of col.drops) {
+          const len = d.chars.length;
+          for (let i = 0; i < len; i++) {
+            const charY = d.y + i * CHAR_H;
+            if (charY < -CHAR_H || charY > H + CHAR_H) continue;
+            const fromHead = (len - 1 - i) / len;
+            let r, g, b, a;
+            const isGold = d.isWinner || (d.goldIdx === i && d.y > 0);
+            if (isGold) {
+              const winnerFade = d.isWinner ? Math.max(0.6, 1 - d.winnerLife / 1.2) : 1;
+              if (d.isBroadcast) { r = 255; g = 240; b = 180; }
+              else { r = 255; g = 215; b = 90; }
+              a = (i === len - 1 ? 1 : 0.7 - fromHead * 0.6) * winnerFade;
+              if (!enabled) a *= 0.4;
+              ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
+              ctx.shadowBlur = 6;
+            } else {
+              const dim = enabled ? 1 : 0.5;
+              if (i === len - 1) { r = 200; g = 215; b = 230; a = 0.85 * dim; }
+              else { r = 110; g = 125; b = 145; a = (1 - fromHead * 0.85) * 0.55 * dim; }
+              ctx.shadowBlur = 0;
+            }
+            ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
+            ctx.fillText(d.chars[i], col.x, charY);
+          }
+        }
+      }
+      ctx.shadowBlur = 0;
+    };
+
+    // ─── Conveyor of Ore ──────────────────────────────────────
+    const drawConveyor = (dt, W, H) => {
+      if (!canvas._chunks) canvas._chunks = [];
+      if (canvas._chunkAccum === undefined) canvas._chunkAccum = 0;
+      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
+      canvas._timeAccum += dt;
+
+      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
+      // Conveyor speed: 30 + 0.6 per TH/s
+      const speed = enabled ? 30 + Math.min(150, ths * 0.6) : 12;
+      // Chunks per sec: 0.6 + 0.08 per TH/s
+      const chunkRate = enabled ? 0.6 + Math.min(8, ths * 0.08) : 0.2;
+
+      canvas._chunkAccum += dt * chunkRate;
+      while (canvas._chunkAccum >= 1) {
+        canvas._chunkAccum -= 1;
+        // Chunk size + how much gold it has (random)
+        const isGoldRich = Math.random() < 0.35;
+        canvas._chunks.push({
+          x: -16,
+          y: H * 0.55, // resting on the conveyor belt
+          w: 12 + Math.random() * 10,
+          h: 8 + Math.random() * 5,
+          tilt: (Math.random() - 0.5) * 0.3,
+          // Gold spots embedded in this chunk
+          spots: Array.from({ length: isGoldRich ? 3 + Math.floor(Math.random() * 3) : Math.floor(Math.random() * 2) }, () => ({
+            dx: (Math.random() - 0.5),
+            dy: (Math.random() - 0.5),
+            r: 0.6 + Math.random() * 1.2,
+          })),
+          rich: isGoldRich,
+          big: false,
+        });
+      }
+
+      spikesRef.current = spikesRef.current
+        .map(s => ({ ...s, age: s.age + dt }))
+        .filter(s => s.age < 0.3);
+      for (const s of spikesRef.current) {
+        if (s.age < dt * 1.5) {
+          // Big nugget chunk — extra-rich gold
+          canvas._chunks.push({
+            x: -22, y: H * 0.55,
+            w: 22, h: 14, tilt: (Math.random() - 0.5) * 0.2,
+            spots: Array.from({ length: 6 }, () => ({
+              dx: (Math.random() - 0.5), dy: (Math.random() - 0.5),
+              r: 1 + Math.random() * 1.5,
+            })),
+            rich: true, big: true,
+          });
+        }
+      }
+
+      const chunks = canvas._chunks;
+      for (let i = chunks.length - 1; i >= 0; i--) {
+        chunks[i].x += speed * dt;
+        if (chunks[i].x > W + 25) chunks.splice(i, 1);
+      }
+
+      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Conveyor belt — two horizontal rails with cross-segments scrolling
+      const beltY = H * 0.7;
+      ctx.strokeStyle = 'rgba(120, 90, 60, 0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, beltY); ctx.lineTo(W, beltY);
+      ctx.moveTo(0, beltY + 6); ctx.lineTo(W, beltY + 6);
+      ctx.stroke();
+
+      // Belt segments scrolling at conveyor speed
+      ctx.strokeStyle = 'rgba(160, 130, 90, 0.4)';
+      const segSpacing = 10;
+      const offset = (canvas._timeAccum * speed) % segSpacing;
+      ctx.beginPath();
+      for (let x = -segSpacing + offset; x < W; x += segSpacing) {
+        ctx.moveTo(x, beltY); ctx.lineTo(x, beltY + 6);
+      }
+      ctx.stroke();
+
+      // Render chunks
+      for (const c of chunks) {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.rotate(c.tilt);
+        // Rock body
+        const rockColor = c.rich ? 'rgba(95, 75, 50, 0.95)' : 'rgba(70, 65, 60, 0.95)';
+        ctx.fillStyle = rockColor;
+        ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+        // Highlight edge
+        ctx.strokeStyle = c.rich ? 'rgba(140, 110, 70, 0.9)' : 'rgba(100, 95, 90, 0.7)';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(-c.w / 2, -c.h / 2, c.w, c.h);
+        // Gold spots
+        const goldDim = enabled ? 1 : 0.5;
+        for (const spot of c.spots) {
+          ctx.fillStyle = c.big ? `rgba(255, 230, 130, ${0.95 * goldDim})` : `rgba(245, 180, 60, ${0.85 * goldDim})`;
+          ctx.shadowColor = c.big ? 'rgba(255,230,130,0.9)' : 'rgba(245,180,60,0.6)';
+          ctx.shadowBlur = c.big ? 6 : 3;
+          ctx.beginPath();
+          ctx.arc(spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, spot.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    };
+
+    // ─── Forge Embers ─────────────────────────────────────────
+    const drawEmbers = (dt, W, H) => {
+      if (!canvas._embers) canvas._embers = [];
+      if (canvas._emberAccum === undefined) canvas._emberAccum = 0;
+      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
+      canvas._timeAccum += dt;
+
+      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
+      // Embers per sec: 1 + 0.18 per TH/s
+      const rate = enabled ? 1 + Math.min(18, ths * 0.18) : 0.4;
+
+      canvas._emberAccum += dt * rate;
+      while (canvas._emberAccum >= 1) {
+        canvas._emberAccum -= 1;
+        canvas._embers.push({
+          x: 4 + Math.random() * (W - 8),
+          y: H + 2,
+          // Upward velocity with subtle drift
+          vy: -(20 + Math.random() * 25),
+          vx: (Math.random() - 0.5) * 14,
+          size: 0.6 + Math.random() * 1.4,
+          shade: Math.random(),
+          life: 0,
+          maxLife: 1.2 + Math.random() * 1.0,
+          big: false,
+        });
+      }
+
+      spikesRef.current = spikesRef.current
+        .map(s => ({ ...s, age: s.age + dt }))
+        .filter(s => s.age < 0.3);
+      for (const s of spikesRef.current) {
+        if (s.age < dt * 1.5) {
+          // Big ember burst — like dropping fresh coal on the forge
+          for (let i = 0; i < 14; i++) {
+            canvas._embers.push({
+              x: 4 + Math.random() * (W - 8),
+              y: H - Math.random() * 6,
+              vy: -(35 + Math.random() * 30),
+              vx: (Math.random() - 0.5) * 30,
+              size: 1.2 + Math.random() * 1.5,
+              shade: 0.7 + Math.random() * 0.3,
+              life: 0,
+              maxLife: 1.5 + Math.random() * 0.8,
+              big: true,
+            });
+          }
+        }
+      }
+
+      const embers = canvas._embers;
+      for (let i = embers.length - 1; i >= 0; i--) {
+        const e = embers[i];
+        e.life += dt;
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        // Slight upward acceleration (heat rises)
+        e.vy -= 6 * dt;
+        // Horizontal drift settles
+        e.vx *= 0.985;
+        if (e.life > e.maxLife || e.y < -5) embers.splice(i, 1);
+      }
+
+      // Dark forge background with subtle warm gradient at bottom
+      ctx.fillStyle = 'rgba(16, 14, 12, 0.9)';
+      ctx.fillRect(0, 0, W, H);
+      // Glowing forge floor at bottom edge
+      const grad = ctx.createLinearGradient(0, H - 12, 0, H);
+      grad.addColorStop(0, 'rgba(60, 30, 10, 0)');
+      grad.addColorStop(1, enabled ? 'rgba(150, 70, 20, 0.4)' : 'rgba(80, 40, 15, 0.2)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, H - 12, W, 12);
+
+      // Render embers
+      for (const e of embers) {
+        const t = e.life / e.maxLife;
+        // Brightness fades over lifetime
+        let alpha;
+        if (t < 0.1) alpha = t / 0.1;
+        else alpha = (1 - t);
+        if (!enabled) alpha *= 0.5;
+
+        // Color shift: hot orange → cooler red-amber as it ages
+        const hot = 1 - t;
+        const r = e.big ? 255 : Math.round(245 + e.shade * 10);
+        const g = Math.round((e.big ? 170 : 120) * hot + (e.big ? 80 : 50) * t);
+        const b = Math.round(20 + e.shade * 30 * hot);
+
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+        ctx.shadowColor = `rgba(${r},${g + 40},${b + 30},${alpha * 0.9})`;
+        ctx.shadowBlur = e.big ? 8 : 5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    };
+
+    // ─── Master draw — picks the right one ────────────────────
     const draw = (now) => {
       const dt = Math.min(0.05, (now - lastTickRef.current) / 1000);
       lastTickRef.current = now;
-      canvas._timeAccum += dt;
-
       const W = canvasWidthRef.current;
       const H = canvasHeightRef.current;
       if (!W || !H) {
         animationFrameRef.current = requestAnimationFrame(draw);
         return;
       }
-
-      // Initialize trunk on first frame with valid dimensions
-      if (canvas._needsInit) initTrunk();
-
-      // Stochastic sprout spawning
-      const rate = calcSproutRate();
-      canvas._sproutAccum += dt * rate;
-      while (canvas._sproutAccum >= 1) {
-        canvas._sproutAccum -= 1;
-        sprout(false);
-      }
-
-      // Drain broadcast events into BIG sprouts
-      spikesRef.current = spikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) sprout(true);
-      }
-
-      // Animate sprouts. When complete, promote to a permanent branch
-      // and add its endpoint as a new anchor for future sprouts.
-      for (let i = canvas._sprouts.length - 1; i >= 0; i--) {
-        const s = canvas._sprouts[i];
-        s.progress += dt / s.duration;
-        if (s.progress >= 1) {
-          canvas._branches.push({
-            x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2,
-            width: s.width, age: 0,
-            life: s.big ? 24 : 12, // big branches last longer
-            big: s.big, isTrunk: false,
-          });
-          // Add endpoint as a new anchor (limit pool size)
-          canvas._anchorPoints.push({ x: s.x2, y: s.y2, generations: 1 });
-          if (canvas._anchorPoints.length > 60) canvas._anchorPoints.shift();
-          canvas._sprouts.splice(i, 1);
-        }
-      }
-
-      // Age and prune branches (trunk never ages)
-      const branches = canvas._branches;
-      for (let i = branches.length - 1; i >= 0; i--) {
-        const b = branches[i];
-        if (b.isTrunk) continue;
-        b.age += dt;
-        if (b.age > b.life) branches.splice(i, 1);
-      }
-      // Hard cap to prevent runaway accumulation at very high hashrates
-      if (branches.length > 180) {
-        // Remove oldest non-trunk branches
-        for (let i = 0; i < branches.length && branches.length > 180; i++) {
-          if (!branches[i].isTrunk) { branches.splice(i, 1); i--; }
-        }
-      }
-
-      // ─── Render ───────────────────────────────────────────────
       ctx.clearRect(0, 0, W, H);
-
-      // Subtle dark rock background
-      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
-      ctx.fillRect(0, 0, W, H);
-
-      // Network breathing: gentle global opacity pulse (0.85 → 1.0 → 0.85)
-      const breath = 0.85 + Math.sin(canvas._timeAccum * 1.3) * 0.075 + 0.075;
-
-      // Render permanent branches
-      for (const b of branches) {
-        let alpha;
-        if (b.isTrunk) {
-          alpha = 1 * breath;
-        } else {
-          // Fade in over first 0.3s, full for middle, fade out last 30%
-          const lifeT = b.age / b.life;
-          if (b.age < 0.3) alpha = (b.age / 0.3) * breath;
-          else if (lifeT > 0.7) alpha = ((1 - lifeT) / 0.3) * breath;
-          else alpha = breath;
-        }
-        if (!enabled) alpha *= 0.45;
-
-        const baseColor = b.big
-          ? `rgba(255, 215, 90, ${alpha})`
-          : `rgba(245, 166, 35, ${alpha * 0.92})`;
-
-        ctx.strokeStyle = baseColor;
-        ctx.lineWidth = b.width;
-        ctx.lineCap = 'round';
-        ctx.shadowColor = b.big ? 'rgba(255,215,90,0.6)' : 'rgba(245,166,35,0.4)';
-        ctx.shadowBlur = (b.big ? 6 : 3) * (enabled ? 1 : 0.4);
-        ctx.beginPath();
-        ctx.moveTo(b.x1, b.y1);
-        ctx.lineTo(b.x2, b.y2);
-        ctx.stroke();
-      }
-      ctx.shadowBlur = 0;
-
-      // Render currently-growing sprouts (animated reveal)
-      for (const s of canvas._sprouts) {
-        const t = s.progress;
-        // Eased out cubic — fast at start, slows as it settles
-        const eased = 1 - Math.pow(1 - t, 3);
-        const tipX = s.x1 + (s.x2 - s.x1) * eased;
-        const tipY = s.y1 + (s.y2 - s.y1) * eased;
-
-        // The growing line itself — bright at the leading tip
-        const grad = ctx.createLinearGradient(s.x1, s.y1, tipX, tipY);
-        const grow = enabled ? 1 : 0.5;
-        grad.addColorStop(0, `rgba(245, 166, 35, ${0.9 * grow})`);
-        grad.addColorStop(0.7, `rgba(255, 200, 80, ${0.95 * grow})`);
-        grad.addColorStop(1, `rgba(255, 240, 180, ${1.0 * grow})`); // bright leading tip
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = s.big ? 2.6 : 1.4;
-        ctx.lineCap = 'round';
-        ctx.shadowColor = s.big ? 'rgba(255,215,90,0.8)' : 'rgba(245,166,35,0.7)';
-        ctx.shadowBlur = enabled ? 8 : 2;
-        ctx.beginPath();
-        ctx.moveTo(s.x1, s.y1);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-
-        // Glowing dot at the leading tip while it's growing
-        if (t < 0.95) {
-          ctx.fillStyle = `rgba(255, 240, 180, ${0.9 * grow})`;
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(tipX, tipY, s.big ? 2.5 : 1.6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.shadowBlur = 0;
-
-      // Render junction blooms — small gold pools at points where 3+ branches meet.
-      // Compute on-the-fly: bucket branch endpoints by rounded position; any bucket
-      // with 3+ entries is a junction.
-      const jBuckets = new Map();
-      for (const b of branches) {
-        for (const pt of [{x: b.x1, y: b.y1}, {x: b.x2, y: b.y2}]) {
-          const key = `${Math.round(pt.x / 4)}_${Math.round(pt.y / 4)}`;
-          if (!jBuckets.has(key)) jBuckets.set(key, { x: pt.x, y: pt.y, count: 0 });
-          jBuckets.get(key).count += 1;
-        }
-      }
-      for (const j of jBuckets.values()) {
-        if (j.count >= 3) {
-          const r = Math.min(3.5, 1.2 + j.count * 0.3);
-          const a = breath * (enabled ? 0.85 : 0.4);
-          ctx.fillStyle = `rgba(255, 200, 80, ${a})`;
-          ctx.shadowColor = 'rgba(255,200,80,0.7)';
-          ctx.shadowBlur = 6;
-          ctx.beginPath();
-          ctx.ellipse(j.x, j.y, r, r * 0.7, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      ctx.shadowBlur = 0;
-
+      if (pulseAnim === 'sluice') drawSluice(dt, W, H);
+      else if (pulseAnim === 'glimmers') drawGlimmers(dt, W, H);
+      else if (pulseAnim === 'conveyor') drawConveyor(dt, W, H);
+      else if (pulseAnim === 'embers') drawEmbers(dt, W, H);
+      else drawTicker(dt, W, H); // default 'ticker'
       animationFrameRef.current = requestAnimationFrame(draw);
     };
 
@@ -3411,7 +3747,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate]);
+  }, [enabled, ns.hashrate, pulseAnim]);
+
+
+
 
 
 
@@ -3516,7 +3855,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
           <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
         </div>
 
-        {/* The 3 stat tiles — compact */}
+        {/* Animation picker — compact horizontal row, click to switch */}
+        {onPulseAnimChange && (
+          <div style={{
+            display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'0.25rem',
+            marginBottom:'0.6rem', padding:'0.2rem 0',
+          }}>
+            {PULSE_ANIM_OPTIONS.map(opt => (
+              <button
+                key={opt.id}
+                onClick={(e)=>{ e.stopPropagation(); onPulseAnimChange(opt.id); }}
+                style={{
+                  background: pulseAnim===opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+                  border: `1px solid ${pulseAnim===opt.id ? 'var(--amber)' : 'var(--border)'}`,
+                  color: pulseAnim===opt.id ? 'var(--amber)' : 'var(--text-2)',
+                  fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.06em',
+                  textTransform:'uppercase', padding:'0.2rem 0.45rem',
+                  cursor:'pointer', whiteSpace:'nowrap', borderRadius:2,
+                  transition:'all 0.15s ease',
+                }}
+              >{opt.label}</button>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
@@ -3577,6 +3938,30 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
         <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
       </div>
 
+      {/* Animation picker — compact horizontal row, click to switch */}
+      {onPulseAnimChange && (
+        <div style={{
+          display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'0.3rem',
+          marginBottom:'0.7rem', padding:'0.2rem 0',
+        }}>
+          {PULSE_ANIM_OPTIONS.map(opt => (
+            <button
+              key={opt.id}
+              onClick={(e)=>{ e.stopPropagation(); onPulseAnimChange(opt.id); }}
+              style={{
+                background: pulseAnim===opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+                border: `1px solid ${pulseAnim===opt.id ? 'var(--amber)' : 'var(--border)'}`,
+                color: pulseAnim===opt.id ? 'var(--amber)' : 'var(--text-2)',
+                fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.06em',
+                textTransform:'uppercase', padding:'0.25rem 0.55rem',
+                cursor:'pointer', whiteSpace:'nowrap', borderRadius:2,
+                transition:'all 0.15s ease',
+              }}
+            >{opt.label}</button>
+          ))}
+        </div>
+      )}
+
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
         <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
@@ -3622,7 +4007,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, compact = fa
 // Section names ("FIREPOWER — LIVE" and "SOLOSTRIKE PULSE") are preserved
 // from the standalone cards so users still recognize what they're looking at.
 // PulsePanel in compact mode renders its own 100% SOLO stamp internally.
-function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, onOpenStrikers }) {
+function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, onOpenStrikers, pulseAnim, onPulseAnimChange }) {
   return (
     <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
       {/* Firepower section */}
@@ -3635,7 +4020,7 @@ function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, 
       }}/>
 
       {/* Pulse section — renders its own StampSolo internally in compact mode */}
-      <PulsePanel networkStats={networkStats} onOpenSettings={onOpenSettings} onOpenStrikers={onOpenStrikers} compact />
+      <PulsePanel networkStats={networkStats} onOpenSettings={onOpenSettings} onOpenStrikers={onOpenStrikers} pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange} compact />
     </div>
   );
 }
@@ -4959,6 +5344,11 @@ export default function App() {
     saveCarouselEnabled(v);
     setCarouselEnabled(!!v);
   }, []);
+  const [pulseAnim, setPulseAnim] = useState(() => loadPulseAnim());
+  const onPulseAnimChange = useCallback((v) => {
+    savePulseAnim(v);
+    setPulseAnim(v);
+  }, []);
   const useCarousel = isMobile && carouselEnabled;
   const carouselRef = useRef(null);
   const headerRef = useRef(null);
@@ -5148,6 +5538,8 @@ export default function App() {
       networkStats={poolState?.networkStats}
       onOpenSettings={()=>setShowSettings(true)}
       onOpenStrikers={()=>setShowStrikers(true)}
+      pulseAnim={pulseAnim}
+      onPulseAnimChange={onPulseAnimChange}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode}/>,
