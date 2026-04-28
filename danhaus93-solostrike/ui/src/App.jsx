@@ -3231,7 +3231,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       const dpr = window.devicePixelRatio || 1;
       dprRef.current = dpr;
       const cssWidth = Math.max(120, rect.width);
-      const cssHeight = 96;
+      // iter25: read actual container height instead of hardcoded 96.
+      // Container is 88px in compact (carousel) and 160px standalone.
+      // Hardcoding 96 left the bottom of the standalone container empty
+      // because the canvas backing store was smaller than the visible area.
+      const cssHeight = Math.max(40, rect.height);
       canvas.style.width = cssWidth + 'px';
       canvas.style.height = cssHeight + 'px';
       canvas.width = Math.round(cssWidth * dpr);
