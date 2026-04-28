@@ -4736,6 +4736,8 @@ export default function App() {
   }, []);
   const useCarousel = isMobile && carouselEnabled;
   const carouselRef = useRef(null);
+  const headerRef = useRef(null);
+  const footerRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
   // v1.7.22-iter: tag the body AND html with the active layout mode so CSS
@@ -4780,6 +4782,56 @@ export default function App() {
       setActiveIndex(0);
     }
   }, [useCarousel]);
+
+  // Measure actual header/footer heights and set --carousel-h on the carousel
+  // element. Replaces the CSS fallback `calc(100dvh - 246px)` which assumes
+  // a fixed 246px for header+footer combined. In Umbrel's iframe and on
+  // different devices the actual heights vary — measuring directly avoids
+  // wasted space at the bottom (when 246px overestimated) and overflow
+  // (when underestimated). Re-runs on viewport resize, orientation change,
+  // and whenever the header/footer size shifts (e.g. when minimal mode is
+  // toggled and the top strip disappears).
+  useEffect(() => {
+    if (!useCarousel) return;
+    const update = () => {
+      const headerEl = headerRef.current;
+      const footerEl = footerRef.current;
+      const carouselEl = carouselRef.current;
+      if (!carouselEl) return;
+      const headerH = headerEl ? headerEl.getBoundingClientRect().height : 0;
+      const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
+      // documentElement.clientHeight is the iframe's content area height
+      // (or the viewport height when not in an iframe). This is what we
+      // actually have to work with — NOT 100dvh which can differ inside
+      // Umbrel's webview.
+      const containerH = document.documentElement.clientHeight;
+      const carouselH = Math.max(200, containerH - headerH - footerH);
+      carouselEl.style.setProperty('--carousel-h', `${carouselH}px`);
+      carouselEl.style.height = `${carouselH}px`;
+    };
+    // Run once now and again on the next frame (after layout settles)
+    update();
+    const raf1 = requestAnimationFrame(update);
+    const t1 = setTimeout(update, 100);
+    const t2 = setTimeout(update, 500);
+    let ro;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(update);
+      if (headerRef.current) ro.observe(headerRef.current);
+      if (footerRef.current) ro.observe(footerRef.current);
+      ro.observe(document.documentElement);
+    }
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    return () => {
+      if (ro) ro.disconnect();
+      cancelAnimationFrame(raf1);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
+  }, [useCarousel, minimalMode, stripSettings.enabled]);
 
   const jumpToCard = useCallback((idx) => {
     const el = carouselRef.current;
@@ -4874,7 +4926,7 @@ export default function App() {
 
   return (
     <>
-     <div style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden', paddingTop:'env(safe-area-inset-top)' }}>
+     <div ref={headerRef} style={{ position:'sticky', top:0, zIndex:50, background:'rgba(6,7,8,0.92)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', width:'100%', maxWidth:'100%', boxSizing:'border-box', overflow:'hidden', paddingTop:'env(safe-area-inset-top)' }}>
         {updateTier && !bannerSuppressed && (
           <UpdateBanner
             tier={updateTier}
@@ -4936,7 +4988,7 @@ export default function App() {
           />
         )}
       </main>
-        <footer style={{borderTop:'1px solid var(--border)',padding:'0.6rem 0.75rem',paddingBottom:'calc(0.6rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'sticky',bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
+        <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.6rem 0.75rem',paddingBottom:'calc(0.6rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'sticky',bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
         <span>SoloStrike v1.7.22 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
