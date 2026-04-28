@@ -53,11 +53,17 @@ function startStatusPoller(state, broadcast, logDir) {
   const HISTORY_MAX_POINTS  = 1440;       // 24h at 1min
   const WEEK_MAX_POINTS     = 10080;      // 7d at 1min
   const WEEK_INTERVAL_MS    = 60 * 1000;
+  // iter26: SPS (shares per second) history for Strike Velocity card
+  const SPS_INTERVAL_MS     = 60 * 1000;
+  const SPS_MAX_POINTS      = 1440;       // 24h at 1min
   let lastHistoryPush = 0;
   let lastWeekPush = 0;
+  let lastSpsPush = 0;
 
   if (!Array.isArray(state.hashrate.week)) state.hashrate.week = [];
   if (!state.hashrate.averages) state.hashrate.averages = {};
+  // iter26: ensure shares.spsHistory exists for Strike Velocity tracking
+  if (!Array.isArray(state.shares.spsHistory)) state.shares.spsHistory = [];
 
   function cleanupStaleWorkers() {
     const now = Date.now();
@@ -84,7 +90,9 @@ function startStatusPoller(state, broadcast, logDir) {
     state.hashrate.averages = {
       hr1m:  computeAverage(shortHist,      60 * 1000),
       hr5m:  computeAverage(shortHist,  5 * 60 * 1000),
+      hr15m: computeAverage(shortHist, 15 * 60 * 1000),
       hr1h:  computeAverage(shortHist, 60 * 60 * 1000),
+      hr6h:  computeAverage(shortHist,  6 * 60 * 60 * 1000),
       hr24h: computeAverage(shortHist, 24 * 60 * 60 * 1000),
       hr7d:  computeAverage(longHist,   7 * 24 * 60 * 60 * 1000),
     };
@@ -133,6 +141,15 @@ function startStatusPoller(state, broadcast, logDir) {
             state.bestshare            = shares.bestshare     || 0;
             state.totalWorkers         = summary.Workers      || 0;
             state.totalUsers           = summary.Users        || 0;
+
+            // iter26: roll SPS history for Strike Velocity card
+            if (now - lastSpsPush >= SPS_INTERVAL_MS) {
+              state.shares.spsHistory.push({ ts: now, sps: state.shares.sps1m || 0 });
+              if (state.shares.spsHistory.length > SPS_MAX_POINTS) {
+                state.shares.spsHistory.shift();
+              }
+              lastSpsPush = now;
+            }
           } catch (e) {}
         }
       }
@@ -180,6 +197,17 @@ function startStatusPoller(state, broadcast, logDir) {
               const age = Date.now() - wk.lastSeen;
               wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
+
+              // iter26: per-worker status history for uptime sparklines.
+              // Sample every 15 minutes, keep last 96 points (24h).
+              // Stored as a packed array of {t, on} where on=1/0.
+              if (!Array.isArray(wk.statusHistory)) wk.statusHistory = [];
+              const lastPt = wk.statusHistory[wk.statusHistory.length - 1];
+              const SAMPLE_INTERVAL_MS = 15 * 60 * 1000;
+              if (!lastPt || (Date.now() - lastPt.t) >= SAMPLE_INTERVAL_MS) {
+                wk.statusHistory.push({ t: Date.now(), on: wk.status === 'online' ? 1 : 0 });
+                if (wk.statusHistory.length > 96) wk.statusHistory.shift();
+              }
 
               // refresh miner detection + IP on every poll — cheap and keeps IP fresh
               const prevSource = wk.minerSource;
