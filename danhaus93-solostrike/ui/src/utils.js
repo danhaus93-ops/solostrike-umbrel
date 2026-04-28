@@ -48,6 +48,20 @@ export function fmtPct(x, digits=2){
   if(Math.abs(x)<0.0001)return '0%';
   return `${x.toFixed(digits)}%`;
 }
+// iter26: "1 in X" inverse formatting for very small probabilities.
+// Takes a probability value in [0,1] and returns "1 in 47.5K" style.
+// More intuitive than scientific notation for solo mining odds.
+export function fmtOddsInverse(p){
+  if(p==null||isNaN(p)||p<=0)return'—';
+  if(p>=1)return'1 in 1';
+  const inv = 1 / p;
+  if (inv < 1000)        return `1 in ${inv.toFixed(0)}`;
+  if (inv < 1e6)         return `1 in ${(inv/1e3).toFixed(1)}K`;
+  if (inv < 1e9)         return `1 in ${(inv/1e6).toFixed(2)}M`;
+  if (inv < 1e12)        return `1 in ${(inv/1e9).toFixed(2)}B`;
+  if (inv < 1e15)        return `1 in ${(inv/1e12).toFixed(2)}T`;
+  return `1 in ${(inv/1e15).toFixed(2)}Q`;
+}
 export function fmtDurationMs(ms){
   if(!ms||ms<0)return'—';
   const s=Math.floor(ms/1000);
