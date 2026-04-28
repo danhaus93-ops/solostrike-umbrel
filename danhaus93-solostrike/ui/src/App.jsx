@@ -1597,14 +1597,51 @@ function useIsMobile() {
 // ── Carousel position dots (v1.7.17) ────────────────────────────────────────
 // Floating indicator showing which card is centered. Tap a dot to jump.
 function CarouselDots({ count, activeIndex, onJump }) {
+  // Dots fade out after a few seconds of inactivity, reappear on swipe/touch.
+  // - Show on initial mount briefly (so user discovers the dots exist)
+  // - Show on activeIndex change (user swiped to a different card)
+  // - Show on touchstart/scroll on the carousel (partial swipes too)
+  // - After 2.5s of no activity, fade out
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef(null);
+
+  const ping = useCallback(() => {
+    setVisible(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setVisible(false), 2500);
+  }, []);
+
+  // Trigger on activeIndex change (covers complete swipes and dot taps)
+  useEffect(() => {
+    if (count <= 1) return;
+    ping();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [activeIndex, count, ping]);
+
+  // Also listen to touch/scroll on the carousel directly so partial swipes
+  // (that don't change the active card) still wake the dots
+  useEffect(() => {
+    if (count <= 1) return;
+    const carousel = document.querySelector('.ss-carousel');
+    if (!carousel) return;
+    carousel.addEventListener('scroll', ping, { passive: true });
+    carousel.addEventListener('touchstart', ping, { passive: true });
+    return () => {
+      carousel.removeEventListener('scroll', ping);
+      carousel.removeEventListener('touchstart', ping);
+    };
+  }, [count, ping]);
+
   if (count <= 1) return null;
   return (
-    <div className="ss-dots" role="tablist" aria-label="Cards">
+    <div className={'ss-dots' + (visible ? '' : ' ss-dots-hidden')} role="tablist" aria-label="Cards">
       {Array.from({ length: count }).map((_, i) => (
         <button
           key={i}
           className={'ss-dot' + (i === activeIndex ? ' active' : '')}
-          onClick={() => onJump(i)}
+          onClick={() => { onJump(i); ping(); }}
           role="tab"
           aria-selected={i === activeIndex}
           aria-label={`Card ${i + 1} of ${count}`}
@@ -4997,7 +5034,7 @@ export default function App() {
           />
         )}
       </main>
-        <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
+        <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
         <span>SoloStrike v1.7.22 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
