@@ -201,3 +201,15 @@ body * {
 @media (min-width: 1024px) {
   .ss-carousel { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* ─── Umbrel iframe-only adjustments (v1.7.22-iter17) ──────────────────────
+   When the app is rendered inside an iframe (Umbrel's webview), Umbrel
+   provides its own chrome above us. The page top hits the iframe content
+   area's edge, but visually it can look cramped against Umbrel's title bar.
+   Push the sticky header down by a few px ONLY when in iframe.
+
+   In iOS Safari and PWA mode, we are NOT in an iframe, so this class is
+   absent and the header stays exactly where it was. */
+body.ss-in-iframe .ss-app-header {
+  margin-top: 14px;
+}
