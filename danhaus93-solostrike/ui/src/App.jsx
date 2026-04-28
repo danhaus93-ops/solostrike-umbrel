@@ -963,19 +963,23 @@ function HashrateTrend({ history, current }) {
 // ── Hashrate chart ────────────────────────────────────────────────────────────
 // ── HashrateAverages — rolling hashrate averages bar list (iter26) ───────
 // Renders a Gobrrr-style "Pool Stats" averages strip: one row per window
-// (1m, 5m, 1h, 24h, 7d) with a horizontal bar showing relative magnitude
-// and the formatted hashrate value on the right. All five values come
-// pre-computed from the API in `state.hashrate.averages` (status-poller.js).
-function HashrateAverages({ averages, current, peak }) {
+// (1m, 5m, 15m, 1h, 6h, 24h, 7d) with a horizontal bar showing relative
+// magnitude and the formatted hashrate value on the right. All seven values
+// come pre-computed from the API in `state.hashrate.averages`.
+//
+// iter27b: when `onRangeChange` is provided, the leftmost label in each row
+// becomes a clickable button that switches the parent chart's time window.
+// The currently-active range gets highlighted (amber border + amber text).
+function HashrateAverages({ averages, current, peak, range, onRangeChange }) {
   if (!averages) return null;
   const rows = [
-    { key: 'hr1m',  label: '1M'  },
-    { key: 'hr5m',  label: '5M'  },
-    { key: 'hr15m', label: '15M' },
-    { key: 'hr1h',  label: '1H'  },
-    { key: 'hr6h',  label: '6H'  },
-    { key: 'hr24h', label: '24H' },
-    { key: 'hr7d',  label: '7D'  },
+    { key: 'hr1m',  label: '1M',  rangeKey: '1m'  },
+    { key: 'hr5m',  label: '5M',  rangeKey: '5m'  },
+    { key: 'hr15m', label: '15M', rangeKey: '15m' },
+    { key: 'hr1h',  label: '1H',  rangeKey: '1h'  },
+    { key: 'hr6h',  label: '6H',  rangeKey: '6h'  },
+    { key: 'hr24h', label: '24H', rangeKey: '24h' },
+    { key: 'hr7d',  label: '7D',  rangeKey: '7d'  },
   ];
   // Normalize bars against the largest of: peak, current, and any avg —
   // keeps every bar < 100% width so values never get clipped on the right.
@@ -984,6 +988,7 @@ function HashrateAverages({ averages, current, peak }) {
   const denom  = Math.max(maxAvg, peak || 0, current || 0) || 1;
   const anyData = vals.some(v => v > 0);
   if (!anyData) return null;
+  const interactive = typeof onRangeChange === 'function';
   return (
     <div style={{
       marginTop: '0.85rem',
@@ -991,28 +996,67 @@ function HashrateAverages({ averages, current, peak }) {
       borderTop: '1px dashed rgba(245,166,35,0.18)',
     }}>
       <div style={{
-        fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.18em',
-        textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: '0.5rem',
+        display:'flex', justifyContent:'space-between', alignItems:'baseline',
+        marginBottom: '0.5rem',
       }}>
-        ▸ Hashrate Averages
+        <div style={{
+          fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: 'var(--text-2)',
+        }}>
+          ▸ Hashrate Averages
+        </div>
+        {interactive && (
+          <div style={{
+            fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em',
+            color:'var(--text-3)', textTransform:'uppercase',
+          }}>
+            Tap label → chart
+          </div>
+        )}
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:'0.32rem'}}>
         {rows.map(r => {
           const v = averages[r.key] || 0;
           const pct = denom > 0 ? Math.min(100, (v / denom) * 100) : 0;
           const formatted = fmtHr(v);
+          const isActive = interactive && range === r.rangeKey;
+          // Label cell — button when interactive, span otherwise. Box size
+          // stays identical between active/inactive so rows don't reflow.
+          const labelCell = interactive ? (
+            <button
+              onClick={() => onRangeChange(r.rangeKey)}
+              aria-pressed={isActive}
+              style={{
+                background: isActive ? 'var(--bg-raised)' : 'transparent',
+                border: `1px solid ${isActive ? 'var(--border-hot, rgba(245,166,35,0.45))' : 'transparent'}`,
+                color: isActive ? 'var(--amber)' : 'var(--text-2)',
+                fontFamily: 'var(--fd)', fontSize: '0.6rem', fontWeight: 700,
+                letterSpacing: '0.08em',
+                padding: '2px 0',
+                cursor: 'pointer',
+                textAlign: 'center',
+                lineHeight: 1.1,
+                width: '100%',
+                boxSizing: 'border-box',
+                textShadow: isActive ? '0 0 6px rgba(245,166,35,0.4)' : 'none',
+              }}>
+              {r.label}
+            </button>
+          ) : (
+            <span style={{
+              fontFamily:'var(--fd)', fontSize:'0.6rem', fontWeight:700,
+              letterSpacing:'0.08em', color:'var(--text-2)', textAlign:'center',
+            }}>{r.label}</span>
+          );
           return (
             <div key={r.key} style={{
               display:'grid',
-              gridTemplateColumns:'2.1rem 1fr auto',
+              gridTemplateColumns:'2.7rem 1fr auto',
               alignItems:'center',
               gap:'0.55rem',
               minWidth:0,
             }}>
-              <span style={{
-                fontFamily:'var(--fd)', fontSize:'0.6rem', fontWeight:700,
-                letterSpacing:'0.08em', color:'var(--text-2)',
-              }}>{r.label}</span>
+              {labelCell}
               <div style={{
                 position:'relative',
                 height:6,
@@ -1024,8 +1068,10 @@ function HashrateAverages({ averages, current, peak }) {
                 <div style={{
                   width:`${pct}%`,
                   height:'100%',
-                  background:'linear-gradient(90deg, rgba(245,166,35,0.35), var(--amber))',
-                  transition:'width 0.5s ease',
+                  background: isActive
+                    ? 'linear-gradient(90deg, rgba(245,166,35,0.55), #FFD27A)'
+                    : 'linear-gradient(90deg, rgba(245,166,35,0.35), var(--amber))',
+                  transition:'width 0.5s ease, background 0.3s ease',
                 }}/>
               </div>
               <span style={{
@@ -1046,14 +1092,33 @@ function HashrateAverages({ averages, current, peak }) {
 }
 
 function HashrateChart({ history, week, current, averages, compact = false }) {
+  // iter27b: range now controlled by clicking labels inside the
+  // HashrateAverages strip below the chart. Default = 1h.
   const [range, setRange] = useState('1h');
 
-  const windowMs = { '1h': 60*60*1000, '6h': 6*60*60*1000, '24h': 24*60*60*1000, '7d': 7*24*60*60*1000 }[range];
+  // Window-size, source-array, and smoothing-window dispatch tables for
+  // each of the 7 rows in HashrateAverages. Short windows (1m/5m/15m)
+  // pull from `history` and use minimal smoothing since there are few
+  // points to begin with.
+  const WINDOW_MS = {
+    '1m':   60 * 1000,
+    '5m':   5 * 60 * 1000,
+    '15m':  15 * 60 * 1000,
+    '1h':   60 * 60 * 1000,
+    '6h':   6 * 60 * 60 * 1000,
+    '24h':  24 * 60 * 60 * 1000,
+    '7d':   7 * 24 * 60 * 60 * 1000,
+  };
+  const SMOOTH_WINDOW = {
+    '1m': 1, '5m': 1, '15m': 2, '1h': 3, '6h': 5, '24h': 10, '7d': 30,
+  };
+
+  const windowMs = WINDOW_MS[range] || WINDOW_MS['1h'];
   const source = range === '7d' ? (week || []) : (history || []);
   const cutoff = Date.now() - windowMs;
   const filtered = source.filter(p => p && p.ts >= cutoff);
 
-  const smoothWindow = { '1h': 3, '6h': 5, '24h': 10, '7d': 30 }[range];
+  const smoothWindow = SMOOTH_WINDOW[range] || 3;
   const smoothed = filtered.map((p, i) => {
     const start = Math.max(0, i - smoothWindow + 1);
     const slice = filtered.slice(start, i + 1);
@@ -1069,20 +1134,6 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
   const numberSize = compact ? '2.3rem' : '2.6rem';
   const numberMarginBottom = compact ? '0.7rem' : '0.8rem';
 
-  const rangeBtn = (key, label) => (
-    <button key={key} onClick={() => setRange(key)}
-      style={{
-        padding: compact ? '3px 8px' : '4px 10px', minWidth: compact ? 32 : 38,
-        background: range === key ? 'var(--bg-raised)' : 'transparent',
-        border: `1px solid ${range === key ? 'var(--border-hot)' : 'var(--border)'}`,
-        color: range === key ? 'var(--amber)' : 'var(--text-2)',
-        fontFamily:'var(--fd)', fontSize: compact ? '0.52rem' : '0.58rem', fontWeight:600,
-        letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer',
-      }}>
-      {label}
-    </button>
-  );
-
   // The actual chart content — used both in standalone card and embedded HashPulse
   const inner = (
     <>
@@ -1094,12 +1145,10 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
         <span>{p0}<span style={{ fontSize: compact ? '0.85rem' : '1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span></span>
         <HashrateTrend history={history} current={current}/>
       </div>
-      <div style={{display:'flex', gap:4, marginBottom: compact ? '0.4rem' : '0.6rem', justifyContent:'flex-end'}}>
-        {rangeBtn('1h', '1H')}
-        {rangeBtn('6h', '6H')}
-        {rangeBtn('24h', '24H')}
-        {rangeBtn('7d', '7D')}
-      </div>
+      {/* iter27a: range buttons (1H/6H/24H/7D) removed — the Hashrate
+          Averages strip below the chart now covers all those windows
+          numerically, making the toggle redundant. Chart now stays locked
+          to 1H view by default. */}
       <div style={{width:'100%', maxWidth:'100%', overflow:'hidden', minWidth:0}}>
         <ResponsiveContainer width="100%" height={chartHeight}>
           <AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
@@ -1126,7 +1175,7 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
         </ResponsiveContainer>
       </div>
       {!compact && averages && (
-        <HashrateAverages averages={averages} current={current} peak={peak}/>
+        <HashrateAverages averages={averages} current={current} peak={peak} range={range} onRangeChange={setRange}/>
       )}
     </>
   );
@@ -1399,7 +1448,7 @@ function BitcoinNodePanel({ nodeInfo }) {
 // strip. Tap to open The Reckoning. Same readability standard as Strikers/
 // Reckoning modals (no var(--text-3) ghost gray, body text >= 0.7rem).
 function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, currency, onOpen }) {
-  const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0 } = odds||{};
+  const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
   const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
 
   // Reward breakdown — handle both shape variants for safety
@@ -1449,7 +1498,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
               Per-Block Odds
             </span>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
-              {perBlock>0 ? `${(perBlock*100).toExponential(1)}%` : '—'}
+              {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
             </span>
           </div>
           <svg viewBox="0 0 600 60" preserveAspectRatio="none"
@@ -1705,9 +1754,9 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Share</div>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
-              {netHashrate>0 && hashrate>0 ? `${((hashrate/netHashrate)*100).toExponential(1)}%` : '—'}
+              {perYear>0 ? (perYear < 0.0001 ? perYear.toExponential(1)+'%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
