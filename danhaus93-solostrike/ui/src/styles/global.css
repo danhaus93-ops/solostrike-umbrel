@@ -118,7 +118,7 @@ body * {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 0.65rem;
+  padding: 0.65rem 0.65rem 4px 0.65rem;
   box-sizing: border-box;
 }
 .ss-carousel > *::-webkit-scrollbar { width: 0; }
@@ -131,41 +131,36 @@ body * {
   min-height: min-content;
 }
 
-/* Position dots — small floating indicator at the bottom of the carousel
-   showing which card you're on. */
+/* Position dots — tiny floating indicator at the bottom of the carousel.
+   No pill, no backdrop-blur, no border. Just bare dots that don't compete
+   with content for space. */
 .ss-dots {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  bottom: 2px;
   transform: translateX(-50%);
   display: flex;
-  gap: 6px;
+  gap: 3px;
   z-index: 5;
   pointer-events: auto;
-  background: rgba(6,7,8,0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  padding: 5px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(245,166,35,0.18);
+  background: transparent;
+  padding: 2px 4px;
 }
 .ss-dot {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: var(--text-3);
+  background: rgba(245,166,35,0.25);
   cursor: pointer;
   border: none;
   padding: 0;
-  transition: all 0.25s ease;
-  opacity: 0.6;
+  transition: all 0.2s ease;
 }
 .ss-dot.active {
   background: var(--amber);
-  width: 22px;
-  border-radius: 4px;
-  opacity: 1;
-  box-shadow: 0 0 8px rgba(245,166,35,0.5);
+  width: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 4px rgba(245,166,35,0.5);
 }
 
 /* Carousel area is positioned relative so dots can absolutely position */
