@@ -6065,40 +6065,49 @@ export default function App() {
   }, []);
 
   // Track which card is centered as the user swipes.
-  // iter28: also re-evaluate on touchend + scrollend, because iOS Safari can
-  // skip the final scroll event after momentum scrolling settles, causing the
-  // active dot to lag behind the actual visible card.
+  // iter28-v2: switched from scroll-math (Math.round(scrollLeft / clientWidth))
+  // to IntersectionObserver. The math approach is fragile on iOS Safari —
+  // viewport width can fluctuate during momentum scrolls (URL bar show/hide),
+  // and the final `scroll` event after snap can be silently dropped, leaving
+  // activeIndex on the wrong card. IntersectionObserver fires whenever a child
+  // crosses the visibility threshold, regardless of scroll event reliability.
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
     if (!el) return;
-    let raf = 0;
-    const update = () => {
-      const w = el.clientWidth;
-      if (!w) return;
-      const idx = Math.round(el.scrollLeft / w);
-      setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-    // After touchend, the snap animation finishes within ~300ms. Schedule a
-    // delayed update to catch the final position iOS might silently swallow.
-    const onTouchEnd = () => {
-      setTimeout(update, 350);
-    };
-    el.addEventListener('scroll',     onScroll,   { passive: true });
-    el.addEventListener('scrollend',  update,     { passive: true });
-    el.addEventListener('touchend',   onTouchEnd, { passive: true });
-    onScroll();
-    return () => {
-      el.removeEventListener('scroll',    onScroll);
-      el.removeEventListener('scrollend', update);
-      el.removeEventListener('touchend',  onTouchEnd);
-      cancelAnimationFrame(raf);
-    };
-  }, [useCarousel]);
+
+    // Observer fires when a card becomes >60% visible inside the carousel.
+    // Using the carousel itself as the root means we measure against the
+    // visible scroll-port, not the document viewport.
+    const observer = new IntersectionObserver((entries) => {
+      // Find the entry with the highest intersection ratio (the one most in view)
+      let bestEntry = null;
+      let bestRatio = 0;
+      for (const entry of entries) {
+        if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
+          bestRatio = entry.intersectionRatio;
+          bestEntry = entry;
+        }
+      }
+      if (!bestEntry) return;
+      // Find this child's index by looking at its position among siblings
+      const idx = Array.from(el.children).indexOf(bestEntry.target);
+      if (idx < 0) return;
+      setActiveIndex(prev => prev === idx ? prev : idx);
+    }, {
+      root: el,
+      // 60% threshold: a card must be at least 60% in view to be "active".
+      // This handles the brief moment between snap-points where two cards
+      // are partially visible — only the dominant one wins.
+      threshold: [0.6, 0.85],
+    });
+
+    // Observe every child card. Re-observe whenever the children list changes
+    // (e.g., user reorders cards via drag-and-drop, or visibleCards changes).
+    const children = Array.from(el.children);
+    children.forEach(child => observer.observe(child));
+    return () => observer.disconnect();
+  }, [useCarousel, renderableOrder.length]);
 
   // Reset to first card when entering carousel mode (covers viewport rotate case)
   useEffect(() => {
