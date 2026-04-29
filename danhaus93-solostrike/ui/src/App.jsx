@@ -1389,6 +1389,35 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
   );
 }
 
+// ── UptimeSparkline ──────────────────────────────────────────────────────────
+// 24h online/offline strip — renders 96 segments (one per 15min slot).
+// Green = online, red = offline, dim border = no data yet (<24h history).
+// Source: API writes worker.statusHistory in status-poller.js (iter28-fix-B).
+function UptimeSparkline({ history }) {
+  const samples = Array.isArray(history) ? history : [];
+  const SLOTS = 96;
+  // Right-align: most recent sample on the right edge. Pad left with placeholders
+  // so a freshly-started worker doesn't look like a wide red bar.
+  const recent = samples.slice(-SLOTS);
+  const placeholders = SLOTS - recent.length;
+  return (
+    <div title={`Uptime over last 24h · ${recent.length}/${SLOTS} samples`} style={{
+      display:'flex', height:5, gap:1, flexShrink:0,
+      width:'100%', minWidth:0,
+    }}>
+      {Array.from({ length: SLOTS }).map((_, i) => {
+        const isPlaceholder = i < placeholders;
+        const sample = isPlaceholder ? null : recent[i - placeholders];
+        let bg;
+        if (isPlaceholder) bg = 'var(--bg-deep)';
+        else if (sample.status === 'online') bg = 'rgba(57,255,106,0.65)';
+        else bg = 'rgba(232,67,67,0.7)';
+        return <div key={i} style={{ flex:'1 1 0', minWidth:0, background: bg, borderRadius:0.5 }}/>;
+      })}
+    </div>
+  );
+}
+
 // ── Worker grid ───────────────────────────────────────────────────────────────
 function WorkerGrid({ workers, aliases, onWorkerClick }) {
   // iter27c: removed worker filter search bar — for solo mining (~12-15
@@ -1436,6 +1465,10 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                       <div style={{height:'100%',width:`${(workAccepted/totalWork)*100}%`,background:'var(--green)',borderRadius:1}}/>
                     </div>
                     <span style={{fontFamily:'var(--fm)',fontSize:'0.48rem',color:'var(--text-3)',whiteSpace:'nowrap',flexShrink:0}}>{lastShareAgo}</span>
+                  </div>
+                  {/* iter28-fix-B: 24h uptime sparkline */}
+                  <div style={{marginTop:3, minWidth:0}}>
+                    <UptimeSparkline history={w.statusHistory}/>
                   </div>
                 </div>
                 {/* Right: hashrate (big amber) + best-share underneath */}
