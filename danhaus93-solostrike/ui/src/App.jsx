@@ -1497,7 +1497,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
         <span>▸ Near Strikes</span>
         <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
       </div>
-      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem', maxHeight:340, overflowY:'auto'}}>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
         {list.map((c, i) => {
           const disp = displayName(c.workerName, aliases);
           const pctOfBlock = netDiff ? (c.diff / netDiff) * 100 : 0;
