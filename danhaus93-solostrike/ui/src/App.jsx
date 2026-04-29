@@ -6064,22 +6064,52 @@ export default function App() {
     document.documentElement.classList.toggle('ss-in-iframe', inIframe);
   }, []);
 
-  // Track which card is centered as the user swipes.
-  // iter28-v3: rect-based tracking (most reliable across browsers).
-  // Also waits for the carousel to be properly sized before attaching —
-  // on initial mount, the carousel's --carousel-h CSS variable is set by
-  // a separate useEffect that runs AFTER this one, so the carousel can
-  // be height:0 / not yet scrollable when we first try to attach. Using
-  // ResizeObserver to detect when the carousel has actual dimensions,
-  // and re-running attachment if the size changes.
+  // iter28-DEBUG: instrumented tracking. Outputs on-screen diagnostics so we
+  // can actually see what's happening in real time without needing dev tools.
+  // Hooks every conceivable event to determine which (if any) is firing.
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
     if (!el) return;
 
-    let raf = 0;
-    let attached = false;
+    // Create a tiny diagnostic overlay pinned to the top-left of the screen.
+    // It shows live counts of which events are firing. If a counter never
+    // increments while the user swipes, that event isn't firing for some reason.
+    let dbgEl = document.getElementById('ss-dbg-overlay');
+    if (!dbgEl) {
+      dbgEl = document.createElement('div');
+      dbgEl.id = 'ss-dbg-overlay';
+      dbgEl.style.cssText = 'position:fixed;top:60px;left:6px;z-index:9999;background:rgba(0,0,0,0.85);color:#0f0;font:10px monospace;padding:6px 8px;border:1px solid #0f0;border-radius:4px;line-height:1.4;pointer-events:none;max-width:75vw;white-space:pre;';
+      document.body.appendChild(dbgEl);
+    }
 
+    const counts = {
+      scroll: 0,
+      scrollend: 0,
+      touchstart: 0,
+      touchend: 0,
+      idxUpdates: 0,
+      lastIdx: -1,
+      childCount: 0,
+      elW: 0,
+      elH: 0,
+      scrollL: 0,
+    };
+    const render = () => {
+      counts.childCount = el.children.length;
+      counts.elW = el.clientWidth;
+      counts.elH = el.clientHeight;
+      counts.scrollL = el.scrollLeft;
+      dbgEl.textContent =
+        `kids: ${counts.childCount}  size: ${counts.elW}x${counts.elH}\n` +
+        `scrollL: ${counts.scrollL.toFixed(0)}\n` +
+        `scroll: ${counts.scroll}  end: ${counts.scrollend}\n` +
+        `tStart: ${counts.touchstart}  tEnd: ${counts.touchend}\n` +
+        `idxUp: ${counts.idxUpdates}  cur: ${counts.lastIdx}`;
+    };
+    const interval = setInterval(render, 250);
+
+    let raf = 0;
     const update = () => {
       if (!el.children.length) return;
       const elRect = el.getBoundingClientRect();
@@ -6095,55 +6125,48 @@ export default function App() {
           bestIdx = i;
         }
       }
+      counts.idxUpdates++;
+      counts.lastIdx = bestIdx;
       setActiveIndex(prev => prev === bestIdx ? prev : bestIdx);
     };
 
     const onScroll = () => {
+      counts.scroll++;
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(update);
     };
+    const onScrollEnd = () => {
+      counts.scrollend++;
+      update();
+    };
+    const onTouchStart = () => {
+      counts.touchstart++;
+    };
     const onTouchEnd = () => {
+      counts.touchend++;
       setTimeout(update, 100);
       setTimeout(update, 350);
       setTimeout(update, 600);
     };
 
-    const attachListeners = () => {
-      if (attached) return;
-      attached = true;
-      el.addEventListener('scroll',     onScroll,   { passive: true });
-      el.addEventListener('scrollend',  update,     { passive: true });
-      el.addEventListener('touchend',   onTouchEnd, { passive: true });
-      // Run an initial update once attached so dot starts at correct position.
-      update();
-    };
+    el.addEventListener('scroll',     onScroll,     { passive: true });
+    el.addEventListener('scrollend',  onScrollEnd,  { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchend',   onTouchEnd,   { passive: true });
 
-    // Wait for the carousel to actually have a usable size before attaching.
-    // On initial mount the height/width may be 0 until --carousel-h is set
-    // and CSS applies. ResizeObserver fires when the element gets real
-    // dimensions, at which point we can safely attach scroll listeners.
-    const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0 && el.clientHeight > 0) {
-        attachListeners();
-        update(); // refresh active index in case size change moved the snap point
-      }
-    });
-    ro.observe(el);
-
-    // Also try to attach immediately in case the element is already sized
-    // (e.g., the user toggled vertical→carousel — element has prior dimensions)
-    if (el.clientWidth > 0 && el.clientHeight > 0) {
-      attachListeners();
-    }
+    // Initial measurement
+    setTimeout(update, 100);
+    setTimeout(update, 500);
+    setTimeout(update, 1500);
 
     return () => {
-      ro.disconnect();
-      if (attached) {
-        el.removeEventListener('scroll',    onScroll);
-        el.removeEventListener('scrollend', update);
-        el.removeEventListener('touchend',  onTouchEnd);
-      }
+      clearInterval(interval);
+      el.removeEventListener('scroll',     onScroll);
+      el.removeEventListener('scrollend',  onScrollEnd);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchend',   onTouchEnd);
       cancelAnimationFrame(raf);
+      if (dbgEl && dbgEl.parentNode) dbgEl.parentNode.removeChild(dbgEl);
     };
   }, [useCarousel]);
 
