@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.7.22"
+version: "1.8.0"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,6 +88,124 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.8.0 — The Hunt release.
+
+
+  RENAMED & REDESIGNED
+
+
+  • The Vein → "The Hunt" — bigger Bitcoin-native rebrand, with a brand-new
+    NONCE FIELD visualization replacing the gold-quartz SVG. A 32×6 grid of
+    dim points represents the 2³² nonce space your fleet is searching;
+    cells flicker amber as you hash, a vertical scan line sweeps L→R
+    representing nonce iteration, and bright strike flashes mark "winner"
+    cells. Mining-accurate where the old Vein was just decorative.
+
+
+  • The Goldfields → "The Ledger"
+
+
+  • Gold Strikes → "Solo Strikes"
+
+
+  • Block-found alert: "STRIKE!" → "BLOCK STRUCK!"
+
+
+  NEW CARDS & VISUALIZATIONS
+
+
+  • STRIKE VELOCITY — new chart card visualizing share submission rate
+    over time as a vertical-bar histogram. Each bar = 1 minute; bars are
+    color-coded green (normal), amber (anomalous high or low — vardiff
+    bump or partial outage), red (zero — full downtime). Distinct from
+    Firepower's line chart at a glance. 1H / 6H / 24H range buttons.
+
+
+  • HASHRATE AVERAGES strip below the Firepower chart — seven rolling
+    windows (1M / 5M / 15M / 1H / 6H / 24H / 7D) shown as horizontal bars.
+    Each label is also a chart-range button, replacing the old top-right
+    button row.
+
+
+  REAL DATA REPLACING ESTIMATES
+
+
+  • Real shares-per-minute on Share Stats from ckpool's sps1m field.
+
+
+  • Reject Rate top-line tile + Lifetime Shares counter on Share Stats.
+
+
+  • Block weight + transaction count on the latest block.
+
+
+  • Bitcoin Core subversion string on the Bitcoin Node card.
+
+
+  • Pool Uptime + Started date tiles on the Stratum card.
+
+
+  • Last epoch comparison on the Difficulty Retarget card.
+
+
+  • Per-block odds now display as "1 in 10.4M" instead of "7.7e-6%".
+
+
+  DIAGNOSTICS MODAL — 4 NEW LINES
+
+
+  • Avg Share Difficulty (acceptedDiff / count)
+
+
+  • Last Share (pool-level), color-coded by recency
+
+
+  • Implied Hashrate from share submissions, with ✓/⚠ vs live hashrate
+
+
+  • Session Started timestamp + duration
+
+
+  CONDENSED & POLISHED
+
+
+  • Stratum card — three "tap to edit" labels removed, helpers folded
+    into placeholders, padding tightened. Now fits one screen on iPhone.
+
+
+  • The Crew — worker filter search bar removed (overkill for 12-15 solo
+    workers).
+
+
+  • 100% SOLO stamp moved up so it's no longer clipped at card bottom.
+
+
+  • Pulse canvas now fills its full 160px container instead of being
+    locked to 96px (empty band at the bottom of all 5 animations gone).
+
+
+  FIVE BUGS FIXED
+
+
+  • The Hunt "Fees" no longer always shows +0.0000.
+
+
+  • Worker rejected counter now properly decreases when ckpool reports 0.
+
+
+  • parseHashrate is case-insensitive now (defensive).
+
+
+  • CSV exports use proper RFC-4180 quoting (worker names with commas
+    don't shift columns).
+
+
+  • state.blockReward init shape aligned with writer.
+
+
+  ---
+
+
   v1.7.22 — Jumpers Combo + Color Restore + Layout Fixes.
 
 
@@ -496,8 +614,9 @@ releaseNotes: >-
 
   2. The widgets[].items array with jsonPath mappings was missing.
   Without it, Umbrel doesn't know how to extract data from the JSON
-  response and falls back to the example forever. Now declared, mirroring
-  the working GoBrrr pool widget config.
+  response and falls back to the example forever. Now declared with
+  the correct jsonPath mappings for hashrate, workers, best share, and
+  share rate.
 
 
   3. PROXY_APP_EXTRAS / PROXY_AUTH_WHITELIST env vars in docker-compose
