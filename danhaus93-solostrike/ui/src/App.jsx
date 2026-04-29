@@ -6064,109 +6064,26 @@ export default function App() {
     document.documentElement.classList.toggle('ss-in-iframe', inIframe);
   }, []);
 
-  // iter28-DEBUG: instrumented tracking. Outputs on-screen diagnostics so we
-  // can actually see what's happening in real time without needing dev tools.
-  // Hooks every conceivable event to determine which (if any) is firing.
+  // Track which card is centered as the user swipes
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
     if (!el) return;
-
-    // Create a tiny diagnostic overlay pinned to the top-left of the screen.
-    // It shows live counts of which events are firing. If a counter never
-    // increments while the user swipes, that event isn't firing for some reason.
-    let dbgEl = document.getElementById('ss-dbg-overlay');
-    if (!dbgEl) {
-      dbgEl = document.createElement('div');
-      dbgEl.id = 'ss-dbg-overlay';
-      dbgEl.style.cssText = 'position:fixed;top:60px;left:6px;z-index:9999;background:rgba(0,0,0,0.85);color:#0f0;font:10px monospace;padding:6px 8px;border:1px solid #0f0;border-radius:4px;line-height:1.4;pointer-events:none;max-width:75vw;white-space:pre;';
-      document.body.appendChild(dbgEl);
-    }
-
-    const counts = {
-      scroll: 0,
-      scrollend: 0,
-      touchstart: 0,
-      touchend: 0,
-      idxUpdates: 0,
-      lastIdx: -1,
-      childCount: 0,
-      elW: 0,
-      elH: 0,
-      scrollL: 0,
-    };
-    const render = () => {
-      counts.childCount = el.children.length;
-      counts.elW = el.clientWidth;
-      counts.elH = el.clientHeight;
-      counts.scrollL = el.scrollLeft;
-      dbgEl.textContent =
-        `kids: ${counts.childCount}  size: ${counts.elW}x${counts.elH}\n` +
-        `scrollL: ${counts.scrollL.toFixed(0)}\n` +
-        `scroll: ${counts.scroll}  end: ${counts.scrollend}\n` +
-        `tStart: ${counts.touchstart}  tEnd: ${counts.touchend}\n` +
-        `idxUp: ${counts.idxUpdates}  cur: ${counts.lastIdx}`;
-    };
-    const interval = setInterval(render, 250);
-
     let raf = 0;
-    const update = () => {
-      if (!el.children.length) return;
-      const elRect = el.getBoundingClientRect();
-      const elCenter = elRect.left + elRect.width / 2;
-      let bestIdx = 0;
-      let bestDist = Infinity;
-      for (let i = 0; i < el.children.length; i++) {
-        const childRect = el.children[i].getBoundingClientRect();
-        const childCenter = childRect.left + childRect.width / 2;
-        const dist = Math.abs(childCenter - elCenter);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestIdx = i;
-        }
-      }
-      counts.idxUpdates++;
-      counts.lastIdx = bestIdx;
-      setActiveIndex(prev => prev === bestIdx ? prev : bestIdx);
-    };
-
     const onScroll = () => {
-      counts.scroll++;
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
+      raf = requestAnimationFrame(() => {
+        const w = el.clientWidth;
+        if (!w) return;
+        const idx = Math.round(el.scrollLeft / w);
+        setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
+      });
     };
-    const onScrollEnd = () => {
-      counts.scrollend++;
-      update();
-    };
-    const onTouchStart = () => {
-      counts.touchstart++;
-    };
-    const onTouchEnd = () => {
-      counts.touchend++;
-      setTimeout(update, 100);
-      setTimeout(update, 350);
-      setTimeout(update, 600);
-    };
-
-    el.addEventListener('scroll',     onScroll,     { passive: true });
-    el.addEventListener('scrollend',  onScrollEnd,  { passive: true });
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchend',   onTouchEnd,   { passive: true });
-
-    // Initial measurement
-    setTimeout(update, 100);
-    setTimeout(update, 500);
-    setTimeout(update, 1500);
-
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
     return () => {
-      clearInterval(interval);
-      el.removeEventListener('scroll',     onScroll);
-      el.removeEventListener('scrollend',  onScrollEnd);
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchend',   onTouchEnd);
+      el.removeEventListener('scroll', onScroll);
       cancelAnimationFrame(raf);
-      if (dbgEl && dbgEl.parentNode) dbgEl.parentNode.removeChild(dbgEl);
     };
   }, [useCarousel]);
 
