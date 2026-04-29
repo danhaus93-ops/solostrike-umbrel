@@ -813,6 +813,35 @@ async function main() {
   if (typeof persist.networkStatsEnabled === 'boolean') cfg.networkStatsEnabled = persist.networkStatsEnabled;
   if (persist.pulseDeviceSalt) cfg.pulseDeviceSalt = persist.pulseDeviceSalt;
   if (typeof persist.pulseTorEnabled === 'boolean') cfg.pulseTorEnabled = persist.pulseTorEnabled;
+  // iter28-fix: restore Strike Velocity ring buffer + per-worker uptime sparklines
+  // from disk so 24h history survives restarts. Drop samples older than 24h on load.
+  if (Array.isArray(persist.spsHistory)) {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    state.shares.spsHistory = persist.spsHistory.filter(p => p && p.ts > cutoff);
+  }
+  if (persist.workersStatusHistory && typeof persist.workersStatusHistory === 'object') {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const [name, hist] of Object.entries(persist.workersStatusHistory)) {
+      if (!Array.isArray(hist)) continue;
+      const filtered = hist.filter(p => p && p.ts > cutoff);
+      if (!state.workers[name]) {
+        // Worker not yet rediscovered from ckpool; create a minimal stub so
+        // the history isn't lost. Will be filled in on next status poll.
+        state.workers[name] = {
+          name, hashrate: 0, shares: 0, rejected: 0,
+          sharesCount: 0, rejectedCount: 0,
+          lastSeen: 0, diff: 0, status: 'offline',
+          bestshare: 0,
+          minerType: null, minerIcon: '▪', minerVendor: null,
+          minerSource: 'unknown', userAgent: null,
+          ip: null, health: 'green',
+          statusHistory: filtered,
+        };
+      } else {
+        state.workers[name].statusHistory = filtered;
+      }
+    }
+  }
   state.privateMode = !!cfg.privateMode;
   state.payoutAddress = cfg.payoutAddress || null;
 
@@ -848,6 +877,38 @@ async function main() {
   startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir: CKPOOL_LOG_DIR });
   startShareWatcher({ state, logDir: CKPOOL_LOG_DIR, savePersist, broadcast });
   networkStatsController = startNetworkStats({ state, cfg, savePersist });
+
+  // iter28-fix: persist Strike Velocity ring buffer + per-worker uptime
+  // sparklines to disk every 60 seconds so they survive restarts.
+  // 24h coverage means losing up to 60s of latest data on hard crash —
+  // acceptable trade vs the alternative (full data loss).
+  async function saveHistoryBuffers() {
+    try {
+      const workersStatusHistory = {};
+      for (const [name, w] of Object.entries(state.workers || {})) {
+        if (Array.isArray(w.statusHistory) && w.statusHistory.length > 0) {
+          workersStatusHistory[name] = w.statusHistory;
+        }
+      }
+      await savePersist({
+        spsHistory: Array.isArray(state.shares?.spsHistory) ? state.shares.spsHistory : [],
+        workersStatusHistory,
+      });
+    } catch (e) {
+      console.error('[persist] saveHistoryBuffers failed:', e.message);
+    }
+  }
+  setInterval(saveHistoryBuffers, 60 * 1000);
+
+  // Save once on graceful shutdown so the most recent samples don't get lost
+  // on a clean container restart (Umbrel app updates, etc.)
+  const onShutdown = async (sig) => {
+    console.log(`[shutdown] ${sig} received, flushing history buffers…`);
+    try { await saveHistoryBuffers(); } catch {}
+    process.exit(0);
+  };
+  process.once('SIGTERM', () => onShutdown('SIGTERM'));
+  process.once('SIGINT',  () => onShutdown('SIGINT'));
 
   setTimeout(() => {
     if (state.status === 'starting' && cfg.payoutAddress) state.status = 'running';
