@@ -5735,7 +5735,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate','pulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent'];
+const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent'];
 function loadOrder() {
   try {
     const s = localStorage.getItem(LS_CARD_ORDER);
@@ -5744,7 +5744,21 @@ function loadOrder() {
     if (!Array.isArray(parsed)) return DEFAULT_ORDER;
     const migrated = migrateCardIds(parsed);
     const known = migrated.filter(id => DEFAULT_ORDER.includes(id));
-    DEFAULT_ORDER.forEach(id => { if (!known.includes(id)) known.push(id); });
+    // v1.8.0: when adding new cards (e.g. strikevel), splice them in right
+    // after their canonical neighbor instead of bolting them onto the end —
+    // gives the user the intended layout adjacencies.
+    DEFAULT_ORDER.forEach((id, idx) => {
+      if (known.includes(id)) return;
+      // Find the previous card in DEFAULT_ORDER that the user DOES have, and
+      // insert the missing one right after it.
+      let insertAt = known.length; // default: end
+      for (let j = idx - 1; j >= 0; j--) {
+        const prev = DEFAULT_ORDER[j];
+        const prevPos = known.indexOf(prev);
+        if (prevPos >= 0) { insertAt = prevPos + 1; break; }
+      }
+      known.splice(insertAt, 0, id);
+    });
     return known;
   } catch { return DEFAULT_ORDER; }
 }
