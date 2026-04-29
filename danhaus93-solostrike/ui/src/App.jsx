@@ -6106,8 +6106,22 @@ export default function App() {
     // (e.g., user reorders cards via drag-and-drop, or visibleCards changes).
     const children = Array.from(el.children);
     children.forEach(child => observer.observe(child));
-    return () => observer.disconnect();
-  }, [useCarousel, renderableOrder.length]);
+
+    // iter28-v2.1: also watch for DOM child changes via MutationObserver so
+    // we re-observe new cards if the user changes settings mid-session.
+    // This replaces the buggy `renderableOrder.length` dep which referenced
+    // a const before its declaration line — caused a ReferenceError crash.
+    const mutationObserver = new MutationObserver(() => {
+      observer.disconnect();
+      Array.from(el.children).forEach(child => observer.observe(child));
+    });
+    mutationObserver.observe(el, { childList: true });
+
+    return () => {
+      observer.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [useCarousel]);
 
   // Reset to first card when entering carousel mode (covers viewport rotate case)
   useEffect(() => {
