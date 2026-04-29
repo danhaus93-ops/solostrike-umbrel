@@ -15,11 +15,141 @@ available at
 
 ### Planned
 
-- **v1.5.3** — TLS stratum on port 4333 via stunnel sidecar (Umbrel App Store blocker)
-- **v1.6.x** — Profitability calculator (power cost → break-even math)
-- **v1.7.x** — Smart alerts (worker-offline push notifications)
-- **v1.8.x** — AxeOS temperature integration
+- **v1.9.x** — Smart alerts (worker-offline push notifications)
+- **v1.10.x** — AxeOS temperature integration
 - **v2.0.0** — DATUM protocol, Stratum V2 translator, official Umbrel App Store submission
+
+-----
+
+## [1.8.0](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.8.0) — 2026-04-29
+
+The Hunt release. Vein redesigned as the Nonce Field, gold-mining vocabulary
+purged in favor of Bitcoin-native naming, two new chart visualizations
+(Hashrate Averages strip and Strike Velocity histogram), real ckpool data
+replacing several estimates, and five bugs squashed.
+
+### Added
+
+- **The Hunt** card (renamed from "The Vein") with new **Nonce Field**
+  visualization. Replaces the gold-bearing-quartz SVG with a 32×6 grid of
+  dim points representing the 2³² nonce space. Cells flicker amber as the
+  fleet hashes, a vertical scan line sweeps L→R representing nonce
+  iteration order, and periodic strike flashes mark "winner" cells.
+  Mining-accurate, distinct from anything else on the dashboard.
+- **Strike Velocity** card — new chart sibling to Firepower, but renders as
+  a vertical-bar histogram instead of a line. Each bar represents one
+  minute of share submissions, color-coded green (normal), amber
+  (anomalous high or low — vardiff bump or partial outage), red (zero —
+  full downtime). 1H / 6H / 24H range buttons. Consumes the spsHistory
+  ring buffer that has been silently collecting since v1.7.x.
+- **Hashrate Averages strip** below the Firepower chart — seven rolling
+  windows displayed as horizontal bars: 1M / 5M / 15M / 1H / 6H / 24H / 7D.
+  Each label is also a clickable button that switches the chart range
+  (replacing the old top-right range buttons). All seven windows now
+  available where only four were before.
+- **Bitcoin-native vocabulary throughout.**
+  - "The Vein" → **The Hunt**
+  - "The Goldfields" → **The Ledger**
+  - "Gold Strikes" → **Solo Strikes**
+  - "STRIKE!" alert → **BLOCK STRUCK!**
+  - Card list now includes three "The X" thematic siblings:
+    The Crew · The Hunt · The Ledger
+- **Real shares-per-minute** in Share Stats card from ckpool's `sps1m`
+  field. Falls back to hashrate-derived estimate only when the API hasn't
+  populated yet.
+- **Reject Rate** top-line tile in Share Stats (green &lt; 0.5%, amber &lt; 2%,
+  red otherwise). Standard share-quality at-a-glance display.
+- **Lifetime Shares** counter tile in Share Stats — raw share count,
+  distinct from the difficulty-weighted "Accepted Work" tile above it.
+- **Bitcoin Core subversion string** displayed under the parsed Client
+  name on the Bitcoin Node card (e.g., "Satoshi:29.2.0").
+- **Block Weight + Tx count** of the latest block on the Bitcoin Network
+  card (from mempool.space's `extras.totalWeight` and `tx_count`).
+- **Pool Uptime + Started date** tiles at the bottom of the Stratum
+  Connection card.
+- **Last epoch comparison** on the Difficulty Retarget card (e.g.,
+  "+2.67% / Last epoch: -2.43%"). Cached per-epoch, recomputed when a
+  new epoch begins.
+- **YEARLY tile** in The Hunt's bottom stats grid (replaces a redundant
+  SHARE tile that duplicated the per-block-odds figure already shown at
+  the top of the card). Uses the new `state.odds.perYear` field.
+- **Per-block odds** displayed as "1 in 10.4M" via new `fmtOddsInverse`
+  helper instead of the unreadable "7.7e-6%" scientific notation.
+- **Subsidy + Fees breakdown** displayed correctly on The Hunt card.
+  Previously fees always read +0.0000 because two writers fought over
+  `state.blockReward`.
+- **Four new diagnostic lines** in the Share Diagnostics modal:
+  - Avg Share Difficulty (`acceptedDiff / acceptedCount`)
+  - Last Share (pool-level), color-coded green/amber/red by recency
+  - Implied Hashrate from share submissions, with ✓/⚠ vs live hashrate
+  - Session Started timestamp + duration
+- **API foundations** (collecting now, future UI consumers):
+  - `state.zmq.events[]` — last 30 hashblock notifications
+  - `state.workers[].statusHistory[]` — 96-point per-worker online/offline
+    history for future sparklines
+  - 15M and 6H windows in the rolling averages
+
+### Changed
+
+- **Stratum Connection card** condensed to fit one screen on iPhone:
+  - Three "tap to edit" italic labels removed (inputs are obviously
+    editable)
+  - Verbose helper lines folded into input `placeholder` attributes
+  - Tighter padding throughout (row, label, input, helper)
+  - Trailing "Connect any Stratum V1 miner..." paragraph removed
+- **The Crew** worker filter search bar removed. For solo mining (~12-15
+  workers) the filter was visual noise. Workers still sorted online-first,
+  descending hashrate.
+- **100% SOLO stamp** repositioned (`right:0.5rem, bottom:0.6rem` from
+  `0.2/0.2`) so it's no longer clipped at the card's bottom edge on mobile.
+- **Firepower chart range buttons** moved from top-right of card to the
+  Hashrate Averages strip below it — cleaner header, click-target on the
+  same labels showing the data.
+- **"WORK ACCEPTED" label** in Share Stats renamed to **"ACCEPTED WORK"**
+  to clarify it's difficulty-units, not a share count (the count is now
+  shown separately in the Lifetime Shares tile).
+- **Pulse canvas** now fills its full container (160px standalone) instead
+  of being locked to 96px — fixes the empty band at the bottom of the
+  Pulse card across all five animations (Sluice, Glimmers, Ticker,
+  Conveyor, Embers).
+- **Hash Ticker animation density** scales with canvas height — taller
+  canvases stay visually full instead of having a sparse bottom band.
+
+### Fixed
+
+- **Vein/Hunt "Fees" always showed +0.0000** — `state.blockReward` had two
+  writers fighting over it. `pollBitcoind` correctly computed fees from
+  `getblocktemplate.coinbasevalue`, then `transformState` overwrote it
+  using a never-populated field. `computeBlockReward` now uses the
+  pre-computed value as source of truth and emits both key shapes for
+  back-compat.
+- **Worker rejected counter never decreased** — `wk.rejected = w.rejected
+  || wk.rejected || 0` used falsy fallback, so a stable miner that started
+  reporting 0 rejects kept the previous non-zero count forever. Changed
+  `||` to `??`.
+- **`state.blockReward` init shape** aligned with the writer (was declared
+  with `{ totalBtc, base, fees }` but written with `{ subsidyBtc, feesBtc,
+  totalBtc, totalSats }`).
+- **`parseHashrate` was case-sensitive** — `endsWith('K')` would silently
+  parse `"1.2t"` as `1.2` (off by 1e12). ckpool emits uppercase in
+  practice but defensive fix is cheap.
+- **CSV exports broke on commas/quotes/newlines.** Worker names, miner
+  subversion strings, or pool names containing commas would shift every
+  following column. New `csvEscape` helper applies proper RFC-4180 quoting
+  to both `/api/export/blocks.csv` and `/api/export/workers.csv`.
+
+### Removed
+
+- Three "tap to edit" italic labels from the Stratum Connection card
+- The Crew worker filter search bar
+- Top-right `1H · 6H · 24H · 7D` button row above the Firepower chart
+  (replaced by clickable labels in the Averages strip below)
+- Redundant "Priority Fee" line on the Bitcoin Network card (the same
+  `mempool.feeRate` was already shown as the Vein/Hunt's "Fast" tier)
+- Redundant SHARE tile in The Hunt's bottom stats grid (was identical to
+  the PER-BLOCK ODDS at top of the card)
+- Inline "X.XX% accept" text in Share Stats (the Reject Rate tile shows
+  the same info inverted, more prominently)
 
 -----
 
