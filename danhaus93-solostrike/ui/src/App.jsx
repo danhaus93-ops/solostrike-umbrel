@@ -1168,7 +1168,11 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
     return 'var(--green)';
   };
 
-  const chartHeight = compact ? 105 : 140;
+  // iter27d: chart is 200px tall by default (was 140) so when bars appear
+  // they fill more vertical space. Empty-state placeholder matches chart
+  // height so the card doesn't jump in size when data arrives.
+  const chartHeight = compact ? 130 : 200;
+  const emptyHeight = chartHeight;
   const numberSize = compact ? '2.3rem' : '2.6rem';
 
   // Headline number formatting — shares/sec or shares/min for readability
@@ -1199,7 +1203,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom: '0.35rem'}}>
         <span>▸ Strike Velocity</span>
         {bars.length > 0 && (
           <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.08em', marginRight:14, whiteSpace:'nowrap'}}>
@@ -1208,32 +1212,37 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
         )}
       </div>
 
+      {/* Headline + range buttons in same row to save vertical space */}
       <div style={{
-        fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700,
-        color:'var(--green)', letterSpacing:'0.01em', lineHeight:1,
-        textShadow:'0 0 28px rgba(57,255,106,0.32)',
-        marginBottom: compact ? '0.7rem' : '0.8rem',
-        display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem',
+        display:'flex', alignItems:'flex-end', justifyContent:'space-between',
+        gap:'0.6rem', marginBottom: '0.5rem',
       }}>
-        <span>
-          {headlineNumber}
-          <span style={{fontSize: compact ? '0.85rem' : '1rem', color:'var(--text-2)', marginLeft:6}}>
-            shares/{headlineUnit}
+        <div style={{
+          fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700,
+          color:'var(--green)', letterSpacing:'0.01em', lineHeight:1,
+          textShadow:'0 0 22px rgba(57,255,106,0.32)',
+          display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.35rem',
+          minWidth:0,
+        }}>
+          <span>
+            {headlineNumber}
+            <span style={{fontSize:'0.8rem', color:'var(--text-2)', marginLeft:5, fontWeight:600}}>
+              shares/{headlineUnit}
+            </span>
           </span>
-        </span>
-      </div>
-
-      <div style={{display:'flex', gap:4, marginBottom: compact ? '0.4rem' : '0.6rem', justifyContent:'flex-end'}}>
-        {rangeBtn('1h', '1H')}
-        {rangeBtn('6h', '6H')}
-        {rangeBtn('24h', '24H')}
+        </div>
+        <div style={{display:'flex', gap:4, flexShrink:0}}>
+          {rangeBtn('1h', '1H')}
+          {rangeBtn('6h', '6H')}
+          {rangeBtn('24h', '24H')}
+        </div>
       </div>
 
       {bars.length === 0 ? (
         <div style={{
-          height: chartHeight, display:'flex', alignItems:'center', justifyContent:'center',
+          height: emptyHeight, display:'flex', alignItems:'center', justifyContent:'center',
           border:'1px dashed var(--border)',
-          color:'var(--text-3)', fontFamily:'var(--fd)', fontSize:'0.65rem',
+          color:'var(--text-3)', fontFamily:'var(--fd)', fontSize:'0.6rem',
           letterSpacing:'0.12em', textTransform:'uppercase',
         }}>
           {hashrate > 0 ? 'Collecting samples…' : 'No miners connected'}
