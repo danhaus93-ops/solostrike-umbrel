@@ -1455,27 +1455,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
 }
 
 // ── Closest Calls — pool-wide top 10 best-diff shares ever ──────────────────
-// iter28: rarity-tier system. Each share is rated by its % of network difficulty
-// (i.e., how close it came to actually being a block). Tier label + color reflect
-// rarity: NORMAL (background noise) → GOOD → RARE → EPIC → LEGENDARY.
-function classifyShareTier(pctOfBlock) {
-  if (pctOfBlock >= 10)   return { label:'LEGENDARY', color:'#ff5252', glow:true,  bgTint:'rgba(255,82,82,0.06)',  borderTint:'rgba(255,82,82,0.40)' };
-  if (pctOfBlock >= 1)    return { label:'EPIC',      color:'#ff8a3d', glow:true,  bgTint:'rgba(255,138,61,0.06)', borderTint:'rgba(255,138,61,0.35)' };
-  if (pctOfBlock >= 0.1)  return { label:'RARE',      color:'var(--amber)', glow:false, bgTint:'rgba(245,166,35,0.05)', borderTint:'rgba(245,166,35,0.25)' };
-  if (pctOfBlock >= 0.01) return { label:'GOOD',      color:'var(--cyan)',  glow:false, bgTint:'rgba(0,255,209,0.04)',  borderTint:'rgba(0,255,209,0.18)' };
-  return                       { label:'NORMAL',    color:'var(--text-2)', glow:false, bgTint:'transparent',         borderTint:'var(--border)' };
-}
-
-function fmtPctToBlock(pct) {
-  if (!isFinite(pct) || pct <= 0) return '—';
-  if (pct >= 1)     return pct.toFixed(2) + '%';
-  if (pct >= 0.01)  return pct.toFixed(3) + '%';
-  if (pct >= 0.0001) return pct.toFixed(4) + '%';
-  // For very small values, use exponential to keep the digits readable.
-  return pct.toExponential(2) + '%';
-}
-
-function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
+function ClosestCallsPanel({ closestCalls, aliases }) {
   const list = closestCalls || [];
   if (!list.length) {
     return (
@@ -1489,7 +1469,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
     );
   }
 
-  const netDiff = networkDifficulty && networkDifficulty > 0 ? networkDifficulty : null;
+  const maxDiff = list[0]?.diff || 1;
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
@@ -1497,47 +1477,36 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
         <span>▸ Near Strikes</span>
         <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
       </div>
-      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem', maxHeight:280, overflowY:'auto'}}>
         {list.map((c, i) => {
+          const pct = (c.diff / maxDiff) * 100;
           const disp = displayName(c.workerName, aliases);
-          const pctOfBlock = netDiff ? (c.diff / netDiff) * 100 : 0;
-          const tier = netDiff ? classifyShareTier(pctOfBlock) : { label:'—', color:'var(--text-2)', glow:false, bgTint:'transparent', borderTint:'var(--border)' };
+          const color = i === 0 ? 'var(--amber)' : i < 3 ? 'var(--cyan)' : 'var(--text-1)';
           return (
             <div key={`${c.workerName}-${c.ts}`} style={{
-              padding:'0.45rem 0.6rem',
-              background: tier.bgTint === 'transparent' ? 'var(--bg-raised)' : tier.bgTint,
-              border: `1px solid ${tier.borderTint}`,
+              padding:'0.35rem 0.55rem',
+              background:'var(--bg-raised)',
+              border:`1px solid ${i===0?'rgba(245,166,35,0.35)':i<3?'rgba(0,255,209,0.15)':'var(--border)'}`,
+              position:'relative',
+              overflow:'hidden',
               minWidth:0,
-              boxShadow: tier.glow ? `0 0 12px ${tier.color}55` : 'none',
+              boxShadow: i===0 ? '0 0 10px rgba(245,166,35,0.12)' : 'none',
             }}>
-              {/* Top row: rank, name + miner type · tier, big diff value */}
-              <div style={{display:'flex', alignItems:'center', gap:'0.5rem', minWidth:0}}>
+              <div style={{position:'absolute', inset:0, width:`${pct}%`, background: i===0?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)', transition:'width 0.6s ease'}}/>
+              <div style={{position:'relative', display:'flex', alignItems:'center', gap:'0.5rem'}}>
                 <span style={{
                   fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700,
-                  color: tier.color, minWidth:22, flexShrink:0,
-                  textShadow: tier.glow ? `0 0 6px ${tier.color}` : 'none',
+                  color, minWidth:18, flexShrink:0,
+                  textShadow: i===0 ? '0 0 8px rgba(245,166,35,0.5)' : 'none',
                 }}>#{i+1}</span>
-                <div style={{flex:1, minWidth:0, display:'flex', alignItems:'baseline', gap:5, flexWrap:'wrap'}}>
-                  <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0}} title={c.workerName}>
+                <div style={{flex:1, minWidth:0, display:'flex', alignItems:'baseline', gap:5}}>
+                  <span style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0}} title={c.workerName}>
                     {disp}
                   </span>
-                  {c.minerType && (
-                    <span style={{fontFamily:'var(--fd)', fontSize:'0.45rem', letterSpacing:'0.08em', color:'var(--text-3)', textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0}}>
-                      {c.minerType}
-                    </span>
-                  )}
-                  <span style={{fontFamily:'var(--fd)', fontSize:'0.45rem', letterSpacing:'0.10em', color:tier.color, textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0, fontWeight:700, textShadow: tier.glow ? `0 0 4px ${tier.color}` : 'none'}}>
-                    · {tier.label}
-                  </span>
+                  {c.minerType && <span style={{fontFamily:'var(--fd)', fontSize:'0.45rem', letterSpacing:'0.08em', color:'var(--text-3)', textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0}}>{c.minerType}</span>}
                 </div>
-                <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color: tier.color, flexShrink:0, textShadow: tier.glow ? `0 0 8px ${tier.color}` : 'none'}}>
+                <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color, flexShrink:0, textShadow: i===0 ? '0 0 10px rgba(245,166,35,0.4)' : 'none'}}>
                   {fmtDiff(c.diff)}
-                </span>
-              </div>
-              {/* Bottom row: % to block, right-aligned under the diff value */}
-              <div style={{display:'flex', justifyContent:'flex-end', marginTop:2}}>
-                <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.06em', color:'var(--text-3)', whiteSpace:'nowrap'}}>
-                  {netDiff ? fmtPctToBlock(pctOfBlock) + ' to block' : 'awaiting net diff…'}
                 </span>
               </div>
             </div>
@@ -6036,25 +6005,38 @@ export default function App() {
     document.documentElement.classList.toggle('ss-in-iframe', inIframe);
   }, []);
 
-  // Track which card is centered as the user swipes
+  // Track which card is centered as the user swipes.
+  // iter28: also re-evaluate on touchend + scrollend, because iOS Safari can
+  // skip the final scroll event after momentum scrolling settles, causing the
+  // active dot to lag behind the actual visible card.
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
     if (!el) return;
     let raf = 0;
+    const update = () => {
+      const w = el.clientWidth;
+      if (!w) return;
+      const idx = Math.round(el.scrollLeft / w);
+      setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
+    };
     const onScroll = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const w = el.clientWidth;
-        if (!w) return;
-        const idx = Math.round(el.scrollLeft / w);
-        setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
-      });
+      raf = requestAnimationFrame(update);
     };
-    el.addEventListener('scroll', onScroll, { passive: true });
+    // After touchend, the snap animation finishes within ~300ms. Schedule a
+    // delayed update to catch the final position iOS might silently swallow.
+    const onTouchEnd = () => {
+      setTimeout(update, 350);
+    };
+    el.addEventListener('scroll',     onScroll,   { passive: true });
+    el.addEventListener('scrollend',  update,     { passive: true });
+    el.addEventListener('touchend',   onTouchEnd, { passive: true });
     onScroll();
     return () => {
-      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('scroll',    onScroll);
+      el.removeEventListener('scrollend', update);
+      el.removeEventListener('touchend',  onTouchEnd);
       cancelAnimationFrame(raf);
     };
   }, [useCarousel]);
@@ -6212,7 +6194,7 @@ export default function App() {
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
     best: <BestShareLeaderboard workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
-    closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
+    closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases}/>,
     jumpers: <JumpersPanel
       topFinders={poolState?.topFinders}
       netBlocks={poolState?.netBlocks}
