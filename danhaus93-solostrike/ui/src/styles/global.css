@@ -140,11 +140,10 @@ body * {
 .ss-dots {
   position: absolute;
   left: 50%;
-  /* iter28: bottom:0 pushes the dots down to the very bottom of the carousel
-     area, snugly above the footer. Was 2px (slightly above bottom edge).
-     User wanted them lower; this is the lowest they can go without slipping
-     under the fixed footer. */
-  bottom: 0;
+  /* iter28: position dots just above the fixed footer. Footer height is
+     roughly 22px text/padding + safe-area-inset-bottom (home indicator).
+     Adding small buffer so dots don't touch the footer's top border. */
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   display: flex;
   /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
