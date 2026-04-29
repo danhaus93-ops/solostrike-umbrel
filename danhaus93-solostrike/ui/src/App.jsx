@@ -1251,7 +1251,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
       ) : (
         <div style={{
           flex:'1 1 0', height: chartHeight, minHeight: chartHeight,
-          display:'flex', alignItems:'flex-end', gap:1,
+          display:'flex', alignItems:'flex-end', justifyContent:'flex-start', gap:1,
           padding:'4px 2px',
           background:'var(--bg-deep)',
           border:'1px solid var(--border)',
@@ -1269,7 +1269,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
                 key={i}
                 title={`${new Date(b.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · ${v >= 1 ? v.toFixed(2) + '/s' : (v * 60).toFixed(1) + '/m'}`}
                 style={{
-                  flex:'1 1 0', minWidth:0,
+                  flex:'1 1 0', minWidth:0, maxWidth:10,
                   height: `${barH}%`,
                   alignSelf:'flex-end',
                   background: classify(v),
