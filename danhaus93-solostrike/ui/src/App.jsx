@@ -6065,27 +6065,29 @@ export default function App() {
   }, []);
 
   // Track which card is centered as the user swipes.
-  // iter28-v3: ditched IntersectionObserver entirely. iOS Safari has known
-  // bugs where IO with a scrollable root doesn't fire reliably during
-  // horizontal scroll. Going back to direct DOM measurement: on every scroll
-  // event, find which child's center is closest to the carousel's center.
-  // This is bulletproof — works on every browser, no observer quirks, no
-  // dependence on snap-event timing, no scrollLeft / clientWidth math
-  // (which can desync if either value lags).
+  // iter28-v3: rect-based tracking (most reliable across browsers).
+  // Also waits for the carousel to be properly sized before attaching —
+  // on initial mount, the carousel's --carousel-h CSS variable is set by
+  // a separate useEffect that runs AFTER this one, so the carousel can
+  // be height:0 / not yet scrollable when we first try to attach. Using
+  // ResizeObserver to detect when the carousel has actual dimensions,
+  // and re-running attachment if the size changes.
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
     if (!el) return;
+
     let raf = 0;
+    let attached = false;
+
     const update = () => {
+      if (!el.children.length) return;
       const elRect = el.getBoundingClientRect();
       const elCenter = elRect.left + elRect.width / 2;
-      // Find the child whose center is closest to the scroll-port center
       let bestIdx = 0;
       let bestDist = Infinity;
-      const children = el.children;
-      for (let i = 0; i < children.length; i++) {
-        const childRect = children[i].getBoundingClientRect();
+      for (let i = 0; i < el.children.length; i++) {
+        const childRect = el.children[i].getBoundingClientRect();
         const childCenter = childRect.left + childRect.width / 2;
         const dist = Math.abs(childCenter - elCenter);
         if (dist < bestDist) {
@@ -6095,26 +6097,52 @@ export default function App() {
       }
       setActiveIndex(prev => prev === bestIdx ? prev : bestIdx);
     };
+
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(update);
     };
-    // Belt-and-suspenders: catch the final position after touch/momentum ends.
-    // iOS sometimes doesn't fire a final scroll event when momentum settles.
     const onTouchEnd = () => {
-      // Multiple delayed checks to catch the snap settling at different speeds
       setTimeout(update, 100);
       setTimeout(update, 350);
       setTimeout(update, 600);
     };
-    el.addEventListener('scroll',     onScroll,   { passive: true });
-    el.addEventListener('scrollend',  update,     { passive: true });
-    el.addEventListener('touchend',   onTouchEnd, { passive: true });
-    update();
+
+    const attachListeners = () => {
+      if (attached) return;
+      attached = true;
+      el.addEventListener('scroll',     onScroll,   { passive: true });
+      el.addEventListener('scrollend',  update,     { passive: true });
+      el.addEventListener('touchend',   onTouchEnd, { passive: true });
+      // Run an initial update once attached so dot starts at correct position.
+      update();
+    };
+
+    // Wait for the carousel to actually have a usable size before attaching.
+    // On initial mount the height/width may be 0 until --carousel-h is set
+    // and CSS applies. ResizeObserver fires when the element gets real
+    // dimensions, at which point we can safely attach scroll listeners.
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        attachListeners();
+        update(); // refresh active index in case size change moved the snap point
+      }
+    });
+    ro.observe(el);
+
+    // Also try to attach immediately in case the element is already sized
+    // (e.g., the user toggled vertical→carousel — element has prior dimensions)
+    if (el.clientWidth > 0 && el.clientHeight > 0) {
+      attachListeners();
+    }
+
     return () => {
-      el.removeEventListener('scroll',    onScroll);
-      el.removeEventListener('scrollend', update);
-      el.removeEventListener('touchend',  onTouchEnd);
+      ro.disconnect();
+      if (attached) {
+        el.removeEventListener('scroll',    onScroll);
+        el.removeEventListener('scrollend', update);
+        el.removeEventListener('touchend',  onTouchEnd);
+      }
       cancelAnimationFrame(raf);
     };
   }, [useCarousel]);
