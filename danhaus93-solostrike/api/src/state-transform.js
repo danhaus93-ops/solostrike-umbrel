@@ -2,18 +2,20 @@ function computeOdds(state) {
   const poolHR = state.hashrate?.current || 0;
   const netHR  = state.network?.hashrate || 0;
   if (!poolHR || !netHR) {
-    return { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0 };
+    return { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0, perYear: 0 };
   }
   const perBlock     = poolHR / netHR;
   const blocksPerDay = 144;
   const blocksPerWk  = 144 * 7;
   const blocksPerMo  = 144 * 30;
+  const blocksPerYr  = 144 * 365;
   const notFind = 1 - perBlock;
   const perDay   = 1 - Math.pow(notFind, blocksPerDay);
   const perWeek  = 1 - Math.pow(notFind, blocksPerWk);
   const perMonth = 1 - Math.pow(notFind, blocksPerMo);
+  const perYear  = 1 - Math.pow(notFind, blocksPerYr);
   const expectedDays = (1 / perBlock) / blocksPerDay;
-  return { perBlock, expectedDays, perDay, perWeek, perMonth };
+  return { perBlock, expectedDays, perDay, perWeek, perMonth, perYear };
 }
 
 function computeLuck(state) {

@@ -64,7 +64,7 @@ const state = {
   topFinders: [],
   closestCalls: [],
   bestshare: 0,
-  shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {} },
+  shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {}, sps1m: 0, spsHistory: [] },
   uptime: 0,
   startedAt: Date.now(),
   odds: { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0 },
@@ -271,12 +271,14 @@ async function pollBitcoind() {
     const perBlockProbWithinDay = 1 - Math.exp(-odds * blocksPerDay);
     const perBlockProbWithinWeek = 1 - Math.exp(-odds * blocksPerDay * 7);
     const perBlockProbWithinMonth = 1 - Math.exp(-odds * blocksPerDay * 30);
+    const perBlockProbWithinYear = 1 - Math.exp(-odds * blocksPerDay * 365);
     state.odds = {
       perBlock: odds,
       expectedDays: expectedDaysPerBlock,
       perDay: perBlockProbWithinDay,
       perWeek: perBlockProbWithinWeek,
       perMonth: perBlockProbWithinMonth,
+      perYear: perBlockProbWithinYear,
     };
 
     if (state.startedAt) {
@@ -305,11 +307,37 @@ async function pollBitcoind() {
       const actualSecPerBlock = blocksDoneInEpoch > 0 ? elapsedSec / blocksDoneInEpoch : expectedSecPerBlock;
       const change = ((expectedSecPerBlock / actualSecPerBlock) - 1) * 100;
       const remainingTime = remainingBlocks * actualSecPerBlock * 1000;
+
+      // iter28-fix-C: cache previous epoch's actual difficulty change.
+      // Compute from current epoch's difficulty vs previous epoch's
+      // difficulty (block at retargetEpochStart - 2016). Cache by epoch
+      // number so we only do the extra RPC once per epoch.
+      let prevDifficultyChange = state._cachedPrevEpochDelta?.value ?? null;
+      const epochNum = Math.floor(retargetEpochStart / 2016);
+      if (state._cachedPrevEpochDelta?.epoch !== epochNum && retargetEpochStart >= 2016) {
+        try {
+          const prevEpochStartHeight = retargetEpochStart - 2016;
+          const prevHash = await rpc('getblockhash', [prevEpochStartHeight]);
+          const prevBlk  = await rpc('getblock', [prevHash]);
+          // Difficulty at epoch boundary applies to the next 2016 blocks.
+          // Current epoch's difficulty is on startBlock; previous epoch's
+          // difficulty is on prevBlk. Percent change between the two.
+          if (prevBlk?.difficulty && startBlock?.difficulty) {
+            const delta = ((startBlock.difficulty / prevBlk.difficulty) - 1) * 100;
+            prevDifficultyChange = delta;
+            state._cachedPrevEpochDelta = { epoch: epochNum, value: delta };
+          }
+        } catch (e) {
+          // Older block prune may make prev epoch unreachable; leave prevDifficultyChange null.
+        }
+      }
+
       state.retarget = {
         progressPercent: (blocksDoneInEpoch / 2016) * 100,
         difficultyChange: -change,
         remainingBlocks,
         remainingTime,
+        prevDifficultyChange,
       };
     } catch (e) {}
 

@@ -88,7 +88,9 @@ function startStatusPoller(state, broadcast, logDir) {
     state.hashrate.averages = {
       hr1m:  computeAverage(shortHist,      60 * 1000),
       hr5m:  computeAverage(shortHist,  5 * 60 * 1000),
+      hr15m: computeAverage(shortHist, 15 * 60 * 1000),
       hr1h:  computeAverage(shortHist, 60 * 60 * 1000),
+      hr6h:  computeAverage(shortHist,  6 * 60 * 60 * 1000),
       hr24h: computeAverage(shortHist, 24 * 60 * 60 * 1000),
       hr7d:  computeAverage(longHist,   7 * 24 * 60 * 60 * 1000),
     };
@@ -134,6 +136,19 @@ function startStatusPoller(state, broadcast, logDir) {
             state.shares.accepted = shares.accepted || 0;
             state.shares.rejected = shares.rejected || 0;
             state.shares.sps1m    = shares.SPS1m    || 0;
+            // iter28-fix-F: spsHistory ring buffer for Strike Velocity card.
+            // Sample once per ~60s (poller fires every 5s, so we throttle).
+            // Cap at 1440 points = 24h.
+            (() => {
+              if (!Array.isArray(state.shares.spsHistory)) state.shares.spsHistory = [];
+              const sps = shares.SPS1m || 0;
+              const last = state.shares.spsHistory[state.shares.spsHistory.length - 1];
+              if (last && (now - last.ts) < 50000) return;
+              state.shares.spsHistory.push({ ts: now, sps });
+              if (state.shares.spsHistory.length > 1440) {
+                state.shares.spsHistory.splice(0, state.shares.spsHistory.length - 1440);
+              }
+            })();
             state.bestshare            = shares.bestshare     || 0;
             state.totalWorkers         = summary.Workers      || 0;
             state.totalUsers           = summary.Users        || 0;
