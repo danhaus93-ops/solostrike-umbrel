@@ -6065,61 +6065,57 @@ export default function App() {
   }, []);
 
   // Track which card is centered as the user swipes.
-  // iter28-v2: switched from scroll-math (Math.round(scrollLeft / clientWidth))
-  // to IntersectionObserver. The math approach is fragile on iOS Safari —
-  // viewport width can fluctuate during momentum scrolls (URL bar show/hide),
-  // and the final `scroll` event after snap can be silently dropped, leaving
-  // activeIndex on the wrong card. IntersectionObserver fires whenever a child
-  // crosses the visibility threshold, regardless of scroll event reliability.
+  // iter28-v3: ditched IntersectionObserver entirely. iOS Safari has known
+  // bugs where IO with a scrollable root doesn't fire reliably during
+  // horizontal scroll. Going back to direct DOM measurement: on every scroll
+  // event, find which child's center is closest to the carousel's center.
+  // This is bulletproof — works on every browser, no observer quirks, no
+  // dependence on snap-event timing, no scrollLeft / clientWidth math
+  // (which can desync if either value lags).
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
     if (!el) return;
-
-    // Observer fires when a card becomes >60% visible inside the carousel.
-    // Using the carousel itself as the root means we measure against the
-    // visible scroll-port, not the document viewport.
-    const observer = new IntersectionObserver((entries) => {
-      // Find the entry with the highest intersection ratio (the one most in view)
-      let bestEntry = null;
-      let bestRatio = 0;
-      for (const entry of entries) {
-        if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
-          bestRatio = entry.intersectionRatio;
-          bestEntry = entry;
+    let raf = 0;
+    const update = () => {
+      const elRect = el.getBoundingClientRect();
+      const elCenter = elRect.left + elRect.width / 2;
+      // Find the child whose center is closest to the scroll-port center
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      const children = el.children;
+      for (let i = 0; i < children.length; i++) {
+        const childRect = children[i].getBoundingClientRect();
+        const childCenter = childRect.left + childRect.width / 2;
+        const dist = Math.abs(childCenter - elCenter);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
         }
       }
-      if (!bestEntry) return;
-      // Find this child's index by looking at its position among siblings
-      const idx = Array.from(el.children).indexOf(bestEntry.target);
-      if (idx < 0) return;
-      setActiveIndex(prev => prev === idx ? prev : idx);
-    }, {
-      root: el,
-      // 60% threshold: a card must be at least 60% in view to be "active".
-      // This handles the brief moment between snap-points where two cards
-      // are partially visible — only the dominant one wins.
-      threshold: [0.6, 0.85],
-    });
-
-    // Observe every child card. Re-observe whenever the children list changes
-    // (e.g., user reorders cards via drag-and-drop, or visibleCards changes).
-    const children = Array.from(el.children);
-    children.forEach(child => observer.observe(child));
-
-    // iter28-v2.1: also watch for DOM child changes via MutationObserver so
-    // we re-observe new cards if the user changes settings mid-session.
-    // This replaces the buggy `renderableOrder.length` dep which referenced
-    // a const before its declaration line — caused a ReferenceError crash.
-    const mutationObserver = new MutationObserver(() => {
-      observer.disconnect();
-      Array.from(el.children).forEach(child => observer.observe(child));
-    });
-    mutationObserver.observe(el, { childList: true });
-
+      setActiveIndex(prev => prev === bestIdx ? prev : bestIdx);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    // Belt-and-suspenders: catch the final position after touch/momentum ends.
+    // iOS sometimes doesn't fire a final scroll event when momentum settles.
+    const onTouchEnd = () => {
+      // Multiple delayed checks to catch the snap settling at different speeds
+      setTimeout(update, 100);
+      setTimeout(update, 350);
+      setTimeout(update, 600);
+    };
+    el.addEventListener('scroll',     onScroll,   { passive: true });
+    el.addEventListener('scrollend',  update,     { passive: true });
+    el.addEventListener('touchend',   onTouchEnd, { passive: true });
+    update();
     return () => {
-      observer.disconnect();
-      mutationObserver.disconnect();
+      el.removeEventListener('scroll',    onScroll);
+      el.removeEventListener('scrollend', update);
+      el.removeEventListener('touchend',  onTouchEnd);
+      cancelAnimationFrame(raf);
     };
   }, [useCarousel]);
 
