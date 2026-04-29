@@ -33,10 +33,11 @@ const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'worker_health', 'accept_rate',
 
 const ALL_CARDS = [
   { id:'hashrate',      label:'Firepower' },
+  { id:'strikevel',     label:'Strike Velocity' },
   { id:'pulse',         label:'Solostrike Pulse' },
   { id:'workers',       label:'The Crew' },
   { id:'stratum',       label:'Stratum Connection' },
-  { id:'vein',          label:'The Vein' },
+  { id:'vein',          label:'The Hunt' },
   { id:'network',       label:'Bitcoin Network' },
   { id:'node',          label:'Bitcoin Node' },
   { id:'luck',          label:'Hot Streak' },
@@ -49,7 +50,7 @@ const ALL_CARDS = [
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
-const DEFAULT_PRESET  = ['hashrate', 'pulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers'];
+const DEFAULT_PRESET  = ['hashrate', 'strikevel', 'pulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers'];
 const EVERYTHING_PRESET = [...ALL_CARD_IDS];
 
 // v1.7.6 migration — rename "odds" card id to "vein" in any persisted layouts.
@@ -962,7 +963,16 @@ function HashrateTrend({ history, current }) {
 
 // ── Hashrate chart ────────────────────────────────────────────────────────────
 // ── HashrateAverages — rolling hashrate averages bar list (iter26) ───────
-// Renders a Gobrrr-style "Pool Stats" averages strip: one row per window
+// Renders a "Pool Stats" averages strip: one row per window
+// (1m, 5m, 15m, 1h, 6h, 24h, 7d) with a horizontal bar showing relative
+// magnitude and the formatted hashrate value on the right. All seven values
+// come pre-computed from the API in `state.hashrate.averages`.
+//
+// iter27b: when `onRangeChange` is provided, the leftmost label in each row
+// becomes a clickable button that switches the parent chart's time window.
+// The currently-active range gets highlighted (amber border + amber text).
+// ── HashrateAverages — rolling hashrate averages bar list (iter26) ───────
+// Renders a "Pool Stats" averages strip: one row per window
 // (1m, 5m, 15m, 1h, 6h, 24h, 7d) with a horizontal bar showing relative
 // magnitude and the formatted hashrate value on the right. All seven values
 // come pre-computed from the API in `state.hashrate.averages`.
@@ -971,6 +981,304 @@ function HashrateTrend({ history, current }) {
 // becomes a clickable button that switches the parent chart's time window.
 // The currently-active range gets highlighted (amber border + amber text).
 function HashrateAverages({ averages, current, peak, range, onRangeChange }) {
+  if (!averages) return null;
+  const rows = [
+    { key: 'hr1m',  label: '1M',  rangeKey: '1m'  },
+    { key: 'hr5m',  label: '5M',  rangeKey: '5m'  },
+    { key: 'hr15m', label: '15M', rangeKey: '15m' },
+    { key: 'hr1h',  label: '1H',  rangeKey: '1h'  },
+    { key: 'hr6h',  label: '6H',  rangeKey: '6h'  },
+    { key: 'hr24h', label: '24H', rangeKey: '24h' },
+    { key: 'hr7d',  label: '7D',  rangeKey: '7d'  },
+  ];
+  // Normalize bars against the largest of: peak, current, and any avg —
+  // keeps every bar < 100% width so values never get clipped on the right.
+  const vals = rows.map(r => averages[r.key] || 0);
+  const maxAvg = Math.max(0, ...vals);
+  const denom  = Math.max(maxAvg, peak || 0, current || 0) || 1;
+  const anyData = vals.some(v => v > 0);
+  if (!anyData) return null;
+  const interactive = typeof onRangeChange === 'function';
+  return (
+    <div style={{
+      marginTop: '0.85rem',
+      paddingTop: '0.7rem',
+      borderTop: '1px dashed rgba(245,166,35,0.18)',
+    }}>
+      <div style={{
+        display:'flex', justifyContent:'space-between', alignItems:'baseline',
+        marginBottom: '0.5rem',
+      }}>
+        <div style={{
+          fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: 'var(--text-2)',
+        }}>
+          ▸ Hashrate Averages
+        </div>
+        {interactive && (
+          <div style={{
+            fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em',
+            color:'var(--text-3)', textTransform:'uppercase',
+          }}>
+            Tap label → chart
+          </div>
+        )}
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.32rem'}}>
+        {rows.map(r => {
+          const v = averages[r.key] || 0;
+          const pct = denom > 0 ? Math.min(100, (v / denom) * 100) : 0;
+          const formatted = fmtHr(v);
+          const isActive = interactive && range === r.rangeKey;
+          // Label cell — button when interactive, span otherwise. Box size
+          // stays identical between active/inactive so rows don't reflow.
+          const labelCell = interactive ? (
+            <button
+              onClick={() => onRangeChange(r.rangeKey)}
+              aria-pressed={isActive}
+              style={{
+                background: isActive ? 'var(--bg-raised)' : 'transparent',
+                border: `1px solid ${isActive ? 'var(--border-hot, rgba(245,166,35,0.45))' : 'transparent'}`,
+                color: isActive ? 'var(--amber)' : 'var(--text-2)',
+                fontFamily: 'var(--fd)', fontSize: '0.6rem', fontWeight: 700,
+                letterSpacing: '0.08em',
+                padding: '2px 0',
+                cursor: 'pointer',
+                textAlign: 'center',
+                lineHeight: 1.1,
+                width: '100%',
+                boxSizing: 'border-box',
+                textShadow: isActive ? '0 0 6px rgba(245,166,35,0.4)' : 'none',
+              }}>
+              {r.label}
+            </button>
+          ) : (
+            <span style={{
+              fontFamily:'var(--fd)', fontSize:'0.6rem', fontWeight:700,
+              letterSpacing:'0.08em', color:'var(--text-2)', textAlign:'center',
+            }}>{r.label}</span>
+          );
+          return (
+            <div key={r.key} style={{
+              display:'grid',
+              gridTemplateColumns:'2.7rem 1fr auto',
+              alignItems:'center',
+              gap:'0.55rem',
+              minWidth:0,
+            }}>
+              {labelCell}
+              <div style={{
+                position:'relative',
+                height:6,
+                background:'var(--bg-deep)',
+                border:'1px solid var(--border)',
+                overflow:'hidden',
+                minWidth:0,
+              }}>
+                <div style={{
+                  width:`${pct}%`,
+                  height:'100%',
+                  background: isActive
+                    ? 'linear-gradient(90deg, rgba(245,166,35,0.55), #FFD27A)'
+                    : 'linear-gradient(90deg, rgba(245,166,35,0.35), var(--amber))',
+                  transition:'width 0.5s ease, background 0.3s ease',
+                }}/>
+              </div>
+              <span style={{
+                fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700,
+                color: v > 0 ? 'var(--amber)' : 'var(--text-3)',
+                whiteSpace:'nowrap',
+                textAlign:'right',
+                minWidth:'4.6rem',
+              }}>
+                {v > 0 ? formatted : '—'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── StrikeVelocityChart — share submission histogram (iter27d) ────────────
+// Sibling to Firepower but visualizes shares-per-second over time as a bar
+// histogram instead of a smoothed line. Each bar = 1 minute of share
+// submissions, sampled by the API every 60s into state.shares.spsHistory.
+//
+// Why a histogram (not another line chart): visually distinct from
+// Firepower at a glance, and bar-shape semantics map cleanly to "tall =
+// active minute, short = quiet minute, missing = downtime."
+//
+// Color coding:
+//   green = within 30% of rolling median (normal)
+//   amber = above 1.5× or below 0.5× median (anomaly — vardiff bump,
+//           network hiccup, or partial outage)
+//   red   = 0 shares for that minute (full downtime)
+function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false }) {
+  const [range, setRange] = useState('1h');
+  const RANGES = {
+    '1h':  60 * 60 * 1000,
+    '6h':  6 * 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
+  };
+  const windowMs = RANGES[range] || RANGES['1h'];
+  const cutoff = Date.now() - windowMs;
+  const all = Array.isArray(spsHistory) ? spsHistory : [];
+  const filtered = all.filter(p => p && p.ts >= cutoff);
+
+  // Live sps — prefer the API's sps1m field, fall back to estimate from
+  // hashrate (hashrate / 2^32 = shares/sec at diff 1).
+  const liveSps = currentSps > 0
+    ? currentSps
+    : (hashrate > 0 ? hashrate / 4294967296 : 0);
+
+  // Median of the visible window for color thresholding
+  const sortedVals = filtered.map(p => p.sps || 0).filter(v => v > 0).sort((a, b) => a - b);
+  const median = sortedVals.length > 0
+    ? sortedVals[Math.floor(sortedVals.length / 2)]
+    : liveSps;
+
+  // For bar widths/spacing — chart targets ~140 visible bars max.
+  // 1h × 1min sample = 60 bars (gentle), 24h would be 1440 (way too dense),
+  // so for 24h we downsample by averaging consecutive samples into buckets.
+  const maxBars = compact ? 60 : 140;
+  let bars = filtered;
+  if (filtered.length > maxBars) {
+    const bucketSize = Math.ceil(filtered.length / maxBars);
+    const bucketed = [];
+    for (let i = 0; i < filtered.length; i += bucketSize) {
+      const slice = filtered.slice(i, i + bucketSize);
+      const avgSps = slice.reduce((s, p) => s + (p.sps || 0), 0) / slice.length;
+      bucketed.push({ ts: slice[Math.floor(slice.length / 2)].ts, sps: avgSps });
+    }
+    bars = bucketed;
+  }
+
+  // Y-axis max for normalizing bar heights
+  const maxVal = bars.reduce((m, b) => Math.max(m, b.sps || 0), liveSps || 1);
+  const yMax = maxVal > 0 ? maxVal * 1.1 : 1;
+
+  // Color classifier for each bar
+  const classify = (v) => {
+    if (v <= 0)                       return 'var(--red)';
+    if (median <= 0)                  return 'var(--amber)';
+    if (v > median * 1.5)             return 'var(--amber)';
+    if (v < median * 0.5)             return 'var(--amber)';
+    return 'var(--green)';
+  };
+
+  const chartHeight = compact ? 105 : 140;
+  const numberSize = compact ? '2.3rem' : '2.6rem';
+
+  // Headline number formatting — shares/sec or shares/min for readability
+  const headlineVal = liveSps;
+  const headlineUnit = headlineVal >= 1 ? 's' : 'm';
+  const headlineNumber = headlineVal >= 1
+    ? headlineVal.toFixed(1)
+    : (headlineVal * 60).toFixed(1);
+
+  const rangeBtn = (key, label) => {
+    const isActive = range === key;
+    return (
+      <button
+        key={key}
+        onClick={() => setRange(key)}
+        style={{
+          background: isActive ? 'var(--bg-raised)' : 'transparent',
+          border: `1px solid ${isActive ? 'var(--border-hot, rgba(245,166,35,0.45))' : 'var(--border)'}`,
+          color: isActive ? 'var(--amber)' : 'var(--text-2)',
+          fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:700,
+          letterSpacing:'0.08em', padding:'3px 9px', cursor:'pointer',
+          textTransform:'uppercase',
+          textShadow: isActive ? '0 0 6px rgba(245,166,35,0.4)' : 'none',
+        }}
+      >{label}</button>
+    );
+  };
+
+  return (
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>
+        <span>▸ Strike Velocity</span>
+        {bars.length > 0 && (
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.08em', marginRight:14, whiteSpace:'nowrap'}}>
+            {bars.length} samples
+          </span>
+        )}
+      </div>
+
+      <div style={{
+        fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700,
+        color:'var(--green)', letterSpacing:'0.01em', lineHeight:1,
+        textShadow:'0 0 28px rgba(57,255,106,0.32)',
+        marginBottom: compact ? '0.7rem' : '0.8rem',
+        display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem',
+      }}>
+        <span>
+          {headlineNumber}
+          <span style={{fontSize: compact ? '0.85rem' : '1rem', color:'var(--text-2)', marginLeft:6}}>
+            shares/{headlineUnit}
+          </span>
+        </span>
+      </div>
+
+      <div style={{display:'flex', gap:4, marginBottom: compact ? '0.4rem' : '0.6rem', justifyContent:'flex-end'}}>
+        {rangeBtn('1h', '1H')}
+        {rangeBtn('6h', '6H')}
+        {rangeBtn('24h', '24H')}
+      </div>
+
+      {bars.length === 0 ? (
+        <div style={{
+          height: chartHeight, display:'flex', alignItems:'center', justifyContent:'center',
+          border:'1px dashed var(--border)',
+          color:'var(--text-3)', fontFamily:'var(--fd)', fontSize:'0.65rem',
+          letterSpacing:'0.12em', textTransform:'uppercase',
+        }}>
+          {hashrate > 0 ? 'Collecting samples…' : 'No miners connected'}
+        </div>
+      ) : (
+        <div style={{
+          height: chartHeight,
+          display:'flex', alignItems:'flex-end', gap:1,
+          padding:'4px 2px',
+          background:'var(--bg-deep)',
+          border:'1px solid var(--border)',
+          minWidth:0, overflow:'hidden',
+        }}>
+          {bars.map((b, i) => {
+            const v = b.sps || 0;
+            const pct = yMax > 0 ? (v / yMax) * 100 : 0;
+            // Minimum 2px height for any bar with v > 0 so it's visible
+            const minH = v > 0 ? 2 : 0;
+            const barH = Math.max(minH, pct);
+            return (
+              <div
+                key={i}
+                title={`${new Date(b.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · ${v >= 1 ? v.toFixed(2) + '/s' : (v * 60).toFixed(1) + '/m'}`}
+                style={{
+                  flex:'1 1 0', minWidth:0,
+                  height: `${barH}%`,
+                  background: classify(v),
+                  opacity: v > 0 ? 0.85 : 0.35,
+                  transition:'height 0.4s ease',
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:5}}>
+        <span>Each bar = {bars.length > 0 && all.length > maxBars ? Math.ceil(filtered.length / maxBars) : 1} min</span>
+        <span style={{color:'var(--text-2)'}}>median ≈ {median > 0 ? (median >= 1 ? median.toFixed(1) + '/s' : (median * 60).toFixed(1) + '/m') : '—'}</span>
+      </div>
+    </div>
+  );
+}
+
+
   if (!averages) return null;
   const rows = [
     { key: 'hr1m',  label: '1M',  rangeKey: '1m'  },
@@ -1685,8 +1993,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
       title={onOpen ? 'Tap to open The Reckoning' : undefined}
     >
       <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-        <span>▸ The Vein</span>
-        {onOpen && <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', color:'var(--amber)', letterSpacing:'0.12em', opacity:0.75}}>▸ RECKONING</span>}
+        <span>▸ The Hunt</span>
       </div>
 
       <div style={{display:'flex', flexDirection:'column', gap:'0.55rem'}}>
@@ -2374,6 +2681,71 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
             <div style={kvRow}><span style={kvLabel}>Reject Rate</span><span style={{...kvVal,color:rejectPct<0.5?'var(--text-2)':'var(--red)'}}>{rejectPct.toFixed(3)}%</span></div>
             <div style={kvRow}><span style={kvLabel}>Stale Rate</span><span style={{...kvVal,color:stalePct<0.5?'var(--text-2)':'var(--amber)'}}>{stalePct.toFixed(3)}%</span></div>
             <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(bestSdiff)}</span></div>
+            {/* iter27d: extended diagnostics — session start, avg diff, last share, implied HR */}
+            {(() => {
+              // Session started — same trackingSince used in the footer text below
+              const sessStart = trackingSince || null;
+              const sessMs = sessStart ? Date.now() - sessStart : 0;
+              const sessHrs = sessMs / 3600000;
+              const sessLabel = sessStart
+                ? `${new Date(sessStart).toLocaleDateString(undefined,{month:'short',day:'numeric'})} ${new Date(sessStart).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} · ${fmtDurationMs(sessMs)} ago`
+                : '—';
+
+              // Average accepted-share difficulty
+              const acceptedDiff = sh.accepted || 0;
+              const avgDiff = totalAccepted > 0 ? (acceptedDiff / totalAccepted) : 0;
+              const avgDiffLabel = avgDiff > 0 ? fmtDiff(avgDiff) : '—';
+
+              // Last share submission across all workers (pool-level)
+              let lastShareTs = 0;
+              for (const w of wl) {
+                if (w.lastSeen && w.lastSeen > lastShareTs) lastShareTs = w.lastSeen;
+              }
+              const lastShareLabel = lastShareTs > 0 ? fmtAgoShort(lastShareTs) : '—';
+              const lastShareColor = lastShareTs > 0 && (Date.now() - lastShareTs) < 60000
+                ? 'var(--green)'
+                : lastShareTs > 0 && (Date.now() - lastShareTs) < 300000
+                ? 'var(--amber)'
+                : lastShareTs > 0 ? 'var(--red)' : 'var(--text-2)';
+
+              // Implied hashrate from accepted-diff over time. Diff×2^32 = hashes.
+              // Compare to live hashrate (reads off the live workers list).
+              let liveHr = 0;
+              for (const w of wl) liveHr += (w.hashrate || 0);
+              const impliedHr = sessHrs > 0 && acceptedDiff > 0
+                ? (acceptedDiff * 4294967296) / (sessHrs * 3600)
+                : 0;
+              const matchOk = liveHr > 0 && impliedHr > 0
+                ? Math.abs(impliedHr - liveHr) / Math.max(impliedHr, liveHr) < 0.25
+                : false;
+              const matchLabel = impliedHr > 0
+                ? `${fmtHr(impliedHr)}${liveHr > 0 ? (matchOk ? ' ✓' : ' ⚠') : ''}`
+                : '—';
+              const matchColor = impliedHr > 0
+                ? (liveHr === 0 ? 'var(--text-1)' : matchOk ? 'var(--green)' : 'var(--amber)')
+                : 'var(--text-2)';
+
+              return (
+                <>
+                  <div style={kvRow}>
+                    <span style={kvLabel}>Avg Share Difficulty</span>
+                    <span style={{...kvVal,color:'var(--cyan)'}}>{avgDiffLabel}</span>
+                  </div>
+                  <div style={kvRow}>
+                    <span style={kvLabel}>Last Share (pool)</span>
+                    <span style={{...kvVal,color:lastShareColor}}>{lastShareLabel}</span>
+                  </div>
+                  <div style={kvRow}>
+                    <span style={kvLabel}>Implied Hashrate</span>
+                    <span style={{...kvVal,color:matchColor}}>{matchLabel}</span>
+                  </div>
+                  <div style={kvRow}>
+                    <span style={kvLabel}>Session Started</span>
+                    <span style={{...kvVal,color:'var(--text-2)',fontSize:'0.62rem'}}>{sessLabel}</span>
+                  </div>
+                </>
+              );
+            })()}
             <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
               {trackingSince ? <>Tracking since <span style={{color:'var(--amber)'}}>{new Date(trackingSince).toLocaleDateString(undefined,{month:'short',day:'numeric'})} {new Date(trackingSince).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>. Persists across restarts.</> : <>Session totals since share-watcher started. Persists across restarts.</>}
             </div>
@@ -2463,7 +2835,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   const sharesPerMin = (useSps * 60).toFixed(1);
   const spsLabel = realSps > 0 ? 'Shares / min' : 'Shares / min (est.)';
   // iter26: top-line reject rate %. Counts include stale shares as rejected
-  // for the headline accuracy figure (matches Gobrrr methodology).
+  // for the headline accuracy figure (standard share-quality methodology).
   const lifeAccepted = s.acceptedCount || 0;
   const lifeRejected = s.rejectedCount || 0;
   const lifeStale    = s.stale || 0;
@@ -2477,7 +2849,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Work Accepted</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Accepted Work</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',marginTop:6}}>
             {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected</>}
@@ -5882,6 +6254,11 @@ export default function App() {
       current={poolState?.hashrate?.current||0}
       averages={poolState?.hashrate?.averages}
     />,
+    strikevel: <StrikeVelocityChart
+      spsHistory={poolState?.shares?.spsHistory}
+      currentSps={poolState?.shares?.sps1m}
+      hashrate={poolState?.hashrate?.current||0}
+    />,
     pulse: <PulsePanel
       networkStats={poolState?.networkStats}
       onOpenSettings={()=>setShowSettings(true)}
@@ -5982,7 +6359,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.7.22 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.8.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
