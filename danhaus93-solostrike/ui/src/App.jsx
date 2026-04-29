@@ -6034,6 +6034,24 @@ export default function App() {
   const footerRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
+  // ── DIAG-A1 (v1.8.1) ────────────────────────────────────────────────────
+  // Diagnostic-only state for carousel dot tracker. Renders an on-screen
+  // readout (top-right) so we can see whether the scroll-tracking effect is
+  // firing and what values it observes — without needing Web Inspector.
+  // Six prior tracker fixes failed because we couldn't tell which link in
+  // the chain (effect mount, listener attach, scroll events, math, setState)
+  // was broken. This makes every link visible. Remove after diagnosis.
+  const [diag, setDiag] = useState({
+    mounted: false,
+    refHit: false,
+    scrollCount: 0,
+    rafCount: 0,
+    lastSL: 0,
+    lastCW: 0,
+    lastSW: 0,
+    lastIdx: -1,
+  });
+
   // v1.7.22-iter: tag the body AND html with the active layout mode so CSS
   // can apply different sizing rules without needing :has() support
   // (Umbrel's webview may not have it). Carousel mode locks body height to
@@ -6064,18 +6082,39 @@ export default function App() {
     document.documentElement.classList.toggle('ss-in-iframe', inIframe);
   }, []);
 
-  // Track which card is centered as the user swipes
+  // Track which card is centered as the user swipes (DIAG-A1 instrumented)
   useEffect(() => {
     if (!useCarousel) return;
+    // Mark mount immediately so we can tell if the effect ran at all
+    setDiag(d => ({ ...d, mounted: true }));
     const el = carouselRef.current;
-    if (!el) return;
+    if (!el) {
+      setDiag(d => ({ ...d, refHit: false }));
+      return;
+    }
+    setDiag(d => ({ ...d, refHit: true }));
     let raf = 0;
+    let scrollCount = 0;
+    let rafCount = 0;
     const onScroll = () => {
+      scrollCount += 1;
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
+        rafCount += 1;
         const w = el.clientWidth;
+        const sL = el.scrollLeft;
+        const sW = el.scrollWidth;
+        const idx = w > 0 ? Math.round(sL / w) : -1;
+        setDiag(d => ({
+          ...d,
+          scrollCount,
+          rafCount,
+          lastSL: Math.round(sL),
+          lastCW: Math.round(w),
+          lastSW: Math.round(sW),
+          lastIdx: idx,
+        }));
         if (!w) return;
-        const idx = Math.round(el.scrollLeft / w);
         setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
       });
     };
@@ -6321,9 +6360,34 @@ export default function App() {
             onJump={jumpToCard}
           />
         )}
+        {useCarousel && (
+          <div style={{
+            position: 'fixed',
+            top: 'calc(8px + env(safe-area-inset-top))',
+            right: '8px',
+            zIndex: 99999,
+            background: 'rgba(0,0,0,0.88)',
+            color: '#0f0',
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            padding: '6px 8px',
+            borderRadius: '4px',
+            pointerEvents: 'none',
+            lineHeight: 1.35,
+            border: '1px solid #0f0',
+            whiteSpace: 'pre',
+            letterSpacing: '0.02em',
+          }}>
+{`DIAG-A1 v1.8.1
+useC:${useCarousel?'Y':'N'} m:${diag.mounted?'Y':'N'} ref:${diag.refHit?'OK':'MISS'}
+scr:${diag.scrollCount} raf:${diag.rafCount}
+sL:${diag.lastSL} cW:${diag.lastCW} sW:${diag.lastSW}
+idx:${diag.lastIdx} act:${activeIndex} n:${renderableOrder.length}`}
+          </div>
+        )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.8.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.8.1 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
