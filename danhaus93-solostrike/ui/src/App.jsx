@@ -44,8 +44,8 @@ const ALL_CARDS = [
   { id:'shares',        label:'Share Stats' },
   { id:'best',          label:'Top Diggers' },
   { id:'closestcalls',  label:'Near Strikes' },
-  { id:'jumpers',       label:'Claim Jumpers + Gold Strikes' },
-  { id:'recent',        label:'The Goldfields' },
+  { id:'jumpers',       label:'Claim Jumpers + Solo Strikes' },
+  { id:'recent',        label:'The Ledger' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
@@ -1192,19 +1192,12 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
 
 // ── Worker grid ───────────────────────────────────────────────────────────────
 function WorkerGrid({ workers, aliases, onWorkerClick }) {
-  const [query, setQuery] = useState('');
-  const q = query.trim().toLowerCase();
+  // iter27c: removed worker filter search bar — for solo mining (~12-15
+  // workers) the filter was visual noise. Workers are still sorted: online
+  // first, then by descending hashrate.
   const sorted = [...(workers||[])].sort(
     (a,b)=>(a.status==='offline'?1:-1)-(b.status==='offline'?1:-1)||(b.hashrate||0)-(a.hashrate||0)
   );
-  const filtered = q
-    ? sorted.filter(w =>
-        (w.name||'').toLowerCase().includes(q) ||
-        (stripAddr(w.name)||'').toLowerCase().includes(q) ||
-        (displayName(w.name, aliases)||'').toLowerCase().includes(q) ||
-        (w.minerType||'').toLowerCase().includes(q)
-      )
-    : sorted;
   const online = sorted.filter(w=>w.status!=='offline').length;
 
   return (
@@ -1213,23 +1206,13 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
         <span>▸ The Crew</span>
         <span style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap'}}>{online}/{sorted.length} online</span>
       </div>
-      {sorted.length > 3 && (
-        <div style={{position:'relative', marginBottom:'0.5rem'}}>
-          <span style={{position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', fontSize:12, color:'var(--text-2)', pointerEvents:'none'}}>🔍</span>
-          <input type="text" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Filter workers by name or miner type…"
-            spellCheck={false} autoCorrect="off" autoCapitalize="off"
-            style={{width:'100%',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',padding:'0.5rem 0.6rem 0.5rem 2rem',outline:'none',boxSizing:'border-box'}}/>
-          {query && <button onClick={()=>setQuery('')} style={{position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--text-2)', cursor:'pointer', fontSize:14, padding:'4px 6px'}}>✕</button>}
-        </div>
-      )}
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)',lineHeight:2}}>
-          {q ? <>No workers match "<span style={{color:'var(--amber)'}}>{query}</span>"</>
-             : <>No miners connected yet.<br/><span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--cyan)'}}>stratum+tcp://umbrel.local:3333</span><br/><span style={{color:'var(--text-3)',fontSize:'0.65rem'}}>user: worker_name · pass: x</span></>}
+          No miners connected yet.<br/><span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--cyan)'}}>stratum+tcp://umbrel.local:3333</span><br/><span style={{color:'var(--text-3)',fontSize:'0.65rem'}}>user: worker_name · pass: x</span>
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',maxHeight:340,overflowY:'auto'}}>
-          {filtered.map(w=>{
+          {sorted.map(w=>{
             const on=w.status!=='offline';
             const workAccepted = w.shares || 0;
             const workRejected = w.rejected || 0;
@@ -1447,9 +1430,231 @@ function BitcoinNodePanel({ nodeInfo }) {
 // reward breakdown (subsidy + fees), expected daily sats, and live fee tier
 // strip. Tap to open The Reckoning. Same readability standard as Strikers/
 // Reckoning modals (no var(--text-3) ghost gray, body text >= 0.7rem).
+// ── NonceField — Bitcoin-native visualization for The Vein (iter27c) ─────
+// Each Bitcoin block requires finding a 32-bit nonce that, combined with
+// the block header, produces a hash below the network difficulty target.
+// The full nonce space is 2^32 ≈ 4.29 billion possibilities per header.
+// Miners iterate through the space looking for one that satisfies the
+// target — solo mining is essentially "I'm checking my pile of nonces,
+// hoping mine contains the magic one."
+//
+// This component renders that nonce space as a sparse grid of dim points.
+// Cells flicker amber as we hash through them. A subtle scan line sweeps
+// L→R representing nonce iteration order. The density of activity scales
+// with hashrate. It's not a literal 1:1 cell-per-hash mapping (we'd need
+// 4 billion cells, not 120) — it's a representative visualization where
+// brightness ∝ work being done.
+function NonceField({ hashrate, netHashrate }) {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const animRef = useRef(0);
+  const dimsRef = useRef({ w: 600, h: 80, dpr: 1 });
+  // Cell brightness map — index → intensity [0..1]. Decays over time.
+  const cellsRef = useRef(null);
+  // Strike flash — bright burst when a "winner" is found (rare, on a
+  // probabilistic schedule based on hashrate vs network).
+  const strikeRef = useRef({ active: false, t: 0, x: 0, y: 0 });
+  const scanXRef = useRef(0);
+  const lastFrameRef = useRef(performance.now());
+  const hrRef = useRef(hashrate || 0);
+  const netHrRef = useRef(netHashrate || 1);
+
+  // Keep latest hashrate accessible inside the animation loop
+  useEffect(() => {
+    hrRef.current = hashrate || 0;
+    netHrRef.current = netHashrate || 1;
+  }, [hashrate, netHashrate]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Grid dimensions — these stay constant; only canvas pixel size changes.
+    const COLS = 32;   // 32 columns ↔ 32 bits in nonce, conceptually
+    const ROWS = 6;
+    const TOTAL_CELLS = COLS * ROWS;
+    if (!cellsRef.current || cellsRef.current.length !== TOTAL_CELLS) {
+      cellsRef.current = new Float32Array(TOTAL_CELLS);
+    }
+
+    const resize = () => {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const cssWidth = Math.max(120, rect.width);
+      const cssHeight = 80;
+      canvas.style.width = cssWidth + 'px';
+      canvas.style.height = cssHeight + 'px';
+      canvas.width  = Math.round(cssWidth * dpr);
+      canvas.height = Math.round(cssHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      dimsRef.current = { w: cssWidth, h: cssHeight, dpr };
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+
+    const draw = (now) => {
+      const dt = Math.min(0.1, (now - lastFrameRef.current) / 1000);
+      lastFrameRef.current = now;
+      const { w: W, h: H } = dimsRef.current;
+      const cells = cellsRef.current;
+
+      // Dark background
+      ctx.fillStyle = 'rgba(8, 8, 10, 1)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Decay all cells slowly
+      const decay = Math.min(1, dt * 1.4);
+      for (let i = 0; i < cells.length; i++) {
+        if (cells[i] > 0) cells[i] = Math.max(0, cells[i] - decay * cells[i]);
+      }
+
+      // Spawn rate scales with hashrate. At 0 TH/s → very few; at 100+ TH/s → many.
+      // We don't model 4 billion checks/sec literally; it's a visual proxy.
+      const ths = (hrRef.current || 0) / 1e12;
+      const cellsPerSec = ths > 0
+        ? Math.min(160, 18 + ths * 1.2)
+        : 4;
+      const expectedSpawns = cellsPerSec * dt;
+      // Use Poisson-ish randomness: average expectedSpawns per frame.
+      let spawns = Math.floor(expectedSpawns);
+      if (Math.random() < (expectedSpawns - spawns)) spawns += 1;
+      for (let i = 0; i < spawns; i++) {
+        const idx = Math.floor(Math.random() * TOTAL_CELLS);
+        cells[idx] = Math.min(1, cells[idx] + 0.6 + Math.random() * 0.4);
+      }
+
+      // Scan line — sweeps L→R representing nonce iteration order.
+      // ~6s for full traversal regardless of hashrate (it's symbolic).
+      scanXRef.current = (scanXRef.current + dt / 6) % 1;
+      const scanX = scanXRef.current * W;
+
+      // Render cells
+      const cellW = W / COLS;
+      const cellH = H / ROWS;
+      const dotMaxR = Math.min(cellW, cellH) * 0.32;
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const idx = r * COLS + c;
+          const x = c * cellW + cellW / 2;
+          const y = r * cellH + cellH / 2;
+          const v = cells[idx];
+          // Distance to scan line — cells near the line get a brightness boost
+          const distToScan = Math.abs(x - scanX);
+          const scanBoost = distToScan < cellW * 1.5
+            ? (1 - distToScan / (cellW * 1.5)) * 0.25
+            : 0;
+          const lit = Math.min(1, v + scanBoost);
+          if (lit < 0.05) {
+            // Idle cell — very dim
+            ctx.fillStyle = 'rgba(120, 90, 30, 0.18)';
+            ctx.beginPath();
+            ctx.arc(x, y, dotMaxR * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // Active cell — amber, brighter with intensity
+            const alpha = 0.25 + lit * 0.75;
+            ctx.fillStyle = `rgba(245, 166, 35, ${alpha})`;
+            ctx.shadowColor = 'rgba(245, 166, 35, 0.6)';
+            ctx.shadowBlur = lit > 0.7 ? 8 : 4;
+            ctx.beginPath();
+            ctx.arc(x, y, dotMaxR * (0.45 + lit * 0.55), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+
+      // Probabilistic "share found" strike. Real shares-per-second is
+      // hashrate / 2^32 at diff 1, much rarer at higher diffs. We fire a
+      // visual strike at a rate proportional to ths but capped so it stays
+      // dramatic — about once every 5-15 seconds at typical solo rates.
+      if (!strikeRef.current.active && ths > 0) {
+        const strikeRate = Math.min(0.25, 0.04 + ths * 0.0015); // per second
+        if (Math.random() < strikeRate * dt) {
+          const idx = Math.floor(Math.random() * TOTAL_CELLS);
+          const r = Math.floor(idx / COLS);
+          const c = idx % COLS;
+          strikeRef.current = {
+            active: true,
+            t: 0,
+            x: c * cellW + cellW / 2,
+            y: r * cellH + cellH / 2,
+          };
+          // Flood the cell to max
+          cells[idx] = 1;
+        }
+      }
+      if (strikeRef.current.active) {
+        const s = strikeRef.current;
+        s.t += dt;
+        const life = 0.55;
+        if (s.t > life) {
+          s.active = false;
+        } else {
+          const p = s.t / life;
+          // Expanding ring + bright glow at center
+          const ringR = 3 + p * 30;
+          const ringAlpha = (1 - p) * 0.85;
+          ctx.strokeStyle = `rgba(255, 220, 140, ${ringAlpha})`;
+          ctx.lineWidth = 1.4;
+          ctx.shadowColor = 'rgba(255, 210, 122, 0.75)';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          // Center burst
+          const burstAlpha = (1 - p) * 0.95;
+          ctx.fillStyle = `rgba(255, 240, 200, ${burstAlpha})`;
+          ctx.shadowColor = 'rgba(255, 240, 200, 0.9)';
+          ctx.shadowBlur = 16;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 2.5 + (1 - p) * 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // Subtle scan line itself — vertical bar
+      const scanGrad = ctx.createLinearGradient(scanX - 4, 0, scanX + 4, 0);
+      scanGrad.addColorStop(0, 'rgba(245, 166, 35, 0)');
+      scanGrad.addColorStop(0.5, 'rgba(245, 166, 35, 0.18)');
+      scanGrad.addColorStop(1, 'rgba(245, 166, 35, 0)');
+      ctx.fillStyle = scanGrad;
+      ctx.fillRect(scanX - 4, 0, 8, H);
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+    animRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      ro.disconnect();
+    };
+  }, []); // mount-once; hashrate read via ref
+
+  return (
+    <div ref={containerRef} style={{
+      width: '100%',
+      height: 80,
+      position: 'relative',
+      overflow: 'hidden',
+      background: 'rgba(8, 8, 10, 1)',
+      border: '1px solid var(--border)',
+    }}>
+      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }}/>
+    </div>
+  );
+}
+
 function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, currency, onOpen }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
-  const scale=perBlock>0?Math.min(1,Math.log10(1+perBlock*1e9)/3):0;
+  // iter27c: `scale` (logarithmic mapping for the gold-vein SVG fill width)
+  // is no longer needed — replaced by the NonceField canvas component.
 
   // Reward breakdown — handle both shape variants for safety
   const reward = blockReward || {};
@@ -1486,12 +1691,12 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
 
       <div style={{display:'flex', flexDirection:'column', gap:'0.55rem'}}>
 
-        {/* Per-block odds — animated branching gold vein (v1.7.22 redesign).
-            Dense organic branching like an ore vein in rock — one main flow
-            with many tributaries, sub-branches, and fine capillaries.
-            Fills L→R with amber→gold→white based on `scale`. The whole lit
-            section gently pulses brighter/dimmer (light flowing through
-            the gold), rather than a band traveling along it. */}
+        {/* iter27c: PER-BLOCK ODDS / NONCE FIELD
+            Visualizes the nonce space (2^32 possibilities per block header).
+            Each cell in the grid represents ~33M nonces. Cells flicker as
+            we hash, brighter cells are "recently checked." A subtle scan
+            line sweeps L→R representing nonce iteration order. The density
+            of activity scales with your live hashrate. */}
         <div>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6}}>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
@@ -1501,184 +1706,11 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
             </span>
           </div>
-          <svg viewBox="0 0 600 60" preserveAspectRatio="none"
-               style={{width:'100%', height:50, display:'block', overflow:'visible'}}>
-            <defs>
-              {/* Gradient: dim amber on left → bright gold mid → near-white at the leading edge */}
-              <linearGradient id="veinGold" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%"   stopColor="#b37a1a"/>
-                <stop offset="50%"  stopColor="#F5A623"/>
-                <stop offset="92%"  stopColor="#FFD27A"/>
-                <stop offset="100%" stopColor="#FFFFFF"/>
-              </linearGradient>
-              {/* Soft glow filter */}
-              <filter id="veinGlow" x="-5%" y="-50%" width="110%" height="200%">
-                <feGaussianBlur stdDeviation="1.2"/>
-              </filter>
-              {/* Clip path that reveals the lit gold up to scale-driven width */}
-              <clipPath id="veinFillClip">
-                <rect x="0" y="0" width={600 * scale} height="60"/>
-              </clipPath>
-            </defs>
-
-            {/* All branch paths defined once as a fragment so background
-                (dim) + foreground (gold) layers render IDENTICAL geometry.
-                Branches are organic — main horizontal flow with many forks
-                going up (heavier) and a few going down. Strokes vary in
-                width to feel hand-drawn rather than machined. */}
-            {(() => {
-              const branches = [
-                // ─────────────────────────────────────────────────────────
-                //  MAIN VEIN — thick irregular spine, "blooms" at junctions
-                //  Inspired by real gold-in-quartz: not a smooth taper, but
-                //  punctuated by widening at branch junctions where veins
-                //  intersect, then narrowing again between them.
-                // ─────────────────────────────────────────────────────────
-
-                // Trunk segment 1: thick anchor at left, narrows toward J1
-                { d: "M 4 36 Q 18 35, 35 33 Q 55 31, 78 28", w: 4.2 },
-                // Trunk segment 2: J1 bloom area to J2
-                { d: "M 78 28 Q 100 26, 130 24 Q 160 22, 195 22", w: 2.6 },
-                // Trunk segment 3: thinner mid-vein
-                { d: "M 195 22 Q 235 21, 280 20", w: 1.8 },
-                // Trunk segment 4: thickens slightly near J3
-                { d: "M 280 20 Q 320 19, 365 19", w: 2.4 },
-                // Trunk segment 5: tapering far right
-                { d: "M 365 19 Q 420 18, 475 17 Q 525 16, 580 14", w: 1.2 },
-
-                // ─────────────────────────────────────────────────────────
-                //  JUNCTION BLOOMS — sharp-angled sub-veins pulling off
-                //  from main trunk at characteristic intersection points
-                //  (J1 ≈ 78, J2 ≈ 195, J3 ≈ 280, J4 ≈ 365)
-                // ─────────────────────────────────────────────────────────
-
-                // J1 cluster (78, 28) — left primary fork sweeping up-left
-                { d: "M 78 28 Q 70 18, 58 6",                  w: 2.4 }, // major
-                { d: "M 78 28 Q 88 16, 100 4",                 w: 1.8 }, // secondary
-                { d: "M 78 28 Q 75 42, 70 58",                 w: 1.5 }, // down-fork
-
-                // J2 cluster (195, 22) — primary upward branch
-                { d: "M 195 22 Q 200 12, 210 2",               w: 1.9 }, // major up
-                { d: "M 195 22 Q 188 34, 178 48",              w: 1.4 }, // down
-
-                // J3 cluster (280, 20) — sharp angled branches
-                { d: "M 280 20 Q 295 12, 314 4",               w: 1.6 },
-                { d: "M 280 20 Q 290 34, 302 50",              w: 1.3 },
-
-                // J4 cluster (365, 19) — final junction before taper
-                { d: "M 365 19 Q 378 11, 395 3",               w: 1.4 },
-                { d: "M 365 19 Q 360 33, 354 48",              w: 1.0 },
-
-                // ─────────────────────────────────────────────────────────
-                //  SECONDARY VEINS — branching from primary forks
-                //  These create the recursive branching look of real gold,
-                //  where each main fork has its own smaller offshoots.
-                // ─────────────────────────────────────────────────────────
-
-                // Off the J1 major up-fork
-                { d: "M 65 14 Q 56 10, 48 6",                  w: 1.0 },
-                { d: "M 95 10 Q 88 4, 80 2",                   w: 0.8 },
-
-                // Off the J1 down-fork
-                { d: "M 73 48 Q 64 52, 56 58",                 w: 0.9 },
-
-                // Off the J2 up branch
-                { d: "M 205 12 Q 218 8, 228 6",                w: 1.0 },
-                { d: "M 200 6 Q 192 4, 184 2",                 w: 0.7 },
-
-                // Off the J3 up branch
-                { d: "M 305 8 Q 318 4, 332 2",                 w: 0.8 },
-
-                // Off the J4 up branch
-                { d: "M 388 6 Q 402 3, 418 2",                 w: 0.7 },
-
-                // ─────────────────────────────────────────────────────────
-                //  HAIRLINE CRACKS — very thin strands forming background
-                //  network. Real quartz has fine fissures where some gold
-                //  has migrated. These add organic texture without thick mass.
-                // ─────────────────────────────────────────────────────────
-
-                { d: "M 25 36 L 32 28 L 40 24",                w: 0.4 },
-                { d: "M 50 32 L 60 38 L 68 46",                w: 0.4 },
-                { d: "M 110 26 L 118 18",                      w: 0.5 },
-                { d: "M 145 23 L 152 15",                      w: 0.4 },
-                { d: "M 165 22 L 172 30 L 178 38",             w: 0.4 },
-                { d: "M 240 21 L 248 14",                      w: 0.5 },
-                { d: "M 250 20 L 258 28",                      w: 0.4 },
-                { d: "M 335 19 Q 348 14, 358 10",              w: 0.5 },
-                { d: "M 340 19 L 348 27",                      w: 0.4 },
-                { d: "M 425 18 Q 438 13, 450 9",               w: 0.5 },
-                { d: "M 445 17 L 458 23",                      w: 0.4 },
-                { d: "M 510 16 L 522 11",                      w: 0.5 },
-                { d: "M 540 15 L 555 20",                      w: 0.4 },
-
-                // A few free-floating fragments (isolated gold pockets)
-                { d: "M 122 14 L 130 12",                      w: 0.5 },
-                { d: "M 220 28 L 232 32",                      w: 0.4 },
-                { d: "M 320 28 L 330 34",                      w: 0.4 },
-                { d: "M 470 6 L 482 4",                        w: 0.4 },
-              ];
-
-              // Junction blooms — irregular pools of gold where multiple
-              // veins intersect (a defining feature in real gold-in-quartz).
-              // Rendered as ellipses with the same dim/lit treatment as
-              // the branch strokes, so they pulse and reveal in sync.
-              const blooms = [
-                // Left anchor — heaviest
-                { cx: 8,   cy: 36, rx: 5,   ry: 3.2 },
-                // J1 cluster — multi-junction bloom
-                { cx: 78,  cy: 28, rx: 4.5, ry: 3 },
-                { cx: 82,  cy: 26, rx: 2.5, ry: 1.8 }, // satellite
-                // J2 — smaller
-                { cx: 195, cy: 22, rx: 3,   ry: 2 },
-                // J3
-                { cx: 280, cy: 20, rx: 3.2, ry: 2.2 },
-                // J4
-                { cx: 365, cy: 19, rx: 2.6, ry: 1.8 },
-              ];
-              return (
-                <>
-                  {/* Background (dim, unmined) */}
-                  <g stroke="rgba(245,166,35,0.16)" fill="none" strokeLinecap="round">
-                    {branches.map((b, i) => <path key={i} d={b.d} strokeWidth={b.w}/>)}
-                    {blooms.map((b, i) => (
-                      <ellipse key={`b${i}`} cx={b.cx} cy={b.cy} rx={b.rx} ry={b.ry} fill="rgba(245,166,35,0.16)" stroke="none"/>
-                    ))}
-                  </g>
-                  {/* Foreground (lit, mined) — clipped + light-pulsing wrap */}
-                  <g clipPath="url(#veinFillClip)">
-                    <g stroke="url(#veinGold)" fill="none" strokeLinecap="round"
-                       style={{filter:'drop-shadow(0 0 5px rgba(245,166,35,0.55))'}}>
-                      {/* Animated opacity = "light pulsing through gold".
-                          Whole lit section gently brightens and dims rather
-                          than a wave traveling. Looks like glow flickering
-                          through the metal. */}
-                      <animate attributeName="opacity"
-                               values="0.78;1;0.78"
-                               dur="2.6s"
-                               repeatCount="indefinite"/>
-                      {branches.map((b, i) => <path key={i} d={b.d} strokeWidth={b.w}/>)}
-                      {blooms.map((b, i) => (
-                        <ellipse key={`b${i}`} cx={b.cx} cy={b.cy} rx={b.rx} ry={b.ry} fill="url(#veinGold)" stroke="none"/>
-                      ))}
-                    </g>
-                    {/* Subtle extra glow halo, also pulsing — adds the "alive" feel */}
-                    <g stroke="rgba(255,220,150,0.35)" fill="none" strokeLinecap="round"
-                       filter="url(#veinGlow)">
-                      <animate attributeName="opacity"
-                               values="0.15;0.55;0.15"
-                               dur="2.6s"
-                               repeatCount="indefinite"/>
-                      {branches.map((b, i) => <path key={i} d={b.d} strokeWidth={b.w * 1.4}/>)}
-                      {blooms.map((b, i) => (
-                        <ellipse key={`b${i}`} cx={b.cx} cy={b.cy} rx={b.rx * 1.3} ry={b.ry * 1.3} fill="rgba(255,220,150,0.35)" stroke="none"/>
-                      ))}
-                    </g>
-                  </g>
-                </>
-              );
-            })()}
-          </svg>
+          <NonceField hashrate={hashrate} netHashrate={netHashrate}/>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:4}}>
+            <span>Nonce Field · 2³² space</span>
+            <span style={{color:'var(--text-2)'}}>{hashrate>0 ? `${(hashrate/1e12).toFixed(1)} TH/s scanning` : 'idle'}</span>
+          </div>
         </div>
 
         {/* Block reward hero — subsidy + fees breakdown */}
@@ -1960,20 +1992,21 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
   };
 
   // ── Shared styles for the editable fields ─────────────────────────────────
+  // iter27c: tightened padding/margins to fit the whole card on one screen.
   const fieldRowStyle = {
     background:'var(--bg-raised)', border:'1px solid var(--border)',
-    padding:'0.7rem 0.85rem', marginBottom:'0.55rem',
+    padding:'0.5rem 0.65rem', marginBottom:'0.4rem',
   };
   const labelStyle = {
-    fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.12em',
-    color:'var(--text-2)', textTransform:'uppercase', marginBottom:6,
+    fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em',
+    color:'var(--text-2)', textTransform:'uppercase', marginBottom:4,
     display:'flex', alignItems:'center', justifyContent:'space-between',
   };
   const inputStyle = {
     width:'100%', boxSizing:'border-box',
     fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)',
     background:'var(--bg-deep)', border:'1px solid var(--border)',
-    padding:'6px 8px', outline:'none',
+    padding:'5px 7px', outline:'none',
     borderRadius:0,
     WebkitAppearance:'none', appearance:'none',
   };
@@ -2025,13 +2058,12 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Stratum Connection</div>
+      <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem'}}>▸ Stratum Connection</div>
 
       {/* HOST — editable */}
       <div style={fieldRowStyle}>
         <div style={labelStyle}>
           <span>Host</span>
-          <span style={{fontSize:'0.5rem', color:'var(--text-3)', textTransform:'none', letterSpacing:0, fontStyle:'italic'}}>tap to edit</span>
         </div>
         <input
           type="text"
@@ -2040,25 +2072,22 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           autoCorrect="off"
           spellCheck={false}
           value={hostInput}
-          placeholder="umbrel.local"
+          placeholder="umbrel.local · 192.168.1.42 · my-rig.local"
           onChange={(e) => setHostInput(e.target.value)}
           onBlur={() => saveStratumHost(hostInput.trim())}
           onFocus={(e) => { e.target.style.borderColor = 'var(--amber)'; }}
           onBlurCapture={(e) => { e.target.style.borderColor = 'var(--border)'; }}
           style={inputStyle}
         />
-        <div style={helperStyle}>
-          e.g. umbrel.local · 192.168.1.42 · my-rig.local
-        </div>
 
         {/* Three port chips — tap to copy stratum URL */}
-        <div style={{display:'flex', gap:6, marginTop:10}}>
+        <div style={{display:'flex', gap:6, marginTop:8}}>
           <PortChip port="3333" accent="var(--amber)" />
           <PortChip port="3334" accent="var(--text-1)" />
           <PortChip port="4333" accent="var(--cyan)" ssl />
         </div>
-        <div style={{...helperStyle, marginTop:6}}>
-          3333 = ASIC · 3334 = Hobby · 🔒 4333 = SSL
+        <div style={{...helperStyle, marginTop:5, fontSize:'0.5rem'}}>
+          3333 ASIC · 3334 Hobby · 🔒 4333 SSL
         </div>
       </div>
 
@@ -2066,7 +2095,6 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
       <div style={fieldRowStyle}>
         <div style={labelStyle}>
           <span>Workername</span>
-          <span style={{fontSize:'0.5rem', color:'var(--text-3)', textTransform:'none', letterSpacing:0, fontStyle:'italic'}}>tap to edit</span>
         </div>
         <input
           type="text"
@@ -2074,20 +2102,17 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           autoCorrect="off"
           spellCheck={false}
           value={workernameInput}
-          placeholder="bitaxe-01 / s19xp / nano3s_1 ..."
+          placeholder="bitaxe-01 · s19xp · nano3s_1 ..."
           onChange={(e) => setWorkernameInput(e.target.value)}
           onBlur={() => saveStratumWorkername(workernameInput.trim())}
           onFocus={(e) => { e.target.style.borderColor = 'var(--amber)'; }}
           onBlurCapture={(e) => { e.target.style.borderColor = 'var(--border)'; }}
           style={inputStyle}
         />
-        <div style={helperStyle}>
-          Identifies this rig in The Crew. Use a name unique per machine.
-        </div>
 
         {/* Full USER preview */}
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10, marginBottom:5}}>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase'}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8, marginBottom:4}}>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase'}}>
             Full USER string
           </span>
           <button
@@ -2099,15 +2124,15 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           </button>
         </div>
         <div style={{
-          fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)',
+          fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-1)',
           background:'var(--bg-deep)', border:'1px solid var(--border)',
-          padding:'5px 8px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+          padding:'4px 7px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
         }}>
           {addrShort}<span style={{color:'var(--text-2)'}}>.{workername}</span>
         </div>
         {!payoutAddress && (
-          <div style={{...helperStyle, color:'var(--amber)'}}>
-            ⚠ Set your payout address in Settings to enable copy
+          <div style={{...helperStyle, color:'var(--amber)', marginTop:4}}>
+            ⚠ Set payout address in Settings
           </div>
         )}
       </div>
@@ -2116,7 +2141,6 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
       <div style={fieldRowStyle}>
         <div style={labelStyle}>
           <span>Pass / Difficulty</span>
-          <span style={{fontSize:'0.5rem', color:'var(--text-3)', textTransform:'none', letterSpacing:0, fontStyle:'italic'}}>tap to edit</span>
         </div>
         <input
           type="text"
@@ -2131,12 +2155,12 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           onBlurCapture={(e) => { e.target.style.borderColor = 'var(--border)'; }}
           style={inputStyle}
         />
-        <div style={helperStyle}>
-          Default <span style={{color:'var(--amber)'}}>x</span> = vardiff (auto-adjusts) · <span style={{color:'var(--cyan)'}}>d=10000</span> = lock to diff 10K · <span style={{color:'var(--cyan)'}}>d=1M</span> = lock to 1M
+        <div style={{...helperStyle, fontSize:'0.5rem'}}>
+          <span style={{color:'var(--amber)'}}>x</span>=vardiff · <span style={{color:'var(--cyan)'}}>d=10000</span>=lock 10K · <span style={{color:'var(--cyan)'}}>d=1M</span>=lock 1M
         </div>
 
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10, marginBottom:5}}>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase'}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8, marginBottom:4}}>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase'}}>
             Effective PASS
           </span>
           <button
@@ -2147,21 +2171,14 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           </button>
         </div>
         <div style={{
-          fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)',
+          fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-1)',
           background:'var(--bg-deep)', border:'1px solid var(--border)',
-          padding:'5px 8px',
+          padding:'4px 7px',
         }}>
           {pass}
         </div>
       </div>
 
-      <div style={{
-        marginTop:'0.65rem',
-        fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)',
-        lineHeight:1.5,
-      }}>
-        Connect any Stratum V1 miner. Workers show up in <span style={{color:'var(--amber)', fontWeight:600}}>The Crew</span> automatically once they start hashing.
-      </div>
       {/* iter26: Pool uptime + started date strip */}
       <PoolUptimeStrip startedAt={startedAt}/>
     </div>
@@ -2585,7 +2602,7 @@ function BlockFeed({ blocks, blockAlert, compact = false }) {
   const inner = (
     <>
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center', color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>
-        <span>▸ Gold Strikes — {(blocks||[]).length} total</span>
+        <span>▸ Solo Strikes — {(blocks||[]).length} total</span>
         {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>}
       </div>
       {!(blocks||[]).length?(
@@ -2621,7 +2638,7 @@ function RecentBlocksPanel({ netBlocks }) {
   if (!list.length) return null;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ The Goldfields — Solo Winners ⚡</div>
+      <div style={{...cardTitle, color:'var(--amber)'}}>▸ The Ledger — Solo Winners ⚡</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',maxHeight:500,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
           <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none', minWidth:0}}>
@@ -2666,7 +2683,7 @@ function BlockAlert({ show, block, onDismiss }) {
       <div onClick={onDismiss} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',cursor:'pointer'}}>
         <div style={{textAlign:'center',background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',padding:'2.4rem 2rem',maxWidth:420,boxShadow:'0 0 50px rgba(245,166,35,0.5)'}}>
           <div style={{fontSize:60,animation:'pulse 1.2s infinite'}}>⚡</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2.4rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>STRIKE!</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>BLOCK STRUCK!</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'1.05rem',color:'var(--text-1)',marginTop:8}}>Block #{fmtNum(block.height||0)}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'1.4rem',color:'var(--green)',fontWeight:700,marginTop:14,textShadow:'0 0 14px rgba(57,255,106,0.45)'}}>+{(block.reward||0).toFixed(3)} BTC</div>
           <div style={{fontSize:'0.7rem',color:'var(--text-2)',marginTop:14,fontFamily:'var(--fd)',letterSpacing:'0.1em'}}>tap to dismiss</div>
@@ -4137,9 +4154,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   }, [ns.hashrate, ns.pools, ns.workers, enabled]);
 
   // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
+  // iter27c: bumped up from 0.2rem to 0.6rem so it's no longer clipped
+  // at the card's bottom edge on mobile.
   const StampSolo = () => (
     <div style={{
-      position:'absolute', right:'0.2rem', bottom:'0.2rem',
+      position:'absolute', right:'0.5rem', bottom:'0.6rem',
       transform:'rotate(-12deg)',
       fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:800,
       letterSpacing:'0.18em', textTransform:'uppercase',
