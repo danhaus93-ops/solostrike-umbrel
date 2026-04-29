@@ -156,9 +156,11 @@ body * {
   transition: opacity 0.6s ease;
 }
 .ss-dots.ss-dots-hidden {
-  /* iter28: keep faintly visible (was 0) so user knows where dots are.
-     pointer-events stays on so a tap wakes them up. */
-  opacity: 0.25;
+  /* iter28-v2: fully fade out when inactive (was 0.25 leaving them visible).
+     User wants dots to disappear after 2.5s. Keep pointer-events on so a
+     tap in the dot zone still works (touch coordinates land on the invisible
+     ::before hit-target and wake the dots back up). */
+  opacity: 0;
 }
 .ss-dot {
   /* iter28: visible size 7x7 (was 4x4); ::before extends invisible hit
