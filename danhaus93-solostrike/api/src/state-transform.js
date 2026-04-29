@@ -2,20 +2,18 @@ function computeOdds(state) {
   const poolHR = state.hashrate?.current || 0;
   const netHR  = state.network?.hashrate || 0;
   if (!poolHR || !netHR) {
-    return { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0, perYear: 0 };
+    return { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0 };
   }
   const perBlock     = poolHR / netHR;
   const blocksPerDay = 144;
   const blocksPerWk  = 144 * 7;
   const blocksPerMo  = 144 * 30;
-  const blocksPerYr  = 144 * 365;
   const notFind = 1 - perBlock;
   const perDay   = 1 - Math.pow(notFind, blocksPerDay);
   const perWeek  = 1 - Math.pow(notFind, blocksPerWk);
   const perMonth = 1 - Math.pow(notFind, blocksPerMo);
-  const perYear  = 1 - Math.pow(notFind, blocksPerYr);
   const expectedDays = (1 / perBlock) / blocksPerDay;
-  return { perBlock, expectedDays, perDay, perWeek, perMonth, perYear };
+  return { perBlock, expectedDays, perDay, perWeek, perMonth };
 }
 
 function computeLuck(state) {
@@ -46,13 +44,27 @@ function computeTopFinders(state) {
 }
 
 function computeBlockReward(state) {
-  const subsidyBtc = 3.125;
-  const feesBtc    = state.mempool?.totalFeesBtc || 0;
+  // iter27c bug 1+3: pollBitcoind() in server.js already writes the correct
+  // reward to state.blockReward using getblocktemplate's coinbasevalue. We
+  // were previously *overwriting* that with state.mempool.totalFeesBtc, which
+  // is never populated → fees always rendered as 0.0000.
+  //
+  // Fix: prefer the values already on state.blockReward (whichever key shape
+  // they came in as), fall back to state.mempool.totalFeesBtc if those are
+  // missing, fall back to 0 last. Output both `base/fees` and
+  // `subsidyBtc/feesBtc` keys so existing UI consumers (which destructure
+  // both shapes defensively) keep working.
+  const br = state.blockReward || {};
+  const subsidyBtc = br.base ?? br.subsidyBtc ?? 3.125;
+  const feesBtc    = br.fees ?? br.feesBtc ?? state.mempool?.totalFeesBtc ?? 0;
+  const totalBtc   = br.totalBtc ?? (subsidyBtc + feesBtc);
   return {
+    base: subsidyBtc,
     subsidyBtc,
+    fees: feesBtc,
     feesBtc,
-    totalBtc:  subsidyBtc + feesBtc,
-    totalSats: Math.round((subsidyBtc + feesBtc) * 1e8),
+    totalBtc,
+    totalSats: Math.round(totalBtc * 1e8),
   };
 }
 

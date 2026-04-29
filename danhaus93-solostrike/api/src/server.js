@@ -56,7 +56,7 @@ const state = {
   hashrate: { current: 0, history: [], week: [] },
   workers: {},
   network: { height: 0, difficulty: 0, hashrate: 0 },
-  blockReward: { totalBtc: 0, base: 0, fees: 0 },
+  blockReward: { totalBtc: 0, base: 0, fees: 0, subsidyBtc: 0, feesBtc: 0, totalSats: 0 },
   mempool: { totalFeesBtc: 0, feeRate: null, feeFast: null, feeMid: null, feeLow: null },
   prices: {},
   blocks: [],
@@ -305,37 +305,11 @@ async function pollBitcoind() {
       const actualSecPerBlock = blocksDoneInEpoch > 0 ? elapsedSec / blocksDoneInEpoch : expectedSecPerBlock;
       const change = ((expectedSecPerBlock / actualSecPerBlock) - 1) * 100;
       const remainingTime = remainingBlocks * actualSecPerBlock * 1000;
-
-      // iter26: previous epoch's actual adjustment — derive from ratio of
-      // current difficulty vs previous epoch's difficulty. Cached per epoch
-      // (keyed by retargetEpochStart) so we don't hammer RPC every poll
-      // but DO recompute when a new epoch begins.
-      const cached = state.retarget?._prevForEpoch;
-      let prevDifficultyChange = (cached && cached.epoch === retargetEpochStart)
-        ? cached.value
-        : null;
-      let prevForEpoch = cached;
-      if (prevDifficultyChange == null && retargetEpochStart >= 2016) {
-        try {
-          const prevEpochStart = retargetEpochStart - 2016;
-          const prevHash = await rpc('getblockhash', [prevEpochStart]);
-          const prevBlock = await rpc('getblock', [prevHash]);
-          const startBlockDiff = startBlock.difficulty;
-          const prevDiff = prevBlock.difficulty;
-          if (prevDiff > 0 && startBlockDiff > 0) {
-            prevDifficultyChange = ((startBlockDiff - prevDiff) / prevDiff) * 100;
-            prevForEpoch = { epoch: retargetEpochStart, value: prevDifficultyChange };
-          }
-        } catch (e) {}
-      }
-
       state.retarget = {
         progressPercent: (blocksDoneInEpoch / 2016) * 100,
         difficultyChange: -change,
         remainingBlocks,
         remainingTime,
-        prevDifficultyChange,
-        _prevForEpoch: prevForEpoch,
       };
     } catch (e) {}
 
@@ -378,15 +352,11 @@ async function pollBlocks() {
       const blocks = await tryFetchJson(`${INTERNAL_MEMPOOL}/api/v1/blocks`);
       if (Array.isArray(blocks)) state.netBlocks = blocks.slice(0, 30).map(formatNetBlock);
     }
-    // iter26: keep state.latestBlock in sync with the latest netBlock
-    if (state.netBlocks?.[0]) state.latestBlock = state.netBlocks[0];
     return;
   }
   const blocks = await tryFetchJson(PUBLIC_BLOCKS_URL);
   if (!Array.isArray(blocks)) return;
   state.netBlocks = blocks.slice(0, 30).map(formatNetBlock);
-  // iter26: store latest block as a top-level field for UI convenience
-  if (state.netBlocks[0]) state.latestBlock = state.netBlocks[0];
 
   const counts = new Map();
   for (const b of blocks) {
@@ -406,11 +376,7 @@ function formatNetBlock(b) {
     pool:      b.extras?.pool?.name || 'unknown',
     isSolo:    /solo/i.test(b.extras?.pool?.name || ''),
     tx_count:  b.tx_count,
-    txCount:   b.tx_count, // iter26: alias for UI consistency
     reward:    b.extras?.reward || 0,
-    // iter26: surface block weight + size for the Bitcoin Network card
-    weight:    b.extras?.totalWeight || b.weight || null,
-    size:      b.extras?.totalSize || b.size || null,
   };
 }
 
@@ -423,7 +389,7 @@ async function pollPrices() {
 // ── ZMQ client for instant block notifications ──────────────────────────────
 function startZmq() {
   if (!ZMQ_HASHBLOCK_URL) {
-    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null, events: [] };
+    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
     return;
   }
   try {
@@ -431,35 +397,21 @@ function startZmq() {
     const sock = zmq.socket('sub');
     sock.connect(ZMQ_HASHBLOCK_URL);
     sock.subscribe('hashblock');
-    sock.on('message', (topic, msg) => {
-      const ts = Date.now();
-      state.zmq.lastBlockHeardAt = ts;
-      // iter26: ring buffer of last 30 ZMQ events (block notifications).
-      // Keeps a rolling history visible in the new ZMQ Event Log card.
-      if (!Array.isArray(state.zmq.events)) state.zmq.events = [];
-      // hashblock messages carry the 32-byte block hash as raw binary
-      let hash = null;
-      try { hash = msg ? Buffer.from(msg).toString('hex') : null; } catch {}
-      state.zmq.events.push({
-        ts,
-        type: 'hashblock',
-        hash,
-        height: state.network?.height || null,
-      });
-      while (state.zmq.events.length > 30) state.zmq.events.shift();
+    sock.on('message', () => {
+      state.zmq.lastBlockHeardAt = Date.now();
       pollBitcoind();
       pollBlocks();
     });
     sock.on('error', (e) => {
       console.log('[ZMQ] socket error:', e.message);
       try { sock.close(); } catch {}
-      state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null, events: [] };
+      state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
       setTimeout(startZmq, 10000);
     });
-    state.zmq = { enabled:true, lastBlockHeardAt:null, endpoint: ZMQ_HASHBLOCK_URL, events: [] };
+    state.zmq = { enabled:true, lastBlockHeardAt:null, endpoint: ZMQ_HASHBLOCK_URL };
     console.log(`[ZMQ] connected to ${ZMQ_HASHBLOCK_URL}`);
   } catch (e) {
-    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null, events: [] };
+    state.zmq = { enabled:false, lastBlockHeardAt:null, endpoint:null };
     console.log('[zmq] unavailable:', e.message);
   }
 }
@@ -541,12 +493,25 @@ app.post('/api/config', async (req, res) => {
 });
 
 // CSV exports
+// iter27c bug 5: proper RFC-4180 quoting. Worker names, miner subversion
+// strings, and pool names can contain commas, quotes, or newlines. Wrap
+// each field in "..." and double any embedded quotes.
+function csvEscape(v) {
+  if (v == null) return '';
+  const s = String(v);
+  // Always quote — keeps output uniform and safe against future special chars.
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+function rowsToCsv(rows) {
+  return rows.map(r => r.map(csvEscape).join(',')).join('\n');
+}
+
 app.get('/api/export/blocks.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="solostrike-blocks.csv"');
   const rows = [['height','hash','timestamp','reward_btc']];
   (state.blocks || []).forEach(b => rows.push([b.height, b.hash, b.ts, b.reward || '']));
-  res.send(rows.map(r => r.join(',')).join('\n'));
+  res.send(rowsToCsv(rows));
 });
 
 app.get('/api/export/workers.csv', (req, res) => {
@@ -555,7 +520,7 @@ app.get('/api/export/workers.csv', (req, res) => {
   const wl = Object.values(state.workers || {});
   const rows = [['name','status','hashrate','accepted','rejected','best','last_seen','miner_type']];
   wl.forEach(w => rows.push([w.name, w.status, w.hashrate || 0, w.shares || 0, w.rejected || 0, w.bestshare || 0, w.lastSeen || 0, w.minerType || '']));
-  res.send(rows.map(r => r.join(',')).join('\n'));
+  res.send(rowsToCsv(rows));
 });
 
 app.post('/api/reset-share-stats', (req, res) => {

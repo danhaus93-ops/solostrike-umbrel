@@ -9,12 +9,16 @@ function parseHashrate(s) {
   const str = String(s);
   const num = parseFloat(str);
   if (isNaN(num)) return 0;
-  if (str.endsWith('E')) return num * 1e18;
-  if (str.endsWith('P')) return num * 1e15;
-  if (str.endsWith('T')) return num * 1e12;
-  if (str.endsWith('G')) return num * 1e9;
-  if (str.endsWith('M')) return num * 1e6;
-  if (str.endsWith('K')) return num * 1e3;
+  // iter27c bug 4: defensive case-insensitive suffix match. ckpool emits
+  // uppercase in practice but a future format change would silently turn
+  // "1.2t" into 1.2 (off by 1e12). Normalize before checking.
+  const last = str.charAt(str.length - 1).toUpperCase();
+  if (last === 'E') return num * 1e18;
+  if (last === 'P') return num * 1e15;
+  if (last === 'T') return num * 1e12;
+  if (last === 'G') return num * 1e9;
+  if (last === 'M') return num * 1e6;
+  if (last === 'K') return num * 1e3;
   return num;
 }
 
@@ -53,17 +57,11 @@ function startStatusPoller(state, broadcast, logDir) {
   const HISTORY_MAX_POINTS  = 1440;       // 24h at 1min
   const WEEK_MAX_POINTS     = 10080;      // 7d at 1min
   const WEEK_INTERVAL_MS    = 60 * 1000;
-  // iter26: SPS (shares per second) history for Strike Velocity card
-  const SPS_INTERVAL_MS     = 60 * 1000;
-  const SPS_MAX_POINTS      = 1440;       // 24h at 1min
   let lastHistoryPush = 0;
   let lastWeekPush = 0;
-  let lastSpsPush = 0;
 
   if (!Array.isArray(state.hashrate.week)) state.hashrate.week = [];
   if (!state.hashrate.averages) state.hashrate.averages = {};
-  // iter26: ensure shares.spsHistory exists for Strike Velocity tracking
-  if (!Array.isArray(state.shares.spsHistory)) state.shares.spsHistory = [];
 
   function cleanupStaleWorkers() {
     const now = Date.now();
@@ -90,9 +88,7 @@ function startStatusPoller(state, broadcast, logDir) {
     state.hashrate.averages = {
       hr1m:  computeAverage(shortHist,      60 * 1000),
       hr5m:  computeAverage(shortHist,  5 * 60 * 1000),
-      hr15m: computeAverage(shortHist, 15 * 60 * 1000),
       hr1h:  computeAverage(shortHist, 60 * 60 * 1000),
-      hr6h:  computeAverage(shortHist,  6 * 60 * 60 * 1000),
       hr24h: computeAverage(shortHist, 24 * 60 * 60 * 1000),
       hr7d:  computeAverage(longHist,   7 * 24 * 60 * 60 * 1000),
     };
@@ -141,15 +137,6 @@ function startStatusPoller(state, broadcast, logDir) {
             state.bestshare            = shares.bestshare     || 0;
             state.totalWorkers         = summary.Workers      || 0;
             state.totalUsers           = summary.Users        || 0;
-
-            // iter26: roll SPS history for Strike Velocity card
-            if (now - lastSpsPush >= SPS_INTERVAL_MS) {
-              state.shares.spsHistory.push({ ts: now, sps: state.shares.sps1m || 0 });
-              if (state.shares.spsHistory.length > SPS_MAX_POINTS) {
-                state.shares.spsHistory.shift();
-              }
-              lastSpsPush = now;
-            }
           } catch (e) {}
         }
       }
@@ -187,8 +174,8 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.hashrate1h     = parseHashrate(w.hashrate1hr);
               wk.hashrate24h    = parseHashrate(w.hashrate1d);
               wk.hashrate7d     = parseHashrate(w.hashrate7d);
-              wk.shares         = w.shares         || 0;
-              wk.rejected       = w.rejected       || wk.rejected || 0;
+              wk.shares         = w.shares         ?? wk.shares ?? 0;
+              wk.rejected       = w.rejected       ?? wk.rejected ?? 0;
               wk.sharesCount    = w.sharesCount    || w.shares_count   || 0;
               wk.rejectedCount  = w.rejectedCount  || w.rejected_count || 0;
               wk.bestshare      = w.bestshare      || 0;
@@ -197,17 +184,6 @@ function startStatusPoller(state, broadcast, logDir) {
               const age = Date.now() - wk.lastSeen;
               wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
-
-              // iter26: per-worker status history for uptime sparklines.
-              // Sample every 15 minutes, keep last 96 points (24h).
-              // Stored as a packed array of {t, on} where on=1/0.
-              if (!Array.isArray(wk.statusHistory)) wk.statusHistory = [];
-              const lastPt = wk.statusHistory[wk.statusHistory.length - 1];
-              const SAMPLE_INTERVAL_MS = 15 * 60 * 1000;
-              if (!lastPt || (Date.now() - lastPt.t) >= SAMPLE_INTERVAL_MS) {
-                wk.statusHistory.push({ t: Date.now(), on: wk.status === 'online' ? 1 : 0 });
-                if (wk.statusHistory.length > 96) wk.statusHistory.shift();
-              }
 
               // refresh miner detection + IP on every poll — cheap and keeps IP fresh
               const prevSource = wk.minerSource;
