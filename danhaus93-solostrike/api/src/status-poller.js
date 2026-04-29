@@ -180,6 +180,9 @@ function startStatusPoller(state, broadcast, logDir) {
                   minerSource: 'unknown', userAgent: null,
                   ip: null,
                   health: 'green',
+                  // iter28-fix-B: 24h online/offline history for uptime sparkline.
+                  // 96 samples × 15min cadence = 24h coverage.
+                  statusHistory: [],
                 };
                 applyMinerDetection(state.workers[key], key);
               }
@@ -199,6 +202,19 @@ function startStatusPoller(state, broadcast, logDir) {
               const age = Date.now() - wk.lastSeen;
               wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
+
+              // iter28-fix-B: push to statusHistory ring buffer once per ~15 min.
+              // Throttle so duplicate pushes within 14m are skipped (poller fires
+              // every 5s so without throttle we'd get 180 samples per 15min slot).
+              if (!Array.isArray(wk.statusHistory)) wk.statusHistory = [];
+              const lastSample = wk.statusHistory[wk.statusHistory.length - 1];
+              const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+              if (!lastSample || (Date.now() - lastSample.ts) >= (FIFTEEN_MIN_MS - 60000)) {
+                wk.statusHistory.push({ ts: Date.now(), status: wk.status });
+                if (wk.statusHistory.length > 96) {
+                  wk.statusHistory.splice(0, wk.statusHistory.length - 96);
+                }
+              }
 
               // refresh miner detection + IP on every poll — cheap and keeps IP fresh
               const prevSource = wk.minerSource;
