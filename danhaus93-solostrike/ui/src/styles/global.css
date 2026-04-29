@@ -140,10 +140,15 @@ body * {
 .ss-dots {
   position: absolute;
   left: 50%;
-  bottom: 2px;
+  /* iter28: bottom:0 pushes the dots down to the very bottom of the carousel
+     area, snugly above the footer. Was 2px (slightly above bottom edge).
+     User wanted them lower; this is the lowest they can go without slipping
+     under the fixed footer. */
+  bottom: 0;
   transform: translateX(-50%);
   display: flex;
-  gap: 3px;
+  /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
+  gap: 7px;
   z-index: 5;
   pointer-events: auto;
   background: transparent;
@@ -152,24 +157,37 @@ body * {
   transition: opacity 0.6s ease;
 }
 .ss-dots.ss-dots-hidden {
-  opacity: 0;
-  pointer-events: none;
+  /* iter28: keep faintly visible (was 0) so user knows where dots are.
+     pointer-events stays on so a tap wakes them up. */
+  opacity: 0.25;
 }
 .ss-dot {
-  width: 4px;
-  height: 4px;
+  /* iter28: visible size 7x7 (was 4x4); ::before extends invisible hit
+     target so taps don't have to be pixel-precise. */
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: rgba(245,166,35,0.25);
+  background: rgba(245,166,35,0.32);
   cursor: pointer;
   border: none;
   padding: 0;
+  position: relative;
   transition: all 0.2s ease;
+}
+.ss-dot::before {
+  /* iter28: invisible hit-target extension. ~14px to either side and 12px
+     above/below so the actual tappable area is ~35x32 — roughly equivalent
+     to Apple's 44x44 minimum without overlapping neighbors visually. */
+  content: '';
+  position: absolute;
+  inset: -12px -3px;
 }
 .ss-dot.active {
   background: var(--amber);
-  width: 10px;
+  /* iter28: active pill grows to 14x7 (was 10x4) — clearer "you are here". */
+  width: 14px;
   border-radius: 2px;
-  box-shadow: 0 0 4px rgba(245,166,35,0.5);
+  box-shadow: 0 0 5px rgba(245,166,35,0.55);
 }
 
 /* Carousel area is positioned relative so dots can absolutely position */
