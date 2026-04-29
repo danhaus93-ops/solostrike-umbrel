@@ -1250,12 +1250,13 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
         </div>
       ) : (
         <div style={{
-          flex:'1 1 auto', minHeight: chartHeight,
+          flex:'1 1 0', height: chartHeight, minHeight: chartHeight,
           display:'flex', alignItems:'flex-end', gap:1,
           padding:'4px 2px',
           background:'var(--bg-deep)',
           border:'1px solid var(--border)',
           minWidth:0, overflow:'hidden',
+          position:'relative',
         }}>
           {bars.map((b, i) => {
             const v = b.sps || 0;
@@ -1270,6 +1271,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
                 style={{
                   flex:'1 1 0', minWidth:0,
                   height: `${barH}%`,
+                  alignSelf:'flex-end',
                   background: classify(v),
                   opacity: v > 0 ? 0.85 : 0.35,
                   transition:'height 0.4s ease',
