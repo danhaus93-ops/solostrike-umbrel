@@ -1202,7 +1202,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
   };
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom: '0.35rem'}}>
         <span>▸ Strike Velocity</span>
         {bars.length > 0 && (
@@ -1240,16 +1240,17 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
 
       {bars.length === 0 ? (
         <div style={{
-          height: emptyHeight, display:'flex', alignItems:'center', justifyContent:'center',
+          flex:'1 1 auto', minHeight: emptyHeight,
+          display:'flex', alignItems:'center', justifyContent:'center',
           border:'1px dashed var(--border)',
-          color:'var(--text-3)', fontFamily:'var(--fd)', fontSize:'0.6rem',
+          color:'var(--text-3)', fontFamily:'var(--fd)', fontSize:'0.65rem',
           letterSpacing:'0.12em', textTransform:'uppercase',
         }}>
           {hashrate > 0 ? 'Collecting samples…' : 'No miners connected'}
         </div>
       ) : (
         <div style={{
-          height: chartHeight,
+          flex:'1 1 auto', minHeight: chartHeight,
           display:'flex', alignItems:'flex-end', gap:1,
           padding:'4px 2px',
           background:'var(--bg-deep)',
