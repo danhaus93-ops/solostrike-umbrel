@@ -5,7 +5,7 @@
 // on cold launch. The cache name still bumps per release to invalidate the
 // shell cache when assets change.
 
-const CACHE_NAME = 'solostrike-v1.7.22';
+const CACHE_NAME = 'solostrike-v1.8.0';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
