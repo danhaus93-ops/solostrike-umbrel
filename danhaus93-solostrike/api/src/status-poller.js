@@ -200,7 +200,12 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.diff           = w.lastdiff       || w.diff || wk.diff || 0;
               wk.lastSeen       = (w.lastshare || Math.floor(Date.now()/1000)) * 1000;
               const age = Date.now() - wk.lastSeen;
-              wk.status = age < 10 * 60 * 1000 ? 'online' : 'offline';
+              // v1.8.3-rev26: offline threshold dropped from 10 min to 60 sec.
+              // 10 min was so long that a Bitaxe reboot (~30-45 sec) never
+              // crossed it, so the offline banner never fired. 60 sec is short
+              // enough to catch reboots while still giving enough margin for
+              // high-vardiff workers (S19XP at ~1M diff submits every ~40 sec).
+              wk.status = age < 60 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
 
               // iter28-fix-B: push to statusHistory ring buffer once per ~15 min.
