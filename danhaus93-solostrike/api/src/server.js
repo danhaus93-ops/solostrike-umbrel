@@ -64,7 +64,7 @@ const state = {
   topFinders: [],
   closestCalls: [],
   bestshare: 0,
-  shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {}, sps1m: 0, spsHistory: [] },
+  shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {}, sps1m: 0, spsHistory: [], acceptedSdiffSum: 0 },
   uptime: 0,
   startedAt: Date.now(),
   odds: { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0 },
@@ -557,6 +557,7 @@ app.post('/api/reset-share-stats', (req, res) => {
       for (const name of Object.keys(state.shareCounters)) {
         const c = state.shareCounters[name];
         c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0;
+        c.sdiffSum = 0;
         c.rejectReasons = {}; c.lastRejectReason = null; c.lastRejectAt = null;
       }
     }
@@ -564,6 +565,7 @@ app.post('/api/reset-share-stats', (req, res) => {
     state.shares.rejectedCount = 0;
     state.shares.stale = 0;
     state.shares.rejectReasons = {};
+    state.shares.acceptedSdiffSum = 0;
     state.shareStatsStartedAt = Date.now();
     savePersist({
       shareCounters: state.shareCounters,

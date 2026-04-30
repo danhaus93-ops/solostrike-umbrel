@@ -57,6 +57,11 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (typeof state.shares.rejectedCount !== 'number') state.shares.rejectedCount = 0;
   if (typeof state.shares.stale !== 'number') state.shares.stale = 0;
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
+  // v1.8.3-rev22: session-scoped sum of accepted share difficulties.
+  // Used by UI for implied-hashrate calculation. Resets with session.
+  // (state.shares.accepted is the LIFETIME work-weighted sum from ckpool's
+  // pool.status — that one never resets and would inflate session math.)
+  if (typeof state.shares.acceptedSdiffSum !== 'number') state.shares.acceptedSdiffSum = 0;
   if (typeof state.shareStatsStartedAt !== 'number' || !state.shareStatsStartedAt) state.shareStatsStartedAt = Date.now();
 
   // Restore counters + cursors from persist.json if present.
@@ -76,12 +81,14 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         let poolAccepted = 0;
         let poolRejected = 0;
         let poolStale = 0;
+        let poolSdiffSum = 0;
         const poolReasons = {};
         for (const name of Object.keys(state.shareCounters)) {
           const c = state.shareCounters[name];
           poolAccepted += (c.accepted || 0);
           poolRejected += (c.rejected || 0);
           poolStale += (c.stale || 0);
+          poolSdiffSum += (c.sdiffSum || 0);
           for (const [r, n] of Object.entries(c.rejectReasons || {})) {
             poolReasons[r] = (poolReasons[r] || 0) + n;
           }
@@ -90,7 +97,8 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         state.shares.rejectedCount = poolRejected;
         state.shares.stale = poolStale;
         state.shares.rejectReasons = poolReasons;
-        console.log('[share-watcher] Restored counters for', Object.keys(state.shareCounters).length, 'workers (accepted=' + poolAccepted + ' rejected=' + poolRejected + ' stale=' + poolStale + ')');
+        state.shares.acceptedSdiffSum = poolSdiffSum;
+        console.log('[share-watcher] Restored counters for', Object.keys(state.shareCounters).length, 'workers (accepted=' + poolAccepted + ' rejected=' + poolRejected + ' stale=' + poolStale + ' sdiffSum=' + poolSdiffSum + ')');
       }
       if (p.sharelogCursors && typeof p.sharelogCursors === 'object') {
         state.sharelogCursors = p.sharelogCursors;
@@ -112,12 +120,26 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   // freshly-defaulted shareStatsStartedAt at line 60 stays as-is so
   // tracking begins now. Lifetime data is intentionally sacrificed to
   // keep the implied hashrate display honest.
-  if (!persistedTimestampValid && state.shares.acceptedCount > 0) {
-    console.log('[share-watcher] DRIFT GUARD: shareCounters restored (' + state.shares.acceptedCount + ' accepted) but shareStatsStartedAt was missing/invalid. Resetting counters to sync with fresh session timestamp.');
+  // v1.8.3-rev22: Sync drift guard, expanded. Triggers if EITHER:
+  //   (a) shareStatsStartedAt was missing/invalid (rev21 case — counts
+  //       restored but session timestamp defaulted to now), OR
+  //   (b) acceptedCount > 0 but acceptedSdiffSum is 0 (rev22 upgrade
+  //       case — old persist file lacks per-worker sdiffSum field, so
+  //       new sum starts at 0 while count is restored from history).
+  // In either case the implied-hashrate math would be off. Reset
+  // session counters to bring everything back into sync. The
+  // freshly-defaulted shareStatsStartedAt at line 60 stays as-is so
+  // tracking begins now. Lifetime data is intentionally sacrificed.
+  const driftA = !persistedTimestampValid && state.shares.acceptedCount > 0;
+  const driftB = state.shares.acceptedCount > 0 && state.shares.acceptedSdiffSum === 0;
+  if (driftA || driftB) {
+    const reason = driftA ? 'shareStatsStartedAt missing/invalid'
+                          : 'acceptedSdiffSum is 0 but acceptedCount > 0 (likely rev22 upgrade)';
+    console.log('[share-watcher] DRIFT GUARD: ' + reason + '. Resetting counters (' + state.shares.acceptedCount + ' accepted) to sync with fresh session.');
     if (state.shareCounters) {
       for (const name of Object.keys(state.shareCounters)) {
         const c = state.shareCounters[name];
-        c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0;
+        c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0; c.sdiffSum = 0;
         c.rejectReasons = {}; c.lastRejectReason = null; c.lastRejectAt = null;
       }
     }
@@ -125,6 +147,8 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
     state.shares.rejectedCount = 0;
     state.shares.stale = 0;
     state.shares.rejectReasons = {};
+    state.shares.acceptedSdiffSum = 0;
+    state.shareStatsStartedAt = Date.now();
   }
 
   // Recursively walk logDir for all .sharelog files. ckpool creates one
@@ -175,6 +199,11 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       state.shares.acceptedCount = (state.shares.acceptedCount || 0) + 1;
       const sd = typeof obj.sdiff === 'number' ? obj.sdiff : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
+      // v1.8.3-rev22: track session-scoped sum of share difficulties for
+      // implied-hashrate calc. Persists per-worker as c.sdiffSum and
+      // rolls up into state.shares.acceptedSdiffSum on each accept.
+      c.sdiffSum = (c.sdiffSum || 0) + sd;
+      state.shares.acceptedSdiffSum = (state.shares.acceptedSdiffSum || 0) + sd;
     } else {
       const isStale = reason && STALE_RE.test(reason);
       if (isStale) {
