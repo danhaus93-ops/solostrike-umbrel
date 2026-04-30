@@ -2465,8 +2465,11 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
         </div>
       </div>
 
-      {/* iter26: Pool uptime + started date strip */}
-      <PoolUptimeStrip startedAt={startedAt}/>
+      {/* v1.8.2-rev20: removed <PoolUptimeStrip> — pool uptime/start metadata
+          is shown in the Share Diagnostics modal which is its canonical
+          home. Stratum card now stays focused on connection config. The
+          PoolUptimeStrip function definition is kept below as dead code in
+          case we want to relocate it (e.g. to Pulse card) later. */}
     </div>
   );
 }
