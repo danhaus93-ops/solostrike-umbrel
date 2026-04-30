@@ -6200,18 +6200,47 @@ export default function App() {
         letterSpacing:'0.15em',
         gap:'1.5rem',
       }}>
-        {/* v1.8.1-rev8: pulsing pickaxe glyph using the existing `pulse`
-            keyframe (defined in global.css). Amber-glow text-shadow ties
-            it to the rest of the app palette. The "SOLOSTRIKE" wordmark
-            below sits at the same letter-spacing as the header brand. */}
+        {/* v1.8.1-rev15: Strike animation — pickaxe swings down onto a glowing
+            ₿. The two glyphs are stacked in a small relative-positioned box so
+            the pickaxe's bottom-right transform-origin pivots toward the ₿
+            below it, simulating impact. The ₿'s glow spikes at the moment
+            of pickaxe contact via synchronized keyframes (both 1.4s cycle).
+            Splash unmounts as soon as poolState._loaded flips true — the
+            animation keeps looping while we wait, but doesn't artificially
+            hold up the dashboard. */}
         <div style={{
-          fontSize:'4rem',
-          lineHeight:1,
-          color:'var(--amber)',
-          textShadow:'0 0 28px rgba(245,166,35,0.55)',
-          animation:'pulse 1.6s ease-in-out infinite',
+          position:'relative',
+          width:'5.5rem', height:'6.5rem',
+          display:'flex', alignItems:'flex-end', justifyContent:'center',
         }}>
-          ⛏
+          {/* Bitcoin ₿ — sits in the bottom of the box, gets struck */}
+          <div style={{
+            fontSize:'4.5rem',
+            lineHeight:1,
+            color:'var(--amber)',
+            fontFamily:'var(--fd)',
+            fontWeight:700,
+            animation:'btcImpact 1.4s ease-in-out infinite',
+            zIndex:1,
+          }}>
+            ₿
+          </div>
+          {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
+              bottom-right so the handle pivots and the head arcs into the ₿. */}
+          <div style={{
+            position:'absolute',
+            top:0, left:'50%',
+            transform:'translateX(-90%)',     /* offset slightly left so the head lands center */
+            fontSize:'3rem',
+            lineHeight:1,
+            color:'var(--amber)',
+            transformOrigin:'bottom right',
+            animation:'pickaxeStrike 1.4s ease-in-out infinite',
+            textShadow:'0 0 14px rgba(245,166,35,0.55)',
+            zIndex:2,
+          }}>
+            ⛏
+          </div>
         </div>
         <div style={{
           fontFamily:'var(--fd)',
