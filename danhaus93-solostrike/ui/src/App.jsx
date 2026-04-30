@@ -1586,14 +1586,14 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
   const blkWeight = lb.weight || lb.blockWeight || null;
   const blkTxs    = lb.txCount || lb.txs || lb.tx_count || null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Bitcoin Network</div>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, flexShrink:0}}>▸ Bitcoin Network</div>
       {[['Block Height', fmtNum(network?.height), 'var(--text-1)'],
         ['Difficulty', fmtDiff(network?.difficulty), 'var(--text-1)'],
         ['Net Hashrate', fmtHr(network?.hashrate), 'var(--cyan)']].map(([l,v,c])=>(
         <div key={l} style={statRow}>
           <span style={label}>{l}</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:c,textShadow:c==='var(--cyan)'?'0 0 10px rgba(0,255,209,0.3)':'none'}}>{v}</span>
+          <span style={{fontFamily:'var(--fd)',fontSize:'0.95rem',fontWeight:600,color:c,textShadow:c==='var(--cyan)'?'0 0 10px rgba(0,255,209,0.3)':'none'}}>{v}</span>
         </div>
       ))}
       {/* iter26: latest block weight + tx count */}
@@ -1602,37 +1602,37 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
           {blkWeight && (
             <div style={statRow}>
               <span style={label}>Block Weight</span>
-              <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(blkWeight)} WU</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)'}}>{fmtNum(blkWeight)} WU</span>
             </div>
           )}
           {blkTxs != null && (
             <div style={statRow}>
               <span style={label}>Block Txs</span>
-              <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(blkTxs)}</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)'}}>{fmtNum(blkTxs)}</span>
             </div>
           )}
         </>
       )}
-      <div style={{height:1,background:'var(--border)',margin:'0.7rem 0'}}/>
+      <div style={{height:1,background:'var(--border)',margin:'0.7rem 0',flexShrink:0}}/>
       {blockReward && (
         <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(245,166,35,0.25)'}}>
           <span style={{...label, color:'var(--amber)'}}>🏆 Next Block Prize</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 12px rgba(245,166,35,0.4)',textAlign:'right'}}>
+          <span style={{fontFamily:'var(--fd)',fontSize:'1.2rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 12px rgba(245,166,35,0.4)',textAlign:'right'}}>
             {fmtBtc(blockReward.totalBtc, 3)}
-            {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--green)',fontWeight:600,marginTop:2,textShadow:'0 0 8px rgba(57,255,106,0.2)'}}>{fmtFiat(rewardUsd, currency)}</div>}
+            {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--green)',fontWeight:600,marginTop:2,textShadow:'0 0 8px rgba(57,255,106,0.2)'}}>{fmtFiat(rewardUsd, currency)}</div>}
           </span>
         </div>
       )}
       {!privateMode && price!=null && (
         <div style={statRow}>
           <span style={label}>BTC Price</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:'var(--cyan)'}}>{fmtFiat(price, currency)}</span>
+          <span style={{fontFamily:'var(--fd)',fontSize:'0.95rem',fontWeight:600,color:'var(--cyan)'}}>{fmtFiat(price, currency)}</span>
         </div>
       )}
       {mempool?.totalFeesBtc>0 && (
         <div style={statRow}>
           <span style={label}>Mempool Fees</span>
-          <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{fmtBtc(mempool.totalFeesBtc, 2)}</span>
+          <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--amber)'}}>{fmtBtc(mempool.totalFeesBtc, 2)}</span>
         </div>
       )}
       {privateMode && (
@@ -1640,6 +1640,7 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
           🔒 PRICE HIDDEN — PRIVATE MODE
         </div>
       )}
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -1651,8 +1652,8 @@ function BitcoinNodePanel({ nodeInfo }) {
   const connected = ni.connected;
   const relayStr = ni.relayFee != null ? `${(ni.relayFee * 1e5).toFixed(2)} sat/vB` : '—';
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
         <span>▸ Bitcoin Node</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, color: connected?'var(--green)':'var(--red)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>
           <span style={{width:6, height:6, borderRadius:'50%', background: connected?'var(--green)':'var(--red)', boxShadow: `0 0 6px ${connected?'var(--green)':'var(--red)'}`, animation: connected?'pulse 2s ease-in-out infinite':'none'}}/>
@@ -1661,23 +1662,24 @@ function BitcoinNodePanel({ nodeInfo }) {
       </div>
       <div style={statRow}>
         <span style={label}>Client</span>
-        <span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',textAlign:'right', minWidth:0, overflow:'hidden'}}>
+        <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)',textAlign:'right', minWidth:0, overflow:'hidden'}}>
           {client.name}
-          {client.version && <div style={{fontSize:'0.6rem',color:'var(--text-2)',marginTop:2}}>v{client.version}</div>}
+          {client.version && <div style={{fontSize:'0.65rem',color:'var(--text-2)',marginTop:2}}>v{client.version}</div>}
           {/* iter26: full subversion string (typically /Satoshi:29.2.0/) when present */}
-          {ni.subversion && <div style={{fontSize:'0.55rem',color:'var(--text-3)',marginTop:1, fontFamily:'var(--fm)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'14rem'}}>{ni.subversion.replace(/^\/|\/$/g,'')}</div>}
+          {ni.subversion && <div style={{fontSize:'0.6rem',color:'var(--text-3)',marginTop:1, fontFamily:'var(--fm)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'14rem'}}>{ni.subversion.replace(/^\/|\/$/g,'')}</div>}
         </span>
       </div>
       <div style={statRow}>
         <span style={label}>Peers</span>
-        <span style={{fontFamily:'var(--fd)',fontSize:'0.88rem',fontWeight:600,color:'var(--cyan)'}}>
+        <span style={{fontFamily:'var(--fd)',fontSize:'0.95rem',fontWeight:600,color:'var(--cyan)'}}>
           {fmtNum(ni.peers || 0)}
-          {(ni.peersIn > 0 || ni.peersOut > 0) && <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',fontWeight:400,marginLeft:6}}>{ni.peersOut}↑ · {ni.peersIn}↓</span>}
+          {(ni.peersIn > 0 || ni.peersOut > 0) && <span style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',fontWeight:400,marginLeft:6}}>{ni.peersOut}↑ · {ni.peersIn}↓</span>}
         </span>
       </div>
-      <div style={statRow}><span style={label}>Relay Fee</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{relayStr}</span></div>
-      <div style={statRow}><span style={label}>Mempool TXs</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(ni.mempoolCount || 0)}</span></div>
-      <div style={statRow}><span style={label}>Mempool Size</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--cyan)'}}>{fmtBytes(ni.mempoolBytes || 0)}</span></div>
+      <div style={statRow}><span style={label}>Relay Fee</span><span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--amber)'}}>{relayStr}</span></div>
+      <div style={statRow}><span style={label}>Mempool TXs</span><span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)'}}>{fmtNum(ni.mempoolCount || 0)}</span></div>
+      <div style={statRow}><span style={label}>Mempool Size</span><span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--cyan)'}}>{fmtBytes(ni.mempoolBytes || 0)}</span></div>
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -1934,7 +1936,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
 
   return (
     <div
-      style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}}
+      style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}}
       className="fade-in"
       onClick={onOpen}
       role={onOpen ? 'button' : undefined}
@@ -1942,7 +1944,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
       onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } } : undefined}
       title={onOpen ? 'Tap to open The Reckoning' : undefined}
     >
-      <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+      <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
         <span>▸ The Hunt</span>
       </div>
 
@@ -1959,7 +1961,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
               Per-Block Odds
             </span>
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.88rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
             </span>
           </div>
@@ -2073,6 +2075,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
           </div>
         )}
       </div>
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -2314,8 +2317,8 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
   };
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem'}}>▸ Stratum Connection</div>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem', flexShrink:0}}>▸ Stratum Connection</div>
 
       {/* HOST — editable */}
       <div style={fieldRowStyle}>
@@ -2343,7 +2346,7 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           <PortChip port="3334" accent="var(--text-1)" />
           <PortChip port="4333" accent="var(--cyan)" ssl />
         </div>
-        <div style={{...helperStyle, marginTop:5, fontSize:'0.5rem'}}>
+        <div style={{...helperStyle, marginTop:5, fontSize:'0.6rem'}}>
           3333 ASIC · 3334 Hobby · 🔒 4333 SSL
         </div>
       </div>
@@ -2489,26 +2492,27 @@ function LuckGauge({ luck }) {
     else { luckColor = 'var(--red)'; luckLabel = `${luckPct.toFixed(0)}% lucky`; }
   }
   return (
-    <div style={card} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Hot Streak</div>
-      <div style={{position:'relative', height:20, background:'var(--bg-deep)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:8}}>
+    <div style={{...card, display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Hot Streak</div>
+      <div style={{position:'relative', height:22, background:'var(--bg-deep)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:8, flexShrink:0}}>
         <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg, var(--amber-glow, rgba(245,166,35,0.4)) 0%, var(--amber) 100%)', boxShadow:'0 0 8px rgba(245,166,35,0.4)', transition:'width 0.4s ease' }}/>
-        <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em', color:'#000', fontWeight:700, mixBlendMode:'screen'}}>
+        <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--fd)', fontSize:'0.72rem', letterSpacing:'0.1em', color:'#000', fontWeight:700, mixBlendMode:'screen'}}>
           {pct.toFixed(1)}% to next
         </div>
       </div>
       <div style={statRow}>
         <span style={label}>Expected</span>
-        <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{(luck.blocksExpected||0).toFixed(2)}</span>
+        <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)'}}>{(luck.blocksExpected||0).toFixed(2)}</span>
       </div>
       <div style={statRow}>
         <span style={label}>Found</span>
-        <span style={{fontFamily:'var(--fm)',color:'var(--cyan)'}}>{luck.blocksFound||0}</span>
+        <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--cyan)'}}>{luck.blocksFound||0}</span>
       </div>
       <div style={{...statRow, borderColor:'var(--border-hot, rgba(245,166,35,0.3))'}}>
         <span style={label}>Streak</span>
-        <span style={{fontFamily:'var(--fm)',color:luckColor,fontWeight:600}}>{luckLabel}</span>
+        <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:luckColor,fontWeight:600}}>{luckLabel}</span>
       </div>
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -2525,17 +2529,17 @@ function RetargetPanel({ retarget }) {
     ? 'var(--text-2)'
     : prevDifficultyChange >= 0 ? 'var(--red)' : 'var(--green)';
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={cardTitle}>▸ Difficulty Retarget</div>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, flexShrink:0}}>▸ Difficulty Retarget</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
         <div style={{textAlign:'center',padding:'0.25rem 0'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'1.6rem',fontWeight:700,color:changeColor,textShadow:`0 0 14px ${changeColor}50`,lineHeight:1}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:changeColor,textShadow:`0 0 14px ${changeColor}50`,lineHeight:1}}>
             {difficultyChange>=0?'+':''}{difficultyChange.toFixed(2)}%
           </div>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:4}}>estimated change</div>
           {/* iter26: previous epoch comparison */}
           {prevDifficultyChange != null && (
-            <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:6}}>
+            <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)', marginTop:6}}>
               Last epoch: <span style={{color:prevColor, fontWeight:600}}>{prevDifficultyChange>=0?'+':''}{prevDifficultyChange.toFixed(2)}%</span>
             </div>
           )}
@@ -2548,9 +2552,10 @@ function RetargetPanel({ retarget }) {
             <div style={{height:'100%',width:`${pct}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)',transition:'width 0.6s ease'}}/>
           </div>
         </div>
-        <div style={{...statRow,marginBottom:0}}><span style={label}>Remaining Blocks</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)'}}>{fmtNum(remainingBlocks)}</span></div>
-        <div style={{...statRow,marginBottom:0}}><span style={label}>ETA</span><span style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--amber)'}}>{fmtDurationMs(remainingTime)}</span></div>
+        <div style={{...statRow,marginBottom:0}}><span style={label}>Remaining Blocks</span><span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)'}}>{fmtNum(remainingBlocks)}</span></div>
+        <div style={{...statRow,marginBottom:0}}><span style={label}>ETA</span><span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--amber)'}}>{fmtDurationMs(remainingTime)}</span></div>
       </div>
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -2792,16 +2797,16 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   const lifeTotal = lifeAccepted + lifeRejected + lifeStale;
   const rejectPct = lifeTotal > 0 ? (((lifeRejected + lifeStale) / lifeTotal) * 100) : null;
   return (
-    <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default'}} className="fade-in">
-      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+    <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
         <span>▸ Share Stats</span>
         <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Accepted Work</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
-          <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',marginTop:6}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Accepted Work</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-2)',marginTop:6}}>
             {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected</>}
        <> · <span style={{color:stale>0?'var(--amber)':'var(--text-2)'}}>{fmtDiff(stale)}</span> stale</>
           </div>
@@ -2811,16 +2816,16 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem'}}>
             {rejectPct !== null && (
               <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Reject Rate</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'1.15rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Reject Rate</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {rejectPct < 0.001 ? rejectPct.toExponential(1) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
                 </div>
               </div>
             )}
             {lifeAccepted > 0 && (
               <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.5rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Lifetime Shares</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'1.15rem',fontWeight:700,lineHeight:1,color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Lifetime Shares</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {fmtNum(lifeAccepted)}
                 </div>
               </div>
@@ -2828,10 +2833,10 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
           </div>
         )}
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Best Difficulty</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'1.8rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.6rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Best Difficulty</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
         </div>
-        <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
           <span>{spsLabel}</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
         </div>
         {onOpen && (
@@ -2840,6 +2845,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
           </div>
         )}
       </div>
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -2848,33 +2854,33 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
 function BestShareLeaderboard({ workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ Top Diggers — Best Difficulties</div>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Top Diggers — Best Difficulties</div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Keep mining ⛏</span></div>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:'0.35rem'}}>
+        <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
           {sorted.map((w, i) => {
             const on = w.status !== 'offline';
             const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
             return (
               <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:3}}>
-                  <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:20, flexShrink:0}}>#{i+1}</span>
-                  <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
-                  <span style={{fontFamily:'var(--fd)',fontSize:'0.82rem',fontWeight:700,color:i===0?'var(--amber)':'var(--cyan)', flexShrink:0}}>{fmtDiff(w.bestshare || 0)}</span>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:22, flexShrink:0}}>#{i+1}</span>
+                  <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.92rem',fontWeight:700,color:i===0?'var(--amber)':'var(--cyan)', flexShrink:0}}>{fmtDiff(w.bestshare || 0)}</span>
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:25,fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:27,fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)'}}>
                   <div title={w.health||'unknown'} style={{width:6,height:6,borderRadius:'50%',background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 4px ${healthC}`:'none',flexShrink:0}}/>
-                  {w.minerType && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.55rem'}}>{w.minerType}</span><span style={{color:'var(--text-3)'}}>·</span></>}
+                  {w.minerType && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.58rem'}}>{w.minerType}</span><span style={{color:'var(--text-3)'}}>·</span></>}
                   <span style={{color: on?'var(--amber)':'var(--text-3)'}}>{on ? fmtHr(w.hashrate) : 'offline'}</span>
                 </div>
               </div>
             );
           })}
-          <div style={{...statRow,marginTop:'0.4rem',borderColor:'var(--border-hot)'}}>
+          <div style={{...statRow,marginTop:'0.4rem',borderColor:'var(--border-hot)',flexShrink:0}}>
             <span style={label}>Pool Best</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'0.9rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>{fmtDiff(poolBest || 0)}</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>{fmtDiff(poolBest || 0)}</span>
           </div>
         </div>
       )}
