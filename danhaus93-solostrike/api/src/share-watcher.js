@@ -59,7 +59,14 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
   if (typeof state.shareStatsStartedAt !== 'number' || !state.shareStatsStartedAt) state.shareStatsStartedAt = Date.now();
 
-  // Restore counters + cursors from persist.json if present
+  // Restore counters + cursors from persist.json if present.
+  // v1.8.3-rev21: Track whether the persisted shareStatsStartedAt was
+  // valid. If we restore non-zero shareCounters but the timestamp was
+  // missing/zero (forcing line 60 default to Date.now()), we have a
+  // sync drift — implied-hashrate math would be wildly wrong because
+  // it'd divide lifetime shares by a fresh session window. The guard
+  // below detects this and resets counters to bring back into sync.
+  let persistedTimestampValid = false;
   try {
     const persistPath = path.join(process.env.CONFIG_DIR || '/app/config', 'persist.json');
     if (fs.existsSync(persistPath)) {
@@ -91,9 +98,34 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       }
       if (typeof p.shareStatsStartedAt === 'number' && p.shareStatsStartedAt > 0) {
         state.shareStatsStartedAt = p.shareStatsStartedAt;
+        persistedTimestampValid = true;
       }
     }
   } catch (e) { console.log('[share-watcher] persist restore failed:', e.message); }
+
+  // v1.8.3-rev21: Sync drift guard. If shareCounters were restored with
+  // non-zero data but shareStatsStartedAt was NOT a valid persisted
+  // value (so line 60 had to default it to Date.now()), the two are
+  // out of sync — implied hashrate would compute lifetime-shares /
+  // recent-session-window and produce a value that is orders of
+  // magnitude too high. Reset counters to bring back into sync. The
+  // freshly-defaulted shareStatsStartedAt at line 60 stays as-is so
+  // tracking begins now. Lifetime data is intentionally sacrificed to
+  // keep the implied hashrate display honest.
+  if (!persistedTimestampValid && state.shares.acceptedCount > 0) {
+    console.log('[share-watcher] DRIFT GUARD: shareCounters restored (' + state.shares.acceptedCount + ' accepted) but shareStatsStartedAt was missing/invalid. Resetting counters to sync with fresh session timestamp.');
+    if (state.shareCounters) {
+      for (const name of Object.keys(state.shareCounters)) {
+        const c = state.shareCounters[name];
+        c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0;
+        c.rejectReasons = {}; c.lastRejectReason = null; c.lastRejectAt = null;
+      }
+    }
+    state.shares.acceptedCount = 0;
+    state.shares.rejectedCount = 0;
+    state.shares.stale = 0;
+    state.shares.rejectReasons = {};
+  }
 
   // Recursively walk logDir for all .sharelog files. ckpool creates one
   // subdirectory per block height (e.g. 000e708f, 000e7090, ...), so we
