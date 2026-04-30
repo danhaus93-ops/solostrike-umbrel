@@ -1509,8 +1509,8 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
   const list = closestCalls || [];
   if (!list.length) {
     return (
-      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-        <div style={{...cardTitle, color:'var(--amber)'}}>▸ Near Strikes</div>
+      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+        <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Near Strikes</div>
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
           Building leaderboard…<br/>
           <span style={{color:'var(--amber)',fontSize:'0.65rem'}}>Shares tracked as they come in</span>
@@ -1522,12 +1522,12 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
   const netDiff = networkDifficulty && networkDifficulty > 0 ? networkDifficulty : null;
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ Near Strikes</span>
         <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
       </div>
-      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem'}}>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.35rem', flex:1, minHeight:0, overflowY:'auto'}}>
         {list.map((c, i) => {
           const disp = displayName(c.workerName, aliases);
           const pctOfBlock = netDiff ? (c.diff / netDiff) * 100 : 0;
@@ -2959,9 +2959,9 @@ function RecentBlocksPanel({ netBlocks }) {
   const list = netBlocks || [];
   if (!list.length) return null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)'}}>▸ The Ledger — Solo Winners ⚡</div>
-      <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',maxHeight:500,overflowY:'auto'}}>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ The Ledger — Solo Winners ⚡</div>
+      <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
           <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none', minWidth:0}}>
             <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
