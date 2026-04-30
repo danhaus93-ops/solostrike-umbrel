@@ -124,22 +124,10 @@ body * {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* v1.8.1-rev14: removed the JS-side override of --carousel-h. Pixel
-     measurement of IMG_5158 vs IMG_5166 proved that JS computation was
-     making cards 50px shorter than the CSS fallback was producing.
-     Cause: documentElement.clientHeight returns 759 in this iframe but
-     CSS `100dvh` resolves to ~841 (an 82px discrepancy in iOS PWA mode).
-     The CSS fallback `calc(100dvh - 296px)` correctly produced the
-     545-logical-pixel slot the user is asking for. Removing the JS
-     override makes that the only sizing source — what works, sticks. */
-  /* v1.8.2-rev16: switched 100dvh → 100svh. In iOS in-app webviews (e.g.
-     opening the link from inside the Umbrel app), `dvh` misreports the
-     viewport — it returns the no-chrome value even when Umbrel/Safari
-     chrome is showing, so cards extended past the visible area. `svh`
-     reports the smallest possible viewport (when all chrome is at max
-     extent), which is the actually-visible area in webview. In standalone
-     PWA mode `svh === dvh === lvh` so PWA layout is unchanged. */
-  height: var(--carousel-h, calc(100svh - 296px));
+  /* Fill space between header (~210px) and footer (~36px), reserving ~50px
+     for the floating dots zone above the footer. JS measurement effect will
+     override this with a more accurate value once layout settles. */
+  height: var(--carousel-h, calc(100dvh - 296px));
   scrollbar-width: none;
   padding: 0;
 }
