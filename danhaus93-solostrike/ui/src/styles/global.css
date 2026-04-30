@@ -30,9 +30,13 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @media (min-width:640px){.ss-span-2{grid-column:span 2}}
 
 /* --- Drag and drop card styles ------------------------------------------ */
-.ss-card{position:relative;transition:opacity 0.2s,transform 0.2s}
+.ss-card{position:relative;transition:opacity 0.2s,transform 0.15s ease}
 .ss-card.ss-dragging{opacity:0.4;transform:scale(0.98)}
 .ss-card.ss-drag-over{outline:2px dashed var(--amber);outline-offset:-2px}
+/* v1.8.1-rev7: tap-feedback for cards that act as buttons (Share Stats,
+   The Hunt, etc). Pure CSS scale-down on press; no JS overhead. The
+   transition above handles the smooth release. */
+.ss-card:active{transform:scale(0.992)}
 .ss-drag-handle{position:absolute;top:8px;right:8px;font-size:14px;color:var(--text-3);cursor:grab;user-select:none;padding:2px 6px;z-index:2;touch-action:none}
 .ss-drag-handle:hover{color:var(--amber)}
 .ss-drag-handle:active{cursor:grabbing}
@@ -153,7 +157,13 @@ body * {
   /* iter28: position dots just above the fixed footer. Footer top edge sits
      at roughly 22px above the safe-area inset zone. 28px puts dots ~6px
      clear of the footer top — visually close to the footer without touching. */
-  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  /* v1.8.1-rev7: dots bumped from 28px → 60px above safe-area. With fixed
+     positioning and a flex-filled card slot, the visible empty band between
+     the card's bottom border and the footer top is ~70px tall on iPhone.
+     28px landed dots at the bottom of that band (just above footer); 60px
+     centers them in the band, giving comfortable breathing room on both
+     sides without crowding either element. */
+  bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   display: flex;
   /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
