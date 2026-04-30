@@ -41,8 +41,16 @@ CK="danhaus93-solostrike_ckpool_1"
 PROXY="danhaus93-solostrike_app_proxy_1"
 STUNNEL="danhaus93-solostrike_stunnel_1"
 
+# ckpool logs are mounted from host into the ckpool container at /var/log/ckpool
+# On the host they live in the Umbrel app-data tree
+CKPOOL_LOGS="/home/umbrel/umbrel/app-data/danhaus93-solostrike/data/ckpool/logs"
+
 # Auto-detect Bitcoin Core container (different across Umbrel versions)
-BTC_CTR=$(sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^bitcoin_(bitcoind|server)_1$' | head -1)
+# - bitcoin_app_1     (current Umbrel, e.g. v1.x)
+# - bitcoin_bitcoind_1 (older Umbrel)
+# - bitcoin_server_1  (legacy)
+# Exclude sidecars: app_proxy, tor, i2pd_daemon
+BTC_CTR=$(sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^bitcoin_(app|bitcoind|server|node)_1$' | grep -vE 'proxy|tor|i2pd' | head -1)
 
 STATE_FILE=$(mktemp /tmp/solostrike-state.XXXXXX.json)
 trap 'rm -f "$STATE_FILE"' EXIT
@@ -115,7 +123,10 @@ print(f'  6h / 24h   : {av.get("hr6h",0)/1e12:5.2f} / {av.get("hr24h",0)/1e12:5.
 status = '\033[32m✓\033[0m' if not off else f'\033[33m! {len(off)} offline\033[0m'
 print(f'Workers      : {len(on)}/{len(workers)} online {status}')
 if off:
-    print(f'  OFFLINE    : {", ".join(w.get("name","?") for w in off)}')
+    def _short(n):
+        n = n or '?'
+        return n.split('.', 1)[1] if '.' in n else n
+    print(f'  OFFLINE    : {", ".join(_short(w.get("name","?")) for w in off)}')
 total = sh.get('acceptedCount',0) + sh.get('rejectedCount',0) + sh.get('stale',0)
 acc_pct = (sh.get('acceptedCount',0) / total * 100) if total else 100
 print(f'Shares accpt : {sh.get("acceptedCount",0):,}  rej {sh.get("rejectedCount",0)}  stale {sh.get("stale",0)}')
@@ -214,7 +225,12 @@ for w in ws:
     else:
         age_str = f'{age_s/3600:.1f}h'
     hr = (w.get('hashrate') or 0) / 1e12
-    name = (w.get('name') or '?')[:22]
+    full_name = w.get('name') or '?'
+    # ckpool stores usernames as "<address>.<workername>". The dashboard shows
+    # only the workername part. Strip the address prefix if present.
+    if '.' in full_name:
+        full_name = full_name.split('.', 1)[1]
+    name = full_name[:22]
     accpt = w.get('sharesCount', 0)
     stale = w.get('stale', 0)
     best = w.get('bestshare', 0) or 0
@@ -323,7 +339,8 @@ PYEOF
 section_pool_activity() {
   hdr "Pool / ckpool Activity"
   # pool.status freshness
-  ps_mtime=$(sudo stat /var/log/ckpool/pool/pool.status --format='%Y' 2>/dev/null)
+  ps_path="$CKPOOL_LOGS/pool/pool.status"
+  ps_mtime=$(sudo stat "$ps_path" --format='%Y' 2>/dev/null)
   if [[ -n "$ps_mtime" ]]; then
     now=$(date +%s)
     age=$((now - ps_mtime))
@@ -332,17 +349,35 @@ section_pool_activity() {
     else
       warn "pool.status is stale (updated ${age}s ago — ckpool may be hung)"
     fi
+    # Show pool stats from inside pool.status
+    ps_content=$(sudo cat "$ps_path" 2>/dev/null)
+    if [[ -n "$ps_content" ]]; then
+      echo "$ps_content" | python3 -c "
+import sys, json
+lines = [l for l in sys.stdin.read().split('\n') if l.strip()]
+if len(lines) >= 3:
+    try:
+        rates = json.loads(lines[1])
+        shares = json.loads(lines[2])
+        print(f'  ckpool hashrate1m  : {rates.get(\"hashrate1m\",\"?\")}')
+        print(f'  ckpool hashrate1hr : {rates.get(\"hashrate1hr\",\"?\")}')
+        print(f'  ckpool best share  : {shares.get(\"bestshare\",\"?\")}')
+        print(f'  ckpool SPS 1m      : {shares.get(\"SPS1m\",\"?\")}')
+    except Exception as e:
+        print(f'  (couldn\\'t parse pool.status: {e})')
+" 2>/dev/null
+    fi
   else
-    warn "pool.status file not found at /var/log/ckpool/pool/pool.status"
+    warn "pool.status not found at $ps_path"
   fi
 
-  # Sharelog activity
-  recent_shares=$(sudo find /var/log/ckpool -name "*.sharelog" -mmin -5 2>/dev/null | wc -l)
-  total_shares=$(sudo find /var/log/ckpool -name "*.sharelog" 2>/dev/null | wc -l)
+  # Sharelog activity (host-side path)
+  recent_shares=$(sudo find "$CKPOOL_LOGS" -name "*.sharelog" -mmin -5 2>/dev/null | wc -l)
+  total_shares=$(sudo find "$CKPOOL_LOGS" -name "*.sharelog" 2>/dev/null | wc -l)
   printf "  Sharelog files: %s active in last 5min / %s total\n" "$recent_shares" "$total_shares"
 
   # Recent block dirs (each ckpool block height gets its own dir)
-  block_dirs=$(sudo ls -1d /var/log/ckpool/[0-9a-f]*/ 2>/dev/null | wc -l)
+  block_dirs=$(sudo ls -1d "$CKPOOL_LOGS"/[0-9a-f]*/ 2>/dev/null | wc -l)
   printf "  Block-height directories: %s\n" "$block_dirs"
 
   # ckpool log errors
