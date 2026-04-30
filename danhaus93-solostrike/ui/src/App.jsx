@@ -6045,6 +6045,25 @@ export default function App() {
   const footerRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
+  // ── DIAG-C1 (v1.8.2-rev18) ──────────────────────────────────────────────
+  // Multi-context viewport diagnostic. Captures every relevant viewport
+  // measurement so we can compare PWA vs in-app webview vs Safari and
+  // determine which CSS unit (dvh/svh/lvh) actually reflects the visible
+  // area in each context. Resolves the dvh→svh mistake: shipping a unit
+  // change without first knowing how iOS reports each one in each context
+  // is what caused the PWA regression. No layout changes — purely measure.
+  const [diagC, setDiagC] = useState({
+    mode: '',           // 'standalone' (PWA) | 'browser' (Safari/in-app webview)
+    inner: 0,           // window.innerHeight
+    client: 0,          // documentElement.clientHeight
+    dvh: 0,             // resolved value of 100dvh
+    svh: 0,             // resolved value of 100svh
+    lvh: 0,             // resolved value of 100lvh
+    safeTop: 0,         // env(safe-area-inset-top)
+    safeBot: 0,         // env(safe-area-inset-bottom)
+    cardH: 0,           // actual rendered card height
+  });
+
   // v1.7.22-iter: tag the body AND html with the active layout mode so CSS
   // can apply different sizing rules without needing :has() support
   // (Umbrel's webview may not have it). Carousel mode locks body height to
@@ -6188,6 +6207,61 @@ export default function App() {
     if (!el) return;
     el.scrollTo({ left: idx * el.clientWidth, behavior: 'smooth' });
   }, []);
+
+  // ── DIAG-C1 measurement effect ──
+  // Creates hidden probe divs sized to 100dvh/100svh/100lvh and reads their
+  // computed heights. Only way to know what those units actually resolve to
+  // in the current rendering context. Re-runs on resize so we can see live
+  // values as URL bar/chrome shows or hides.
+  useEffect(() => {
+    const measure = () => {
+      // Probe each viewport unit by creating a div sized to it
+      const mkProbe = (val) => {
+        const d = document.createElement('div');
+        d.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;width:1px;height:${val}`;
+        document.body.appendChild(d);
+        const h = d.getBoundingClientRect().height;
+        document.body.removeChild(d);
+        return Math.round(h);
+      };
+      // Read CSS env() values via computed style on a probe
+      const envProbe = document.createElement('div');
+      envProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top, 0px);padding-bottom:env(safe-area-inset-bottom, 0px)';
+      document.body.appendChild(envProbe);
+      const cs = window.getComputedStyle(envProbe);
+      const safeTop = parseFloat(cs.paddingTop) || 0;
+      const safeBot = parseFloat(cs.paddingBottom) || 0;
+      document.body.removeChild(envProbe);
+      // Display mode
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+      // Card height — actual rendered first card
+      const firstCard = document.querySelector('.ss-carousel .ss-card');
+      const cardH = firstCard ? Math.round(firstCard.getBoundingClientRect().height) : 0;
+      setDiagC({
+        mode: isStandalone ? 'standalone (PWA)' : 'browser (webview)',
+        inner: Math.round(window.innerHeight),
+        client: Math.round(document.documentElement.clientHeight),
+        dvh: mkProbe('100dvh'),
+        svh: mkProbe('100svh'),
+        lvh: mkProbe('100lvh'),
+        safeTop: Math.round(safeTop),
+        safeBot: Math.round(safeBot),
+        cardH,
+      });
+    };
+    measure();
+    const t1 = setTimeout(measure, 250);
+    const t2 = setTimeout(measure, 1000);
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, [poolState._loaded]);
 
   if (!poolState._loaded) {
     return (
@@ -6418,6 +6492,35 @@ export default function App() {
             onJump={jumpToCard}
           />
         )}
+        {/* DIAG-C1: viewport measurement readout. Top-right, fixed pos, no
+            interaction, will be stripped after diagnosis. */}
+        <div style={{
+          position: 'fixed',
+          top: 'calc(8px + env(safe-area-inset-top))',
+          right: '8px',
+          zIndex: 99999,
+          background: 'rgba(0,0,0,0.92)',
+          color: '#0f0',
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          padding: '6px 8px',
+          borderRadius: '4px',
+          pointerEvents: 'none',
+          lineHeight: 1.35,
+          border: '1px solid #0f0',
+          whiteSpace: 'pre',
+          letterSpacing: '0.02em',
+        }}>
+{`DIAG-C1 v1.8.2
+mode: ${diagC.mode}
+innerHeight:  ${diagC.inner}
+clientHeight: ${diagC.client}
+100dvh: ${diagC.dvh}
+100svh: ${diagC.svh}
+100lvh: ${diagC.lvh}
+safe-top: ${diagC.safeTop}  bot: ${diagC.safeBot}
+card height: ${diagC.cardH}`}
+        </div>
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
         <span>SoloStrike v1.8.2 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
