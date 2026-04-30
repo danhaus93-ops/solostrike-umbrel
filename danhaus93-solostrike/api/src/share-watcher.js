@@ -198,12 +198,19 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       c.accepted++;
       state.shares.acceptedCount = (state.shares.acceptedCount || 0) + 1;
       const sd = typeof obj.sdiff === 'number' ? obj.sdiff : 0;
+      const td = typeof obj.diff  === 'number' ? obj.diff  : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
-      // v1.8.3-rev22: track session-scoped sum of share difficulties for
-      // implied-hashrate calc. Persists per-worker as c.sdiffSum and
-      // rolls up into state.shares.acceptedSdiffSum on each accept.
-      c.sdiffSum = (c.sdiffSum || 0) + sd;
-      state.shares.acceptedSdiffSum = (state.shares.acceptedSdiffSum || 0) + sd;
+      // v1.8.3-rev24: sum TARGET difficulties (obj.diff), not achieved sdiff.
+      // sdiff includes a luck factor (sdiff >= diff for accepted shares;
+      // lucky shares can have sdiff orders of magnitude higher than diff).
+      // For implied-hashrate calc we want the unbiased estimator, which is
+      // sum(target_diff) × 2^32 / time. Using sdiff lets a single lucky
+      // share inflate the implied HR by entire PH/s (rev22 bug). The field
+      // names retain "Sdiff" for backwards compat with persist files but
+      // now sum target diffs. bestSdiff (the display metric) still uses
+      // sdiff — that one really is "best lucky share".
+      c.sdiffSum = (c.sdiffSum || 0) + td;
+      state.shares.acceptedSdiffSum = (state.shares.acceptedSdiffSum || 0) + td;
     } else {
       const isStale = reason && STALE_RE.test(reason);
       if (isStale) {
