@@ -90,7 +90,7 @@ section_containers() {
   done
   if [[ -n "$BTC_CTR" ]]; then
     info=$(sudo docker inspect "$BTC_CTR" --format '{{.State.Status}} restarts={{.RestartCount}}' 2>/dev/null)
-    ok "$BTC_CTR — $info  ${DIM}(detected)${RESET}"
+    ok "$BTC_CTR — $info  (detected)"
   else
     warn "Bitcoin Core container not detected — some checks will be skipped"
   fi
@@ -131,7 +131,20 @@ total = sh.get('acceptedCount',0) + sh.get('rejectedCount',0) + sh.get('stale',0
 acc_pct = (sh.get('acceptedCount',0) / total * 100) if total else 100
 print(f'Shares accpt : {sh.get("acceptedCount",0):,}  rej {sh.get("rejectedCount",0)}  stale {sh.get("stale",0)}')
 print(f'  accept rate: {acc_pct:.3f}%')
-zmq_str = '\033[32m✓ connected\033[0m' if zmq.get('connected') else '\033[31m✗ DISCONNECTED\033[0m'
+zmq = d.get('zmq', {})
+import time
+now_ms = int(time.time() * 1000)
+IDLE_MS = 30 * 60 * 1000  # match ZmqBadge in App.jsx
+last_heard = zmq.get('lastBlockHeardAt')
+enabled = zmq.get('enabled', False)
+recently_heard = last_heard and (now_ms - last_heard < IDLE_MS)
+if not enabled:
+    zmq_str = '\033[31m✗ OFF (not configured)\033[0m'
+elif recently_heard:
+    mins = (now_ms - last_heard) / 60000
+    zmq_str = f'\033[32m✓ active\033[0m (last block heard {mins:.1f}m ago)'
+else:
+    zmq_str = '\033[33m! IDLE\033[0m (enabled but no recent block)'
 print(f'ZMQ          : {zmq_str}')
 blocks = node.get('blocks')
 peers = node.get('peers')
@@ -391,16 +404,43 @@ if len(lines) >= 3:
 }
 
 section_stratum_ports() {
-  hdr "Stratum Ports"
-  for port in 3333 3334 4333; do
-    listening=$(sudo ss -tln 2>/dev/null | awk -v p=":$port" '$4 ~ p {print "yes"; exit}')
-    if [[ "$listening" == "yes" ]]; then
-      conns=$(sudo ss -tn state established "( sport = :$port )" 2>/dev/null | tail -n +2 | wc -l)
-      ok "Port $port listening — $conns active connection(s)"
-    else
-      warn "Port $port NOT listening"
-    fi
-  done
+  hdr "Stratum Ports (live protocol probe)"
+  # Use the API's own health-check endpoint which does a real stratum
+  # subscribe handshake — that confirms the protocol actually works,
+  # not just that a port is bound. Counts of ESTABLISHED connections
+  # don't show reliably from the host because docker-proxy intermediates.
+  health=$(sudo docker exec "$API" wget -qO- http://localhost:3001/api/stratum-health 2>/dev/null)
+  if [[ -z "$health" ]]; then
+    warn "Could not reach /api/stratum-health"
+    return
+  fi
+  echo "$health" | python3 -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+ports = d.get('ports', {})
+if not ports:
+    print('  (no port health data yet — first probe pending)')
+    sys.exit()
+for port in sorted(ports.keys(), key=lambda x: int(x) if x.isdigit() else 0):
+    p = ports[port]
+    status = p.get('status', '?')
+    latency = p.get('latencyMs')
+    err = p.get('error')
+    if status == 'healthy':
+        s_col = '\033[32m✓ healthy\033[0m'
+    elif status == 'degraded':
+        s_col = '\033[33m! degraded\033[0m'
+    else:
+        s_col = '\033[31m✗ down\033[0m'
+    lat_str = f' ({latency}ms)' if latency is not None else ''
+    err_str = f'  err: {err}' if err else ''
+    print(f'  Port {port}: {s_col}{lat_str}{err_str}')
+import time, datetime as dt
+last = d.get('lastCheckAt')
+if last:
+    age = (time.time()*1000 - last)/1000
+    print(f'  ({\"last probed\":<15} {age:.0f}s ago)')
+"
 }
 
 section_logs() {
