@@ -1427,8 +1427,8 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
   const online = sorted.filter(w=>w.status!=='offline').length;
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ The Crew</span>
         <span style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap'}}>{online}/{sorted.length} online</span>
       </div>
@@ -1437,7 +1437,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
           No miners connected yet.<br/><span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--cyan)'}}>stratum+tcp://umbrel.local:3333</span><br/><span style={{color:'var(--text-3)',fontSize:'0.65rem'}}>user: worker_name · pass: x</span>
         </div>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',maxHeight:340,overflowY:'auto'}}>
+        <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',flex:1,minHeight:0,overflowY:'auto'}}>
           {sorted.map(w=>{
             const on=w.status!=='offline';
             const workAccepted = w.shares || 0;
