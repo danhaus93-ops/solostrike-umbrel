@@ -18,6 +18,25 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* v1.8.1-rev15: splash strike animation. Pickaxe winds back (-25°),
+   swings forward (+15° at the moment of impact), then settles.
+   Transform-origin set inline to bottom-right so the rotation pivots
+   from the handle, not the head. 1.4s per cycle, infinite loop —
+   plays as long as the splash is mounted (i.e. while poolState loads). */
+@keyframes pickaxeStrike{
+  0%   {transform:rotate(-25deg)}
+  35%  {transform:rotate(-25deg)}
+  55%  {transform:rotate(15deg)}    /* impact frame */
+  70%  {transform:rotate(5deg)}     /* slight bounce-back */
+  100% {transform:rotate(-25deg)}   /* wind back for next strike */
+}
+/* v1.8.1-rev15: ₿ glow spike synced to pickaxe impact at 55% of cycle.
+   Subtle scale-up + brighter shadow makes it feel like the strike landed. */
+@keyframes btcImpact{
+  0%,40%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+  55%      {transform:scale(1.08); text-shadow:0 0 32px rgba(245,166,35,0.85), 0 0 60px rgba(245,166,35,0.4)}
+  75%,100% {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+}
 .fade-in{animation:slideUp .35s ease both}
 
 /* --- Responsive grid: mobile-first -------------------------------------- */
