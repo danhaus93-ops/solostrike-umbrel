@@ -105,9 +105,10 @@ body * {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* Fill space between header (~210px) and footer (~36px). Inline style on
-     <main> may override --carousel-h with a more accurate value. */
-  height: var(--carousel-h, calc(100dvh - 246px));
+  /* Fill space between header (~210px) and footer (~36px), reserving ~50px
+     for the floating dots zone above the footer. JS measurement effect will
+     override this with a more accurate value once layout settles. */
+  height: var(--carousel-h, calc(100dvh - 296px));
   scrollbar-width: none;
   padding: 0;
 }
