@@ -1202,7 +1202,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
   };
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom: '0.35rem'}}>
         <span>▸ Strike Velocity</span>
         {bars.length > 0 && (
@@ -1250,7 +1250,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
         </div>
       ) : (
         <div style={{
-          flex:'1 1 0', height: chartHeight, minHeight: chartHeight,
+          flex:'1 1 0', height: 'auto', minHeight: chartHeight,
           display:'flex', alignItems:'flex-end', justifyContent:'flex-start', gap:1,
           padding:'4px 2px',
           background:'var(--bg-deep)',
@@ -1282,7 +1282,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
         </div>
       )}
 
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:5}}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:5, flexShrink:0}}>
         <span>Each bar = {bars.length > 0 && all.length > maxBars ? Math.ceil(filtered.length / maxBars) : 1} min</span>
         <span style={{color:'var(--text-2)'}}>median ≈ {median > 0 ? (median >= 1 ? median.toFixed(1) + '/s' : (median * 60).toFixed(1) + '/m') : '—'}</span>
       </div>
@@ -1383,8 +1383,9 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
   if (compact) return inner;
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
       {inner}
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -2919,8 +2920,9 @@ function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
   );
   if (compact) return inner;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
       {inner}
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -2954,8 +2956,9 @@ function BlockFeed({ blocks, blockAlert, compact = false }) {
   );
   if (compact) return inner;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
       {inner}
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
@@ -4508,8 +4511,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
   if (!enabled) {
     return (
-      <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-        <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+      <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+        <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
           <span>▸ SoloStrike Pulse</span>
           <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>OFF</span>
         </div>
@@ -4599,8 +4602,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         <StampSolo/>
       </div>
     ) : (
-    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)'}}>
+    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ SoloStrike Pulse</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
           <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite'}}/>
@@ -4697,7 +4700,7 @@ function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, 
 // smaller padding/font, internal scroll caps). Section names preserved.
 function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
       {/* Claim Jumpers section (top) */}
       <TopFindersPanel topFinders={topFinders} netBlocks={netBlocks} compact />
 
@@ -4705,10 +4708,12 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
       <div style={{
         height:1, background:'linear-gradient(90deg, transparent, rgba(245,166,35,0.25), transparent)',
         margin:'0.7rem 0',
+        flexShrink:0,
       }}/>
 
       {/* Gold Strikes section (bottom) */}
       <BlockFeed blocks={blocks} blockAlert={blockAlert} compact />
+      <div style={{flex:1,minHeight:0}}/>
     </div>
   );
 }
