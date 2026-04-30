@@ -6205,7 +6205,16 @@ export default function App() {
       window.removeEventListener('resize', update);
       window.removeEventListener('orientationchange', update);
     };
-  }, [useCarousel, minimalMode, stripSettings.enabled]);
+    // v1.8.1-rev12: added poolState._loaded — same dep-array bug we hit for
+    // activeIndex tracking in rev1. Without this, the effect fires once on
+    // initial mount with carouselRef.current === null, hits the early return,
+    // and never re-runs (none of [useCarousel, minimalMode, stripSettings.enabled]
+    // change when poolState loads). Result: JS measurement never sets
+    // --carousel-h, cards fall back to CSS calc(100dvh - 296px), and the
+    // DIAG-B1 overlay shows all zeros. Adding poolState._loaded forces the
+    // effect to re-run after the loading splash unmounts and the carousel
+    // ref is finally populated.
+  }, [useCarousel, minimalMode, stripSettings.enabled, poolState._loaded]);
 
   const jumpToCard = useCallback((idx) => {
     const el = carouselRef.current;
