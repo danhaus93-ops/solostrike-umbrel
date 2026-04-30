@@ -57,7 +57,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (typeof state.shares.rejectedCount !== 'number') state.shares.rejectedCount = 0;
   if (typeof state.shares.stale !== 'number') state.shares.stale = 0;
   if (!state.shares.rejectReasons) state.shares.rejectReasons = {};
-  if (typeof state.shareStatsStartedAt !== 'number') state.shareStatsStartedAt = Date.now();
+  if (typeof state.shareStatsStartedAt !== 'number' || !state.shareStatsStartedAt) state.shareStatsStartedAt = Date.now();
 
   // Restore counters + cursors from persist.json if present
   try {
@@ -89,7 +89,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         state.sharelogCursors = p.sharelogCursors;
         console.log('[share-watcher] Restored sharelog cursors for', Object.keys(state.sharelogCursors).length, 'files');
       }
-      if (typeof p.shareStatsStartedAt === 'number') {
+      if (typeof p.shareStatsStartedAt === 'number' && p.shareStatsStartedAt > 0) {
         state.shareStatsStartedAt = p.shareStatsStartedAt;
       }
     }
