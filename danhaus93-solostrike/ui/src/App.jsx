@@ -816,8 +816,12 @@ function OfflineToasts({ workers, aliases }) {
         if (prevStatus && prevStatus !== 'offline' && isOffline && idx === -1) {
           next.push({ name:w.name, displayName:displayName(w.name, aliases), lastSeen:w.lastSeen, minerType:w.minerType, recovered:false });
         } else if (idx !== -1 && !isOffline && !next[idx].recovered) {
+          // v1.8.3-rev27: stamp recoveredAt so the auto-dismiss interval can age
+          // each banner independently. Previous per-effect setTimeout approach
+          // reset timers whenever banners[] changed, so during flapping the
+          // green banners never expired and piled up.
           next = next.slice();
-          next[idx] = { ...next[idx], recovered:true };
+          next[idx] = { ...next[idx], recovered:true, recoveredAt: Date.now() };
         }
         prevRef.current[w.name] = w.status;
       });
@@ -825,15 +829,19 @@ function OfflineToasts({ workers, aliases }) {
     });
   }, [workers, aliases]);
 
-  // Auto-dismiss recovered banners after 5 seconds
+  // v1.8.3-rev27: auto-dismiss recovered banners 5s after recoveredAt stamp.
+  // Single 1s tick checks all recovered banners — robust against banner-array
+  // changes since timestamps live on each banner, not as external timers.
   useEffect(() => {
-    const recovered = banners.filter(b => b.recovered);
-    if (!recovered.length) return;
-    const timers = recovered.map(b => setTimeout(() => {
-      setBanners(curr => curr.filter(x => x.name !== b.name));
-    }, 5000));
-    return () => timers.forEach(clearTimeout);
-  }, [banners]);
+    const tick = setInterval(() => {
+      setBanners(curr => {
+        const now = Date.now();
+        const filtered = curr.filter(b => !b.recovered || (now - (b.recoveredAt || 0)) < 5000);
+        return filtered.length === curr.length ? curr : filtered;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   const dismiss = (name) => setBanners(b => b.filter(x => x.name !== name));
   const dismissAll = () => setBanners([]);
@@ -852,7 +860,7 @@ function OfflineToasts({ workers, aliases }) {
       pointerEvents:'none',
     }}>
       {recoveredBanners.map(b => (
-        <div key={b.name+':rec'} style={{
+        <div key={b.name+':rec'} onClick={() => dismiss(b.name)} style={{
           pointerEvents:'auto',
           // v1.8.3-rev25: matched opaque background with the offline banner
           background:'rgba(6, 26, 12, 0.96)',
@@ -863,6 +871,10 @@ function OfflineToasts({ workers, aliases }) {
           animation:'slideUp 0.3s ease both',
           boxShadow:'0 4px 18px rgba(0,0,0,0.6)',
           borderRadius:6,
+          // v1.8.3-rev27: tap-to-dismiss for when banners pile up before
+          // the 5-second auto-dismiss kicks in.
+          cursor:'pointer',
+          WebkitTapHighlightColor:'transparent',
         }}>
           <span style={{color:'var(--green, #39ff6a)', fontFamily:'var(--fd)', fontWeight:800, fontSize:'0.85rem'}}>✓</span>
           <span style={{flex:1, fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--green, #39ff6a)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
