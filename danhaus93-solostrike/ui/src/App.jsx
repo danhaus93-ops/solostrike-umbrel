@@ -6144,7 +6144,14 @@ export default function App() {
       // (or the viewport in Safari) — the actual usable height. NOT 100dvh
       // which can resolve differently in webviews.
       const containerH = document.documentElement.clientHeight;
-      const carouselH = Math.max(200, containerH - headerH - footerH);
+      // v1.8.1-rev9: subtract a dots-zone clearance (~50px) so the carousel
+      // slot ends above where the dots float (bottom: 60px above safe-area).
+      // Without this, cards with `height: 100%` extend behind the dots
+      // overlay, causing the bottom of card content to appear clipped/
+      // hidden. The 50px figure leaves dots in a clean band between card
+      // bottom edge and footer top, with breathing room on both sides.
+      const DOTS_CLEARANCE = 50;
+      const carouselH = Math.max(200, containerH - headerH - footerH - DOTS_CLEARANCE);
       carouselEl.style.setProperty('--carousel-h', `${carouselH}px`);
       carouselEl.style.height = `${carouselH}px`;
     };
