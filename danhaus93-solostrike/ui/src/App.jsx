@@ -2465,11 +2465,8 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
         </div>
       </div>
 
-      {/* v1.8.2-rev20: removed <PoolUptimeStrip> — pool uptime/start metadata
-          is shown in the Share Diagnostics modal which is its canonical
-          home. Stratum card now stays focused on connection config. The
-          PoolUptimeStrip function definition is kept below as dead code in
-          case we want to relocate it (e.g. to Pulse card) later. */}
+      {/* iter26: Pool uptime + started date strip */}
+      <PoolUptimeStrip startedAt={startedAt}/>
     </div>
   );
 }
@@ -2676,7 +2673,11 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
                 : '—';
 
               // Average accepted-share difficulty
-              const acceptedDiff = sh.accepted || 0;
+              // v1.8.3-rev22: use acceptedSdiffSum (session-scoped, from
+              // share-watcher) instead of sh.accepted (lifetime sum from
+              // ckpool's pool.status, which never resets and would inflate
+              // both avgDiff and impliedHr by orders of magnitude).
+              const acceptedDiff = sh.acceptedSdiffSum || 0;
               const avgDiff = totalAccepted > 0 ? (acceptedDiff / totalAccepted) : 0;
               const avgDiffLabel = avgDiff > 0 ? fmtDiff(avgDiff) : '—';
 
