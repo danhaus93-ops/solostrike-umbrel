@@ -2615,7 +2615,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:250,padding:'calc(env(safe-area-inset-top) + 1rem) 0.75rem 0.75rem',overflowY:'auto'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100dvh - 4rem)',overflowY:'auto'}}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100svh - 4rem)',overflowY:'auto'}}>
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📊</span>
@@ -4804,7 +4804,7 @@ function StrikersModal({ networkStats, onClose }) {
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:250,padding:'calc(env(safe-area-inset-top) + 1rem) 0.75rem 0.75rem',overflowY:'auto'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100dvh - 4rem)',overflowY:'auto',position:'relative'}}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100svh - 4rem)',overflowY:'auto',position:'relative'}}>
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📡</span>
@@ -5080,7 +5080,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:250,padding:'calc(env(safe-area-inset-top) + 1rem) 0.75rem 0.75rem',overflowY:'auto'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:600,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100dvh - 4rem)',overflowY:'auto',position:'relative'}}>
+      <div style={{width:'100%',maxWidth:600,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100svh - 4rem)',overflowY:'auto',position:'relative'}}>
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:18,color:'var(--amber)'}}>⚡</span>
@@ -5674,7 +5674,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:250,padding:'calc(env(safe-area-inset-top) + 1rem) 0.75rem 0.75rem',overflowY:'auto'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100dvh - 4rem)',overflowY:'auto'}}>
+      <div style={{width:'100%',maxWidth:560,background:'var(--bg-surface)',border:'1px solid var(--border-hot)',boxShadow:'var(--glow-a)',maxHeight:'calc(100svh - 4rem)',overflowY:'auto'}}>
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'0.75rem'}}>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:4}}>
