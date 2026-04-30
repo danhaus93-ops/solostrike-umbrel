@@ -2320,11 +2320,6 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
       <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem', flexShrink:0}}>▸ Stratum Connection</div>
-      {/* v1.8.1-rev13: form fields are internally scrollable so the EFFECTIVE
-          PASS row at the bottom is reachable on smaller viewports. Without
-          this wrapper, content overflowed `overflow:hidden` on the card and
-          the bottom of the form was visually clipped. */}
-      <div style={{flex:1, minHeight:0, overflowY:'auto'}}>
 
       {/* HOST — editable */}
       <div style={fieldRowStyle}>
@@ -2447,7 +2442,6 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
 
       {/* iter26: Pool uptime + started date strip */}
       <PoolUptimeStrip startedAt={startedAt}/>
-      </div>{/* /scrollable form wrapper (rev13) */}
     </div>
   );
 }
@@ -6146,25 +6140,15 @@ export default function App() {
         document.body.style.paddingBottom = `${footerH}px`;
       }
       if (!carouselEl || !useCarousel) return;
-      // documentElement.clientHeight is the iframe's content area in Umbrel
-      // (or the viewport in Safari) — the actual usable height. NOT 100dvh
-      // which can resolve differently in webviews.
-      const containerH = document.documentElement.clientHeight;
-      // v1.8.1-rev9: subtract a dots-zone clearance (~50px) so the carousel
-      // slot ends above where the dots float (bottom: 60px above safe-area).
-      // Without this, cards with `height: 100%` extend behind the dots
-      // overlay, causing the bottom of card content to appear clipped/
-      // hidden. The 50px figure leaves dots in a clean band between card
-      // bottom edge and footer top, with breathing room on both sides.
-      // v1.8.1-rev13: tuned from 50 to 27 — the diag readout from rev12 showed
-      // that 50 made cards 23px shorter than the old CSS fallback the user
-      // had been visually accustomed to (`calc(100dvh - 296px)`). Math: with
-      // headerH ~210, footerH ~59, and clientHeight ~759, JS now matches the
-      // 463-pixel slot the user is asking to "keep as seen in picture."
-      const DOTS_CLEARANCE = 27;
-      const carouselH = Math.max(200, containerH - headerH - footerH - DOTS_CLEARANCE);
-      carouselEl.style.setProperty('--carousel-h', `${carouselH}px`);
-      carouselEl.style.height = `${carouselH}px`;
+      // v1.8.1-rev14: REMOVED the JS-side override of --carousel-h. Pixel
+      // measurement of IMG_5158 vs IMG_5166 proved that JS computation was
+      // making cards 50px shorter than the CSS fallback was producing.
+      // Cause: documentElement.clientHeight returns 759 in this iframe but
+      // CSS `100dvh` resolves to ~841 (an 82px discrepancy in iOS PWA mode).
+      // The CSS fallback `calc(100dvh - 296px)` correctly produced the
+      // 545-logical-pixel slot the user is asking for. Removing the JS
+      // override makes that the only sizing source — what works, sticks.
+      // The body padding update for vertical mode (above) still happens.
     };
     // Run once now and again after layout settles
     update();
