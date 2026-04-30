@@ -1282,9 +1282,34 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
         </div>
       )}
 
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:5, flexShrink:0}}>
-        <span>Each bar = {bars.length > 0 && all.length > maxBars ? Math.ceil(filtered.length / maxBars) : 1} min</span>
-        <span style={{color:'var(--text-2)'}}>median ≈ {median > 0 ? (median >= 1 ? median.toFixed(1) + '/s' : (median * 60).toFixed(1) + '/m') : '—'}</span>
+      <div style={{
+        display:'flex', justifyContent:'space-between', alignItems:'center',
+        fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.13em',
+        textTransform:'uppercase', color:'var(--text-3)',
+        marginTop:5, flexShrink:0,
+        gap:'8px', flexWrap:'wrap',
+      }}>
+        {/* v1.8.2-rev19: legend dots reference the same color tokens
+            classify() returns (var(--green/amber/red)) — single source of
+            truth. flexWrap on parent lets median drop to a second line on
+            narrow viewports without growing the card or clipping the chart
+            (chart is flex:1 and absorbs the change automatically). */}
+        <div style={{display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap'}}>
+          <span>Each bar = {bars.length > 0 && all.length > maxBars ? Math.ceil(filtered.length / maxBars) : 1} min</span>
+          <span style={{display:'inline-flex', alignItems:'center', gap:'5px'}}>
+            <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', display:'inline-block', flexShrink:0}}/>
+            Normal
+          </span>
+          <span style={{display:'inline-flex', alignItems:'center', gap:'5px'}}>
+            <span style={{width:6, height:6, borderRadius:'50%', background:'var(--amber)', display:'inline-block', flexShrink:0}}/>
+            Anomaly
+          </span>
+          <span style={{display:'inline-flex', alignItems:'center', gap:'5px'}}>
+            <span style={{width:6, height:6, borderRadius:'50%', background:'var(--red)', display:'inline-block', flexShrink:0}}/>
+            Offline
+          </span>
+        </div>
+        <span style={{color:'var(--text-2)', whiteSpace:'nowrap'}}>median ≈ {median > 0 ? (median >= 1 ? median.toFixed(1) + '/s' : (median * 60).toFixed(1) + '/m') : '—'}</span>
       </div>
     </div>
   );
