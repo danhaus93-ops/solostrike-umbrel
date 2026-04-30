@@ -112,6 +112,8 @@ hr = d.get('hashrate', {})
 sh = d.get('shares', {})
 zmq = d.get('zmq', {})
 node = d.get('nodeInfo', {})
+sync = d.get('sync', {})
+network = d.get('network', {})
 workers = d.get('workers', [])
 on = [w for w in workers if w.get('status') != 'offline']
 off = [w for w in workers if w.get('status') == 'offline']
@@ -146,14 +148,18 @@ elif recently_heard:
 else:
     zmq_str = '\033[33m! IDLE\033[0m (enabled but no recent block)'
 print(f'ZMQ          : {zmq_str}')
-blocks = node.get('blocks')
+blocks = sync.get('blocks') if sync else None
+headers = sync.get('headers') if sync else None
+progress = sync.get('progress') if sync else None
 peers = node.get('peers')
-height_str = f'{blocks:,}' if isinstance(blocks, int) else (str(blocks) if blocks else '?')
+height_str = f'{blocks:,}' if isinstance(blocks, int) and blocks > 0 else '?'
 peers_str = str(peers) if peers is not None else '?'
-print(f'Node         : height {height_str}  sync {node.get("verificationProgress",0)*100:.2f}%  peers {peers_str}')
-mp = node.get('mempoolSize')
+prog_str = f'{progress*100:.2f}%' if isinstance(progress, (int, float)) and progress > 0 else '?'
+print(f'Node         : height {height_str}  sync {prog_str}  peers {peers_str}')
+mp = node.get('mempoolCount')
 if mp is not None:
-    print(f'Mempool      : {mp:,} tx')
+    mb = node.get('mempoolBytes', 0) / 1e6
+    print(f'Mempool      : {mp:,} tx ({mb:.1f} MB)')
 PYEOF
 }
 
