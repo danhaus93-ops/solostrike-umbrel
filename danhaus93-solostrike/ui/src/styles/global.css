@@ -160,11 +160,10 @@ body * {
      clear of the footer top — visually close to the footer without touching. */
   /* v1.8.1-rev2: switched from absolute to fixed positioning (see comment
      on .ss-dots above). 60px centered them in the carousel-clearance band. */
-  /* v1.8.1-rev10: dropped from 60px → 40px. With the carousel slot now
-     leaving 50px of clearance below cards, 60px sat too close to the card
-     bottom edge. 40px lands the dots in the black band ~10px above footer
-     top — visually distinct from the card, breathing room above the footer. */
-  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  /* v1.8.1-rev11: reverted from 40px back to 60px — user identified blue-band
+     in IMG_5158 (rev9 state) as the desired position. 60px puts dots right
+     in that band, just above the footer top edge. */
+  bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   display: flex;
   /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
