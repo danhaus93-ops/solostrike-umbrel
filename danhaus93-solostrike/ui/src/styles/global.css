@@ -143,7 +143,11 @@ body * {
   /* iter28: position dots just above the fixed footer. Footer height is
      roughly 22px text/padding + safe-area-inset-bottom (home indicator).
      Adding small buffer so dots don't touch the footer's top border. */
-  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  /* v1.8.2: dropped offset from 28px to 8px — at 28px the dots overlapped
+     the bottom row of cards that extend close to the footer (e.g. the 7D
+     row of Hashrate Averages). 8px lands them in the empty band between
+     card content and footer text. */
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   display: flex;
   /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
