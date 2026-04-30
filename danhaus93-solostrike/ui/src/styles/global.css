@@ -138,16 +138,22 @@ body * {
    No pill, no backdrop-blur, no border. Just bare dots that don't compete
    with content for space. Fades out after inactivity (see ss-dots-hidden). */
 .ss-dots {
-  position: absolute;
+  /* v1.8.1-rev2: switched from `position: absolute` (relative to .ss-carousel-wrap)
+     to `position: fixed` (relative to viewport). Reason: the wrap's effective
+     bottom edge varies between cards depending on how each card lays out
+     (some cards fill min-height: 100%, others are constrained by their content
+     and the wrap collapses earlier). With absolute positioning that meant
+     dots floated at different screen heights on different cards — and after
+     close/reopen the user could land on a card whose layout produced a
+     visibly higher dot row. Fixed positioning eliminates that variance: dots
+     are always X pixels above the home-indicator zone regardless of which
+     card is showing or any wrap height quirks. */
+  position: fixed;
   left: 50%;
-  /* iter28: position dots just above the fixed footer. Footer height is
-     roughly 22px text/padding + safe-area-inset-bottom (home indicator).
-     Adding small buffer so dots don't touch the footer's top border. */
-  /* v1.8.2: dropped offset from 28px to 8px — at 28px the dots overlapped
-     the bottom row of cards that extend close to the footer (e.g. the 7D
-     row of Hashrate Averages). 8px lands them in the empty band between
-     card content and footer text. */
-  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  /* iter28: position dots just above the fixed footer. Footer top edge sits
+     at roughly 22px above the safe-area inset zone. 28px puts dots ~6px
+     clear of the footer top — visually close to the footer without touching. */
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   display: flex;
   /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
