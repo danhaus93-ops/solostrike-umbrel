@@ -158,13 +158,13 @@ body * {
   /* iter28: position dots just above the fixed footer. Footer top edge sits
      at roughly 22px above the safe-area inset zone. 28px puts dots ~6px
      clear of the footer top — visually close to the footer without touching. */
-  /* v1.8.1-rev7: dots bumped from 28px → 60px above safe-area. With fixed
-     positioning and a flex-filled card slot, the visible empty band between
-     the card's bottom border and the footer top is ~70px tall on iPhone.
-     28px landed dots at the bottom of that band (just above footer); 60px
-     centers them in the band, giving comfortable breathing room on both
-     sides without crowding either element. */
-  bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  /* v1.8.1-rev2: switched from absolute to fixed positioning (see comment
+     on .ss-dots above). 60px centered them in the carousel-clearance band. */
+  /* v1.8.1-rev10: dropped from 60px → 40px. With the carousel slot now
+     leaving 50px of clearance below cards, 60px sat too close to the card
+     bottom edge. 40px lands the dots in the black band ~10px above footer
+     top — visually distinct from the card, breathing room above the footer. */
+  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   display: flex;
   /* iter28: bigger gap (was 3px) so dots feel distinct, not crammed. */
