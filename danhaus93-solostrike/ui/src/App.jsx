@@ -2465,8 +2465,9 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
         </div>
       </div>
 
-      {/* iter26: Pool uptime + started date strip */}
-      <PoolUptimeStrip startedAt={startedAt}/>
+      {/* v1.8.3-rev23: removed <PoolUptimeStrip> (was originally removed in
+          rev20 but the change got lost in the rev21/rev22 build chain).
+          Pool uptime/start data is shown in the Share Diagnostics modal. */}
     </div>
   );
 }
