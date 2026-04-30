@@ -5,7 +5,9 @@
 // on cold launch. The cache name still bumps per release to invalidate the
 // shell cache when assets change.
 
-const CACHE_NAME = 'solostrike-v1.8.2';
+// Build marker: 1.8.3-rev22 (impliedHr uses session-scoped acceptedSdiffSum, not lifetime ckpool sum)
+
+const CACHE_NAME = 'solostrike-v1.8.3';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
