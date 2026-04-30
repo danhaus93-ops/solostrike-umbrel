@@ -200,12 +200,14 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.diff           = w.lastdiff       || w.diff || wk.diff || 0;
               wk.lastSeen       = (w.lastshare || Math.floor(Date.now()/1000)) * 1000;
               const age = Date.now() - wk.lastSeen;
-              // v1.8.3-rev26: offline threshold dropped from 10 min to 60 sec.
-              // 10 min was so long that a Bitaxe reboot (~30-45 sec) never
-              // crossed it, so the offline banner never fired. 60 sec is short
-              // enough to catch reboots while still giving enough margin for
-              // high-vardiff workers (S19XP at ~1M diff submits every ~40 sec).
-              wk.status = age < 60 * 1000 ? 'online' : 'offline';
+              // v1.8.3-rev27: bumped from 60s (rev26) to 120s. 60s caused
+              // mass false-flag flapping when 7+ workers had natural share
+              // intervals creeping near the threshold (e.g. during quiet
+              // luck stretches or right after a block change resets work).
+              // 120s gives ~4-7x margin over typical 17-32s share intervals
+              // while still catching real outages within 2 minutes. To test
+              // detection, power off a miner for >2 minutes.
+              wk.status = age < 120 * 1000 ? 'online' : 'offline';
               wk.health = workerHealth(wk);
 
               // iter28-fix-B: push to statusHistory ring buffer once per ~15 min.
