@@ -6045,6 +6045,20 @@ export default function App() {
   const footerRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
+  // ── DIAG-B1 (v1.8.1-rev11) ──────────────────────────────────────────────
+  // Diagnostic-only state for measuring the carousel slot, dots, and footer
+  // positions. Renders an on-screen readout (top-right) so we can verify
+  // whether cards changed height between deploys. Remove after diagnosis.
+  const [diagB, setDiagB] = useState({
+    containerH: 0,
+    headerH: 0,
+    footerH: 0,
+    carouselH: 0,
+    dotsTop: 0,
+    dotsBottom: 0,
+    cardBottom: 0,
+  });
+
   // v1.7.22-iter: tag the body AND html with the active layout mode so CSS
   // can apply different sizing rules without needing :has() support
   // (Umbrel's webview may not have it). Carousel mode locks body height to
@@ -6154,6 +6168,20 @@ export default function App() {
       const carouselH = Math.max(200, containerH - headerH - footerH - DOTS_CLEARANCE);
       carouselEl.style.setProperty('--carousel-h', `${carouselH}px`);
       carouselEl.style.height = `${carouselH}px`;
+
+      // DIAG-B1: capture measurements for the on-screen readout
+      const dotsEl = document.querySelector('.ss-dots');
+      const dotsRect = dotsEl ? dotsEl.getBoundingClientRect() : null;
+      const carouselRect = carouselEl.getBoundingClientRect();
+      setDiagB({
+        containerH: Math.round(containerH),
+        headerH: Math.round(headerH),
+        footerH: Math.round(footerH),
+        carouselH: Math.round(carouselH),
+        dotsTop: dotsRect ? Math.round(dotsRect.top) : 0,
+        dotsBottom: dotsRect ? Math.round(containerH - dotsRect.bottom) : 0,
+        cardBottom: Math.round(containerH - (carouselRect.top + carouselH)),
+      });
     };
     // Run once now and again after layout settles
     update();
@@ -6384,6 +6412,32 @@ export default function App() {
             activeIndex={activeIndex}
             onJump={jumpToCard}
           />
+        )}
+        {useCarousel && (
+          <div style={{
+            position: 'fixed',
+            top: 'calc(8px + env(safe-area-inset-top))',
+            right: '8px',
+            zIndex: 99999,
+            background: 'rgba(0,0,0,0.88)',
+            color: '#0f0',
+            fontFamily: 'monospace',
+            fontSize: '10px',
+            padding: '6px 8px',
+            borderRadius: '4px',
+            pointerEvents: 'none',
+            lineHeight: 1.3,
+            border: '1px solid #0f0',
+            whiteSpace: 'pre',
+            letterSpacing: '0.02em',
+          }}>
+{`DIAG-B1 v1.8.1
+container:${diagB.containerH} hdr:${diagB.headerH} ftr:${diagB.footerH}
+slot(carouselH):${diagB.carouselH}
+slot bottom→ ${diagB.cardBottom}px above viewport bottom
+dots top:${diagB.dotsTop} bot:${diagB.dotsBottom}px above
+gap (slot-to-dots): ${diagB.dotsBottom + 7 - diagB.cardBottom}px`}
+          </div>
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
