@@ -7,8 +7,8 @@ import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWiz
 
 // ── Style tokens ──────────────────────────────────────────────────────────────
 const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
-const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'1rem' };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.5rem 0.75rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.35rem' };
+const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.65rem' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.5rem 0.75rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.25rem' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
@@ -1457,13 +1457,13 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',alignItems:'baseline',gap:6,minWidth:0}}>
                     <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500,minWidth:0}} title={w.name}>{disp}</span>
-                    {w.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.46rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{w.minerType}</span>}
+                    {w.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{w.minerType}</span>}
                   </div>
                   <div style={{display:'flex',gap:5,alignItems:'center',marginTop:2,minWidth:0}}>
                     <div style={{flex:1,height:1.5,background:'var(--bg-deep)',borderRadius:1,overflow:'hidden',minWidth:0}}>
                       <div style={{height:'100%',width:`${(workAccepted/totalWork)*100}%`,background:'var(--green)',borderRadius:1}}/>
                     </div>
-                    <span style={{fontFamily:'var(--fm)',fontSize:'0.48rem',color:'var(--text-3)',whiteSpace:'nowrap',flexShrink:0}}>{lastShareAgo}</span>
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',whiteSpace:'nowrap',flexShrink:0}}>{lastShareAgo}</span>
                   </div>
                   {/* iter28-fix-B: 24h uptime sparkline */}
                   <div style={{marginTop:3, minWidth:0}}>
@@ -1475,7 +1475,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:on?'var(--amber)':'var(--text-2)',whiteSpace:'nowrap',lineHeight:1.1}}>
                     {on?fmtHr(w.hashrate):'offline'}
                   </span>
-                  {w.bestshare>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.46rem',color:'var(--amber)',whiteSpace:'nowrap',opacity:0.75}}>★ {fmtDiff(w.bestshare)}</span>}
+                  {w.bestshare>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--amber)',whiteSpace:'nowrap',opacity:0.8}}>★ {fmtDiff(w.bestshare)}</span>}
                 </div>
               </div>
             );
@@ -1552,11 +1552,11 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
                     {disp}
                   </span>
                   {c.minerType && (
-                    <span style={{fontFamily:'var(--fd)', fontSize:'0.45rem', letterSpacing:'0.08em', color:'var(--text-3)', textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0}}>
+                    <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.08em', color:'var(--text-3)', textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0}}>
                       {c.minerType}
                     </span>
                   )}
-                  <span style={{fontFamily:'var(--fd)', fontSize:'0.45rem', letterSpacing:'0.10em', color:tier.color, textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0, fontWeight:700, textShadow: tier.glow ? `0 0 4px ${tier.color}` : 'none'}}>
+                  <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.10em', color:tier.color, textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0, fontWeight:700, textShadow: tier.glow ? `0 0 4px ${tier.color}` : 'none'}}>
                     · {tier.label}
                   </span>
                 </div>
@@ -1967,7 +1967,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             </span>
           </div>
           <NonceField hashrate={hashrate} netHashrate={netHashrate}/>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:4}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:4}}>
             <span>Nonce Field · 2³² space</span>
             <span style={{color:'var(--text-2)'}}>{hashrate>0 ? `${(hashrate/1e12).toFixed(1)} TH/s scanning` : 'idle'}</span>
           </div>
@@ -2040,25 +2040,25 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
         {/* Stats — single row of 4 (was 2x2 grid, saves vertical space in carousel mode) */}
         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:4}}>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Expected</div>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Expected</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--amber)', fontWeight:700, marginTop:2}}>
               {fmtOdds(expectedDays)}
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
               {perYear>0 ? (perYear < 0.0001 ? perYear.toExponential(1)+'%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Daily</div>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Daily</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
               {perDay>0 ? fmtPct(perDay*100, 3) : '—'}
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Sats/d</div>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Sats/d</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--cyan)', fontWeight:700, marginTop:2}}>
               {expectedDailySats > 0 ? expectedDailySats.toLocaleString() : '—'}
             </div>
@@ -6180,8 +6180,47 @@ export default function App() {
 
   if (!poolState._loaded) {
     return (
-      <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-2)',fontFamily:'var(--fd)',letterSpacing:'0.15em',fontSize:'0.85rem'}}>
-        ⛏ Connecting to pool…
+      <div style={{
+        height:'100vh', width:'100vw',
+        display:'flex', flexDirection:'column',
+        alignItems:'center', justifyContent:'center',
+        background:'var(--bg-void)',
+        color:'var(--text-2)', fontFamily:'var(--fd)',
+        letterSpacing:'0.15em',
+        gap:'1.5rem',
+      }}>
+        {/* v1.8.1-rev8: pulsing pickaxe glyph using the existing `pulse`
+            keyframe (defined in global.css). Amber-glow text-shadow ties
+            it to the rest of the app palette. The "SOLOSTRIKE" wordmark
+            below sits at the same letter-spacing as the header brand. */}
+        <div style={{
+          fontSize:'4rem',
+          lineHeight:1,
+          color:'var(--amber)',
+          textShadow:'0 0 28px rgba(245,166,35,0.55)',
+          animation:'pulse 1.6s ease-in-out infinite',
+        }}>
+          ⛏
+        </div>
+        <div style={{
+          fontFamily:'var(--fd)',
+          fontSize:'1rem',
+          fontWeight:700,
+          color:'var(--amber)',
+          letterSpacing:'0.4em',
+          textShadow:'0 0 14px rgba(245,166,35,0.35)',
+        }}>
+          SOLOSTRIKE
+        </div>
+        <div style={{
+          fontFamily:'var(--fd)',
+          fontSize:'0.65rem',
+          color:'var(--text-3)',
+          letterSpacing:'0.2em',
+          textTransform:'uppercase',
+        }}>
+          Connecting to pool…
+        </div>
       </div>
     );
   }
