@@ -847,18 +847,21 @@ function OfflineToasts({ workers, aliases }) {
   return (
     <div style={{
       position:'fixed', top:'calc(env(safe-area-inset-top) + 4px)', left:'50%',
-      transform:'translateX(-50%)', zIndex:300, maxWidth:'min(96vw, 480px)',
+      transform:'translateX(-50%)', zIndex:1000, maxWidth:'min(96vw, 480px)',
       width:'calc(100% - 16px)', display:'flex', flexDirection:'column', gap:6,
       pointerEvents:'none',
     }}>
       {recoveredBanners.map(b => (
         <div key={b.name+':rec'} style={{
           pointerEvents:'auto',
-          background:'linear-gradient(90deg, rgba(57,255,106,0.18), rgba(57,255,106,0.05))',
+          // v1.8.3-rev25: matched opaque background with the offline banner
+          background:'rgba(6, 26, 12, 0.96)',
+          backdropFilter:'blur(8px)',
+          WebkitBackdropFilter:'blur(8px)',
           border:'1px solid rgba(57,255,106,0.5)',
           padding:'0.5rem 0.75rem', display:'flex', alignItems:'center', gap:'0.5rem',
           animation:'slideUp 0.3s ease both',
-          boxShadow:'0 4px 18px rgba(0,0,0,0.4)',
+          boxShadow:'0 4px 18px rgba(0,0,0,0.6)',
           borderRadius:6,
         }}>
           <span style={{color:'var(--green, #39ff6a)', fontFamily:'var(--fd)', fontWeight:800, fontSize:'0.85rem'}}>✓</span>
@@ -870,9 +873,14 @@ function OfflineToasts({ workers, aliases }) {
       {offlineCount > 0 && (
         <div style={{
           pointerEvents:'auto',
-          background:'linear-gradient(90deg, rgba(245,166,35,0.18), rgba(245,166,35,0.05))',
+          // v1.8.3-rev25: opaque background + backdrop blur so the banner is
+          // legible even when overlapping the SOLOSTRIKE header. Previous
+          // gradient was 5–18% opacity, letting header text bleed through.
+          background:'rgba(28, 18, 4, 0.96)',
+          backdropFilter:'blur(8px)',
+          WebkitBackdropFilter:'blur(8px)',
           border:'1px solid rgba(245,166,35,0.55)',
-          boxShadow:'0 4px 18px rgba(0,0,0,0.4), 0 0 14px rgba(245,166,35,0.15)',
+          boxShadow:'0 4px 18px rgba(0,0,0,0.6), 0 0 14px rgba(245,166,35,0.18)',
           borderRadius:6,
           animation:'slideUp 0.3s ease both',
         }}>
