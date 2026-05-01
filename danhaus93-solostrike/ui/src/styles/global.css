@@ -19,43 +19,56 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-/* v1.8.3-rev30: SoloStrike splash — pickaxe strikes orange block, block
+/* v1.8.3-rev30c: SoloStrike splash — pickaxe strikes orange block, block
    shatters, ₿ symbol revealed beneath. Total cycle 2.4s.
 
-   Storytelling beats:
-     0–20%   wind-up      pickaxe pulled back, block solid, ₿ hidden
-     20–35%  strike       pickaxe arcs into block
-     35–50%  shatter      block crumbles into 4 fragments, ₿ fades in
-     50–75%  reveal hold  ₿ fully visible & glowing
-     75–100% reset        ₿ fades, block re-forms, pickaxe winds back
+   Critical: the strike is PERCUSSIVE — pickaxe holds wound-back for ~70%
+   of the cycle, then SNAPS into impact pose in ~120ms (5% of cycle). The
+   block reacts on the SAME frame as the impact, so the eye reads cause
+   and effect: pickaxe held → SNAP! → block crunches → block explodes.
 
-   Combined with minSplashElapsed (now 2400ms) the user always sees at least
-   one full strike→shatter→reveal cycle before the dashboard fades in. */
+   Storytelling beats:
+     0–28%   wound-back hold       pickaxe held at -25°, block solid, ₿ hidden
+     28–33%  STRIKE                pickaxe snaps -25° → +20° (120ms blur)
+     33%     IMPACT FRAME          pickaxe at +20°, block compresses (scale 0.92)
+     33–38%  SHATTER               block bursts outward, fragments fly
+     38–55%  REVEAL                ₿ fades in at full glow, pickaxe held
+     55–75%  HOLD                  ₿ at full glow, pickaxe still on impact
+     75–100% RESET                 ₿ fades, block re-forms, pickaxe winds back
+
+   Combined with minSplashElapsed (1800ms) the user sees strike→shatter→reveal
+   without forced wait through the post-reveal hold and reset stages. */
 
 @keyframes pickaxeStrike30{
   0%    {transform:rotate(-25deg)}
-  15%   {transform:rotate(-25deg)}      /* hold wound-back */
-  35%   {transform:rotate(20deg)}       /* IMPACT */
-  50%   {transform:rotate(18deg)}       /* tiny settle on impact */
-  75%   {transform:rotate(18deg)}       /* HOLD while ₿ revealed */
-  100%  {transform:rotate(-25deg)}      /* wind back for next cycle */
+  /* held wound-back for 70% of the cycle so the strike snap is dramatic */
+  28%   {transform:rotate(-25deg)}
+  /* SNAP — fast strike (120ms / 5% of cycle). Eye registers as percussive blow. */
+  33%   {transform:rotate(20deg)}
+  /* tiny over-rotation bounce on impact, then settle */
+  38%   {transform:rotate(15deg)}
+  /* HOLD on impact pose while ₿ is revealed */
+  75%   {transform:rotate(15deg)}
+  /* slow wind-back for next cycle */
+  100%  {transform:rotate(-25deg)}
 }
 
-/* The orange block — solid through wind-up and strike. Compresses slightly
-   ON impact (35%, when pickaxe lands), then shatters 3% later (38%) so the
-   eye clearly reads "pickaxe hits → block reacts → block breaks". Stays
-   gone through the reveal, re-materializes from 75% onward. */
+/* The orange block — solid throughout the wound-back hold, COMPRESSES on
+   the impact frame (33%), then EXPLODES outward 2% later (35%) and disappears.
+   The compress-then-explode reads as the block being CRUSHED then BREAKING. */
 @keyframes blockShatter30{
-  0%,30%   {opacity:1; transform:scale(1)        rotate(0deg);
+  /* solid through wound-back hold AND the entire snap-down. Block does NOT
+     react until pickaxe has actually arrived at impact pose (+20°) at 33%. */
+  0%,32%   {opacity:1; transform:scale(1)        rotate(0deg);
             box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.4)}
-  /* impact frame — block compressed under pickaxe, glow spike */
-  35%      {opacity:1; transform:scale(0.92)     rotate(0deg);
-            box-shadow:0 0 56px rgba(245,166,35,1), inset 0 0 28px rgba(255,220,140,0.85)}
-  /* shatter — block briefly explodes outward, then disappears */
-  38%      {opacity:1; transform:scale(1.25)     rotate(-3deg);
-            box-shadow:0 0 60px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.7)}
+  /* IMPACT FRAME (33%) — pickaxe is AT +20°. Block compresses. */
+  33%      {opacity:1; transform:scale(0.85)     rotate(0deg);
+            box-shadow:0 0 60px rgba(245,166,35,1), inset 0 0 28px rgba(255,220,140,0.95)}
+  /* SHATTER (35%) — block bursts outward */
+  35%      {opacity:1; transform:scale(1.3)      rotate(-4deg);
+            box-shadow:0 0 70px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.8)}
   /* gone */
-  43%,75%  {opacity:0; transform:scale(0)        rotate(0deg);
+  40%,75%  {opacity:0; transform:scale(0)        rotate(0deg);
             box-shadow:none}
   /* re-materialize for next cycle */
   90%      {opacity:0.5; transform:scale(0.6)    rotate(0deg);
@@ -64,37 +77,37 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
             box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.4)}
 }
 
-/* Four fragment shards — invisible until 38% (the moment the block shatters),
-   then fly outward in 4 directions, fading as they go. Each direction has
-   its own keyframe because translation vectors differ. */
+/* Four fragment shards — invisible until 35% (the shatter frame), then fly
+   outward in 4 directions, fading as they go. Sync'd to the new shatter
+   timing so they appear EXACTLY when the block bursts. */
 @keyframes shardTL30{ /* top-left */
-  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  40%      {opacity:1; transform:translate(-10px,-10px) rotate(-15deg) scale(1)}
-  58%      {opacity:0; transform:translate(-52px,-48px) rotate(-100deg) scale(0.5)}
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(-10px,-10px) rotate(-15deg) scale(1)}
+  55%      {opacity:0; transform:translate(-52px,-48px) rotate(-100deg) scale(0.5)}
   100%     {opacity:0; transform:translate(-52px,-48px) rotate(-100deg) scale(0.5)}
 }
 @keyframes shardTR30{ /* top-right */
-  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  40%      {opacity:1; transform:translate(10px,-10px) rotate(15deg) scale(1)}
-  58%      {opacity:0; transform:translate(52px,-48px) rotate(100deg) scale(0.5)}
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(10px,-10px) rotate(15deg) scale(1)}
+  55%      {opacity:0; transform:translate(52px,-48px) rotate(100deg) scale(0.5)}
   100%     {opacity:0; transform:translate(52px,-48px) rotate(100deg) scale(0.5)}
 }
 @keyframes shardBL30{ /* bottom-left */
-  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  40%      {opacity:1; transform:translate(-10px,10px) rotate(15deg) scale(1)}
-  58%      {opacity:0; transform:translate(-48px,44px) rotate(120deg) scale(0.5)}
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(-10px,10px) rotate(15deg) scale(1)}
+  55%      {opacity:0; transform:translate(-48px,44px) rotate(120deg) scale(0.5)}
   100%     {opacity:0; transform:translate(-48px,44px) rotate(120deg) scale(0.5)}
 }
 @keyframes shardBR30{ /* bottom-right */
-  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  40%      {opacity:1; transform:translate(10px,10px) rotate(-15deg) scale(1)}
-  58%      {opacity:0; transform:translate(48px,44px) rotate(-120deg) scale(0.5)}
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(10px,10px) rotate(-15deg) scale(1)}
+  55%      {opacity:0; transform:translate(48px,44px) rotate(-120deg) scale(0.5)}
   100%     {opacity:0; transform:translate(48px,44px) rotate(-120deg) scale(0.5)}
 }
 
-/* ₿ symbol — hidden during strike, fades in 35→45% (during shatter), holds
-   at full glow through the reveal window, fades out 70→78% so the block
-   can re-form cleanly behind it. */
+/* ₿ symbol — hidden during wound-back + strike + impact. Fades in 35→45%
+   (during/right after shatter), holds at full glow through the reveal window,
+   fades out 70→78% so the block can re-form cleanly behind it. */
 @keyframes btcReveal30{
   0%,33%   {opacity:0; transform:scale(0.7);
             text-shadow:0 0 0 rgba(245,166,35,0)}
