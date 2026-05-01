@@ -784,7 +784,7 @@ function startSnapshotScheduler() {
     setTimeout(async () => {
       try {
         const snap = captureDailySnapshot(state);
-        await applyDailySnapshot(state, snap);
+        await applyDailySnapshot(state.snapshots, snap);
         await savePersist({ snapshots: state.snapshots, closestCalls: state.closestCalls });
       } catch (e) { console.error('[snapshots] daily failed:', e.message); }
       scheduleNextRollup();
