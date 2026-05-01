@@ -6296,40 +6296,27 @@ export default function App() {
           }}>
             ₿
           </div>
-          {/* v1.8.3-rev30k: orange glowing block covering the ₿. Solid until
-              pickaxe impact at 30% of cycle (420ms), then explodes into 4
-              shards revealing the ₿. Block re-forms at cycle end for next loop. */}
+          {/* v1.8.3-rev31f: orange glowing block. Re-timed to the ACTUAL
+              pickaxe motion (impact at 100%/0% loop boundary, not 30%).
+              Block is solid when pickaxe swings down → squashes as it
+              arrives → explodes at the loop boundary → ₿ revealed during
+              impact-hold + draw-back → reforms gradually during wound-back
+              hold (pickaxe held still up high) → solid for next swing.
+              See blockBust keyframe in global.css for full timing. */}
           <div style={{
             position:'absolute',
-            bottom:'0.2rem',
+            bottom:'0.3rem',
             left:'50%',
-            marginLeft:'-2.3rem',
-            width:'4.6rem', height:'4.6rem',
-            background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
-            border:'2px solid rgba(255,210,110,0.7)',
-            borderRadius:'4px',
-            boxShadow:'0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)',
+            marginLeft:'-2.2rem',
+            width:'4.4rem',
+            height:'4.4rem',
+            background:'linear-gradient(135deg, #FFB347 0%, #FF8C1A 45%, #C95800 100%)',
+            borderRadius:'6px',
+            boxShadow:'0 0 22px rgba(255,140,0,0.75), inset 0 0 14px rgba(255,210,130,0.45)',
             animation:'blockBust 1.4s ease-in-out infinite',
+            transformOrigin:'center',
             zIndex:2,
-          }}/>
-          {/* Four fragment shards — invisible until impact (30%), fly out
-              in 4 diagonals while fading. */}
-          {['shardTL','shardTR','shardBL','shardBR'].map((anim, i) => (
-            <div key={i} style={{
-              position:'absolute',
-              top:'2.5rem',
-              left:'50%',
-              marginLeft:'-0.5rem',
-              width:'1rem', height:'1rem',
-              background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
-              border:'1px solid rgba(255,210,110,0.6)',
-              borderRadius:'2px',
-              animation:`${anim} 1.4s ease-out infinite`,
-              opacity:0,
-              zIndex:3,
-              pointerEvents:'none',
-            }}/>
-          ))}
+          }} />
           {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
               bottom-right so the handle pivots and the head arcs into the ₿. */}
           <div style={{
@@ -6339,10 +6326,10 @@ export default function App() {
             fontSize:'3rem',
             lineHeight:1,
             color:'var(--amber)',
-            transformOrigin:'bottom left',
+            transformOrigin:'bottom right',
             animation:'pickaxeStrike 1.4s ease-in-out infinite',
             textShadow:'0 0 14px rgba(245,166,35,0.55)',
-            zIndex:4,
+            zIndex:3,
           }}>
             ⛏
           </div>
