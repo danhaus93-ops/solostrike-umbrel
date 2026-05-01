@@ -8,6 +8,46 @@
   --fd:'Chakra Petch',sans-serif;--fm:'JetBrains Mono',monospace;
   --glow-a:0 0 24px rgba(245,166,35,0.25);
 }
+
+/* ===== DEBUG OVERLAY (TEMPORARY) =====
+   Magenta vertical line = screen center reference
+   Moving colored bar = animation cycle progress synced to splash 1.4s loop:
+     RED bars  = 0-80% (wind-back hold + swing)
+     GREEN bar = 85% (IMPACT — pickaxe lands, block should compress here)
+     YELLOW bar= 90% (BURST — block should explode here)
+   Once timing is verified, delete this entire DEBUG OVERLAY block. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99999;
+  background: linear-gradient(to right, transparent 49.5%, rgba(255,0,255,0.6) 49.5%, rgba(255,0,255,0.6) 50.5%, transparent 50.5%);
+}
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99998;
+  animation: debugTimer 1.4s linear infinite;
+}
+@keyframes debugTimer {
+  0%   { background: linear-gradient(to right, red 0%, red 0.5%, transparent 0.5%); }
+  10%  { background: linear-gradient(to right, red 10%, red 10.5%, transparent 10.5%); }
+  20%  { background: linear-gradient(to right, red 20%, red 20.5%, transparent 20.5%); }
+  30%  { background: linear-gradient(to right, red 30%, red 30.5%, transparent 30.5%); }
+  40%  { background: linear-gradient(to right, red 40%, red 40.5%, transparent 40.5%); }
+  50%  { background: linear-gradient(to right, red 50%, red 50.5%, transparent 50.5%); }
+  60%  { background: linear-gradient(to right, red 60%, red 60.5%, transparent 60.5%); }
+  70%  { background: linear-gradient(to right, red 70%, red 70.5%, transparent 70.5%); }
+  80%  { background: linear-gradient(to right, red 80%, red 80.5%, transparent 80.5%); }
+  85%  { background: linear-gradient(to right, lime 85%, lime 85.8%, transparent 85.8%); }
+  90%  { background: linear-gradient(to right, yellow 90%, yellow 90.5%, transparent 90.5%); }
+  100% { background: linear-gradient(to right, red 100%, red 100.5%, transparent 100.5%); }
+}
+/* ===== END DEBUG OVERLAY ===== */
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
   background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%)}
