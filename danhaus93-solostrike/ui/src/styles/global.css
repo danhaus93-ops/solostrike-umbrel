@@ -41,15 +41,21 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   100%  {transform:rotate(-25deg)}      /* wind back for next cycle */
 }
 
-/* The orange block — visible during wind-up + strike, shatters at 35%,
-   stays gone through the reveal, re-materializes from 75% onward. */
+/* The orange block — solid through wind-up and strike. Compresses slightly
+   ON impact (35%, when pickaxe lands), then shatters 3% later (38%) so the
+   eye clearly reads "pickaxe hits → block reacts → block breaks". Stays
+   gone through the reveal, re-materializes from 75% onward. */
 @keyframes blockShatter30{
   0%,30%   {opacity:1; transform:scale(1)        rotate(0deg);
             box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.4)}
-  35%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
-            box-shadow:0 0 48px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.7)}
-  /* shatter point — invisible from here */
-  40%,75%  {opacity:0; transform:scale(0)        rotate(0deg);
+  /* impact frame — block compressed under pickaxe, glow spike */
+  35%      {opacity:1; transform:scale(0.92)     rotate(0deg);
+            box-shadow:0 0 56px rgba(245,166,35,1), inset 0 0 28px rgba(255,220,140,0.85)}
+  /* shatter — block briefly explodes outward, then disappears */
+  38%      {opacity:1; transform:scale(1.25)     rotate(-3deg);
+            box-shadow:0 0 60px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.7)}
+  /* gone */
+  43%,75%  {opacity:0; transform:scale(0)        rotate(0deg);
             box-shadow:none}
   /* re-materialize for next cycle */
   90%      {opacity:0.5; transform:scale(0.6)    rotate(0deg);
@@ -58,32 +64,32 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
             box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.4)}
 }
 
-/* Four fragment shards — invisible until 35% (impact), then fly outward in
-   4 directions, fading as they go. Each direction has its own keyframe
-   because translation vectors differ. All share the 35→50% timing window. */
+/* Four fragment shards — invisible until 38% (the moment the block shatters),
+   then fly outward in 4 directions, fading as they go. Each direction has
+   its own keyframe because translation vectors differ. */
 @keyframes shardTL30{ /* top-left */
-  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  37%      {opacity:1; transform:translate(-8px,-8px) rotate(-15deg) scale(1)}
-  55%      {opacity:0; transform:translate(-48px,-44px) rotate(-90deg) scale(0.7)}
-  100%     {opacity:0; transform:translate(-48px,-44px) rotate(-90deg) scale(0.7)}
+  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  40%      {opacity:1; transform:translate(-10px,-10px) rotate(-15deg) scale(1)}
+  58%      {opacity:0; transform:translate(-52px,-48px) rotate(-100deg) scale(0.5)}
+  100%     {opacity:0; transform:translate(-52px,-48px) rotate(-100deg) scale(0.5)}
 }
 @keyframes shardTR30{ /* top-right */
-  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  37%      {opacity:1; transform:translate(8px,-8px) rotate(15deg) scale(1)}
-  55%      {opacity:0; transform:translate(48px,-44px) rotate(90deg) scale(0.7)}
-  100%     {opacity:0; transform:translate(48px,-44px) rotate(90deg) scale(0.7)}
+  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  40%      {opacity:1; transform:translate(10px,-10px) rotate(15deg) scale(1)}
+  58%      {opacity:0; transform:translate(52px,-48px) rotate(100deg) scale(0.5)}
+  100%     {opacity:0; transform:translate(52px,-48px) rotate(100deg) scale(0.5)}
 }
 @keyframes shardBL30{ /* bottom-left */
-  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  37%      {opacity:1; transform:translate(-8px,8px) rotate(15deg) scale(1)}
-  55%      {opacity:0; transform:translate(-44px,40px) rotate(110deg) scale(0.7)}
-  100%     {opacity:0; transform:translate(-44px,40px) rotate(110deg) scale(0.7)}
+  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  40%      {opacity:1; transform:translate(-10px,10px) rotate(15deg) scale(1)}
+  58%      {opacity:0; transform:translate(-48px,44px) rotate(120deg) scale(0.5)}
+  100%     {opacity:0; transform:translate(-48px,44px) rotate(120deg) scale(0.5)}
 }
 @keyframes shardBR30{ /* bottom-right */
-  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  37%      {opacity:1; transform:translate(8px,8px) rotate(-15deg) scale(1)}
-  55%      {opacity:0; transform:translate(44px,40px) rotate(-110deg) scale(0.7)}
-  100%     {opacity:0; transform:translate(44px,40px) rotate(-110deg) scale(0.7)}
+  0%,36%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  40%      {opacity:1; transform:translate(10px,10px) rotate(-15deg) scale(1)}
+  58%      {opacity:0; transform:translate(48px,44px) rotate(-120deg) scale(0.5)}
+  100%     {opacity:0; transform:translate(48px,44px) rotate(-120deg) scale(0.5)}
 }
 
 /* ₿ symbol — hidden during strike, fades in 35→45% (during shatter), holds
