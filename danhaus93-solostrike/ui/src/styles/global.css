@@ -46,49 +46,84 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
   100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
 }
-/* v1.8.3-rev31g: orange glowing block. Two fixes from rev31f based on
-   the user's deployed-app screen recording:
-     (1) On splash mount, animation began at cycle 0% which was the
-         "mid-explosion" frame — so the user saw the ₿ alone for ~900ms
-         before the block first appeared. Fix: add animationDelay
-         '-0.7s' on block + pickaxe + ₿ in App.jsx so splash mounts at
-         cycle 50% (block already solid, pickaxe held wound-back).
-     (2) Block was solid only ~32% of every cycle (~450ms), too brief.
-         Fix: move reform earlier (30-50% instead of 45-65%) so block
-         solid period extends to ~43% of cycle (~600ms).
+/* v1.8.3-rev31h: orange glowing block + 4 flying shard fragments.
+   Builds on rev31g (which user confirmed working — splash mounts at
+   "block solid + pickaxe wound back" via animationDelay -0.7s).
 
-   ACTUAL pickaxe motion per cycle (rev29 pickaxeStrike, untouched):
+   Two changes vs rev31g:
+     (1) Slower explosion. Old burst was 97%→100% (~42ms) with the block
+         going opacity 1 → 0 instantly. New burst is 95%→5% of next cycle
+         (~140ms across the loop boundary), with the block still partially
+         visible (opacity 0.3, scale 1.5) at 100%/0% so the burst is a
+         visible expanding fade-out, not a hard cut.
+     (2) 4 shard fragments fly outward in 4 diagonal directions during
+         the burst window (95% to ~12% of next cycle). Each shard is a
+         small orange square (0.8rem) that appears at the block center,
+         flies ~65px diagonally with rotation, and fades to 0.
+   The 100% values still match the 0% values exactly (clean loop seam).
+
+   Pickaxe motion (rev29 pickaxeStrike, untouched):
      0%/100% : IMPACT (head on block)
      0–15%   : held at impact
-     15–30%  : drawing back (head lifting up)
-     30–65%  : wound back (settles +20°→+15° over 30-45%, held 45-65%)
+     15–30%  : drawing back
+     30–65%  : wound back
      65–100% : swinging down
      100%    : IMPACT again
 
-   Block timing:
-     0%      : MID-EXPLOSION (matches 100% for clean loop, no snap)
-     0–8%    : explosion debris fading (~112ms)
-     8–30%   : block fully gone, ₿ revealed during impact-hold + draw-back
-     30–50%  : GRADUAL REFORM during pickaxe wound-back settling (~280ms,
-               pickaxe motion is minimal — only +20°→+15° = 5° over the
-               first three-quarters of this window, then held still)
-     50–93%  : SOLID — block hides ₿ through wound-back hold + swing-down
-               (~600ms — the dominant visual state)
-     93–97%  : SQUASH — block compresses as pickaxe arrives (~56ms)
-     97–100% : EXPLODE outward (~42ms) — peaks at 100%/0% impact moment
-   100% values match 0% values exactly (opacity 0, scale 1.7) so the
-   loop boundary is seamless.
-
-   Combined with animationDelay '-0.7s' in JSX, the splash always mounts
-   at "block solid + pickaxe wound back" — the natural starting state. */
+   Block timing (rev31h):
+     0%      : MID-EXPLOSION — opacity 0.3, scale 1.5 (matches 100%)
+     5%      : fully gone (opacity 0, scale 1.7)
+     30%     : still gone, scale shrunk back to 0.4 (during invisible time)
+     50%     : SOLID — block hides ₿
+     91%     : SOLID
+     95%     : PEAK SQUASH — opacity 1, scale 0.82
+     100%    : MID-EXPLOSION — opacity 0.3, scale 1.5 (matches 0%) */
 @keyframes blockBust{
-  0%      {opacity:0; transform:scale(1.7)}
-  8%      {opacity:0; transform:scale(0.4)}
-  30%     {opacity:0; transform:scale(0.4)}
-  50%     {opacity:1; transform:scale(1)}
-  93%     {opacity:1; transform:scale(1)}
-  97%     {opacity:1; transform:scale(0.85)}
-  100%    {opacity:0; transform:scale(1.7)}
+  0%      {opacity:0.3; transform:scale(1.5)}
+  5%      {opacity:0;   transform:scale(1.7)}
+  30%     {opacity:0;   transform:scale(0.4)}
+  50%     {opacity:1;   transform:scale(1)}
+  91%     {opacity:1;   transform:scale(1)}
+  95%     {opacity:1;   transform:scale(0.82)}
+  100%    {opacity:0.3; transform:scale(1.5)}
+}
+
+/* v1.8.3-rev31i: shards fly TOWARD the viewer in 3D using translate3d
+   with positive Z values + perspective:500px on the stage container in
+   App.jsx. With perspective at 500px, a shard at z=350 renders ~3.3×
+   bigger than at z=0, AND its X/Y translation gets amplified the same
+   amount. So translate3d(-35px,-35px,350px) appears on screen at
+   roughly (-117px, -117px) at 3.3× size — well outside the splash
+   container, like the shard flew past the camera. The shards are also
+   bumped in size (0.8rem → 1.3rem) for a more substantial "fragment"
+   feel. Per-shard rotation + scale variation give visual variety. */
+@keyframes shardTL{
+  0%      {opacity:0.4; transform:translate3d(-20px,-20px,180px) rotate(-65deg) scale(0.7)}
+  12%     {opacity:0;   transform:translate3d(-35px,-35px,350px) rotate(-135deg) scale(0.55)}
+  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
+  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
+  100%    {opacity:0.4; transform:translate3d(-20px,-20px,180px) rotate(-65deg) scale(0.7)}
+}
+@keyframes shardTR{
+  0%      {opacity:0.4; transform:translate3d(20px,-20px,180px)  rotate(65deg)   scale(0.7)}
+  12%     {opacity:0;   transform:translate3d(35px,-35px,350px)  rotate(135deg)  scale(0.55)}
+  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
+  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
+  100%    {opacity:0.4; transform:translate3d(20px,-20px,180px)  rotate(65deg)   scale(0.7)}
+}
+@keyframes shardBL{
+  0%      {opacity:0.4; transform:translate3d(-18px,18px,170px)  rotate(50deg)   scale(0.7)}
+  12%     {opacity:0;   transform:translate3d(-32px,32px,330px)  rotate(120deg)  scale(0.55)}
+  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
+  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
+  100%    {opacity:0.4; transform:translate3d(-18px,18px,170px)  rotate(50deg)   scale(0.7)}
+}
+@keyframes shardBR{
+  0%      {opacity:0.4; transform:translate3d(18px,18px,170px)   rotate(-50deg)  scale(0.7)}
+  12%     {opacity:0;   transform:translate3d(32px,32px,330px)   rotate(-120deg) scale(0.55)}
+  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
+  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
+  100%    {opacity:0.4; transform:translate3d(18px,18px,170px)   rotate(-50deg)  scale(0.7)}
 }
 .fade-in{animation:slideUp .35s ease both}
 
