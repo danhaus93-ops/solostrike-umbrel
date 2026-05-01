@@ -6272,24 +6272,20 @@ export default function App() {
         letterSpacing:'0.15em',
         gap:'1.5rem',
       }}>
-        {/* v1.8.3-rev30: SoloStrike strike animation. The pickaxe wields
-            into a glowing orange block which shatters at impact, revealing
-            the ₿ symbol underneath. After the reveal, the block re-materializes
-            and the cycle loops. All animations are synchronized to a 2.4s
-            master cycle so the strike, shatter, fragments, and reveal all
-            land on cue. minSplashElapsed (2400ms) ensures users see at least
-            one full cycle before the dashboard takes over. */}
+        {/* v1.8.3-rev30b: SoloStrike strike animation — block shatter reveal.
+            Uses the SAME positioning system as the original rev15 splash
+            (proven working): flex-end alignment for the ₿, absolute-positioned
+            pickaxe with bottom-right pivot. The orange block is overlaid on
+            top of the ₿ at the SAME anchor point so when it shatters, the ₿
+            is revealed directly underneath where the pickaxe lands. */}
         <div style={{
           position:'relative',
-          width:'7rem', height:'7rem',
-          display:'flex', alignItems:'center', justifyContent:'center',
+          width:'5.5rem', height:'6.5rem',
+          display:'flex', alignItems:'flex-end', justifyContent:'center',
         }}>
-          {/* ₿ symbol — sits behind the block, fades in when block shatters */}
+          {/* Bitcoin ₿ — sits in the bottom of the box, revealed when block shatters */}
           <div style={{
-            position:'absolute',
-            top:'50%', left:'50%',
-            transform:'translate(-50%, -50%)',
-            fontSize:'4rem',
+            fontSize:'4.5rem',
             lineHeight:1,
             color:'var(--amber)',
             fontFamily:'var(--fd)',
@@ -6299,31 +6295,35 @@ export default function App() {
           }}>
             ₿
           </div>
-
-          {/* The orange block — solid before strike, shatters at 35% */}
+          {/* Orange block — overlaid on the ₿ at the same baseline. Sized
+              slightly smaller than the ₿ so a thin amber halo peeks around
+              the edges. Shatters at 35% of the cycle (840ms). */}
           <div style={{
             position:'absolute',
-            top:'50%', left:'50%',
-            transform:'translate(-50%, -50%)',
-            width:'3.4rem', height:'3.4rem',
+            bottom:'0.2rem',
+            left:'50%',
+            transform:'translateX(-50%)',
+            width:'3.6rem', height:'3.6rem',
             background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
             border:'2px solid rgba(255,210,110,0.7)',
             borderRadius:'4px',
             animation:'blockShatter30 2.4s ease-in-out infinite',
             zIndex:2,
           }}/>
-
-          {/* Four fragment shards — fly outward when block shatters */}
+          {/* Four fragment shards — fly outward when block shatters. Anchored
+              to the same baseline as the block, then animated outward with
+              translate transforms in the keyframe. */}
           {[
-            { anim:'shardTL30', top:'50%', left:'50%', mt:'-1rem', ml:'-1rem' },
-            { anim:'shardTR30', top:'50%', left:'50%', mt:'-1rem', ml:'0'      },
-            { anim:'shardBL30', top:'50%', left:'50%', mt:'0',     ml:'-1rem' },
-            { anim:'shardBR30', top:'50%', left:'50%', mt:'0',     ml:'0'      },
+            { anim:'shardTL30' },
+            { anim:'shardTR30' },
+            { anim:'shardBL30' },
+            { anim:'shardBR30' },
           ].map((s, i) => (
             <div key={i} style={{
               position:'absolute',
-              top:s.top, left:s.left,
-              marginTop:s.mt, marginLeft:s.ml,
+              bottom:'1.1rem',
+              left:'50%',
+              marginLeft:'-0.5rem',
               width:'1rem', height:'1rem',
               background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
               border:'1px solid rgba(255,210,110,0.6)',
@@ -6333,13 +6333,12 @@ export default function App() {
               zIndex:3,
             }}/>
           ))}
-
-          {/* Pickaxe — swings down onto the block. Transform-origin at the
-              bottom-right so the handle pivots and the head arcs into impact. */}
+          {/* Pickaxe — sits above the block, swings down. SAME positioning as
+              original rev15: top:0, transform:translateX(-90%), transformOrigin
+              at bottom-right so the handle pivots and the head arcs into impact. */}
           <div style={{
             position:'absolute',
-            top:'-0.5rem',
-            left:'50%',
+            top:0, left:'50%',
             transform:'translateX(-90%)',
             fontSize:'3rem',
             lineHeight:1,
