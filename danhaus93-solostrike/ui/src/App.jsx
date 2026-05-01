@@ -6283,6 +6283,12 @@ export default function App() {
           position:'relative',
           width:'5.5rem', height:'6.5rem',
           display:'flex', alignItems:'flex-end', justifyContent:'center',
+          /* v1.8.3-rev31i: 3D perspective for the shard fly-toward-camera
+             effect. Only affects children with translateZ (the 4 shards);
+             the ₿, block, and pickaxe use 2D transforms only and render
+             unchanged. */
+          perspective:'500px',
+          perspectiveOrigin:'50% 50%',
         }}>
           {/* Bitcoin ₿ — sits in the bottom of the box, gets struck */}
           <div style={{
@@ -6321,6 +6327,41 @@ export default function App() {
             transformOrigin:'center',
             zIndex:2,
           }} />
+          {/* v1.8.3-rev31i: 4 flying shard fragments. Same fly-out window
+              as rev31h (cycle 95% → 12% of next cycle), but now using
+              translate3d with a positive Z value so they fly TOWARD the
+              viewer in 3D — the parent stage div has perspective:500px,
+              so the shards' apparent size and offset both grow as Z
+              increases. Bumped from 0.8rem to 1.3rem for a more
+              substantial fragment feel. */}
+          {(() => {
+            const shardBase = {
+              position: 'absolute',
+              bottom: '1.85rem',          /* block center y minus half shard (1.3/2 = 0.65) */
+              left: '50%',
+              marginLeft: '-0.65rem',     /* half of 1.3rem to center horizontally */
+              width: '1.3rem',
+              height: '1.3rem',
+              background: 'linear-gradient(135deg, #FFB347 0%, #FF8C1A 50%, #C95800 100%)',
+              borderRadius: '3px',
+              boxShadow: '0 0 10px rgba(255,140,0,0.9)',
+              animationDuration: '1.4s',
+              animationTimingFunction: 'ease-in-out',
+              animationIterationCount: 'infinite',
+              animationDelay: '-0.7s',
+              transformOrigin: 'center',
+              zIndex: 2,
+              pointerEvents: 'none',
+            };
+            return (
+              <>
+                <div style={{ ...shardBase, animationName: 'shardTL' }} />
+                <div style={{ ...shardBase, animationName: 'shardTR' }} />
+                <div style={{ ...shardBase, animationName: 'shardBL' }} />
+                <div style={{ ...shardBase, animationName: 'shardBR' }} />
+              </>
+            );
+          })()}
           {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
               bottom-right so the handle pivots and the head arcs into the ₿. */}
           <div style={{
