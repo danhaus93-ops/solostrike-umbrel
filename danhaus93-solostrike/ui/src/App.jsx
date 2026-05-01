@@ -6284,7 +6284,7 @@ export default function App() {
           width:'5.5rem', height:'6.5rem',
           display:'flex', alignItems:'flex-end', justifyContent:'center',
         }}>
-          {/* Bitcoin ₿ — sits in the bottom of the box, gets struck */}
+          {/* Bitcoin ₿ — sits in the bottom of the box, revealed when block shatters */}
           <div style={{
             fontSize:'4.5rem',
             lineHeight:1,
@@ -6296,29 +6296,30 @@ export default function App() {
           }}>
             ₿
           </div>
-          {/* v1.8.3-rev30f: orange block fully covering ₿. 5rem square, centered
-              over the ₿. Solid until pickaxe impact at 30% of 1.4s cycle (420ms),
-              bursts on that exact frame, stays gone the rest of the cycle.
-              Re-forms at 100% (cycle restart). */}
+          {/* v1.8.3-rev30i: orange block. 4.6×4.6rem comfortably bigger than
+              the ₿'s visible glyph (~3rem×3.3rem) so it stays bigger than ₿
+              even at compress scale 0.95. Position uses left:50% + marginLeft
+              instead of transform:translateX so the blockBust animation's
+              transform property doesn't wipe out the centering offset.
+              Tested via headless browser render before shipping. */}
           <div style={{
             position:'absolute',
             bottom:'0.2rem',
             left:'50%',
-            transform:'translateX(-50%)',
-            width:'5rem', height:'5rem',
+            marginLeft:'-2.3rem',
+            width:'4.6rem', height:'4.6rem',
             background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
             border:'2px solid rgba(255,210,110,0.7)',
             borderRadius:'4px',
-            boxShadow:'0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.45)',
+            boxShadow:'0 0 18px rgba(245,166,35,0.5), inset 0 0 14px rgba(255,200,90,0.4)',
             animation:'blockBust 1.4s ease-in-out infinite',
             zIndex:2,
           }}/>
-          {/* Four fragment shards — anchored to block center, invisible until
-              impact (30%), then fly out in 4 diagonals, fading by 50%. */}
+          {/* Four fragment shards — fly outward at impact (30%) */}
           {['shardTL','shardTR','shardBL','shardBR'].map((anim, i) => (
             <div key={i} style={{
               position:'absolute',
-              bottom:'2.0rem',
+              top:'2.5rem',
               left:'50%',
               marginLeft:'-0.5rem',
               width:'1rem', height:'1rem',
@@ -6331,12 +6332,16 @@ export default function App() {
               pointerEvents:'none',
             }}/>
           ))}
-          {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
-              bottom-right so the handle pivots and the head arcs into the ₿. */}
+          {/* Pickaxe — anchored at top:0 right:1.2rem so the bottom-right
+              transform-origin pivot sits at the right edge of the block region.
+              When wound back at -25°, head is at upper-LEFT of pivot (above
+              the block). When struck at +20°, head arcs DOWN onto the top-
+              right corner of the block. Position uses top + right (NOT
+              transform:translateX) to avoid conflict with the rotation animation. */}
           <div style={{
             position:'absolute',
-            top:0, left:'50%',
-            transform:'translateX(-90%)',     /* offset slightly left so the head lands center */
+            top:0,
+            right:'1.2rem',
             fontSize:'3rem',
             lineHeight:1,
             color:'var(--amber)',
