@@ -18,33 +18,86 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-/* v1.8.3-rev29: splash strike animation, retimed.
-   Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
-   into a 1.4s loop), with a long 35% pre-strike dwell at the wound-back
-   position. On fast pool-load the splash often unmounted before the user
-   ever saw the strike land — they'd just see a wound-back pickaxe pull
-   further back, then disappear into the dashboard.
-   New timing: impact lands at 30% (420ms) and the pickaxe HOLDS the impact
-   pose from 30% to 65% — so for ~35% of every cycle, the pickaxe is visibly
-   striking the ₿. Combined with the minimum-1500ms splash duration in App.jsx,
-   the user always sees at least one full strike + impact hold before the
-   dashboard fades in. */
-@keyframes pickaxeStrike{
-  0%   {transform:rotate(-25deg)}     /* start pulled back */
-  15%  {transform:rotate(-25deg)}     /* brief wind-up dwell */
-  30%  {transform:rotate(20deg)}      /* IMPACT — fast strike at 420ms */
-  45%  {transform:rotate(15deg)}      /* tiny bounce settle */
-  65%  {transform:rotate(15deg)}      /* HOLD on impact (visible landed strike) */
-  100% {transform:rotate(-25deg)}     /* slow recovery for next cycle */
+
+/* v1.8.3-rev30: SoloStrike splash — pickaxe strikes orange block, block
+   shatters, ₿ symbol revealed beneath. Total cycle 2.4s.
+
+   Storytelling beats:
+     0–20%   wind-up      pickaxe pulled back, block solid, ₿ hidden
+     20–35%  strike       pickaxe arcs into block
+     35–50%  shatter      block crumbles into 4 fragments, ₿ fades in
+     50–75%  reveal hold  ₿ fully visible & glowing
+     75–100% reset        ₿ fades, block re-forms, pickaxe winds back
+
+   Combined with minSplashElapsed (now 2400ms) the user always sees at least
+   one full strike→shatter→reveal cycle before the dashboard fades in. */
+
+@keyframes pickaxeStrike30{
+  0%    {transform:rotate(-25deg)}
+  15%   {transform:rotate(-25deg)}      /* hold wound-back */
+  35%   {transform:rotate(20deg)}       /* IMPACT */
+  50%   {transform:rotate(18deg)}       /* tiny settle on impact */
+  75%   {transform:rotate(18deg)}       /* HOLD while ₿ revealed */
+  100%  {transform:rotate(-25deg)}      /* wind back for next cycle */
 }
-/* v1.8.3-rev29: ₿ glow spike re-synced to land at 30% (matches impact frame).
-   Glow holds bright through 65% along with the pickaxe, so the impact reads
-   as a clear "landed strike" rather than a flash. */
-@keyframes btcImpact{
-  0%,20%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
-  30%      {transform:scale(1.10); text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
-  45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
-  100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+
+/* The orange block — visible during wind-up + strike, shatters at 35%,
+   stays gone through the reveal, re-materializes from 75% onward. */
+@keyframes blockShatter30{
+  0%,30%   {opacity:1; transform:scale(1)        rotate(0deg);
+            box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.4)}
+  35%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
+            box-shadow:0 0 48px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.7)}
+  /* shatter point — invisible from here */
+  40%,75%  {opacity:0; transform:scale(0)        rotate(0deg);
+            box-shadow:none}
+  /* re-materialize for next cycle */
+  90%      {opacity:0.5; transform:scale(0.6)    rotate(0deg);
+            box-shadow:0 0 12px rgba(245,166,35,0.4), inset 0 0 8px rgba(255,200,90,0.3)}
+  100%     {opacity:1; transform:scale(1)        rotate(0deg);
+            box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.4)}
+}
+
+/* Four fragment shards — invisible until 35% (impact), then fly outward in
+   4 directions, fading as they go. Each direction has its own keyframe
+   because translation vectors differ. All share the 35→50% timing window. */
+@keyframes shardTL30{ /* top-left */
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(-8px,-8px) rotate(-15deg) scale(1)}
+  55%      {opacity:0; transform:translate(-48px,-44px) rotate(-90deg) scale(0.7)}
+  100%     {opacity:0; transform:translate(-48px,-44px) rotate(-90deg) scale(0.7)}
+}
+@keyframes shardTR30{ /* top-right */
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(8px,-8px) rotate(15deg) scale(1)}
+  55%      {opacity:0; transform:translate(48px,-44px) rotate(90deg) scale(0.7)}
+  100%     {opacity:0; transform:translate(48px,-44px) rotate(90deg) scale(0.7)}
+}
+@keyframes shardBL30{ /* bottom-left */
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(-8px,8px) rotate(15deg) scale(1)}
+  55%      {opacity:0; transform:translate(-44px,40px) rotate(110deg) scale(0.7)}
+  100%     {opacity:0; transform:translate(-44px,40px) rotate(110deg) scale(0.7)}
+}
+@keyframes shardBR30{ /* bottom-right */
+  0%,33%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  37%      {opacity:1; transform:translate(8px,8px) rotate(-15deg) scale(1)}
+  55%      {opacity:0; transform:translate(44px,40px) rotate(-110deg) scale(0.7)}
+  100%     {opacity:0; transform:translate(44px,40px) rotate(-110deg) scale(0.7)}
+}
+
+/* ₿ symbol — hidden during strike, fades in 35→45% (during shatter), holds
+   at full glow through the reveal window, fades out 70→78% so the block
+   can re-form cleanly behind it. */
+@keyframes btcReveal30{
+  0%,33%   {opacity:0; transform:scale(0.7);
+            text-shadow:0 0 0 rgba(245,166,35,0)}
+  45%      {opacity:1; transform:scale(1.12);
+            text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
+  60%,68%  {opacity:1; transform:scale(1);
+            text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
+  78%,100% {opacity:0; transform:scale(0.7);
+            text-shadow:0 0 0 rgba(245,166,35,0)}
 }
 .fade-in{animation:slideUp .35s ease both}
 
