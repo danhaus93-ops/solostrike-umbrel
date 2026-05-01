@@ -46,41 +46,46 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
   100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
 }
-/* v1.8.3-rev31f: orange glowing block. CORRECTED for actual pickaxe motion.
-   Earlier revs (a–e) trusted the rev29 keyframe labels which claimed impact
-   was at the 30% frame (+20°). It isn't — that frame is wound-back. With
-   transform-origin: bottom right and the pivot inside the block area, the
-   pickaxe head is visually AT the block when rotation is -25°, which is
-   the 0%/100% loop boundary. So every prior block animation fired at the
-   wrong moment. User confirmed: in variant D, "block forms while pickaxe
-   is swinging down" (reform was at 50–95%, which is actually the
-   swing-down phase) and "explodes when drawing back" (explosion was at
-   30–35%, which is actually the wound-back position).
+/* v1.8.3-rev31g: orange glowing block. Two fixes from rev31f based on
+   the user's deployed-app screen recording:
+     (1) On splash mount, animation began at cycle 0% which was the
+         "mid-explosion" frame — so the user saw the ₿ alone for ~900ms
+         before the block first appeared. Fix: add animationDelay
+         '-0.7s' on block + pickaxe + ₿ in App.jsx so splash mounts at
+         cycle 50% (block already solid, pickaxe held wound-back).
+     (2) Block was solid only ~32% of every cycle (~450ms), too brief.
+         Fix: move reform earlier (30-50% instead of 45-65%) so block
+         solid period extends to ~43% of cycle (~600ms).
 
-   ACTUAL pickaxe motion per cycle:
-     0%/100% : IMPACT (head on block)   ← block explodes HERE
+   ACTUAL pickaxe motion per cycle (rev29 pickaxeStrike, untouched):
+     0%/100% : IMPACT (head on block)
      0–15%   : held at impact
-     15–30%  : drawing back (head lifting)
-     30–65%  : wound back (held high)   ← block reforms HERE
+     15–30%  : drawing back (head lifting up)
+     30–65%  : wound back (settles +20°→+15° over 30-45%, held 45-65%)
      65–100% : swinging down
      100%    : IMPACT again
 
    Block timing:
      0%      : MID-EXPLOSION (matches 100% for clean loop, no snap)
-     0–10%   : explosion debris fading (~140ms)
-     10–45%  : block fully gone, ₿ revealed (~490ms)
-     45–65%  : GRADUAL REFORM during pickaxe wound-back hold (~280ms,
-               pickaxe is held still at +15°, no motion)
-     65–93%  : SOLID — block hides ₿ as pickaxe swings down (~390ms)
+     0–8%    : explosion debris fading (~112ms)
+     8–30%   : block fully gone, ₿ revealed during impact-hold + draw-back
+     30–50%  : GRADUAL REFORM during pickaxe wound-back settling (~280ms,
+               pickaxe motion is minimal — only +20°→+15° = 5° over the
+               first three-quarters of this window, then held still)
+     50–93%  : SOLID — block hides ₿ through wound-back hold + swing-down
+               (~600ms — the dominant visual state)
      93–97%  : SQUASH — block compresses as pickaxe arrives (~56ms)
      97–100% : EXPLODE outward (~42ms) — peaks at 100%/0% impact moment
-   The 100% values match the 0% values exactly (opacity 0, scale 1.7) so
-   the loop boundary is seamless — no snap, no flicker. */
+   100% values match 0% values exactly (opacity 0, scale 1.7) so the
+   loop boundary is seamless.
+
+   Combined with animationDelay '-0.7s' in JSX, the splash always mounts
+   at "block solid + pickaxe wound back" — the natural starting state. */
 @keyframes blockBust{
   0%      {opacity:0; transform:scale(1.7)}
-  10%     {opacity:0; transform:scale(0.4)}
-  45%     {opacity:0; transform:scale(0.4)}
-  65%     {opacity:1; transform:scale(1)}
+  8%      {opacity:0; transform:scale(0.4)}
+  30%     {opacity:0; transform:scale(0.4)}
+  50%     {opacity:1; transform:scale(1)}
   93%     {opacity:1; transform:scale(1)}
   97%     {opacity:1; transform:scale(0.85)}
   100%    {opacity:0; transform:scale(1.7)}
