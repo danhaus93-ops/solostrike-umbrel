@@ -19,15 +19,27 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* v1.8.3-rev30N: Pickaxe pivot fix.
+   Previous transform-origin (bottom-right) made the pickaxe handle rotate
+   around its TIP, causing the head to swing left while the handle stayed
+   anchored to the right side. Visually that looks like the pickaxe falling
+   BACKWARD (handle going horizontal) rather than striking down.
+   New origin (bottom-left) makes the handle pivot around its base near the
+   block, causing the head to swing through a downward arc into the block. */
+[style*="pickaxeStrike"] {
+  transform-origin: bottom left !important;
+}
+
 /* v1.8.3-rev30M: pickaxe holds wound-back for first half of cycle (visible),
    then SLOWLY swings down 50%->85% so the strike is clearly seen.
    Block bursts AT the impact frame (85%). */
 @keyframes pickaxeStrike{
-  0%   {transform:rotate(-25deg)}     /* wound back */
-  50%  {transform:rotate(-25deg)}     /* HOLD wound back — first 700ms visible */
-  85%  {transform:rotate(20deg)}      /* IMPACT — slow visible swing 50%-85% (490ms) */
-  90%  {transform:rotate(15deg)}      /* tiny bounce settle */
-  100% {transform:rotate(15deg)}      /* hold at impact (loop seam) */
+  0%   {transform:rotate(25deg)}      /* wound back — flipped sign for new bottom-left pivot */
+  50%  {transform:rotate(25deg)}      /* HOLD wound back — first 700ms visible */
+  85%  {transform:rotate(-20deg)}     /* IMPACT — head swings DOWN-RIGHT into block */
+  90%  {transform:rotate(-15deg)}     /* tiny bounce settle */
+  100% {transform:rotate(-15deg)}     /* hold at impact (loop seam) */
 }
 /* v1.8.3-rev30M: ₿ glow spike re-synced to land at impact (85%). */
 @keyframes btcImpact{
