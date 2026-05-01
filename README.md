@@ -17,15 +17,16 @@
 
 ## Why SoloStrike
 
-In a **pooled mining** setup, thousands of miners split every block, and the pool operator skims a percentage. In **solo mining**, you don’t share. Every block your miners find pays the entire reward — subsidy plus every satoshi of fees — directly to your address.
+In **pooled mining**, thousands of miners split every block and the operator skims a percentage. In **solo mining**, you don’t share. Every block your miners find pays the entire reward — subsidy plus every satoshi of fees — directly to your address.
 
 SoloStrike gives you solo mining on your own Umbrel, with:
 
 - **0% pool fees** — forever, no catch. ckpool-solo constructs the coinbase transaction to pay 100% to your address.
-- **Your node, your rules** — connects directly to your Umbrel’s Bitcoin Core via the injected RPC credentials. No external dependencies for the mining core path.
+- **Your node, your rules** — connects directly to your Umbrel’s Bitcoin Core via injected RPC credentials. No external dependencies on the mining core path.
 - **Private Mode** — one toggle and the entire app goes airgapped. No mempool.space calls, no price APIs, no outbound traffic. Your mining activity is yours alone.
-- **Fleet-grade observability** — real-time hashrate waveform, per-worker stats, historical leaderboards, block probability odds, Prometheus metrics for Grafana, webhook notifications, 90-day snapshots.
-- **Home-screen widget** — a native umbrelOS widget showing pool hashrate, workers online, blocks found, and your best difficulty. Pin it to glance without opening the app.
+- **Solostrike Pulse** — opt-in anonymous network of fellow solo miners over nostr (Tor optional). See aggregate hashrate, peer count, and your global rank without revealing your identity.
+- **Fleet-grade observability** — real-time hashrate waveform, share-velocity histogram, per-worker stats, historical leaderboards, block probability odds, Prometheus metrics, webhook notifications, 90-day snapshots.
+- **Home-screen widget** — a native umbrelOS widget showing pool hashrate, workers online, blocks found, and your best difficulty.
 - **Progressive Web App** — “Add to Home Screen” on iOS/Android gives you a real standalone app experience.
 
 Every share is a lottery ticket. Every block, if it comes, is yours entirely.
@@ -34,10 +35,10 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 
 ## Screenshots
 
-![SoloStrike Dashboard](1.png)
-*Real-time Deep Mine dashboard: live pool hashrate, closest calls leaderboard, fleet status, block probability.*
+![SoloStrike Dashboard](danhaus93-solostrike/1.png)
+*Real-time Deep Mine dashboard: live pool hashrate, The Hunt nonce field, fleet status, block probability.*
 
-![Worker Details](2.png)
+![Worker Details](danhaus93-solostrike/2.png)
 *Per-worker insights: hashrate, best diff, last share, automatic miner-type detection, clickable IP to each miner’s web UI.*
 
 -----
@@ -47,35 +48,51 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 ### 🔒 Privacy & Sovereignty
 
 - **Private Mode** — airgapped operation, all outbound APIs blocked when enabled
+- **Tor routing for Pulse** — broadcasts and subscriptions optionally route through Umbrel’s `tor_proxy`
+- **Anonymous Pulse identity** — ephemeral nostr signing keys, no BTC address or hostname leaked
 - **ZMQ status indicator** — see at a glance whether Bitcoin Core’s block broadcasts are reaching the pool
 - **Coinbase branding** — every block your pool finds is tagged `/SoloStrike on Umbrel/` on-chain forever
 
 ### 📊 Real-Time Observability
 
-- **Live hashrate waveform** with 24h history, 7-day trends, axis labels, and peak tracking
-- **Sticky header cluster** — pool status, 29-metric scrolling ticker, latest block, sync warnings, ZMQ indicator
-- **Per-worker live stats** — hashrate, difficulty, last-share timestamp, status, best-share tracking
-- **Automatic miner-type detection** — BitAxe (Gamma/Supra/Ultra), NerdQaxe++, Antminer S19/S21 variants, Avalon Nano 3S / Avalon Q, Whatsminer, Braiins rentals
-- **Bitcoin Node panel** — Core version, peer count, relay fee, mempool size
+- **Firepower** — live hashrate chart with 24h history and 7-day trends
+- **Hashrate Averages strip** — seven rolling windows (1M / 5M / 15M / 1H / 6H / 24H / 7D) as horizontal bars; each label doubles as a chart-range button
+- **Strike Velocity** — share submission rate as a vertical-bar histogram, color-coded green/amber/red for normal/anomalous/zero output. 1H / 6H / 24H ranges
+- **The Hunt** — bitcoin-native nonce field visualization. A 32×6 grid of dim points represents the 2³² nonce space. Cells flicker amber as your fleet hashes, a vertical scan line sweeps L→R, strike flashes mark “winner” cells
+- **Solostrike Pulse** — opt-in network census with 5 ambient animation styles (Sluice Box, Cave Glimmers, Hash Ticker, Conveyor of Ore, Forge Embers) and optional Bitcoin Symbols (₿) mode
+- **The Crew** — every worker individually monitored, online/offline status, hashrate per device, persistent offline banners with auto-recovery flash
+- **Bitcoin Node panel** — Core version + subversion string, peer count, relay fee, mempool size
+- **Bitcoin Network** — block reward (subsidy + fees), block weight, tx count, BTC price in 7 currencies, fee tiers
+- **Sticky header cluster** — pool status, scrolling metric ticker, latest block, sync warnings, ZMQ indicator
 
 ### 🎯 Historical Intelligence
 
-- **Closest Calls leaderboard** — top 10 highest-difficulty shares ever submitted across your fleet
-- **Daily hashrate snapshots** — 90 days of per-day avg / peak history
-- **Block probability engine** — daily, weekly, monthly odds + expected time-to-block
-- **Luck gauge & difficulty retarget countdown**
-- **Top Pool Finders leaderboard** — Recent network blocks feed with solo-winner highlighting
+- **Near Strikes** — top 10 highest-difficulty shares ever submitted across your fleet
+- **Daily snapshots** — 90 days of per-day avg/peak hashrate
+- **Strike Odds** — daily, weekly, monthly block probability + expected time-to-block (displayed as readable “1 in 10.4M” instead of scientific notation)
+- **The Reckoning** — strike forecast simulator with hashrate slider, probability waterfall, and global network rank
+- **Hot Streak** — luck gauge showing recent variance
+- **Difficulty Retarget** — countdown to next adjustment, predicted change, and last-epoch comparison
+- **Top Diggers** — leaderboard of your fleet by hashrate
+- **Claim Jumpers + Solo Strikes** — pool finds leaderboard combined with your own block history
+- **The Ledger** — recent network blocks feed with solo-winner highlighting
+
+### 🔥 Power & Profitability
+
+- **The Burn** — power cost integration. Input total watts and $/kWh, get daily/monthly/yearly burn, cost-to-median-strike, net profit at horizon, and break-even electricity rate
 
 ### 🖥️ Native umbrelOS Integration
 
-- **Home-screen widget** (v1.5.0+) — 4-stat widget refreshing every 10 seconds
-- **Progressive Web App** (v1.5.1+) — Add to Home Screen on iOS/Android gives you a standalone app icon, splash, and full-screen chrome
-- **Guided onboarding wizard** (v1.5.2+) — 5-step first-run setup with QR codes for stratum URLs
+- **Home-screen widget** — 4-stat widget refreshing every 10 seconds (Pool Hashrate · Workers · Blocks Found · Best Diff)
+- **Progressive Web App** — Add to Home Screen on iOS/Android for a standalone app icon, splash, and full-screen chrome
+- **Guided onboarding wizard** — first-run setup with QR codes for stratum URLs
 
 ### ⚙️ Customization
 
+- **Card carousel mode (mobile)** — swipe between cards, full-screen each, native iOS smoothness
+- **Vertical scroll mode (mobile)** — classic stack as alternate layout
 - **Drag-and-drop card reordering** — layout persists per-device
-- **Mobile-first responsive layout** — 1/2/4 columns based on screen size
+- **Stratum connection card** — copy-button setup for ASIC / hobby / SSL ports with live port status
 - **Worker aliases** — rename miners to friendly names for the dashboard
 - **Customizable top strip & ticker** — pick from 29 metrics across 6 categories
 - **7-currency BTC price** — USD, EUR, GBP, CAD, CHF, AUD, JPY
@@ -84,16 +101,16 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 ### 🔌 Integrations
 
 - **Prometheus `/metrics`** — scrape into Grafana, Home Assistant, or any TSDB
-- **Webhooks** — POST block/worker events to Discord, ntfy.sh, Home Assistant, Telegram, custom endpoints
+- **Webhooks** — POST block / worker / pulse events to Discord, ntfy.sh, Home Assistant, Telegram, custom endpoints
 - **Public read-only API** — expose pool stats externally (optional)
-- **CSV export** — workers and found blocks
-- **Dual stratum ports** — 3333 for ASICs, 3334 for hobby miners with lower starting difficulty
+- **CSV export** — workers and found blocks (RFC-4180 compliant)
+- **Triple stratum ports** — 3333 (ASIC), 3334 (hobby — lower starting difficulty), 4333 (TLS via stunnel)
 
 ### 💎 Block Celebration
 
-- Confetti explosion animation when your pool finds a block
+- “BLOCK STRUCK!” full-screen alert with confetti when your pool finds a block
 - Direct mempool.space link
-- Permanent block history feed
+- Permanent block history feed in Solo Strikes
 
 -----
 
@@ -104,15 +121,20 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 |Engine                              |ckpool-solo|NestJS (custom)|ckpool-solo|
 |Pool fee                            |0%         |0%             |0%         |
 |Private Mode (airgapped)            |✅          |❌              |❌          |
+|TLS stratum (port 4333)             |✅          |❌              |❌          |
+|Tor routing for community network   |✅          |❌              |❌          |
 |Home-screen widget                  |✅          |✅              |✅          |
-|Closest Calls historical leaderboard|✅          |❌              |❌          |
+|The Hunt (nonce-field visualization)|✅          |❌              |❌          |
+|Strike Velocity histogram           |✅          |❌              |❌          |
+|Power-cost calculator               |✅          |❌              |❌          |
+|Strike forecast simulator           |✅          |❌              |❌          |
+|Near Strikes historical leaderboard |✅          |❌              |❌          |
 |90-day daily snapshots              |✅          |❌              |❌          |
 |Automatic miner-type detection      |✅          |❌              |❌          |
 |Webhooks                            |✅          |❌              |❌          |
 |Prometheus metrics                  |✅          |❌              |❌          |
 |Branded coinbase tag on block       |✅          |✅              |❌          |
 |Progressive Web App                 |✅          |❌              |❌          |
-|Dual stratum ports (ASIC + hobby)   |✅          |❌              |❌          |
 
 SoloStrike is for people who want the ckpool-solo engine *and* a modern operations layer on top — not just a hashrate counter.
 
@@ -137,7 +159,7 @@ SoloStrike is for people who want the ckpool-solo engine *and* a modern operatio
 1. Tap **SoloStrike → Install**
 1. Umbrel pulls the multi-arch Docker images (amd64 or arm64, ~1-2 min)
 
-### 3. First-run setup (v1.5.2+)
+### 3. First-run setup
 
 The onboarding wizard walks you through 5 steps:
 
@@ -145,7 +167,7 @@ The onboarding wizard walks you through 5 steps:
 1. **Payout address** — enter your Bitcoin address (`bc1…`, `1…`, or `3…`)
 1. **Connect miners** — scannable QR codes for both stratum ports
 1. **Verification** — wizard detects your first worker as it connects
-1. **Tour** — overview of the dashboard’s headline features
+1. **Tour** — overview of the dashboard
 
 ### 4. Find your Umbrel’s LAN IP
 
@@ -157,12 +179,12 @@ Most miners need a raw IP, not `umbrel.local`.
 
 ### 5. Point your miners
 
-|Setting        |Value                                                    |
-|---------------|---------------------------------------------------------|
-|**Stratum URL**|`stratum+tcp://<YOUR-UMBREL-IP>`                         |
-|**Port**       |`3333` (ASICs) or `3334` (BitAxe, NerdQaxe, hobby miners)|
-|**Username**   |`<your-btc-address>.<worker-name>`                       |
-|**Password**   |`x`                                                      |
+|Setting        |Value                                                              |
+|---------------|-------------------------------------------------------------------|
+|**Stratum URL**|`stratum+tcp://<YOUR-UMBREL-IP>` or `stratum+ssl://...`            |
+|**Port**       |`3333` (ASICs) · `3334` (hobby — BitAxe, NerdQaxe++) · `4333` (TLS)|
+|**Username**   |`<your-btc-address>.<worker-name>`                                 |
+|**Password**   |`x`                                                                |
 
 Example for a BitAxe (AxeOS):
 
@@ -189,56 +211,58 @@ Within 30-60 seconds workers appear on the dashboard and shares start flowing.
 │  NerdQaxes / Whatsminers    │
 └─────────┬───────────────────┘
           │ Stratum V1
-          ▼ 3333 (ASIC) / 3334 (hobby)
-┌─────────────────────────────┐
-│       ckpool-solo           │  ← ghcr.io/getumbrel/docker-ckpool-solo
-│    (mining engine)          │     (multi-arch, pinned to commit)
-└────┬───────────────┬────────┘
+          ▼ 3333 (ASIC) / 3334 (hobby)        TLS ▼ 4333
+          │                                       │
+          │           ┌───────────────────────────┘
+          │           │
+┌─────────▼───────────▼────────┐    ┌──────────────────────┐
+│       ckpool-solo            │    │       stunnel        │
+│    (mining engine)           │◄───│   (TLS terminator)   │
+│  ghcr.io/getumbrel/...       │    │  decrypts → ckpool   │
+│  pinned: 590fb2a             │    │                      │
+└────┬───────────────┬─────────┘    └──────────────────────┘
      │ status files  │ RPC + ZMQ
      ▼               ▼
 ┌──────────┐  ┌──────────────────┐
 │   API    │  │  Bitcoin Core    │  ← Umbrel-managed
 │ (Node)   │  │  (Umbrel app)    │     via injected env vars
-│ REST +   │  │  Block template  │
-│ metrics  │  │  submission      │
-└────┬─────┘  └──────────────────┘
-     │ :3001
-     ├────────────────┐
-     │                │
-     ▼                ▼
-┌──────────┐    ┌──────────────┐
-│ Widget   │    │  Dashboard   │
-│ Server   │    │  UI (React)  │
-│ :3000    │    │  nginx :80   │
-└──────────┘    └──────────────┘
-     │                │
-     ▼                ▼
- umbrelOS        Port 1234 via
- home screen     Umbrel app_proxy
- widget          (auth required)
+│  :3001   │  │  Block template  │
+│ REST +   │  │  + submission    │
+│ metrics  │  └──────────────────┘
+└────┬─────┘
+     │
+     ▼
+┌────────────────────────────┐
+│  UI (React + nginx :80)    │
+│  + widget endpoint         │
+│  + /metrics, /api/public   │
+└────┬───────────────────────┘
+     │
+     ▼
+   app_proxy (Umbrel auth)
+   exposed on port 1234
 ```
 
-Five containers orchestrated by Umbrel:
+Four containers + Umbrel-injected `app_proxy`:
 
-- **`ckpool`** — Umbrel’s multi-arch ckpool-solo image. Handles stratum connections, writes live stats to `/var/log/ckpool/`, submits blocks via Bitcoin Core RPC.
-- **`api`** — Node.js status poller + REST API on `:3001`. Reads ckpool’s status files, exposes `/api/state`, `/api/public/summary`, `/metrics`.
-- **`ui`** — React SPA served by nginx, reverse-proxied through Umbrel’s `app_proxy`.
-- **`widget-server`** — Tiny Bun service on `:3000` serving the 4-stat widget JSON for umbrelOS.
-- **`app_proxy`** — Umbrel-injected auth/port routing layer.
+- **`ckpool`** — Umbrel’s multi-arch ckpool-solo image (`ghcr.io/getumbrel/docker-ckpool-solo:590fb2a`). Handles stratum connections, writes live stats to `/var/log/ckpool/`, submits blocks via Bitcoin Core RPC.
+- **`stunnel`** — TLS terminator sidecar. Accepts `stratum+ssl://` connections on `:4333`, decrypts, forwards to `ckpool:3333`. Self-signed cert auto-generated on first run.
+- **`api`** — Node.js status poller + REST API on `:3001`. Reads ckpool’s status files, exposes `/api/state`, `/api/public/summary`, `/metrics`, webhook delivery.
+- **`ui`** — React SPA served by nginx, reverse-proxied through Umbrel’s `app_proxy`. Also serves the home-screen widget endpoint at `/api/widget/four-stats`.
 
-Cross-container communication is over Umbrel’s Docker network, not exposed to LAN except on the two stratum ports.
+Cross-container communication is over Umbrel’s Docker network. Only the three stratum ports and the proxied UI port are exposed.
 
 -----
 
 ## Ports
 
-|Port|Service                                     |Exposure                            |
-|----|--------------------------------------------|------------------------------------|
-|1234|Dashboard UI                                |Via Umbrel app_proxy (auth required)|
-|3333|Stratum V1 — ASICs                          |Open on LAN                         |
-|3334|Stratum V1 — hobby miners (lower start diff)|Open on LAN                         |
-|3000|Widget server                               |Internal only (umbrelOS reads it)   |
-|3001|API server                                  |Internal only                       |
+|Port|Service                                 |Exposure                            |
+|----|----------------------------------------|------------------------------------|
+|1234|Dashboard UI                            |Via Umbrel app_proxy (auth required)|
+|3333|Stratum V1 — ASICs                      |Open on LAN                         |
+|3334|Stratum V1 — hobby (lower start diff)   |Open on LAN                         |
+|4333|Stratum V1 — TLS-encrypted (via stunnel)|Open on LAN                         |
+|3001|API server                              |Internal only                       |
 
 -----
 
@@ -253,8 +277,8 @@ Docker images are multi-arch (`linux/amd64` + `linux/arm64`). CI builds on nativ
 
 ### Resource Footprint
 
-- **CPU**: ckpool ~2-5% on a single core while mining. Widget + API + UI negligible.
-- **RAM**: ~150 MB total across all 5 containers at idle. ~250 MB under load with a 100+ worker fleet.
+- **CPU**: ckpool ~2-5% on a single core while mining. API + UI + stunnel negligible.
+- **RAM**: ~150 MB total across all containers at idle. ~250 MB under load with a 100+ worker fleet.
 - **Disk**: ~500 MB for images. ~1-5 MB/day for logs + daily snapshots.
 
 -----
@@ -293,23 +317,33 @@ When enabled (Settings → Privacy), SoloStrike blocks ALL outbound API calls:
 - ❌ mempool.space (block/fee data)
 - ❌ BTC price APIs (all 7 currencies)
 - ❌ Network difficulty lookups
+- ❌ Pulse network broadcast/subscribe
 
-The dashboard continues to run fully on local data from your own Bitcoin Core. Mempool panel disables, price ticker hides, everything else works. Ideal for users running Umbrel on an airgapped or Tor-only network.
+The dashboard continues to run fully on local data from your own Bitcoin Core. Mempool panel disables, price ticker hides, everything else works. Ideal for users on airgapped, Tor-only, or paranoid networks.
+
+### Solostrike Pulse — privacy by design
+
+Pulse is **opt-in only.** When enabled:
+
+- Each install generates an ephemeral nostr signing keypair. The private key is stored locally and never transmitted.
+- Broadcasts contain ONLY: aggregate pool hashrate, worker count, blocks-found counter, app version. **No BTC address, no IP, no hostname, no per-worker data, no share details.**
+- Optionally routes through Umbrel’s `tor_proxy` for circuit-level anonymity.
+- Toggle off at any time; previously broadcast events live for 5 minutes on relays then expire.
 
 ### Data Storage
 
-All user data lives in:
+All user data lives in `${APP_DATA_DIR}/data/`:
 
 ```
-${APP_DATA_DIR}/data/
-├── config/          → user prefs, payout address, webhook URLs
-├── ckpool/
-│   ├── config/      → ckpool.conf generated at start
-│   └── logs/        → share and block logs (90 days)
-└── snapshots/       → daily rollups
+config/          → user prefs, payout address, webhook URLs
+ckpool/
+  config/        → ckpool.conf generated at start
+  logs/          → share and block logs (90 days)
+snapshots/       → daily rollups
+stunnel/         → TLS cert + key
 ```
 
-Data persists across app updates. Updating or restarting the app does not clear worker aliases, snapshots, or Closest Calls history.
+Data persists across app updates. Updating or restarting does not clear worker aliases, snapshots, or Near Strikes history.
 
 ### Coinbase Tag
 
@@ -334,31 +368,34 @@ Your Bitcoin Core must be fully synced before ckpool can issue valid work to min
 ## FAQ
 
 **Q: What’s the catch?**
-No catch. Solo mining is a variance game. With 1 TH/s you statistically find a block once every ~800 years. With 100 TH/s it’s every 8 years. Could happen tomorrow, could happen never. That’s why it’s called a lottery ticket.
+No catch. Solo mining is a variance game. With 1 TH/s you statistically find a block every ~700 years at current network difficulty. With 100 TH/s it’s every ~7 years. Could happen tomorrow, could happen never. That’s why it’s called a lottery ticket.
 
 **Q: Is this Stratum V2?**
-No — Stratum V1, which is what every existing ASIC and hobby miner speaks out of the box. SV2 support would require miner firmware changes or an SRI translator proxy. On our roadmap for v2.0.0, not before.
+No — Stratum V1, which is what every existing ASIC and hobby miner speaks out of the box. SV2 support would require miner firmware changes or an SRI translator proxy. On the v2.0.0 roadmap.
 
 **Q: What happens when I find a block?**
-ckpool constructs a coinbase paying 100% of the block subsidy (currently 3.125 BTC) + all fees to your address. The block is submitted to Bitcoin Core, propagates to the network, and appears in your wallet as an unconfirmed incoming transaction within seconds. 100 confirmations to spend.
+ckpool constructs a coinbase paying 100% of the block subsidy (currently 3.125 BTC) + all fees to your address. The block is submitted to Bitcoin Core, propagates to the network, and appears in your wallet as an unconfirmed incoming transaction within seconds. 100 confirmations to spend. The dashboard shows a full-screen “BLOCK STRUCK!” celebration with confetti and a mempool.space link.
 
 **Q: Can I change my payout address later?**
-Yes — tap the ⚙ gear in the dashboard → Settings → change address → save. Takes effect within 5 seconds. Any subsequent block pays to the new address. Already-found blocks are locked to whatever address you had at mining time (that’s how coinbase txs work).
+Yes — Stratum Connection card → tap WORKERNAME → save. Takes effect within 5 seconds. Any subsequent block pays to the new address. Already-found blocks are locked to whatever address you had at mining time (that’s how coinbase txs work).
 
 **Q: Does the dashboard work over Tailscale / WireGuard / Tor?**
-Yes. The dashboard is a standard web app on port 1234 via Umbrel’s app_proxy. Access it over any Umbrel-supported remote access method. Miners still need to connect to ports 3333/3334 on your LAN — TLS stratum is on the roadmap for v1.5.3.
+Yes. The dashboard is a standard web app on port 1234 via Umbrel’s app_proxy. Access it over any Umbrel-supported remote access method.
 
 **Q: Why do share counts look weirdly high?**
-ckpool reports difficulty-weighted share values, not raw share counts. A BitAxe submitting “115 shares” at diff 256 = 29,440 difficulty-weighted shares. Both are correct — one is proof-of-work volume, the other is submission count. Dashboard shows the former.
+ckpool reports difficulty-weighted share values, not raw share counts. A BitAxe submitting 115 shares at diff 256 = 29,440 difficulty-weighted shares. The dashboard shows both — “Lifetime Shares” is raw count, “Accepted Work” is difficulty-weighted.
 
 **Q: How do I enable Private Mode?**
-⚙ gear → Privacy → toggle “Private Mode.” Browser reloads, outbound calls stop. Toggle back anytime.
+⚙ Settings → Privacy → toggle “Private Mode.” Browser reloads, outbound calls stop. Toggle back anytime.
 
 **Q: Can I export my data?**
-Yes. Each major card (Workers, Blocks Found) has a CSV export button. For automated export, use the Prometheus `/metrics` endpoint.
+Yes. Each major card (The Crew, Solo Strikes) has a CSV export button. For automated export, use the Prometheus `/metrics` endpoint.
 
 **Q: Does this work with Braiins rentals?**
-Yes. Point the rental dashboard at your stratum URL and port. Rented hashrate counts the same as your own.
+Yes. Point the rental dashboard at your stratum URL and port. Rented hashrate counts the same as your own — found blocks pay your address regardless of who supplied the hashpower.
+
+**Q: What are the 5 Pulse animations?**
+Sluice Box (flowing water + gold flakes), Cave Glimmers (gold glints flashing on dark cave wall), Hash Ticker (Matrix-style hex character rain with gold winners), Conveyor of Ore (chunks scrolling on a mining belt), Forge Embers (sparks rising from a smelter). All scale visually with network hashrate. Optional toggle replaces gold particles with Bitcoin (₿) symbols.
 
 -----
 
@@ -402,30 +439,24 @@ If you see `Failed to connect socket to 10.21.21.8:8332` — Bitcoin Core may be
 
 Usually Bitcoin Core is still syncing — ckpool won’t issue valid work until the node is at chain tip. Wait for initial sync to complete. Secondary cause: invalid payout address. Double-check the address in Settings.
 
-### App stuck “updating” or “restarting” forever
+### TLS stratum (4333) won’t connect
 
-The docker-compose.yml in `/home/umbrel/umbrel/app-data/danhaus93-solostrike/` may have become corrupted. SSH in and check:
-
-```bash
-head -5 /home/umbrel/umbrel/app-data/danhaus93-solostrike/docker-compose.yml
-```
-
-Line 1 should be `version: "3.7"`. If it’s `manifestVersion:` or anything else, file an issue — something in the update pipeline corrupted it.
+The first run generates a self-signed cert. Some miners reject self-signed certs by default — check your miner’s TLS settings to allow self-signed. The cert lives in `${APP_DATA_DIR}/data/stunnel/`.
 
 ### Full log inspection
 
 ```bash
-sudo docker logs -f danhaus93-solostrike_ckpool_1          # mining engine
-sudo docker logs -f danhaus93-solostrike_api_1             # API + poller
-sudo docker logs -f danhaus93-solostrike_ui_1              # dashboard nginx
-sudo docker logs -f danhaus93-solostrike_widget-server_1   # home-screen widget
+sudo docker logs -f danhaus93-solostrike_ckpool_1     # mining engine
+sudo docker logs -f danhaus93-solostrike_api_1        # API + poller + webhooks
+sudo docker logs -f danhaus93-solostrike_ui_1         # dashboard nginx + widget
+sudo docker logs -f danhaus93-solostrike_stunnel_1    # TLS stratum
 ```
 
 -----
 
 ## Updates
 
-When new versions ship, Umbrel prompts you to update from the App Store. All user data (payout address, worker aliases, snapshots, Closest Calls history, webhook config) persists automatically — it’s stored in `${APP_DATA_DIR}/data/` which is mounted as a volume and survives image upgrades.
+When new versions ship, Umbrel prompts you to update from the App Store. All user data (payout address, worker aliases, snapshots, Near Strikes history, webhook config, Pulse identity) persists automatically — it’s stored in `${APP_DATA_DIR}/data/` which is mounted as a volume and survives image upgrades.
 
 Version history lives in <CHANGELOG.md>.
 
@@ -436,13 +467,12 @@ Version history lives in <CHANGELOG.md>.
 All Docker images are built in public GitHub Actions CI from the source in this repo. To verify any published image:
 
 ```bash
-# Inspect the multi-arch manifest and digests
 docker buildx imagetools inspect ghcr.io/danhaus93-ops/solostrike-ui:latest
 docker buildx imagetools inspect ghcr.io/danhaus93-ops/solostrike-api:latest
-docker buildx imagetools inspect ghcr.io/danhaus93-ops/solostrike-widget-server:latest
+docker buildx imagetools inspect ghcr.io/danhaus93-ops/solostrike-stunnel:latest
 ```
 
-Each published tag corresponds to a commit SHA in this repo. CI runs on native amd64 + arm64 GitHub runners (no qemu emulation).
+Each published tag corresponds to a commit SHA in this repo. CI runs on native amd64 + arm64 GitHub runners.
 
 -----
 
@@ -458,16 +488,14 @@ cd solostrike-umbrel/danhaus93-solostrike
 cd ui && npm install && npm run dev
 
 # API (Node.js)
-cd ../api && npm install && node server.js
-
-# Widget server (Bun)
-cd ../../widget-server && bun install && bun run server.ts
+cd ../api && npm install && node src/server.js
 ```
 
 ### Docker build
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t solostrike-ui danhaus93-solostrike/ui/
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t solostrike-ui danhaus93-solostrike/ui/
 ```
 
 See `.github/workflows/build.yml` for the exact CI pipeline.
@@ -476,25 +504,31 @@ See `.github/workflows/build.yml` for the exact CI pipeline.
 
 ## Roadmap
 
-**v1.5.x — Phase 2 polish** (mostly shipped)
+**v1.8.x — The Hunt release** ✅ shipped
 
-- ✅ umbrelOS home-screen widget
-- ✅ PWA “Add to Home Screen”
-- ✅ Branded coinbase tag
-- ✅ 5-step onboarding wizard with QR codes
-- ⏳ TLS stratum on port 4333 (v1.5.3)
+- ✅ The Hunt nonce-field visualization (rebrand of The Vein)
+- ✅ Strike Velocity histogram
+- ✅ Hashrate Averages strip (7 rolling windows)
+- ✅ Bitcoin-native vocabulary throughout
+- ✅ Real shares-per-minute from ckpool’s `sps1m` field
+- ✅ Reject Rate + Lifetime Shares tiles
 
-**v1.6.x-v1.9.x — Phase 3 features**
+**v1.9.x — Smart alerts**
 
-- Profitability calculator (power cost → break-even math)
-- Smart alerts (worker offline → push notification)
-- AxeOS temperature integration
-- Enhanced block celebration
+- Worker offline → push notification (via webhook bridge)
+- Hashrate threshold alerts (drop below X TH/s)
+- Pool acceptance-rate alerts
 
-**v2.0.0 — Phase 4 / App Store submission**
+**v1.10.x — Telemetry & integration**
+
+- AxeOS temperature integration (per-worker temp on the dashboard)
+- Enhanced block celebration with audio + persistent banner
+- Direct ntfy.sh / Pushover preset webhook templates
+
+**v2.0.0 — App Store submission**
 
 - DATUM protocol support
-- Stratum V2 translator
+- Stratum V2 translator (SRI proxy embedded)
 - Miner optimization advisor
 - Official Umbrel App Store submission
 
@@ -506,6 +540,7 @@ See `.github/workflows/build.yml` for the exact CI pipeline.
 - **[docker-ckpool-solo](https://github.com/getumbrel/docker-ckpool-solo)** by Umbrel — multi-arch prebuilt image
 - **[mempool.space](https://mempool.space)** — block explorer integration
 - **[Umbrel](https://umbrel.com)** — the home server OS that makes self-hosting this possible
+- **[nostr](https://nostr.com)** — the relay protocol behind Solostrike Pulse
 
 -----
 
