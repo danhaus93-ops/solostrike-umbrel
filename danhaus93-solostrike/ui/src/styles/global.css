@@ -46,27 +46,27 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
   100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
 }
-/* v1.8.3-rev30f: orange block covering ₿. Solid until pickaxeStrike's
-   impact frame at 30% (420ms), bursts on that frame, stays gone, re-forms
-   at cycle end. Synced to the SAME 1.4s timing as pickaxeStrike + btcImpact. */
+/* v1.8.3-rev30i: orange block over ₿. Synced to pickaxeStrike's 30% impact frame.
+   Compress only to 0.95 (not lower) so block stays bigger than ₿ glyph at all
+   times. Tested via headless browser render before shipping. */
 @keyframes blockBust{
   0%,29%   {opacity:1; transform:scale(1)        rotate(0deg);
-            box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.45)}
-  /* IMPACT — block compresses on the exact frame pickaxeStrike hits +20° */
-  30%      {opacity:1; transform:scale(0.85)     rotate(0deg);
-            box-shadow:0 0 60px rgba(245,166,35,1), inset 0 0 28px rgba(255,220,140,0.95)}
-  /* BURST — block briefly explodes outward */
-  32%      {opacity:1; transform:scale(1.3)      rotate(-4deg);
-            box-shadow:0 0 70px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.8)}
-  /* GONE — invisible through ₿ reveal */
+            box-shadow:0 0 18px rgba(245,166,35,0.5), inset 0 0 14px rgba(255,200,90,0.4)}
+  /* IMPACT — block compresses slightly on the exact frame pickaxeStrike hits +20° */
+  30%      {opacity:1; transform:scale(0.95)     rotate(0deg);
+            box-shadow:0 0 50px rgba(245,166,35,1), inset 0 0 26px rgba(255,220,140,0.9)}
+  /* BURST — moderate expansion */
+  32%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
+            box-shadow:0 0 60px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.8)}
+  /* GONE through ₿ reveal */
   36%,90%  {opacity:0; transform:scale(0)        rotate(0deg);
             box-shadow:none}
   /* RE-FORM for next cycle */
   100%     {opacity:1; transform:scale(1)        rotate(0deg);
-            box-shadow:0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.45)}
+            box-shadow:0 0 18px rgba(245,166,35,0.5), inset 0 0 14px rgba(255,200,90,0.4)}
 }
-/* Four fragment shards — invisible until impact (30%), appear at block center,
-   fly out in 4 diagonals over the next 20% of cycle (~280ms), fade by 50%. */
+/* Four fragment shards — invisible until impact (30%), fly out in 4 diagonals,
+   fade by 50%. Use translate freely (positioning anchored via marginLeft). */
 @keyframes shardTL{
   0%,29%  {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
   32%     {opacity:1; transform:translate(-10px,-10px) rotate(-12deg) scale(1)}
