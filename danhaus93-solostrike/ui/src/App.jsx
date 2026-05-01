@@ -6339,7 +6339,7 @@ export default function App() {
             fontSize:'3rem',
             lineHeight:1,
             color:'var(--amber)',
-            transformOrigin:'bottom right',
+            transformOrigin:'bottom left',
             animation:'pickaxeStrike 1.4s ease-in-out infinite',
             textShadow:'0 0 14px rgba(245,166,35,0.55)',
             zIndex:4,
