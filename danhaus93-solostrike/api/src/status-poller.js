@@ -152,7 +152,12 @@ function startStatusPoller(state, broadcast, logDir) {
             state.bestshare            = shares.bestshare     || 0;
             state.totalWorkers         = summary.Workers      || 0;
             state.totalUsers           = summary.Users        || 0;
-          } catch (e) {}
+          } catch (e) {
+            // v1.8.3-rev29: was silently swallowed. If ckpool's pool.status
+            // becomes malformed (disk full mid-write, partial flush, etc.),
+            // dashboard would keep showing stale stats with no warning.
+            console.warn('[StatusPoller] pool.status parse failed:', e.message);
+          }
         }
       }
 

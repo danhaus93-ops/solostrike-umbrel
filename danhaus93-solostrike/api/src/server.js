@@ -128,17 +128,28 @@ async function loadPersist() {
   } catch (e) { console.error('loadPersist failed:', e.message); }
   return {};
 }
+// v1.8.3-rev29: serialize savePersist calls. Multiple async sources
+// (block-watcher, share-watcher, network-stats, daily snapshot rollup at UTC
+// midnight, periodic history save every 60s, hooks) all write to persist.json.
+// The read-modify-write pattern below has no atomicity guarantees — without
+// serialization, concurrent calls can clobber each other's changes (last-
+// writer-wins). The chain ensures one-at-a-time execution; queued callers
+// await the previous write naturally via the chain head.
+let _persistChain = Promise.resolve();
 async function savePersist(obj) {
-  try {
-    await fs.ensureDir(CONFIG_DIR);
-    let existing = {};
+  _persistChain = _persistChain.then(async () => {
     try {
-      if (await fs.pathExists(PERSIST_FILE)) existing = await fs.readJson(PERSIST_FILE);
-    } catch {}
-    const merged = { ...existing, ...obj };
-    await fs.writeJson(PERSIST_FILE, merged, { spaces: 2 });
-  }
-  catch (e) { console.error('savePersist failed:', e.message); }
+      await fs.ensureDir(CONFIG_DIR);
+      let existing = {};
+      try {
+        if (await fs.pathExists(PERSIST_FILE)) existing = await fs.readJson(PERSIST_FILE);
+      } catch {}
+      const merged = { ...existing, ...obj };
+      await fs.writeJson(PERSIST_FILE, merged, { spaces: 2 });
+    }
+    catch (e) { console.error('savePersist failed:', e.message); }
+  });
+  return _persistChain;
 }
 
 function cfgPublic() {
@@ -261,10 +272,26 @@ async function pollBitcoind() {
         base: blockSubsidy / 1e8,
         fees: totalFees / 1e8,
       };
-    } catch (e) {}
+    } catch (e) {
+      // v1.8.3-rev29: was silently swallowed. getblocktemplate fails during
+      // IBD or right after BTC restart — without logging, state.blockReward
+      // would silently stop updating with no indication. Now warns once per
+      // failure so log searches surface the issue.
+      console.warn('[poll] getblocktemplate failed:', e.message);
+    }
 
+    // v1.8.3-rev29: skip odds/luck computation if network hashrate hasn't
+    // been populated yet. Previously fell back to `state.network.hashrate || 1`,
+    // which during the ~15s startup window before pollBitcoind completes
+    // produced odds = myHr/1 (e.g. 86 trillion), making the dashboard briefly
+    // display "1 block every 0.0000…s days" before correcting.
+    if (!state.network.hashrate || state.network.hashrate <= 0) {
+      state.odds = null;
+      state.luck = null;
+      return;
+    }
     const myHr = state.hashrate.current || 0;
-    const netHr = state.network.hashrate || 1;
+    const netHr = state.network.hashrate;
     const blocksPerDay = 144;
     const odds = myHr / netHr;
     const expectedDaysPerBlock = odds > 0 ? (1 / odds) / blocksPerDay : null;
