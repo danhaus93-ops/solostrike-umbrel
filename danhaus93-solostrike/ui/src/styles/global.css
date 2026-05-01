@@ -20,17 +20,6 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-/* v1.8.3-rev30N: Pickaxe pivot fix.
-   Previous transform-origin (bottom-right) made the pickaxe handle rotate
-   around its TIP, causing the head to swing left while the handle stayed
-   anchored to the right side. Visually that looks like the pickaxe falling
-   BACKWARD (handle going horizontal) rather than striking down.
-   New origin (bottom-left) makes the handle pivot around its base near the
-   block, causing the head to swing through a downward arc into the block. */
-[style*="pickaxeStrike"] {
-  transform-origin: bottom left !important;
-}
-
 /* v1.8.3-rev30M: pickaxe holds wound-back for first half of cycle (visible),
    then SLOWLY swings down 50%->85% so the strike is clearly seen.
    Block bursts AT the impact frame (85%). */
@@ -315,8 +304,8 @@ body * {
 /* ─── Umbrel iframe-only adjustments (v1.7.22-iter17) ──────────────────────
    When the app is rendered inside an iframe (Umbrel's webview), Umbrel
    provides its own chrome above us. The page top hits the iframe content
-   area's edge, but visually it can look cramped against Umbrel's title bar.
-   Push the sticky header down by a few px ONLY when in iframe.
+   area's edge, but visually it can use Umbrel-only tweaks
+   (currently: small top inset on the header to push it below Umbrel's chrome).
 
    In iOS Safari and PWA mode, we are NOT in an iframe, so this class is
    absent and the header stays exactly where it was. */
