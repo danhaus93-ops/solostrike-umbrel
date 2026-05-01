@@ -5926,14 +5926,11 @@ export default function App() {
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   const [stratumHealth, setStratumHealth] = useState({ ports: {} });
-  // v1.8.3-rev30: minimum splash duration extended to 2400ms to match the
-  // new strike-shatter-reveal animation cycle. The full sequence (wind-up →
-  // strike → shatter → ₿ reveal hold → reset) is exactly 2400ms, so this
-  // guarantees the user always sees one complete cycle before the dashboard
-  // takes over. Previously 1500ms (rev29 — sized for the old 1.4s loop).
+  // v1.8.3-rev30d: minimum splash 1500ms — one full 1.4s strike cycle so
+  // the user always sees: wound-back → swing → impact → block bursts → ₿.
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setMinSplashElapsed(true), 2400);
+    const t = setTimeout(() => setMinSplashElapsed(true), 1500);
     return () => clearTimeout(t);
   }, []);
   useEffect(() => {
@@ -6272,84 +6269,78 @@ export default function App() {
         letterSpacing:'0.15em',
         gap:'1.5rem',
       }}>
-        {/* v1.8.3-rev30c: SoloStrike strike animation — block shatter reveal.
-            Container is a fixed 7rem square. Every visual element is an
-            absolutely-positioned div with inset:0 + flex centering, so they
-            all stack precisely on top of each other regardless of glyph
-            metrics. No translateX(-N%) hacks — actual centering. */}
+        {/* v1.8.3-rev30d: SoloStrike strike animation — ORIGINAL layout from
+            rev15/rev29 (proven working) + one orange block covering the ₿.
+            Block shatters when struck, revealing the ₿ underneath. Nothing
+            else changed — same pickaxe positioning, same ₿ positioning, same
+            container, same keyframe timings for pickaxe and ₿. */}
         <div style={{
           position:'relative',
-          width:'7rem', height:'7rem',
+          width:'5.5rem', height:'6.5rem',
+          display:'flex', alignItems:'flex-end', justifyContent:'center',
         }}>
-          {/* ₿ — bottom layer, revealed when block shatters */}
+          {/* Bitcoin ₿ — sits in the bottom of the box, revealed when block shatters */}
           <div style={{
-            position:'absolute', inset:0,
-            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:'4.5rem',
+            lineHeight:1,
+            color:'var(--amber)',
+            fontFamily:'var(--fd)',
+            fontWeight:700,
+            animation:'btcImpact 1.4s ease-in-out infinite',
             zIndex:1,
           }}>
-            <div style={{
-              fontSize:'4.5rem',
-              lineHeight:1,
-              color:'var(--amber)',
-              fontFamily:'var(--fd)',
-              fontWeight:700,
-              animation:'btcReveal30 2.4s ease-in-out infinite',
-            }}>₿</div>
+            ₿
           </div>
-
-          {/* Orange block — covers the ₿, shatters on impact */}
+          {/* Orange block — covers the ₿. Solid until pickaxe impact at 30%
+              of the cycle. Bursts at impact, stays gone, re-forms before
+              next cycle. Synced to the SAME 1.4s timing as pickaxe + ₿. */}
           <div style={{
-            position:'absolute', inset:0,
-            display:'flex', alignItems:'center', justifyContent:'center',
+            position:'absolute',
+            bottom:'0.3rem',
+            left:'50%',
+            transform:'translateX(-50%)',
+            width:'3.4rem', height:'3.4rem',
+            background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
+            border:'2px solid rgba(255,210,110,0.7)',
+            borderRadius:'4px',
+            boxShadow:'0 0 20px rgba(245,166,35,0.5), inset 0 0 14px rgba(255,200,90,0.4)',
+            animation:'blockBust 1.4s ease-in-out infinite',
             zIndex:2,
-          }}>
-            <div style={{
-              width:'3.6rem', height:'3.6rem',
-              background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
-              border:'2px solid rgba(255,210,110,0.7)',
-              borderRadius:'4px',
-              animation:'blockShatter30 2.4s ease-in-out infinite',
-            }}/>
-          </div>
-
-          {/* Four fragment shards — anchored to center, fly outward */}
-          {['shardTL30','shardTR30','shardBL30','shardBR30'].map((anim, i) => (
+          }}/>
+          {/* Four fragment shards — anchored to the block's center, invisible
+              until impact (30%), then fly outward in 4 diagonal directions
+              while fading. Synced to same 1.4s cycle. */}
+          {['shardTL','shardTR','shardBL','shardBR'].map((anim, i) => (
             <div key={i} style={{
-              position:'absolute', inset:0,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              zIndex:3, pointerEvents:'none',
-            }}>
-              <div style={{
-                width:'1rem', height:'1rem',
-                background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
-                border:'1px solid rgba(255,210,110,0.6)',
-                borderRadius:'2px',
-                animation:`${anim} 2.4s ease-out infinite`,
-                opacity:0,
-              }}/>
-            </div>
+              position:'absolute',
+              bottom:'1.5rem',
+              left:'50%',
+              marginLeft:'-0.4rem',
+              width:'0.8rem', height:'0.8rem',
+              background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
+              border:'1px solid rgba(255,210,110,0.6)',
+              borderRadius:'2px',
+              animation:`${anim} 1.4s ease-out infinite`,
+              opacity:0,
+              zIndex:3,
+              pointerEvents:'none',
+            }}/>
           ))}
-
-          {/* Pickaxe — top layer. Inline-block in a flex-centered wrapper,
-              so the GLYPH BOX is centered. The pickaxe head visually offset
-              to the upper-right within the glyph is compensated by anchoring
-              transformOrigin at center-bottom — when it rotates -25→+20°
-              from center-bottom, the head arcs from upper-left to lower-right
-              and visually lands on the block. */}
+          {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
+              bottom-right so the handle pivots and the head arcs into the ₿. */}
           <div style={{
-            position:'absolute', inset:0,
-            display:'flex', alignItems:'center', justifyContent:'center',
+            position:'absolute',
+            top:0, left:'50%',
+            transform:'translateX(-90%)',     /* offset slightly left so the head lands center */
+            fontSize:'3rem',
+            lineHeight:1,
+            color:'var(--amber)',
+            transformOrigin:'bottom right',
+            animation:'pickaxeStrike 1.4s ease-in-out infinite',
+            textShadow:'0 0 14px rgba(245,166,35,0.55)',
             zIndex:4,
           }}>
-            <div style={{
-              fontSize:'3rem',
-              lineHeight:1,
-              color:'var(--amber)',
-              transformOrigin:'50% 75%',
-              animation:'pickaxeStrike30 2.4s ease-in-out infinite',
-              textShadow:'0 0 14px rgba(245,166,35,0.55)',
-              willChange:'transform',
-            }}>⛏</div>
+            ⛏
           </div>
         </div>
         <div style={{
