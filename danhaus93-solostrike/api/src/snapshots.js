@@ -74,6 +74,7 @@ function captureDailySnapshot(state) {
 
 // Insert a new daily snapshot (replaces existing entry for the same date)
 function applyDailySnapshot(snapshots, snap) {
+  if (!Array.isArray(snapshots.daily)) snapshots.daily = [];
   const existingIdx = snapshots.daily.findIndex(s => s.date === snap.date);
   if (existingIdx >= 0) {
     snapshots.daily[existingIdx] = snap;
