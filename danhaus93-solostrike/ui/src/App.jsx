@@ -5926,13 +5926,14 @@ export default function App() {
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   const [stratumHealth, setStratumHealth] = useState({ ports: {} });
-  // v1.8.3-rev29: minimum splash duration. Without this, on fast pool-load
-  // the splash unmounts in <1s, often before the pickaxe completes a full
-  // strike cycle. 1500ms guarantees the user sees at least one impact-hold
-  // (the strike lands at ~420ms, holds through ~910ms in the new keyframe).
+  // v1.8.3-rev30: minimum splash duration extended to 2400ms to match the
+  // new strike-shatter-reveal animation cycle. The full sequence (wind-up →
+  // strike → shatter → ₿ reveal hold → reset) is exactly 2400ms, so this
+  // guarantees the user always sees one complete cycle before the dashboard
+  // takes over. Previously 1500ms (rev29 — sized for the old 1.4s loop).
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setMinSplashElapsed(true), 1500);
+    const t = setTimeout(() => setMinSplashElapsed(true), 2400);
     return () => clearTimeout(t);
   }, []);
   useEffect(() => {
@@ -6271,44 +6272,82 @@ export default function App() {
         letterSpacing:'0.15em',
         gap:'1.5rem',
       }}>
-        {/* v1.8.1-rev15: Strike animation — pickaxe swings down onto a glowing
-            ₿. The two glyphs are stacked in a small relative-positioned box so
-            the pickaxe's bottom-right transform-origin pivots toward the ₿
-            below it, simulating impact. The ₿'s glow spikes at the moment
-            of pickaxe contact via synchronized keyframes (both 1.4s cycle).
-            Splash unmounts as soon as poolState._loaded flips true — the
-            animation keeps looping while we wait, but doesn't artificially
-            hold up the dashboard. */}
+        {/* v1.8.3-rev30: SoloStrike strike animation. The pickaxe wields
+            into a glowing orange block which shatters at impact, revealing
+            the ₿ symbol underneath. After the reveal, the block re-materializes
+            and the cycle loops. All animations are synchronized to a 2.4s
+            master cycle so the strike, shatter, fragments, and reveal all
+            land on cue. minSplashElapsed (2400ms) ensures users see at least
+            one full cycle before the dashboard takes over. */}
         <div style={{
           position:'relative',
-          width:'5.5rem', height:'6.5rem',
-          display:'flex', alignItems:'flex-end', justifyContent:'center',
+          width:'7rem', height:'7rem',
+          display:'flex', alignItems:'center', justifyContent:'center',
         }}>
-          {/* Bitcoin ₿ — sits in the bottom of the box, gets struck */}
+          {/* ₿ symbol — sits behind the block, fades in when block shatters */}
           <div style={{
-            fontSize:'4.5rem',
+            position:'absolute',
+            top:'50%', left:'50%',
+            transform:'translate(-50%, -50%)',
+            fontSize:'4rem',
             lineHeight:1,
             color:'var(--amber)',
             fontFamily:'var(--fd)',
             fontWeight:700,
-            animation:'btcImpact 1.4s ease-in-out infinite',
+            animation:'btcReveal30 2.4s ease-in-out infinite',
             zIndex:1,
           }}>
             ₿
           </div>
-          {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
-              bottom-right so the handle pivots and the head arcs into the ₿. */}
+
+          {/* The orange block — solid before strike, shatters at 35% */}
           <div style={{
             position:'absolute',
-            top:0, left:'50%',
-            transform:'translateX(-90%)',     /* offset slightly left so the head lands center */
+            top:'50%', left:'50%',
+            transform:'translate(-50%, -50%)',
+            width:'3.4rem', height:'3.4rem',
+            background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
+            border:'2px solid rgba(255,210,110,0.7)',
+            borderRadius:'4px',
+            animation:'blockShatter30 2.4s ease-in-out infinite',
+            zIndex:2,
+          }}/>
+
+          {/* Four fragment shards — fly outward when block shatters */}
+          {[
+            { anim:'shardTL30', top:'50%', left:'50%', mt:'-1rem', ml:'-1rem' },
+            { anim:'shardTR30', top:'50%', left:'50%', mt:'-1rem', ml:'0'      },
+            { anim:'shardBL30', top:'50%', left:'50%', mt:'0',     ml:'-1rem' },
+            { anim:'shardBR30', top:'50%', left:'50%', mt:'0',     ml:'0'      },
+          ].map((s, i) => (
+            <div key={i} style={{
+              position:'absolute',
+              top:s.top, left:s.left,
+              marginTop:s.mt, marginLeft:s.ml,
+              width:'1rem', height:'1rem',
+              background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
+              border:'1px solid rgba(255,210,110,0.6)',
+              borderRadius:'2px',
+              animation:`${s.anim} 2.4s ease-out infinite`,
+              opacity:0,
+              zIndex:3,
+            }}/>
+          ))}
+
+          {/* Pickaxe — swings down onto the block. Transform-origin at the
+              bottom-right so the handle pivots and the head arcs into impact. */}
+          <div style={{
+            position:'absolute',
+            top:'-0.5rem',
+            left:'50%',
+            transform:'translateX(-90%)',
             fontSize:'3rem',
             lineHeight:1,
             color:'var(--amber)',
             transformOrigin:'bottom right',
-            animation:'pickaxeStrike 1.4s ease-in-out infinite',
+            animation:'pickaxeStrike30 2.4s ease-in-out infinite',
             textShadow:'0 0 14px rgba(245,166,35,0.55)',
-            zIndex:2,
+            zIndex:4,
           }}>
             ⛏
           </div>
