@@ -401,6 +401,64 @@ Sluice Box (flowing water + gold flakes), Cave Glimmers (gold glints flashing on
 
 ## Troubleshooting
 
+### 🩺 Health Diagnostic Script
+
+A standalone bash script that audits your SoloStrike installation end-to-end: container status, port reachability, ckpool process health, share-watcher activity, Bitcoin Core connection, disk usage, recent errors, and more. Useful for first-pass triage before digging into individual logs.
+
+#### Quick check (run anytime)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/solostrike-health.sh | sudo bash
+```
+
+#### Modes
+
+|Flag    |Mode                                                       |Use when                      |
+|--------|-----------------------------------------------------------|------------------------------|
+|*(none)*|**Standard** — full report across all 13 sections          |Default troubleshooting       |
+|`-q`    |**Quick** — one-line PASS/FAIL summary                     |Cron jobs, scripted checks    |
+|`-v`    |**Verbose** — extra detail (raw logs, full env)            |Deep dive on a specific issue |
+|`-w`    |**Watch** — auto-refreshes every 5 seconds (Ctrl+C to exit)|Live monitoring during deploys|
+
+#### Examples
+
+```bash
+# Quick one-line status
+curl -fsSL https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/solostrike-health.sh | sudo bash -s -- -q
+
+# Verbose diagnosis
+curl -fsSL https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/solostrike-health.sh | sudo bash -s -- -v
+
+# Live watch
+curl -fsSL https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/solostrike-health.sh | sudo bash -s -- -w
+```
+
+#### Save locally for offline use
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/solostrike-health.sh -o ~/solostrike-health.sh
+chmod +x ~/solostrike-health.sh
+sudo ~/solostrike-health.sh           # standard
+sudo ~/solostrike-health.sh -q        # quick
+```
+
+#### What it checks
+
+- ✅ Container state (UI, API, ckpool, stunnel — all running and healthy?)
+- ✅ Stratum ports (3333, 3334, 4333) listening and reachable
+- ✅ ckpool process — recent shares, miner count, active workers
+- ✅ Bitcoin Core — connected, synced, latest block visible
+- ✅ ZMQ — block notification subscriber active
+- ✅ Disk space — pool data, sharelogs, snapshots
+- ✅ Recent error log scan (last 100 lines, last 24h)
+- ✅ Share-watcher — last share processed, parse errors
+- ✅ API endpoint smoke tests (`/api/state`, `/api/stratum-health`)
+- ✅ Network stats relay connections (if Pulse enabled)
+
+> ⚠️ Requires `sudo` — the script inspects Docker container internals and reads root-owned log files.
+
+-----
+
 ### Miners won’t connect
 
 Check port 3333 (or 3334) is reachable from the miner’s LAN:
