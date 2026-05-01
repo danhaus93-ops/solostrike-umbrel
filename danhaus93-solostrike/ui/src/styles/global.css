@@ -8,7 +8,6 @@
   --fd:'Chakra Petch',sans-serif;--fm:'JetBrains Mono',monospace;
   --glow-a:0 0 24px rgba(245,166,35,0.25);
 }
-
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
   background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%)}
@@ -19,63 +18,72 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-
-/* v1.8.3-rev30M: pickaxe holds wound-back for first half of cycle (visible),
-   then SLOWLY swings down 50%->85% so the strike is clearly seen.
-   Block bursts AT the impact frame (85%). */
+/* v1.8.3-rev29: splash strike animation, retimed.
+   Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
+   into a 1.4s loop), with a long 35% pre-strike dwell at the wound-back
+   position. On fast pool-load the splash often unmounted before the user
+   ever saw the strike land — they'd just see a wound-back pickaxe pull
+   further back, then disappear into the dashboard.
+   New timing: impact lands at 30% (420ms) and the pickaxe HOLDS the impact
+   pose from 30% to 65% — so for ~35% of every cycle, the pickaxe is visibly
+   striking the ₿. Combined with the minimum-1500ms splash duration in App.jsx,
+   the user always sees at least one full strike + impact hold before the
+   dashboard fades in. */
 @keyframes pickaxeStrike{
-  0%   {transform:rotate(25deg)}      /* wound back — flipped sign for new bottom-left pivot */
-  50%  {transform:rotate(25deg)}      /* HOLD wound back — first 700ms visible */
-  85%  {transform:rotate(-20deg)}     /* IMPACT — head swings DOWN-RIGHT into block */
-  90%  {transform:rotate(-15deg)}     /* tiny bounce settle */
-  100% {transform:rotate(-15deg)}     /* hold at impact (loop seam) */
+  0%   {transform:rotate(-25deg)}     /* start pulled back */
+  15%  {transform:rotate(-25deg)}     /* brief wind-up dwell */
+  30%  {transform:rotate(20deg)}      /* IMPACT — fast strike at 420ms */
+  45%  {transform:rotate(15deg)}      /* tiny bounce settle */
+  65%  {transform:rotate(15deg)}      /* HOLD on impact (visible landed strike) */
+  100% {transform:rotate(-25deg)}     /* slow recovery for next cycle */
 }
-/* v1.8.3-rev30M: ₿ glow spike re-synced to land at impact (85%). */
+/* v1.8.3-rev29: ₿ glow spike re-synced to land at 30% (matches impact frame).
+   Glow holds bright through 65% along with the pickaxe, so the impact reads
+   as a clear "landed strike" rather than a flash. */
 @keyframes btcImpact{
-  0%,80%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
-  85%      {transform:scale(1.10); text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
-  92%,98%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
-  100%     {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
+  0%,20%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+  30%      {transform:scale(1.10); text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
+  45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
+  100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
 }
-/* v1.8.3-rev30M: orange block. Solid through the entire wind-back hold AND
-   the swing down. Compresses on the impact frame (85%, when pickaxe lands at
-   +20°), bursts at 90%, gone by 95%, snap-restored at loop boundary. */
+/* v1.8.3-rev31f: orange glowing block. CORRECTED for actual pickaxe motion.
+   Earlier revs (a–e) trusted the rev29 keyframe labels which claimed impact
+   was at the 30% frame (+20°). It isn't — that frame is wound-back. With
+   transform-origin: bottom right and the pivot inside the block area, the
+   pickaxe head is visually AT the block when rotation is -25°, which is
+   the 0%/100% loop boundary. So every prior block animation fired at the
+   wrong moment. User confirmed: in variant D, "block forms while pickaxe
+   is swinging down" (reform was at 50–95%, which is actually the
+   swing-down phase) and "explodes when drawing back" (explosion was at
+   30–35%, which is actually the wound-back position).
+
+   ACTUAL pickaxe motion per cycle:
+     0%/100% : IMPACT (head on block)   ← block explodes HERE
+     0–15%   : held at impact
+     15–30%  : drawing back (head lifting)
+     30–65%  : wound back (held high)   ← block reforms HERE
+     65–100% : swinging down
+     100%    : IMPACT again
+
+   Block timing:
+     0%      : MID-EXPLOSION (matches 100% for clean loop, no snap)
+     0–10%   : explosion debris fading (~140ms)
+     10–45%  : block fully gone, ₿ revealed (~490ms)
+     45–65%  : GRADUAL REFORM during pickaxe wound-back hold (~280ms,
+               pickaxe is held still at +15°, no motion)
+     65–93%  : SOLID — block hides ₿ as pickaxe swings down (~390ms)
+     93–97%  : SQUASH — block compresses as pickaxe arrives (~56ms)
+     97–100% : EXPLODE outward (~42ms) — peaks at 100%/0% impact moment
+   The 100% values match the 0% values exactly (opacity 0, scale 1.7) so
+   the loop boundary is seamless — no snap, no flicker. */
 @keyframes blockBust{
-  0%,84%   {opacity:1; transform:scale(1)        rotate(0deg);
-            box-shadow:0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)}
-  /* IMPACT — pickaxe at +20°, block compresses */
-  85%      {opacity:1; transform:scale(0.95)     rotate(0deg);
-            box-shadow:0 0 50px rgba(245,166,35,1), inset 0 0 26px rgba(255,220,140,0.9)}
-  /* BURST */
-  90%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
-            box-shadow:0 0 60px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.8)}
-  /* GONE */
-  95%,99%  {opacity:0; transform:scale(0)        rotate(0deg);
-            box-shadow:none}
-  /* SNAP back to solid at loop boundary */
-  100%     {opacity:1; transform:scale(1)        rotate(0deg);
-            box-shadow:0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)}
-}
-/* Four fragment shards — invisible until impact (90%), fly outward */
-@keyframes shardTL{
-  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  90%      {opacity:1; transform:translate(-10px,-10px) rotate(-12deg) scale(1)}
-  98%,100% {opacity:0; transform:translate(-50px,-46px) rotate(-95deg) scale(0.5)}
-}
-@keyframes shardTR{
-  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  90%      {opacity:1; transform:translate(10px,-10px) rotate(12deg) scale(1)}
-  98%,100% {opacity:0; transform:translate(50px,-46px) rotate(95deg) scale(0.5)}
-}
-@keyframes shardBL{
-  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  90%      {opacity:1; transform:translate(-10px,10px) rotate(15deg) scale(1)}
-  98%,100% {opacity:0; transform:translate(-46px,42px) rotate(115deg) scale(0.5)}
-}
-@keyframes shardBR{
-  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  90%      {opacity:1; transform:translate(10px,10px) rotate(-15deg) scale(1)}
-  98%,100% {opacity:0; transform:translate(46px,42px) rotate(-115deg) scale(0.5)}
+  0%      {opacity:0; transform:scale(1.7)}
+  10%     {opacity:0; transform:scale(0.4)}
+  45%     {opacity:0; transform:scale(0.4)}
+  65%     {opacity:1; transform:scale(1)}
+  93%     {opacity:1; transform:scale(1)}
+  97%     {opacity:1; transform:scale(0.85)}
+  100%    {opacity:0; transform:scale(1.7)}
 }
 .fade-in{animation:slideUp .35s ease both}
 
@@ -304,8 +312,8 @@ body * {
 /* ─── Umbrel iframe-only adjustments (v1.7.22-iter17) ──────────────────────
    When the app is rendered inside an iframe (Umbrel's webview), Umbrel
    provides its own chrome above us. The page top hits the iframe content
-   area's edge, but visually it can use Umbrel-only tweaks
-   (currently: small top inset on the header to push it below Umbrel's chrome).
+   area's edge, but visually it can look cramped against Umbrel's title bar.
+   Push the sticky header down by a few px ONLY when in iframe.
 
    In iOS Safari and PWA mode, we are NOT in an iframe, so this class is
    absent and the header stays exactly where it was. */
