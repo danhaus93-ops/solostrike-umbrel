@@ -6272,83 +6272,84 @@ export default function App() {
         letterSpacing:'0.15em',
         gap:'1.5rem',
       }}>
-        {/* v1.8.3-rev30b: SoloStrike strike animation — block shatter reveal.
-            Uses the SAME positioning system as the original rev15 splash
-            (proven working): flex-end alignment for the ₿, absolute-positioned
-            pickaxe with bottom-right pivot. The orange block is overlaid on
-            top of the ₿ at the SAME anchor point so when it shatters, the ₿
-            is revealed directly underneath where the pickaxe lands. */}
+        {/* v1.8.3-rev30c: SoloStrike strike animation — block shatter reveal.
+            Container is a fixed 7rem square. Every visual element is an
+            absolutely-positioned div with inset:0 + flex centering, so they
+            all stack precisely on top of each other regardless of glyph
+            metrics. No translateX(-N%) hacks — actual centering. */}
         <div style={{
           position:'relative',
-          width:'5.5rem', height:'6.5rem',
-          display:'flex', alignItems:'flex-end', justifyContent:'center',
+          width:'7rem', height:'7rem',
         }}>
-          {/* Bitcoin ₿ — sits in the bottom of the box, revealed when block shatters */}
+          {/* ₿ — bottom layer, revealed when block shatters */}
           <div style={{
-            fontSize:'4.5rem',
-            lineHeight:1,
-            color:'var(--amber)',
-            fontFamily:'var(--fd)',
-            fontWeight:700,
-            animation:'btcReveal30 2.4s ease-in-out infinite',
+            position:'absolute', inset:0,
+            display:'flex', alignItems:'center', justifyContent:'center',
             zIndex:1,
           }}>
-            ₿
+            <div style={{
+              fontSize:'4.5rem',
+              lineHeight:1,
+              color:'var(--amber)',
+              fontFamily:'var(--fd)',
+              fontWeight:700,
+              animation:'btcReveal30 2.4s ease-in-out infinite',
+            }}>₿</div>
           </div>
-          {/* Orange block — overlaid on the ₿ at the same baseline. Sized
-              slightly smaller than the ₿ so a thin amber halo peeks around
-              the edges. Shatters at 35% of the cycle (840ms). */}
+
+          {/* Orange block — covers the ₿, shatters on impact */}
           <div style={{
-            position:'absolute',
-            bottom:'0.2rem',
-            left:'50%',
-            transform:'translateX(-50%)',
-            width:'3.6rem', height:'3.6rem',
-            background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
-            border:'2px solid rgba(255,210,110,0.7)',
-            borderRadius:'4px',
-            animation:'blockShatter30 2.4s ease-in-out infinite',
+            position:'absolute', inset:0,
+            display:'flex', alignItems:'center', justifyContent:'center',
             zIndex:2,
-          }}/>
-          {/* Four fragment shards — fly outward when block shatters. Anchored
-              to the same baseline as the block, then animated outward with
-              translate transforms in the keyframe. */}
-          {[
-            { anim:'shardTL30' },
-            { anim:'shardTR30' },
-            { anim:'shardBL30' },
-            { anim:'shardBR30' },
-          ].map((s, i) => (
-            <div key={i} style={{
-              position:'absolute',
-              bottom:'1.1rem',
-              left:'50%',
-              marginLeft:'-0.5rem',
-              width:'1rem', height:'1rem',
-              background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
-              border:'1px solid rgba(255,210,110,0.6)',
-              borderRadius:'2px',
-              animation:`${s.anim} 2.4s ease-out infinite`,
-              opacity:0,
-              zIndex:3,
+          }}>
+            <div style={{
+              width:'3.6rem', height:'3.6rem',
+              background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
+              border:'2px solid rgba(255,210,110,0.7)',
+              borderRadius:'4px',
+              animation:'blockShatter30 2.4s ease-in-out infinite',
             }}/>
+          </div>
+
+          {/* Four fragment shards — anchored to center, fly outward */}
+          {['shardTL30','shardTR30','shardBL30','shardBR30'].map((anim, i) => (
+            <div key={i} style={{
+              position:'absolute', inset:0,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              zIndex:3, pointerEvents:'none',
+            }}>
+              <div style={{
+                width:'1rem', height:'1rem',
+                background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
+                border:'1px solid rgba(255,210,110,0.6)',
+                borderRadius:'2px',
+                animation:`${anim} 2.4s ease-out infinite`,
+                opacity:0,
+              }}/>
+            </div>
           ))}
-          {/* Pickaxe — sits above the block, swings down. SAME positioning as
-              original rev15: top:0, transform:translateX(-90%), transformOrigin
-              at bottom-right so the handle pivots and the head arcs into impact. */}
+
+          {/* Pickaxe — top layer. Inline-block in a flex-centered wrapper,
+              so the GLYPH BOX is centered. The pickaxe head visually offset
+              to the upper-right within the glyph is compensated by anchoring
+              transformOrigin at center-bottom — when it rotates -25→+20°
+              from center-bottom, the head arcs from upper-left to lower-right
+              and visually lands on the block. */}
           <div style={{
-            position:'absolute',
-            top:0, left:'50%',
-            transform:'translateX(-90%)',
-            fontSize:'3rem',
-            lineHeight:1,
-            color:'var(--amber)',
-            transformOrigin:'bottom right',
-            animation:'pickaxeStrike30 2.4s ease-in-out infinite',
-            textShadow:'0 0 14px rgba(245,166,35,0.55)',
+            position:'absolute', inset:0,
+            display:'flex', alignItems:'center', justifyContent:'center',
             zIndex:4,
           }}>
-            ⛏
+            <div style={{
+              fontSize:'3rem',
+              lineHeight:1,
+              color:'var(--amber)',
+              transformOrigin:'50% 75%',
+              animation:'pickaxeStrike30 2.4s ease-in-out infinite',
+              textShadow:'0 0 14px rgba(245,166,35,0.55)',
+              willChange:'transform',
+            }}>⛏</div>
           </div>
         </div>
         <div style={{
