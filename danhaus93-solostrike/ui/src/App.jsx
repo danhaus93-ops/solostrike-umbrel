@@ -5926,8 +5926,10 @@ export default function App() {
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   const [stratumHealth, setStratumHealth] = useState({ ports: {} });
-  // v1.8.3-rev30d: minimum splash 1500ms — one full 1.4s strike cycle so
-  // the user always sees: wound-back → swing → impact → block bursts → ₿.
+  // v1.8.3-rev29: minimum splash duration. Without this, on fast pool-load
+  // the splash unmounts in <1s, often before the pickaxe completes a full
+  // strike cycle. 1500ms guarantees the user sees at least one impact-hold
+  // (the strike lands at ~420ms, holds through ~910ms in the new keyframe).
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setMinSplashElapsed(true), 1500);
@@ -6269,17 +6271,20 @@ export default function App() {
         letterSpacing:'0.15em',
         gap:'1.5rem',
       }}>
-        {/* v1.8.3-rev30d: SoloStrike strike animation — ORIGINAL layout from
-            rev15/rev29 (proven working) + one orange block covering the ₿.
-            Block shatters when struck, revealing the ₿ underneath. Nothing
-            else changed — same pickaxe positioning, same ₿ positioning, same
-            container, same keyframe timings for pickaxe and ₿. */}
+        {/* v1.8.1-rev15: Strike animation — pickaxe swings down onto a glowing
+            ₿. The two glyphs are stacked in a small relative-positioned box so
+            the pickaxe's bottom-right transform-origin pivots toward the ₿
+            below it, simulating impact. The ₿'s glow spikes at the moment
+            of pickaxe contact via synchronized keyframes (both 1.4s cycle).
+            Splash unmounts as soon as poolState._loaded flips true — the
+            animation keeps looping while we wait, but doesn't artificially
+            hold up the dashboard. */}
         <div style={{
           position:'relative',
           width:'5.5rem', height:'6.5rem',
           display:'flex', alignItems:'flex-end', justifyContent:'center',
         }}>
-          {/* Bitcoin ₿ — sits in the bottom of the box, revealed when block shatters */}
+          {/* Bitcoin ₿ — sits in the bottom of the box, gets struck */}
           <div style={{
             fontSize:'4.5rem',
             lineHeight:1,
@@ -6291,32 +6296,32 @@ export default function App() {
           }}>
             ₿
           </div>
-          {/* Orange block — covers the ₿. Solid until pickaxe impact at 30%
-              of the cycle. Bursts at impact, stays gone, re-forms before
-              next cycle. Synced to the SAME 1.4s timing as pickaxe + ₿. */}
+          {/* v1.8.3-rev30f: orange block fully covering ₿. 5rem square, centered
+              over the ₿. Solid until pickaxe impact at 30% of 1.4s cycle (420ms),
+              bursts on that exact frame, stays gone the rest of the cycle.
+              Re-forms at 100% (cycle restart). */}
           <div style={{
             position:'absolute',
-            bottom:'0.3rem',
+            bottom:'0.2rem',
             left:'50%',
             transform:'translateX(-50%)',
-            width:'3.4rem', height:'3.4rem',
+            width:'5rem', height:'5rem',
             background:'linear-gradient(135deg, #f5a623 0%, #d48515 50%, #a86610 100%)',
             border:'2px solid rgba(255,210,110,0.7)',
             borderRadius:'4px',
-            boxShadow:'0 0 20px rgba(245,166,35,0.5), inset 0 0 14px rgba(255,200,90,0.4)',
+            boxShadow:'0 0 24px rgba(245,166,35,0.55), inset 0 0 16px rgba(255,200,90,0.45)',
             animation:'blockBust 1.4s ease-in-out infinite',
             zIndex:2,
           }}/>
-          {/* Four fragment shards — anchored to the block's center, invisible
-              until impact (30%), then fly outward in 4 diagonal directions
-              while fading. Synced to same 1.4s cycle. */}
+          {/* Four fragment shards — anchored to block center, invisible until
+              impact (30%), then fly out in 4 diagonals, fading by 50%. */}
           {['shardTL','shardTR','shardBL','shardBR'].map((anim, i) => (
             <div key={i} style={{
               position:'absolute',
-              bottom:'1.5rem',
+              bottom:'2.0rem',
               left:'50%',
-              marginLeft:'-0.4rem',
-              width:'0.8rem', height:'0.8rem',
+              marginLeft:'-0.5rem',
+              width:'1rem', height:'1rem',
               background:'linear-gradient(135deg, #f5a623 0%, #a86610 100%)',
               border:'1px solid rgba(255,210,110,0.6)',
               borderRadius:'2px',
