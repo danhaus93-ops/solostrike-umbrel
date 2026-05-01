@@ -6292,17 +6292,20 @@ export default function App() {
             fontFamily:'var(--fd)',
             fontWeight:700,
             animation:'btcImpact 1.4s ease-in-out infinite',
+            animationDelay:'-0.7s',
             zIndex:1,
           }}>
             ₿
           </div>
-          {/* v1.8.3-rev31f: orange glowing block. Re-timed to the ACTUAL
-              pickaxe motion (impact at 100%/0% loop boundary, not 30%).
-              Block is solid when pickaxe swings down → squashes as it
-              arrives → explodes at the loop boundary → ₿ revealed during
-              impact-hold + draw-back → reforms gradually during wound-back
-              hold (pickaxe held still up high) → solid for next swing.
-              See blockBust keyframe in global.css for full timing. */}
+          {/* v1.8.3-rev31g: orange glowing block + matched -0.7s
+              animationDelay on all three animated elements. Without the
+              delay, splash mounts at cycle 0% (mid-explosion, block
+              invisible), so the user briefly sees ₿ alone before the
+              block first appears. With the delay, splash mounts at
+              cycle 50% (block already solid, pickaxe held wound-back) —
+              the natural starting state. The same negative delay is
+              applied to ₿ and pickaxe so all three stay in sync. See
+              blockBust keyframe in global.css. */}
           <div style={{
             position:'absolute',
             bottom:'0.3rem',
@@ -6314,6 +6317,7 @@ export default function App() {
             borderRadius:'6px',
             boxShadow:'0 0 22px rgba(255,140,0,0.75), inset 0 0 14px rgba(255,210,130,0.45)',
             animation:'blockBust 1.4s ease-in-out infinite',
+            animationDelay:'-0.7s',
             transformOrigin:'center',
             zIndex:2,
           }} />
@@ -6328,6 +6332,7 @@ export default function App() {
             color:'var(--amber)',
             transformOrigin:'bottom right',
             animation:'pickaxeStrike 1.4s ease-in-out infinite',
+            animationDelay:'-0.7s',
             textShadow:'0 0 14px rgba(245,166,35,0.55)',
             zIndex:3,
           }}>
