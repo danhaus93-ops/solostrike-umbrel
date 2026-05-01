@@ -46,22 +46,28 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
   100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
 }
-/* v1.8.3-rev30k: orange block covering ₿. Solid until pickaxe impact at 30%
-   (420ms), then bursts and stays gone through ₿ reveal. Re-forms at end of
-   cycle for next loop. */
+/* v1.8.3-rev30L: orange block covering ₿. Synced to pickaxeStrike — block
+   stays solid through the entire wind-up + swing, compresses on the exact
+   frame the pickaxe lands at +20° (30%), bursts 2% later, then stays gone
+   through ₿ reveal. Re-forms only at the loop boundary (100%) so each new
+   cycle starts with a fresh solid block. */
 @keyframes blockBust{
   0%,29%   {opacity:1; transform:scale(1)        rotate(0deg);
             box-shadow:0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)}
+  /* IMPACT — pickaxe at +20°, block compresses */
   30%      {opacity:1; transform:scale(0.95)     rotate(0deg);
             box-shadow:0 0 50px rgba(245,166,35,1), inset 0 0 26px rgba(255,220,140,0.9)}
+  /* BURST */
   32%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
             box-shadow:0 0 60px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.8)}
+  /* GONE through ₿ reveal */
   36%,90%  {opacity:0; transform:scale(0)        rotate(0deg);
             box-shadow:none}
+  /* SOLID at loop boundary so next cycle starts with block in place */
   100%     {opacity:1; transform:scale(1)        rotate(0deg);
             box-shadow:0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)}
 }
-/* Four fragment shards — invisible until impact (30%), fly outward in 4
+/* Four fragment shards — invisible until impact (32%), fly outward in 4
    diagonals then fade. */
 @keyframes shardTL{
   0%,29%  {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
