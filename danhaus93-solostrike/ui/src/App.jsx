@@ -6142,6 +6142,13 @@ export default function App() {
   // re-attached the scroll listener — leaving the dots dead until the user
   // toggled vertical→carousel mode (which flipped useCarousel and forced
   // a re-run after the ref had populated).
+  //
+  // v1.8.3-rev29b: ALSO depend on minSplashElapsed. The rev29 splash fix
+  // gates unmount on (poolState._loaded && minSplashElapsed). So when
+  // _loaded flips true, the splash still hasn't unmounted yet — carouselRef
+  // is still null and the effect early-returns. Without minSplashElapsed
+  // in the dep array, the effect never re-runs after the splash actually
+  // hides → scroll listener never attaches → dots stop updating on swipe.
   useEffect(() => {
     if (!useCarousel) return;
     const el = carouselRef.current;
@@ -6162,7 +6169,7 @@ export default function App() {
       el.removeEventListener('scroll', onScroll);
       cancelAnimationFrame(raf);
     };
-  }, [useCarousel, poolState._loaded]);
+  }, [useCarousel, poolState._loaded, minSplashElapsed]);
 
   // Reset to first card when entering carousel mode (covers viewport rotate case)
   useEffect(() => {
@@ -6240,7 +6247,12 @@ export default function App() {
     // DIAG-B1 overlay shows all zeros. Adding poolState._loaded forces the
     // effect to re-run after the loading splash unmounts and the carousel
     // ref is finally populated.
-  }, [useCarousel, minimalMode, stripSettings.enabled, poolState._loaded]);
+    //
+    // v1.8.3-rev29b: ALSO depend on minSplashElapsed for the same reason as
+    // the scroll-handler effect above — _loaded alone now flips true while
+    // the splash is still showing (waiting for min duration), so the carousel
+    // ref is still null when this effect re-runs. Need minSplashElapsed too.
+  }, [useCarousel, minimalMode, stripSettings.enabled, poolState._loaded, minSplashElapsed]);
 
   const jumpToCard = useCallback((idx) => {
     const el = carouselRef.current;
