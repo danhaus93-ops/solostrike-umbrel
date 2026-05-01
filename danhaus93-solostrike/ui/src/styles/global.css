@@ -18,80 +18,62 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
 @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-/* v1.8.3-rev29: splash strike animation, retimed.
-   Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
-   into a 1.4s loop), with a long 35% pre-strike dwell at the wound-back
-   position. On fast pool-load the splash often unmounted before the user
-   ever saw the strike land — they'd just see a wound-back pickaxe pull
-   further back, then disappear into the dashboard.
-   New timing: impact lands at 30% (420ms) and the pickaxe HOLDS the impact
-   pose from 30% to 65% — so for ~35% of every cycle, the pickaxe is visibly
-   striking the ₿. Combined with the minimum-1500ms splash duration in App.jsx,
-   the user always sees at least one full strike + impact hold before the
-   dashboard fades in. */
+/* v1.8.3-rev30M: pickaxe holds wound-back for first half of cycle (visible),
+   then SLOWLY swings down 50%->85% so the strike is clearly seen.
+   Block bursts AT the impact frame (85%). */
 @keyframes pickaxeStrike{
-  0%   {transform:rotate(-25deg)}     /* start pulled back */
-  15%  {transform:rotate(-25deg)}     /* brief wind-up dwell */
-  30%  {transform:rotate(20deg)}      /* IMPACT — fast strike at 420ms */
-  45%  {transform:rotate(15deg)}      /* tiny bounce settle */
-  65%  {transform:rotate(15deg)}      /* HOLD on impact (visible landed strike) */
-  100% {transform:rotate(-25deg)}     /* slow recovery for next cycle */
+  0%   {transform:rotate(-25deg)}     /* wound back */
+  50%  {transform:rotate(-25deg)}     /* HOLD wound back — first 700ms visible */
+  85%  {transform:rotate(20deg)}      /* IMPACT — slow visible swing 50%-85% (490ms) */
+  90%  {transform:rotate(15deg)}      /* tiny bounce settle */
+  100% {transform:rotate(15deg)}      /* hold at impact (loop seam) */
 }
-/* v1.8.3-rev29: ₿ glow spike re-synced to land at 30% (matches impact frame).
-   Glow holds bright through 65% along with the pickaxe, so the impact reads
-   as a clear "landed strike" rather than a flash. */
+/* v1.8.3-rev30M: ₿ glow spike re-synced to land at impact (85%). */
 @keyframes btcImpact{
-  0%,20%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
-  30%      {transform:scale(1.10); text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
-  45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
-  100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+  0%,80%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+  85%      {transform:scale(1.10); text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
+  92%,98%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
+  100%     {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
 }
-/* v1.8.3-rev30L: orange block covering ₿. Synced to pickaxeStrike — block
-   stays solid through the entire wind-up + swing, compresses on the exact
-   frame the pickaxe lands at +20° (30%), bursts 2% later, then stays gone
-   through ₿ reveal. Re-forms only at the loop boundary (100%) so each new
-   cycle starts with a fresh solid block. */
+/* v1.8.3-rev30M: orange block. Solid through the entire wind-back hold AND
+   the swing down. Compresses on the impact frame (85%, when pickaxe lands at
+   +20°), bursts at 90%, gone by 95%, snap-restored at loop boundary. */
 @keyframes blockBust{
-  0%,29%   {opacity:1; transform:scale(1)        rotate(0deg);
+  0%,84%   {opacity:1; transform:scale(1)        rotate(0deg);
             box-shadow:0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)}
   /* IMPACT — pickaxe at +20°, block compresses */
-  30%      {opacity:1; transform:scale(0.95)     rotate(0deg);
+  85%      {opacity:1; transform:scale(0.95)     rotate(0deg);
             box-shadow:0 0 50px rgba(245,166,35,1), inset 0 0 26px rgba(255,220,140,0.9)}
   /* BURST */
-  32%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
+  90%      {opacity:1; transform:scale(1.18)     rotate(-3deg);
             box-shadow:0 0 60px rgba(245,166,35,0.95), inset 0 0 22px rgba(255,210,110,0.8)}
-  /* GONE through ₿ reveal */
-  36%,90%  {opacity:0; transform:scale(0)        rotate(0deg);
+  /* GONE */
+  95%,99%  {opacity:0; transform:scale(0)        rotate(0deg);
             box-shadow:none}
-  /* SOLID at loop boundary so next cycle starts with block in place */
+  /* SNAP back to solid at loop boundary */
   100%     {opacity:1; transform:scale(1)        rotate(0deg);
             box-shadow:0 0 24px rgba(245,166,35,0.6), inset 0 0 16px rgba(255,200,90,0.45)}
 }
-/* Four fragment shards — invisible until impact (32%), fly outward in 4
-   diagonals then fade. */
+/* Four fragment shards — invisible until impact (90%), fly outward */
 @keyframes shardTL{
-  0%,29%  {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  32%     {opacity:1; transform:translate(-10px,-10px) rotate(-12deg) scale(1)}
-  50%     {opacity:0; transform:translate(-50px,-46px) rotate(-95deg) scale(0.5)}
-  100%    {opacity:0; transform:translate(-50px,-46px) rotate(-95deg) scale(0.5)}
+  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  90%      {opacity:1; transform:translate(-10px,-10px) rotate(-12deg) scale(1)}
+  98%,100% {opacity:0; transform:translate(-50px,-46px) rotate(-95deg) scale(0.5)}
 }
 @keyframes shardTR{
-  0%,29%  {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  32%     {opacity:1; transform:translate(10px,-10px) rotate(12deg) scale(1)}
-  50%     {opacity:0; transform:translate(50px,-46px) rotate(95deg) scale(0.5)}
-  100%    {opacity:0; transform:translate(50px,-46px) rotate(95deg) scale(0.5)}
+  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  90%      {opacity:1; transform:translate(10px,-10px) rotate(12deg) scale(1)}
+  98%,100% {opacity:0; transform:translate(50px,-46px) rotate(95deg) scale(0.5)}
 }
 @keyframes shardBL{
-  0%,29%  {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  32%     {opacity:1; transform:translate(-10px,10px) rotate(15deg) scale(1)}
-  50%     {opacity:0; transform:translate(-46px,42px) rotate(115deg) scale(0.5)}
-  100%    {opacity:0; transform:translate(-46px,42px) rotate(115deg) scale(0.5)}
+  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  90%      {opacity:1; transform:translate(-10px,10px) rotate(15deg) scale(1)}
+  98%,100% {opacity:0; transform:translate(-46px,42px) rotate(115deg) scale(0.5)}
 }
 @keyframes shardBR{
-  0%,29%  {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
-  32%     {opacity:1; transform:translate(10px,10px) rotate(-15deg) scale(1)}
-  50%     {opacity:0; transform:translate(46px,42px) rotate(-115deg) scale(0.5)}
-  100%    {opacity:0; transform:translate(46px,42px) rotate(-115deg) scale(0.5)}
+  0%,84%   {opacity:0; transform:translate(0,0) rotate(0deg) scale(0.6)}
+  90%      {opacity:1; transform:translate(10px,10px) rotate(-15deg) scale(1)}
+  98%,100% {opacity:0; transform:translate(46px,42px) rotate(-115deg) scale(0.5)}
 }
 .fade-in{animation:slideUp .35s ease both}
 
