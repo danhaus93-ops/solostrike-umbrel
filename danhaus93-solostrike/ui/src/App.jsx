@@ -6336,7 +6336,7 @@ export default function App() {
   // to surface a banner before the page silently reloads. Cold launches
   // pick up new bundles naturally; for breaking infrastructure changes,
   // this banner ensures users know to use Umbrel.
-  const BUILT_COMPOSE_VERSION = '1.7.10'; // bump only when manifest/compose breaks
+  const BUILT_COMPOSE_VERSION = '1.8.4'; // bump only when manifest/compose breaks
   const [bannerExpanded, setBannerExpanded] = useState(false);
   const [bannerDismissedFor, setBannerDismissedFor] = useState(() => {
     try { return localStorage.getItem('ss_banner_dismissed_v1') || ''; } catch { return ''; }
