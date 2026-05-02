@@ -3111,16 +3111,13 @@ function SetupForm({ saveConfig }) {
 // Tap card → opens HealthDetailModal with full diagnostic info.
 function HealthStatusCard({ onOpen }) {
   const [health, setHealth] = useState(null);
-  const [lastFetch, setLastFetch] = useState(null);
   const [errored, setErrored] = useState(false);
-  const [tick, setTick] = useState(0);
 
   const fetchHealth = useCallback(async () => {
     try {
       const res = await fetch('/api/health/detailed', { cache: 'no-store' });
       const data = await res.json();
       setHealth(data);
-      setLastFetch(Date.now());
       setErrored(false);
     } catch (e) {
       setErrored(true);
@@ -3129,26 +3126,44 @@ function HealthStatusCard({ onOpen }) {
     }
   }, []);
 
-  // Poll every 5s + refetch when tab becomes visible (iOS Safari throttles
-  // setInterval in background tabs to 1Hz minimum, sometimes pauses entirely).
+  // Tiered polling per the handoff: 120s active, 480s hidden, instant refresh
+  // on tab focus. The 120s cadence is calibrated to the ckpool amber zone
+  // (2-10min): polling at 120s guarantees catching at least one sample inside
+  // that 8-min window before it flips red. Going faster wastes battery without
+  // improving warning fidelity; going slower (>150s) risks green→red transitions
+  // without ever showing amber. iOS Safari already throttles background timers
+  // heavily, so 480s when hidden respects that. The visibilitychange listener
+  // gives the user instant fresh data the moment they look at the dashboard.
   useEffect(() => {
     let mounted = true;
-    fetchHealth();
-    const iv = setInterval(() => { if (mounted) fetchHealth(); }, 5000);
-    const onVis = () => { if (document.visibilityState === 'visible') fetchHealth(); };
+    let interval;
+
+    const safeFetch = () => { if (mounted) fetchHealth(); };
+
+    const setupPolling = () => {
+      clearInterval(interval);
+      const rate = document.visibilityState === 'visible' ? 120000 : 480000;
+      interval = setInterval(safeFetch, rate);
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        // Refresh immediately when user returns to tab — they want fresh data NOW.
+        safeFetch();
+      }
+      setupPolling();
+    };
+
+    safeFetch();          // immediate first fetch on mount
+    setupPolling();       // start the appropriate-rate interval
     document.addEventListener('visibilitychange', onVis);
+
     return () => {
       mounted = false;
-      clearInterval(iv);
+      clearInterval(interval);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [fetchHealth]);
-
-  // Local 1Hz tick so "Last check: Ns ago" updates between fetches.
-  useEffect(() => {
-    const iv = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(iv);
-  }, []);
 
   if (!health) {
     return (
@@ -3188,14 +3203,6 @@ function HealthStatusCard({ onOpen }) {
     { key:'disk',        label:'DISK' },
   ];
 
-  // "Last check: Ns ago" text — also handles the never-fetched and errored
-  // cases. Re-renders every second via the tick effect above.
-  let lastCheckText = '—';
-  if (lastFetch) {
-    const ageS = Math.floor((Date.now() - lastFetch) / 1000);
-    lastCheckText = ageS < 1 ? 'just now' : `${ageS}s ago`;
-  }
-
   return (
     <div
       onClick={() => { if (onOpen) onOpen(health); }}
@@ -3212,15 +3219,17 @@ function HealthStatusCard({ onOpen }) {
         color:headline.color,
         textShadow:`0 0 10px ${headline.color}66`,
         letterSpacing:'0.08em',
-        marginBottom:4,
-      }}>
-        {headline.text}
-      </div>
-      <div style={{
-        fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)',
         marginBottom:10,
       }}>
-        Last check: {lastCheckText}{errored ? ' · endpoint unreachable' : ''}
+        {headline.text}
+        {errored && (
+          <span style={{
+            fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)',
+            marginLeft:8, fontWeight:400, letterSpacing:0,
+          }}>
+            · endpoint unreachable
+          </span>
+        )}
       </div>
 
       <div style={{borderTop:'1px solid var(--border)', opacity:0.6, marginBottom:8}}/>
@@ -6928,7 +6937,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.8.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.8.2 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
