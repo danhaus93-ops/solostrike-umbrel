@@ -1548,7 +1548,9 @@ function fmtPctToBlock(pct) {
   if (pct >= 1)     return pct.toFixed(2) + '%';
   if (pct >= 0.01)  return pct.toFixed(3) + '%';
   if (pct >= 0.0001) return pct.toFixed(4) + '%';
-  return pct.toExponential(2) + '%';
+  // iter28: avoid scientific notation — auto-scale precision for tiny pcts.
+  const decimals = Math.min(10, Math.max(5, -Math.floor(Math.log10(pct)) + 1));
+  return pct.toFixed(decimals) + '%';
 }
 
 function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
@@ -2093,7 +2095,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
-              {perYear>0 ? (perYear < 0.0001 ? perYear.toExponential(1)+'%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
+              {perYear>0 ? (perYear < 0.0001 ? (perYear*100).toFixed(Math.min(10, Math.max(5, -Math.floor(Math.log10(perYear*100)) + 1))) + '%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
@@ -2869,7 +2871,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
               <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Reject Rate</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
-                  {rejectPct < 0.001 ? rejectPct.toExponential(1) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
+                  {rejectPct < 0.001 ? rejectPct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(rejectPct)) + 1))) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
                 </div>
               </div>
             )}
@@ -5059,8 +5061,25 @@ function ReckoningModal({ poolState, currency, onClose }) {
   };
   const fmtPctSafe = (v, digits = 2) => {
     if (!isFinite(v) || v <= 0) return '—';
-    if (v < 0.01) return v.toExponential(2) + '%';
+    // iter28: avoid scientific notation — show plain decimals with auto-scaled
+    // precision so very small percentages stay readable at a glance.
+    if (v < 0.0001) {
+      const decimals = Math.min(10, Math.max(4, -Math.floor(Math.log10(v)) + 1));
+      return v.toFixed(decimals) + '%';
+    }
+    if (v < 0.01) return v.toFixed(4) + '%';
     return v.toFixed(digits) + '%';
+  };
+  // iter28: helper to format probabilities as "1 in N" lottery-style.
+  // Used for Strike Chance tiles where the lottery framing is clearer than
+  // tiny percentages like "0.0012%".
+  const fmtOddsIn = (probability) => {
+    if (!isFinite(probability) || probability <= 0) return '—';
+    if (probability >= 1) return 'certain';
+    const n = 1 / probability;
+    if (n >= 1e9) return `1 in ${(n/1e9).toFixed(1)}B`;
+    if (n >= 1e6) return `1 in ${(n/1e6).toFixed(1)}M`;
+    return `1 in ${Math.round(n).toLocaleString()}`;
   };
 
   // ── The Burn — power cost computations (v1.7.7) ──
@@ -5248,21 +5267,22 @@ function ReckoningModal({ poolState, currency, onClose }) {
                 </div>
               </div>
 
-              {/* Short-term probabilities */}
+              {/* Short-term odds — lottery-style framing reads better than
+                   tiny percentages (e.g. "1 in 85,470" vs "0.0012%"). */}
               <div style={section}>
-                <div style={secTitle}>▸ Short-Term Strike Chance</div>
+                <div style={secTitle}>▸ Short-Term Strike Odds</div>
                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.55rem'}}>
                   <div style={heroBox}>
                     <div style={heroLbl}>This Day</div>
-                    <div style={{...heroVal, fontSize: probDay >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probDay * 100, 4)}</div>
+                    <div style={{...heroVal, fontSize: probDay >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probDay)}</div>
                   </div>
                   <div style={heroBox}>
                     <div style={heroLbl}>This Week</div>
-                    <div style={{...heroVal, fontSize: probWeek >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probWeek * 100, 3)}</div>
+                    <div style={{...heroVal, fontSize: probWeek >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probWeek)}</div>
                   </div>
                   <div style={heroBox}>
                     <div style={heroLbl}>This Month</div>
-                    <div style={{...heroVal, fontSize: probMonth >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probMonth * 100, 2)}</div>
+                    <div style={{...heroVal, fontSize: probMonth >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probMonth)}</div>
                   </div>
                 </div>
               </div>
@@ -5283,7 +5303,9 @@ function ReckoningModal({ poolState, currency, onClose }) {
                     <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', lineHeight:1.5}}>
                       Your <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(baseHash)}</span> is{' '}
                       <span style={{color:'var(--amber)', fontWeight:600}}>
-                        {basePoolSharePct >= 0.0001 ? basePoolSharePct.toFixed(6) + '%' : basePoolSharePct.toExponential(2) + '%'}
+                        {basePoolSharePct >= 0.0001
+                          ? basePoolSharePct.toFixed(6) + '%'
+                          : basePoolSharePct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(basePoolSharePct)) + 1))) + '%'}
                       </span>{' '}
                       of all Bitcoin hashrate worldwide ({fmtHr(netHash)}). Every block, you're one of <span style={{color:'var(--amber)', fontWeight:600}}>{(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}</span> tickets in the lottery — and yours pays the full <span style={{color:'var(--amber)', fontWeight:600}}>{rewardBtc.toFixed(3)} BTC</span> if it wins.
                     </div>

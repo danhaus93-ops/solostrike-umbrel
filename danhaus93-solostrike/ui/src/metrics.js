@@ -147,7 +147,15 @@ export const METRICS = [
     render: (s) => {
       const pool = s.hashrate?.current || 0, net = s.network?.hashrate || 0;
       if (!pool || !net) return { prefix: 'POOL SHARE', value: '—' };
-      return { prefix: 'POOL SHARE', value: `${((pool/net)*100).toExponential(2)}%` };
+      // iter28: auto-scaled decimal precision instead of scientific notation
+      const pct = (pool / net) * 100;
+      let formatted;
+      if (pct >= 0.0001) formatted = pct.toFixed(6) + '%';
+      else {
+        const decimals = Math.min(10, Math.max(4, -Math.floor(Math.log10(pct)) + 1));
+        formatted = pct.toFixed(decimals) + '%';
+      }
+      return { prefix: 'POOL SHARE', value: formatted };
     } },
 
   // ── NETWORK ──
