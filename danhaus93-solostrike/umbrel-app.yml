@@ -239,10 +239,10 @@ repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
 port: 1234
 gallery:
-  - 1.png
-  - 2.png
-  - 3.png
-  - 4.png
+  - https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/1.png
+  - https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/2.png
+  - https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/3.png
+  - https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/4.png
 path: ""
 defaultUsername: ""
 defaultPassword: ""
