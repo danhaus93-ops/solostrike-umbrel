@@ -37,14 +37,16 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   65%  {transform:rotate(15deg)}      /* HOLD on impact (visible landed strike) */
   100% {transform:rotate(-25deg)}     /* slow recovery for next cycle */
 }
-/* v1.8.3-rev29: ₿ glow spike re-synced to land at 30% (matches impact frame).
-   Glow holds bright through 65% along with the pickaxe, so the impact reads
-   as a clear "landed strike" rather than a flash. */
+/* v1.8.5-splash: ₿ glow swapped from text-shadow → filter:drop-shadow.
+   The splash ₿ is now an inline SVG (no text content), so text-shadow
+   no longer applies. drop-shadow on the wrapper element propagates
+   visually through the SVG paths. Same blur radii and color stops as
+   before — timing is unchanged. */
 @keyframes btcImpact{
-  0%,20%   {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
-  30%      {transform:scale(1.10); text-shadow:0 0 36px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.45)}
-  45%,65%  {transform:scale(1.06); text-shadow:0 0 28px rgba(245,166,35,0.75), 0 0 55px rgba(245,166,35,0.35)}
-  100%     {transform:scale(1);    text-shadow:0 0 18px rgba(245,166,35,0.45)}
+  0%,20%   {transform:scale(1);    filter:drop-shadow(0 0 18px rgba(245,166,35,0.45))}
+  30%      {transform:scale(1.10); filter:drop-shadow(0 0 36px rgba(245,166,35,0.9)) drop-shadow(0 0 70px rgba(245,166,35,0.45))}
+  45%,65%  {transform:scale(1.06); filter:drop-shadow(0 0 28px rgba(245,166,35,0.75)) drop-shadow(0 0 55px rgba(245,166,35,0.35))}
+  100%     {transform:scale(1);    filter:drop-shadow(0 0 18px rgba(245,166,35,0.45))}
 }
 /* v1.8.3-rev31h: orange glowing block + 4 flying shard fragments.
    Builds on rev31g (which user confirmed working — splash mounts at
