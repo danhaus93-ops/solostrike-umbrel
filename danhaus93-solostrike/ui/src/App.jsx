@@ -47,10 +47,11 @@ const ALL_CARDS = [
   { id:'closestcalls',  label:'Near Strikes' },
   { id:'jumpers',       label:'Claim Jumpers + Solo Strikes' },
   { id:'recent',        label:'The Ledger' },
+  { id:'health',        label:'System Health' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
-const DEFAULT_PRESET  = ['hashrate', 'strikevel', 'pulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers'];
+const DEFAULT_PRESET  = ['hashrate', 'strikevel', 'pulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers', 'health'];
 const EVERYTHING_PRESET = [...ALL_CARD_IDS];
 
 // v1.7.6 migration — rename "odds" card id to "vein" in any persisted layouts.
@@ -1548,9 +1549,7 @@ function fmtPctToBlock(pct) {
   if (pct >= 1)     return pct.toFixed(2) + '%';
   if (pct >= 0.01)  return pct.toFixed(3) + '%';
   if (pct >= 0.0001) return pct.toFixed(4) + '%';
-  // iter28: avoid scientific notation — auto-scale precision for tiny pcts.
-  const decimals = Math.min(10, Math.max(5, -Math.floor(Math.log10(pct)) + 1));
-  return pct.toFixed(decimals) + '%';
+  return pct.toExponential(2) + '%';
 }
 
 function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
@@ -2095,7 +2094,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
-              {perYear>0 ? (perYear < 0.0001 ? (perYear*100).toFixed(Math.min(10, Math.max(5, -Math.floor(Math.log10(perYear*100)) + 1))) + '%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
+              {perYear>0 ? (perYear < 0.0001 ? perYear.toExponential(1)+'%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
             </div>
           </div>
           <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
@@ -2871,7 +2870,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
               <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Reject Rate</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
-                  {rejectPct < 0.001 ? rejectPct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(rejectPct)) + 1))) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
+                  {rejectPct < 0.001 ? rejectPct.toExponential(1) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
                 </div>
               </div>
             )}
@@ -3099,6 +3098,371 @@ function SetupForm({ saveConfig }) {
         {err && <div style={{color:'var(--red)', fontSize:'0.7rem', marginTop:6, fontFamily:'var(--fm)'}}>⚠ {err}</div>}
         <button onClick={submit} disabled={loading} style={{width:'100%',padding:'0.85rem',marginTop:18,background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.85rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
           {loading ? 'Saving…' : 'START MINING →'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── System Health Card (v1.8.4) ───────────────────────────────────────────────
+// Surfaces operational health metrics in the dashboard. Polls /api/health/detailed
+// every 5s. Six indicator rows: containers, api, persistence, ckpool, zmq, disk.
+// Headline state aggregates: ALL SYSTEMS GO / MINOR ISSUES / DEGRADED.
+// Tap card → opens HealthDetailModal with full diagnostic info.
+function HealthStatusCard({ onOpen }) {
+  const [health, setHealth] = useState(null);
+  const [lastFetch, setLastFetch] = useState(null);
+  const [errored, setErrored] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch('/api/health/detailed', { cache: 'no-store' });
+      const data = await res.json();
+      setHealth(data);
+      setLastFetch(Date.now());
+      setErrored(false);
+    } catch (e) {
+      setErrored(true);
+      // Show degraded state in card if endpoint is unreachable.
+      setHealth({ overall: 'red', checks: {}, error: e.message });
+    }
+  }, []);
+
+  // Poll every 5s + refetch when tab becomes visible (iOS Safari throttles
+  // setInterval in background tabs to 1Hz minimum, sometimes pauses entirely).
+  useEffect(() => {
+    let mounted = true;
+    fetchHealth();
+    const iv = setInterval(() => { if (mounted) fetchHealth(); }, 5000);
+    const onVis = () => { if (document.visibilityState === 'visible') fetchHealth(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      mounted = false;
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [fetchHealth]);
+
+  // Local 1Hz tick so "Last check: Ns ago" updates between fetches.
+  useEffect(() => {
+    const iv = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  if (!health) {
+    return (
+      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+        <div style={{...cardTitle, flexShrink:0}}>▸ System Health</div>
+        <div style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.8rem', padding:'0.5rem 0'}}>
+          Checking…
+        </div>
+        <div style={{flex:1, minHeight:0}}/>
+      </div>
+    );
+  }
+
+  const headlineMap = {
+    green: { text: 'ALL SYSTEMS GO', color: 'var(--green)' },
+    amber: { text: 'MINOR ISSUES',    color: 'var(--amber)' },
+    red:   { text: 'DEGRADED',        color: 'var(--red)' },
+  };
+  const headline = headlineMap[health.overall] || headlineMap.amber;
+
+  const dotColor = (status) => HEALTH_COLOR[status] || 'var(--text-3)';
+  const Dot = ({ color }) => (
+    <span style={{
+      display:'inline-block', width:8, height:8, borderRadius:'50%',
+      background:color, marginRight:10,
+      boxShadow:`0 0 6px ${color}`,
+      verticalAlign:'middle', flexShrink:0,
+    }}/>
+  );
+
+  const rows = [
+    { key:'containers',  label:'CONTAINERS' },
+    { key:'api',         label:'API' },
+    { key:'persistence', label:'PERSISTENCE' },
+    { key:'ckpool',      label:'CKPOOL' },
+    { key:'zmq',         label:'ZMQ' },
+    { key:'disk',        label:'DISK' },
+  ];
+
+  // "Last check: Ns ago" text — also handles the never-fetched and errored
+  // cases. Re-renders every second via the tick effect above.
+  let lastCheckText = '—';
+  if (lastFetch) {
+    const ageS = Math.floor((Date.now() - lastFetch) / 1000);
+    lastCheckText = ageS < 1 ? 'just now' : `${ageS}s ago`;
+  }
+
+  return (
+    <div
+      onClick={() => { if (onOpen) onOpen(health); }}
+      style={{
+        ...card, minWidth:0, maxWidth:'100%', overflow:'hidden',
+        display:'flex', flexDirection:'column', height:'100%',
+        cursor:'pointer',
+      }}
+      className="fade-in"
+    >
+      <div style={{...cardTitle, flexShrink:0}}>▸ System Health</div>
+      <div style={{
+        fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700,
+        color:headline.color,
+        textShadow:`0 0 10px ${headline.color}66`,
+        letterSpacing:'0.08em',
+        marginBottom:4,
+      }}>
+        {headline.text}
+      </div>
+      <div style={{
+        fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)',
+        marginBottom:10,
+      }}>
+        Last check: {lastCheckText}{errored ? ' · endpoint unreachable' : ''}
+      </div>
+
+      <div style={{borderTop:'1px solid var(--border)', opacity:0.6, marginBottom:8}}/>
+
+      <div style={{display:'flex', flexDirection:'column', gap:5}}>
+        {rows.map(row => {
+          const check = health.checks?.[row.key];
+          const status = check?.status || 'red';
+          const value  = check?.value  || '—';
+          return (
+            <div key={row.key} style={{
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+              fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.08em',
+              padding:'0.25rem 0',
+            }}>
+              <span style={{display:'flex', alignItems:'center', color:'var(--text-2)'}}>
+                <Dot color={dotColor(status)}/>
+                {row.label}
+              </span>
+              <span style={{
+                fontFamily:'var(--fm)', fontSize:'0.72rem',
+                color:'var(--text-1)', letterSpacing:0,
+                textAlign:'right', maxWidth:'60%', overflow:'hidden',
+                textOverflow:'ellipsis', whiteSpace:'nowrap',
+              }}>
+                {value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{flex:1, minHeight:0}}/>
+
+      <div style={{
+        textAlign:'center', color:'var(--text-3)', fontFamily:'var(--fd)',
+        fontSize:'0.6rem', letterSpacing:'0.15em',
+        marginTop:12, paddingTop:10, borderTop:'1px solid var(--border)',
+      }}>
+        Tap for detailed diagnostic ▸
+      </div>
+    </div>
+  );
+}
+
+// ── System Health Detail Modal (v1.8.4) ───────────────────────────────────────
+// Pattern matches existing ShareStatsModal (fixed-overlay, click-outside-to-close).
+function HealthDetailModal({ initialHealth, onClose }) {
+  const [health, setHealth] = useState(initialHealth);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch('/api/health/detailed', { cache: 'no-store' });
+      const data = await res.json();
+      setHealth(data);
+    } catch {}
+    setTimeout(() => setRefreshing(false), 300);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const dotColor = (status) => HEALTH_COLOR[status] || 'var(--text-3)';
+  const Dot = ({ color }) => (
+    <span style={{
+      display:'inline-block', width:10, height:10, borderRadius:'50%',
+      background:color, marginRight:10, boxShadow:`0 0 8px ${color}`,
+      flexShrink:0,
+    }}/>
+  );
+
+  const fmtBytes = (b) => {
+    if (!b || !Number.isFinite(b)) return '—';
+    if (b < 1024) return `${b} B`;
+    if (b < 1024*1024) return `${(b/1024).toFixed(1)} KB`;
+    if (b < 1024*1024*1024) return `${(b/(1024*1024)).toFixed(1)} MB`;
+    return `${(b/(1024*1024*1024)).toFixed(2)} GB`;
+  };
+  const fmtDuration = (ms) => {
+    if (!ms || !Number.isFinite(ms)) return '—';
+    const s = Math.floor(ms / 1000);
+    if (s < 60)        return `${s}s`;
+    if (s < 3600)      return `${Math.floor(s/60)}m ${s%60}s`;
+    if (s < 86400)     return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+    return `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h`;
+  };
+
+  const checks = health?.checks || {};
+  const details = health?.details || {};
+  const recentErrors = details.recentErrors || [];
+
+  const headlineMap = {
+    green: { text: 'ALL SYSTEMS GO', color: 'var(--green)' },
+    amber: { text: 'MINOR ISSUES',    color: 'var(--amber)' },
+    red:   { text: 'DEGRADED',        color: 'var(--red)' },
+  };
+  const headline = headlineMap[health?.overall] || headlineMap.amber;
+
+  const checkRows = [
+    { key:'containers',  label:'CONTAINERS' },
+    { key:'api',         label:'API' },
+    { key:'persistence', label:'PERSISTENCE' },
+    { key:'ckpool',      label:'CKPOOL' },
+    { key:'zmq',         label:'ZMQ' },
+    { key:'disk',        label:'DISK' },
+  ];
+
+  const section   = { marginBottom:'1rem' };
+  const secTitle  = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+  const kvRow     = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
+  const kvLabel   = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+  const kvVal     = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right' };
+
+  return (
+    <div
+      style={{position:'fixed',inset:0,background:'rgba(6,7,8,0.88)',backdropFilter:'blur(4px)',WebkitBackdropFilter:'blur(4px)',display:'flex',alignItems:'flex-start',justifyContent:'center',zIndex:250,padding:'calc(env(safe-area-inset-top) + 1rem) 0.75rem 0.75rem',overflowY:'auto'}}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        background:'var(--bg-surface)', border:'1px solid var(--border)',
+        width:'100%', maxWidth:560, padding:'1.25rem 1.1rem 1rem',
+        boxShadow:'0 0 40px rgba(0,0,0,0.6)',
+      }}>
+        {/* Header */}
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'0.85rem'}}>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)'}}>
+            ▸ System Diagnostics
+          </span>
+          <button onClick={onClose} style={{background:'transparent', border:'none', color:'var(--text-2)', fontSize:'1.4rem', cursor:'pointer', lineHeight:1, padding:'0 4px'}}>×</button>
+        </div>
+
+        {/* Headline */}
+        <div style={{textAlign:'center', padding:'0.4rem 0 0.8rem'}}>
+          <div style={{
+            fontFamily:'var(--fd)', fontSize:'1.4rem', fontWeight:700,
+            color:headline.color, textShadow:`0 0 14px ${headline.color}66`,
+            letterSpacing:'0.08em',
+          }}>
+            {headline.text}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)', marginTop:4}}>
+            v{details.version || '—'} · uptime {fmtDuration(details.uptime)}
+          </div>
+        </div>
+
+        {/* Checks */}
+        <div style={section}>
+          <div style={secTitle}>Health checks</div>
+          {checkRows.map(row => {
+            const check = checks[row.key];
+            const status = check?.status || 'red';
+            const value = check?.value || '—';
+            return (
+              <div key={row.key} style={{
+                display:'flex', alignItems:'center', justifyContent:'space-between',
+                padding:'0.5rem 0.6rem', background:'var(--bg-raised)',
+                border:'1px solid var(--border)', marginBottom:3,
+              }}>
+                <span style={{display:'flex', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.08em', color:'var(--text-2)'}}>
+                  <Dot color={dotColor(status)}/>{row.label}
+                </span>
+                <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', textAlign:'right'}}>
+                  {value}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Recent errors */}
+        {recentErrors.length > 0 && (
+          <div style={section}>
+            <div style={secTitle}>Recent errors ({recentErrors.length})</div>
+            <div style={{maxHeight:180, overflowY:'auto', background:'var(--bg-deep)', border:'1px solid var(--border)', padding:'0.5rem'}}>
+              {recentErrors.map((err, i) => (
+                <div key={i} style={{
+                  fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-2)',
+                  padding:'0.3rem 0', borderBottom: i < recentErrors.length - 1 ? '1px solid var(--border)' : 'none',
+                }}>
+                  <div style={{color:'var(--red)'}}>{err.msg || '—'}</div>
+                  <div style={{color:'var(--text-3)', fontSize:'0.6rem', marginTop:2}}>
+                    {err.path || '—'} · {fmtDuration(Date.now() - (err.ts || 0))} ago
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Diagnostics */}
+        <div style={section}>
+          <div style={secTitle}>Diagnostics</div>
+          <div style={kvRow}>
+            <span style={kvLabel}>Memory · RSS</span>
+            <span style={kvVal}>{fmtBytes(details.memoryUsage?.rss)}</span>
+          </div>
+          <div style={kvRow}>
+            <span style={kvLabel}>Memory · Heap</span>
+            <span style={kvVal}>{fmtBytes(details.memoryUsage?.heapUsed)} / {fmtBytes(details.memoryUsage?.heapTotal)}</span>
+          </div>
+          <div style={kvRow}>
+            <span style={kvLabel}>WebSocket Clients</span>
+            <span style={kvVal}>{details.wsClients ?? 0}</span>
+          </div>
+          <div style={kvRow}>
+            <span style={kvLabel}>Persist file age</span>
+            <span style={kvVal}>{details.persistMtimeAge != null ? fmtDuration(details.persistMtimeAge) : '—'}</span>
+          </div>
+          <div style={kvRow}>
+            <span style={kvLabel}>Private Mode</span>
+            <span style={kvVal}>{details.privateMode ? 'ON' : 'OFF'}</span>
+          </div>
+          {details.zmqEndpoint && (
+            <div style={kvRow}>
+              <span style={kvLabel}>ZMQ endpoint</span>
+              <span style={{...kvVal, fontSize:'0.65rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%'}}>{details.zmqEndpoint}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Refresh button */}
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          style={{
+            width:'100%', padding:'0.7rem',
+            background:'transparent', color:'var(--amber)',
+            border:'1px solid var(--amber)',
+            fontFamily:'var(--fd)', fontWeight:700,
+            letterSpacing:'0.15em', fontSize:'0.7rem',
+            cursor: refreshing ? 'wait' : 'pointer',
+            textTransform:'uppercase',
+            opacity: refreshing ? 0.6 : 1,
+            marginTop:'0.5rem',
+          }}
+        >
+          {refreshing ? 'Refreshing…' : '↻ Refresh'}
         </button>
       </div>
     </div>
@@ -5061,25 +5425,8 @@ function ReckoningModal({ poolState, currency, onClose }) {
   };
   const fmtPctSafe = (v, digits = 2) => {
     if (!isFinite(v) || v <= 0) return '—';
-    // iter28: avoid scientific notation — show plain decimals with auto-scaled
-    // precision so very small percentages stay readable at a glance.
-    if (v < 0.0001) {
-      const decimals = Math.min(10, Math.max(4, -Math.floor(Math.log10(v)) + 1));
-      return v.toFixed(decimals) + '%';
-    }
-    if (v < 0.01) return v.toFixed(4) + '%';
+    if (v < 0.01) return v.toExponential(2) + '%';
     return v.toFixed(digits) + '%';
-  };
-  // iter28: helper to format probabilities as "1 in N" lottery-style.
-  // Used for Strike Chance tiles where the lottery framing is clearer than
-  // tiny percentages like "0.0012%".
-  const fmtOddsIn = (probability) => {
-    if (!isFinite(probability) || probability <= 0) return '—';
-    if (probability >= 1) return 'certain';
-    const n = 1 / probability;
-    if (n >= 1e9) return `1 in ${(n/1e9).toFixed(1)}B`;
-    if (n >= 1e6) return `1 in ${(n/1e6).toFixed(1)}M`;
-    return `1 in ${Math.round(n).toLocaleString()}`;
   };
 
   // ── The Burn — power cost computations (v1.7.7) ──
@@ -5267,22 +5614,21 @@ function ReckoningModal({ poolState, currency, onClose }) {
                 </div>
               </div>
 
-              {/* Short-term odds — lottery-style framing reads better than
-                   tiny percentages (e.g. "1 in 85,470" vs "0.0012%"). */}
+              {/* Short-term probabilities */}
               <div style={section}>
-                <div style={secTitle}>▸ Short-Term Strike Odds</div>
+                <div style={secTitle}>▸ Short-Term Strike Chance</div>
                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.55rem'}}>
                   <div style={heroBox}>
                     <div style={heroLbl}>This Day</div>
-                    <div style={{...heroVal, fontSize: probDay >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probDay)}</div>
+                    <div style={{...heroVal, fontSize: probDay >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probDay * 100, 4)}</div>
                   </div>
                   <div style={heroBox}>
                     <div style={heroLbl}>This Week</div>
-                    <div style={{...heroVal, fontSize: probWeek >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probWeek)}</div>
+                    <div style={{...heroVal, fontSize: probWeek >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probWeek * 100, 3)}</div>
                   </div>
                   <div style={heroBox}>
                     <div style={heroLbl}>This Month</div>
-                    <div style={{...heroVal, fontSize: probMonth >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probMonth)}</div>
+                    <div style={{...heroVal, fontSize: probMonth >= 0.01 ? '1.05rem' : '0.85rem'}}>{fmtPctSafe(probMonth * 100, 2)}</div>
                   </div>
                 </div>
               </div>
@@ -5303,9 +5649,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                     <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', lineHeight:1.5}}>
                       Your <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(baseHash)}</span> is{' '}
                       <span style={{color:'var(--amber)', fontWeight:600}}>
-                        {basePoolSharePct >= 0.0001
-                          ? basePoolSharePct.toFixed(6) + '%'
-                          : basePoolSharePct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(basePoolSharePct)) + 1))) + '%'}
+                        {basePoolSharePct >= 0.0001 ? basePoolSharePct.toFixed(6) + '%' : basePoolSharePct.toExponential(2) + '%'}
                       </span>{' '}
                       of all Bitcoin hashrate worldwide ({fmtHr(netHash)}). Every block, you're one of <span style={{color:'var(--amber)', fontWeight:600}}>{(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}</span> tickets in the lottery — and yours pays the full <span style={{color:'var(--amber)', fontWeight:600}}>{rewardBtc.toFixed(3)} BTC</span> if it wins.
                     </div>
@@ -5889,7 +6233,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent'];
+const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent','health'];
 function loadOrder() {
   try {
     const s = localStorage.getItem(LS_CARD_ORDER);
@@ -5931,6 +6275,9 @@ export default function App() {
   const [showStrikers, setShowStrikers] = useState(false);
   const [showReckoning, setShowReckoning] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // v1.8.4: System Health card detail modal. State holds the snapshot of
+  // /api/health/detailed at the moment the user tapped — null when closed.
+  const [healthDetailSnapshot, setHealthDetailSnapshot] = useState(null);
   const [order, setOrder] = useState(loadOrder());
   const [draggedId, setDraggedId] = useState(null);
   const [overId, setOverId] = useState(null);
@@ -6505,6 +6852,7 @@ export default function App() {
       blockAlert={blockAlert}
     />,
     recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
+    health: <HealthStatusCard onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
   };
 
   const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
@@ -6611,6 +6959,12 @@ export default function App() {
           poolState={poolState}
           currency={currency}
           onClose={()=>setShowReckoning(false)}/>
+      )}
+
+      {healthDetailSnapshot && (
+        <HealthDetailModal
+          initialHealth={healthDetailSnapshot}
+          onClose={()=>setHealthDetailSnapshot(null)}/>
       )}
 
       {showSettings && (
