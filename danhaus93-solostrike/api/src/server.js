@@ -64,9 +64,14 @@ const state = {
   topFinders: [],
   closestCalls: [],
   bestshare: 0,
-  shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {}, sps1m: 0, spsHistory: [], acceptedSdiffSum: 0 },
+  shares: { acceptedCount: 0, rejectedCount: 0, stale: 0, rejectReasons: {}, sps1m: 0, spsHistory: [], acceptedSdiffSum: 0, lastShareAt: null },
   uptime: 0,
   startedAt: Date.now(),
+  // v1.8.4: rolling error counter for the System Health card. Incremented
+  // by the error-handler middleware (registered after all other middleware).
+  // `lastHour` resets every 60min. `recent` keeps the last 10 errors with
+  // {ts, msg, path} for the detailed-diagnostic modal.
+  errorCount: { lastHour: 0, recent: [] },
   odds: { perBlock: 0, expectedDays: null, perDay: 0, perWeek: 0, perMonth: 0 },
   luck: { progress: 0, blocksExpected: 0, blocksFound: 0, luck: null },
   retarget: null,
@@ -78,7 +83,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.8.2',
+  version: '1.8.4',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -505,6 +510,144 @@ wss.on('connection', (ws, req) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// v1.8.4: detailed system health endpoint for the System Health card.
+// The existing /api/health (above) is a tiny ping kept for back-compat with
+// any external monitoring. This endpoint aggregates 6 health signals:
+//   containers, api, persistence, ckpool, zmq, disk
+// Each returns { status: 'green'|'amber'|'red', value: '<display string>' }.
+// Polled by the UI every 5s. Cheap to compute (one statSync, one execSync).
+app.get('/api/health/detailed', (req, res) => {
+  try {
+    const now = Date.now();
+    const { execSync } = require('child_process');
+
+    // ── containers ─────────────────────────────────────────────────────
+    // From inside the API container we cannot enumerate sibling containers
+    // without docker socket access (handoff Option B, deferred to v1.9).
+    // For v1 we use signals we DO have:
+    //   - api: alive (we're answering)
+    //   - ckpool: alive if state.status === 'running' AND we've seen shares recently
+    // The other 3 (ui, stunnel, app_proxy) we can't probe — show "verified" for
+    // the 2 we can confirm, surface that limitation honestly in the value.
+    const ckpoolHealthy = (state.status === 'running')
+      && state.shares?.lastShareAt
+      && (now - state.shares.lastShareAt) < 600000; // 10min
+
+    const containers = ckpoolHealthy
+      ? { status: 'green', value: 'API + ckpool OK' }
+      : (state.status === 'running'
+          ? { status: 'amber', value: 'API OK · ckpool quiet' }
+          : { status: 'red',   value: `API up · status: ${state.status}` });
+
+    // ── api ────────────────────────────────────────────────────────────
+    const apiErrors = state.errorCount?.lastHour || 0;
+    const api = {
+      status: apiErrors === 0 ? 'green' : (apiErrors < 6 ? 'amber' : 'red'),
+      value:  `Healthy · ${apiErrors} error${apiErrors === 1 ? '' : 's'}`,
+    };
+
+    // ── persistence ────────────────────────────────────────────────────
+    const spsCount = (state.shares?.spsHistory || []).length;
+    let persistMtimeAge = null;
+    try {
+      const stat = fs.statSync(PERSIST_FILE);
+      persistMtimeAge = now - stat.mtimeMs;
+    } catch {}
+    const persistence = {
+      status: spsCount === 0 ? 'red'
+            : spsCount < 60   ? 'amber'
+            : 'green',
+      value:  spsCount === 0
+            ? 'No samples'
+            : `${spsCount} samples · ${(spsCount / 60).toFixed(1)}h`,
+    };
+
+    // ── ckpool ─────────────────────────────────────────────────────────
+    const lastShareAge = state.shares?.lastShareAt
+      ? (now - state.shares.lastShareAt)
+      : Infinity;
+    const fmtAge = (ms) => {
+      if (ms < 60000)        return `${Math.floor(ms / 1000)}s ago`;
+      if (ms < 3600000)      return `${Math.floor(ms / 60000)}m ago`;
+      return `${Math.floor(ms / 3600000)}h ago`;
+    };
+    const ckpool = {
+      status: lastShareAge < 120000  ? 'green'
+            : lastShareAge < 600000  ? 'amber'
+            : 'red',
+      value:  lastShareAge === Infinity
+            ? 'No shares yet'
+            : `Share ${fmtAge(lastShareAge)}`,
+    };
+
+    // ── zmq ────────────────────────────────────────────────────────────
+    const zmqEnabled    = state.zmq?.enabled === true;
+    const zmqLastBlock  = state.zmq?.lastBlockHeardAt || null;
+    const zmqAge        = zmqLastBlock ? (now - zmqLastBlock) : Infinity;
+    let zmq;
+    if (!zmqEnabled) {
+      zmq = { status: 'amber', value: 'Disabled' };
+    } else if (zmqAge === Infinity) {
+      zmq = { status: 'amber', value: 'Active · no blocks heard yet' };
+    } else if (zmqAge < 1800000) {
+      zmq = { status: 'green', value: `Active · ${fmtAge(zmqAge)}` };
+    } else if (zmqAge < 3600000) {
+      zmq = { status: 'amber', value: `Stale · ${fmtAge(zmqAge)}` };
+    } else {
+      zmq = { status: 'red',   value: `Stale · ${fmtAge(zmqAge)}` };
+    }
+
+    // ── disk ───────────────────────────────────────────────────────────
+    let diskFreePct = null;
+    try {
+      // df returns: "Filesystem  Size  Used  Avail  Use%  Mounted on"
+      const out = execSync(`df ${CONFIG_DIR} 2>/dev/null | tail -1 | awk '{print $5}'`, { timeout: 1000 }).toString().trim();
+      const usedPct = parseInt(out.replace('%', ''), 10);
+      if (Number.isFinite(usedPct)) diskFreePct = 100 - usedPct;
+    } catch {}
+    const disk = diskFreePct === null
+      ? { status: 'amber', value: 'Unknown' }
+      : diskFreePct > 20
+        ? { status: 'green', value: `${diskFreePct}% free` }
+        : diskFreePct > 10
+          ? { status: 'amber', value: `${diskFreePct}% free` }
+          : { status: 'red',   value: `${diskFreePct}% free` };
+
+    const checks = { containers, api, persistence, ckpool, zmq, disk };
+    const reds   = Object.values(checks).filter(c => c.status === 'red').length;
+    const ambers = Object.values(checks).filter(c => c.status === 'amber').length;
+    const overall = reds > 0 ? 'red' : (ambers > 0 ? 'amber' : 'green');
+
+    const mem = process.memoryUsage();
+    res.json({
+      overall,
+      checks,
+      details: {
+        version: state.version,
+        uptime: now - state.startedAt,
+        persistMtimeAge,
+        memoryUsage: {
+          rss: mem.rss,
+          heapUsed: mem.heapUsed,
+          heapTotal: mem.heapTotal,
+        },
+        recentErrors: (state.errorCount?.recent || []).slice(0, 10),
+        wsClients,
+        privateMode: !!state.privateMode,
+        zmqEndpoint: state.zmq?.endpoint || null,
+      },
+    });
+  } catch (e) {
+    // Don't throw — the health endpoint must never fail loudly. UI shows
+    // a degraded card if the structure is malformed.
+    res.status(500).json({
+      overall: 'red',
+      checks: {},
+      error: e.message,
+    });
+  }
+});
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
 app.get('/api/config', (req, res) => res.json(cfgPublic()));
 // Wizard alias for /api/config — accepts {payoutAddress} only
@@ -945,6 +1088,31 @@ async function main() {
   // UI expects uptime as a Unix millisecond timestamp of boot time.
   // It computes (Date.now() - state.uptime) to get elapsed time client-side.
   state.uptime = state.startedAt;
+
+  // v1.8.4: error-tracking middleware for the System Health card.
+  // Registered LAST so it sees errors from all earlier middleware/routes.
+  // Increments state.errorCount.lastHour and pushes onto recent[].
+  // Does not change response shape — still returns 500 with {error: msg}.
+  app.use((err, req, res, next) => {
+    try {
+      state.errorCount.lastHour = (state.errorCount.lastHour || 0) + 1;
+      state.errorCount.recent.unshift({
+        ts: Date.now(),
+        msg: err?.message || String(err),
+        path: req?.path || '',
+      });
+      if (state.errorCount.recent.length > 10) state.errorCount.recent.length = 10;
+    } catch {}
+    console.error('[api error]', err);
+    if (res.headersSent) return next(err);
+    res.status(500).json({ error: err?.message || 'Internal error' });
+  });
+
+  // v1.8.4: reset rolling error counter every 60min. The recent[] log is
+  // kept (last 10 errors regardless of age) for diagnostic context.
+  setInterval(() => {
+    state.errorCount.lastHour = 0;
+  }, 3600000);
 
   server.listen(PORT, () => {
     console.log(`[SoloStrike API v${state.version}] Listening on :${PORT} (privateMode=${state.privateMode})`);

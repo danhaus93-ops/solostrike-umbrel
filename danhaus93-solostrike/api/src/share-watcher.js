@@ -197,6 +197,12 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
     if (obj.result === true) {
       c.accepted++;
       state.shares.acceptedCount = (state.shares.acceptedCount || 0) + 1;
+      // v1.8.4: timestamp the most recent accepted share so the System Health
+      // card can answer "when did ckpool last process a share?". This is the
+      // single most useful liveness signal — if it's been more than ~2min
+      // since the last share, something is wrong (every miner offline,
+      // ckpool stuck, sharelog rotation broken, etc.).
+      state.shares.lastShareAt = Date.now();
       const sd = typeof obj.sdiff === 'number' ? obj.sdiff : 0;
       const td = typeof obj.diff  === 'number' ? obj.diff  : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
