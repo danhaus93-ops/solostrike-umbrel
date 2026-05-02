@@ -6668,18 +6668,39 @@ export default function App() {
           perspective:'500px',
           perspectiveOrigin:'50% 50%',
         }}>
-          {/* Bitcoin ₿ — sits in the bottom of the box, gets struck */}
+          {/* v1.8.5-splash-rev4: Bitcoin ₿ — uses the exact PNG asset
+              (/splash-btc.png) instead of a recreated SVG. Background was
+              stripped from the source icon; the PNG already contains the
+              full amber gradient + shading from the original artwork.
+
+              v1.8.5-splash-rev4: wrapper repositioned to exactly match
+              the block's bounding box (absolute, bottom:0.3rem,
+              left:50%, marginLeft:-2.2rem, 4.4rem × 4.4rem). Previously
+              the wrapper sat flush with stage bottom (4.5rem tall) while
+              the block sat 0.3rem above, so the ₿ bottom strokes poked
+              out below the block during rest. Now ₿ lives entirely
+              within the block's bounds — fully hidden during rest,
+              fully revealed when the block explodes.
+
+              The btcImpact keyframe drives filter:drop-shadow on this
+              wrapper to glow the image — see global.css. */}
           <div style={{
-            fontSize:'4.5rem',
-            lineHeight:1,
-            color:'var(--amber)',
-            fontFamily:'var(--fd)',
-            fontWeight:700,
+            position:'absolute',
+            bottom:'0.45rem',           /* v1.8.5-splash-rev6: bumped 0.3→0.45rem so ₿ wrapper center matches block center (both at y=2.65rem from stage bottom). Without this, ₿ at scale 1.06 (impact-hold phase, 45-65% of cycle) peeked ~1.4px below block bottom because the wrappers shared a bottom anchor instead of a center anchor */
+            left:'50%',
+            marginLeft:'-2.2rem',
+            width:'4.4rem', height:'4.4rem',
+            display:'flex', alignItems:'center', justifyContent:'center',
             animation:'btcImpact 1.4s ease-in-out infinite',
             animationDelay:'-0.7s',
             zIndex:1,
           }}>
-            ₿
+            <img
+              src="/splash-btc.png"
+              alt="₿"
+              style={{ width:'100%', height:'100%', objectFit:'contain', display:'block' }}
+              draggable={false}
+            />
           </div>
           {/* v1.8.3-rev31g: orange glowing block + matched -0.7s
               animationDelay on all three animated elements. Without the
@@ -6694,9 +6715,9 @@ export default function App() {
             position:'absolute',
             bottom:'0.3rem',
             left:'50%',
-            marginLeft:'-2.2rem',
-            width:'4.4rem',
-            height:'4.4rem',
+            marginLeft:'-2.35rem',
+            width:'4.7rem',
+            height:'4.7rem',
             background:'linear-gradient(135deg, #FFB347 0%, #FF8C1A 45%, #C95800 100%)',
             borderRadius:'6px',
             boxShadow:'0 0 22px rgba(255,140,0,0.75), inset 0 0 14px rgba(255,210,130,0.45)',
@@ -6715,7 +6736,7 @@ export default function App() {
           {(() => {
             const shardBase = {
               position: 'absolute',
-              bottom: '1.85rem',          /* block center y minus half shard (1.3/2 = 0.65) */
+              bottom: '2rem',             /* v1.8.5-splash-rev5: block center y minus half shard. Block grew to 4.7rem, center now at 2.65rem; shard center stays at block center, so shard bottom = 2.65 - 0.65 = 2rem */
               left: '50%',
               marginLeft: '-0.65rem',     /* half of 1.3rem to center horizontally */
               width: '1.3rem',
@@ -6740,22 +6761,32 @@ export default function App() {
               </>
             );
           })()}
-          {/* Pickaxe — sits above ₿, swings down. Transform-origin at the
-              bottom-right so the handle pivots and the head arcs into the ₿. */}
+          {/* v1.8.5-splash-rev3: Pickaxe — uses the exact PNG asset
+              (/splash-pickaxe.png) instead of a recreated SVG. Wrapper
+              bumped from 3rem to 4.5rem (matches ₿) per user feedback —
+              previous 3rem felt too small visually. The image's grip
+              end is at its bottom-right corner; we use
+              objectPosition:'right bottom' so that point sits at the
+              wrapper's bottom-right (which is the transform-origin for
+              the pickaxeStrike rotation), keeping the swing pivot
+              correct. */}
           <div style={{
             position:'absolute',
             top:0, left:'50%',
             transform:'translateX(-90%)',     /* offset slightly left so the head lands center */
-            fontSize:'3rem',
-            lineHeight:1,
-            color:'var(--amber)',
+            width:'4.5rem', height:'4.5rem',
             transformOrigin:'bottom right',
             animation:'pickaxeStrike 1.4s ease-in-out infinite',
             animationDelay:'-0.7s',
-            textShadow:'0 0 14px rgba(245,166,35,0.55)',
+            filter:'drop-shadow(0 0 14px rgba(245,166,35,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
             zIndex:3,
           }}>
-            ⛏
+            <img
+              src="/splash-pickaxe.png"
+              alt="⛏"
+              style={{ width:'100%', height:'100%', objectFit:'contain', objectPosition:'right bottom', display:'block' }}
+              draggable={false}
+            />
           </div>
         </div>
         <div style={{
