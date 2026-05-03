@@ -92,7 +92,9 @@ function StepWelcome({ onNext, onSkip }) {
   return (
     <>
       <div style={{textAlign:'center', marginBottom:'1.5rem'}}>
-        <div style={{fontSize:48, marginBottom:'0.5rem'}}>⛏</div>
+        <div style={{marginBottom:'0.5rem', display:'flex', justifyContent:'center'}}>
+          <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:56, height:56, objectFit:'contain', filter:'drop-shadow(0 0 14px rgba(245,166,35,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))'}}/>
+        </div>
         <div style={heading}>Welcome to SoloStrike</div>
         <div style={subheading}>Your zero-fee solo Bitcoin pool</div>
       </div>
@@ -441,8 +443,10 @@ export default function OnboardingWizard({ onComplete }) {
       <div style={{width:'100%', maxWidth:560}}>
         <div style={{textAlign:'center', marginBottom:'0.5rem'}}>
           <span style={{fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700,
-            letterSpacing:'0.08em', color:'var(--amber)', textTransform:'uppercase'}}>
-            ⛏ SoloStrike
+            letterSpacing:'0.08em', color:'var(--amber)', textTransform:'uppercase',
+            display:'inline-flex', alignItems:'center', gap:'0.4rem'}}>
+            <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1rem', height:'1rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.5))'}}/>
+            SoloStrike
           </span>
         </div>
         <ProgressDots current={step - 1} total={totalSteps}/>
