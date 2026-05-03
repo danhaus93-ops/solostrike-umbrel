@@ -2419,17 +2419,17 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             we hash, brighter cells are "recently checked." A subtle scan
             line sweeps L→R representing nonce iteration order. The density
             of activity scales with your live hashrate. */}
-        <div style={{display:'flex', flexDirection:'column', flex:1, minHeight:130}}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6, flexShrink:0}}>
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
-              Per-Block Odds
-            </span>
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.88rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
-              {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
-            </span>
-          </div>
-          <NonceField hashrate={hashrate} netHashrate={netHashrate} huntAnim={huntAnim}/>
+        {/* Odds row — natural height, doesn't shrink */}
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', flexShrink:0}}>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
+            Per-Block Odds
+          </span>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.88rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
+            {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
+          </span>
         </div>
+        {/* NonceField — flex:1 grows to fill remaining card height (min 130). Same pattern as Pulse. */}
+        <NonceField hashrate={hashrate} netHashrate={netHashrate} huntAnim={huntAnim}/>
 
         {/* Block reward — COMPACT: 2-row inline layout to free up vertical space for the animation */}
         <div style={{
