@@ -2430,39 +2430,36 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
           <NonceField hashrate={hashrate} netHashrate={netHashrate} huntAnim={huntAnim}/>
         </div>
 
-        {/* Block reward hero — subsidy + fees breakdown */}
+        {/* Block reward — COMPACT: 2-row inline layout to free up vertical space for the animation */}
         <div style={{
           background:'linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.02) 100%)',
           border:'1px solid var(--amber)',
-          padding:'0.55rem 0.75rem',
+          padding:'0.45rem 0.7rem',
         }}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:5, textAlign:'center'}}>
-            BLOCK REWARD
-          </div>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'1.4rem', fontWeight:800, color:'var(--amber)', lineHeight:1.1, textShadow:'0 0 10px rgba(245,166,35,0.4)'}}>
-              {totalBtc > 0 ? totalBtc.toFixed(4) : '—'} <span style={{fontSize:'0.85rem'}}>BTC</span>
+          {/* Row 1: label + BTC value (left) · fiat (right) */}
+          <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:10}}>
+            <div style={{display:'flex', alignItems:'baseline', gap:8, flex:1, minWidth:0}}>
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-2)', whiteSpace:'nowrap'}}>
+                BLOCK REWARD
+              </span>
+              <span style={{fontFamily:'var(--fd)', fontSize:'1.05rem', fontWeight:800, color:'var(--amber)', lineHeight:1, textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
+                {totalBtc > 0 ? totalBtc.toFixed(4) : '—'}<span style={{fontSize:'0.65rem', marginLeft:2}}>BTC</span>
+              </span>
             </div>
             {fiatPrice > 0 && totalBtc > 0 && (
-              <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', marginTop:3, fontWeight:600}}>
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600, whiteSpace:'nowrap'}}>
                 {fmtFiat(totalFiat, currency)}
-              </div>
+              </span>
             )}
           </div>
+          {/* Row 2: subsidy · fees (only if data present) */}
           {(subsidyBtc > 0 || feesBtc > 0) && (
-            <div style={{display:'flex', justifyContent:'space-between', gap:6, marginTop:7, paddingTop:7, borderTop:'1px dashed rgba(245,166,35,0.18)'}}>
-              <div style={{flex:1, textAlign:'center'}}>
-                <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.1em', textTransform:'uppercase'}}>SUBSIDY</div>
-                <div style={{fontFamily:'var(--fm)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:600, marginTop:2}}>
-                  {subsidyBtc.toFixed(3)}
-                </div>
-              </div>
-              <div style={{flex:1, textAlign:'center'}}>
-                <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.1em', textTransform:'uppercase'}}>FEES</div>
-                <div style={{fontFamily:'var(--fm)', fontSize:'0.78rem', color:'var(--cyan)', fontWeight:600, marginTop:2}}>
-                  +{feesBtc.toFixed(4)}
-                </div>
-              </div>
+            <div style={{display:'flex', gap:10, justifyContent:'center', alignItems:'baseline', marginTop:5, paddingTop:5, borderTop:'1px dashed rgba(245,166,35,0.18)', fontSize:'0.65rem'}}>
+              <span style={{color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase'}}>Subsidy</span>
+              <span style={{fontFamily:'var(--fm)', color:'var(--text-1)', fontWeight:600}}>{subsidyBtc.toFixed(3)}</span>
+              <span style={{color:'var(--text-3)'}}>·</span>
+              <span style={{color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase'}}>Fees</span>
+              <span style={{fontFamily:'var(--fm)', color:'var(--cyan)', fontWeight:600}}>+{feesBtc.toFixed(4)}</span>
             </div>
           )}
         </div>
