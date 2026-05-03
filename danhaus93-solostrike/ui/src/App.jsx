@@ -29,6 +29,17 @@ function drawBtcGlyph(ctx, x, y, size) {
   ctx.drawImage(__btcGlyphImg, dx, dy, size, size);
 }
 
+// ── Pickaxe icon (used by Hunt 'pickaxe' animation) ──────────────────────────
+// Pre-loaded once; falls back to a procedural pickaxe shape if not ready.
+const __pickaxeImg = (typeof window !== 'undefined') ? new Image() : null;
+let __pickaxeReady = false;
+if (__pickaxeImg) {
+  __pickaxeImg.decoding = 'async';
+  __pickaxeImg.onload = () => { __pickaxeReady = true; };
+  __pickaxeImg.onerror = () => { __pickaxeReady = false; };
+  __pickaxeImg.src = '/pickaxe-icon.png';
+}
+
 // ── Style tokens ──────────────────────────────────────────────────────────────
 const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.65rem' };
@@ -1786,8 +1797,8 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   const strikeRef = useRef({ active: false, t: 0, x: 0, y: 0 });
   const scanXRef = useRef(0);
   const sonarRef = useRef({ angle: 0, blips: null });
-  const bitstreamRef = useRef({ columns: null });
-  const crosshairRef = useRef({ x: 0, y: 0, tx: 0, ty: 0, locks: null, timeOnTarget: 0 });
+  const lightningRef = useRef({ bolts: null, megaBolt: null });
+  const pickaxeRef = useRef({ strikes: null, megaStrike: null });
   const lastFrameRef = useRef(performance.now());
   const hrRef = useRef(hashrate || 0);
   const netHrRef = useRef(netHashrate || 1);
@@ -2009,174 +2020,206 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       ctx.shadowBlur = 0;
     };
 
-    // ─── Bitstream Cascade ────────────────────────────────────────────────
-    const drawBitstream = (dt, W, H) => {
+    // ─── Lightning Strike Field ───────────────────────────────────────────
+    // Crackling bolts of lightning fork down the canvas. Most are thin pale
+    // strikes; rare gold mega-bolt is thicker and longer-lived = "strike".
+    const drawLightning = (dt, W, H) => {
       const ths = (hrRef.current || 0) / 1e12;
-      const COLW = 14;
-      const cols = Math.max(8, Math.floor(W / COLW));
-      const colWidth = W / cols;
-      const charH = 12;
-      const rows = Math.ceil(H / charH) + 2;
+      if (!lightningRef.current.bolts) lightningRef.current.bolts = [];
+      const bolts = lightningRef.current.bolts;
 
-      if (!bitstreamRef.current.columns || bitstreamRef.current.columns.length !== cols) {
-        bitstreamRef.current.columns = [];
-        for (let i = 0; i < cols; i++) {
-          bitstreamRef.current.columns.push({
-            offset: Math.random() * H,
-            speed: 25 + Math.random() * 30,
-            bits: Array.from({ length: rows }, () => Math.random() < 0.5 ? '0' : '1'),
-            goldRun: -1,
-            goldLife: 0,
-          });
+      // Generate a jagged zigzag from (sx, sy=0) down to ~H, with optional fork.
+      const genBolt = (sx, sy, gold) => {
+        const pts = [{ x: sx, y: sy }];
+        let x = sx, y = sy;
+        const targetY = H + 4;
+        const jitter = 0.55;
+        const stepMin = gold ? 5 : 4;
+        const stepRange = gold ? 9 : 8;
+        while (y < targetY) {
+          const dy = stepMin + Math.random() * stepRange;
+          y += dy;
+          x += (Math.random() - 0.5) * jitter * dy;
+          pts.push({ x, y });
         }
+        // Optional single fork from a midpoint
+        let fork = null;
+        if (Math.random() < (gold ? 0.85 : 0.35) && pts.length > 4) {
+          const fi = 2 + Math.floor(Math.random() * (pts.length - 4));
+          const fp = pts[fi];
+          const fpts = [{ x: fp.x, y: fp.y }];
+          let fx = fp.x, fy = fp.y;
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const flen = 3 + Math.floor(Math.random() * 5);
+          for (let i = 0; i < flen; i++) {
+            const dy = stepMin + Math.random() * stepRange;
+            fy += dy;
+            fx += dir * (1.5 + Math.random() * 2.0);
+            fpts.push({ x: fx, y: fy });
+            if (fy > targetY) break;
+          }
+          fork = fpts;
+        }
+        return { pts, fork };
+      };
+
+      // Spawn rate scales with hashrate
+      const spawnRate = 1.5 + Math.min(8, ths * 0.08); // bolts per second
+      const expected = spawnRate * dt;
+      let toSpawn = Math.floor(expected) + (Math.random() < (expected - Math.floor(expected)) ? 1 : 0);
+      for (let i = 0; i < toSpawn; i++) {
+        const sx = 8 + Math.random() * (W - 16);
+        const isGold = Math.random() < 0.05;
+        const b = genBolt(sx, 0, isGold);
+        bolts.push({
+          pts: b.pts, fork: b.fork,
+          life: 0,
+          maxLife: isGold ? 0.65 : 0.32,
+          gold: isGold,
+        });
       }
-      const speedMul = 1 + Math.min(2.4, ths * 0.025);
 
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-
-      for (let i = 0; i < cols; i++) {
-        const col = bitstreamRef.current.columns[i];
-        col.offset += col.speed * speedMul * dt;
-        if (col.offset >= charH) {
-          const shifts = Math.floor(col.offset / charH);
-          col.offset -= shifts * charH;
-          for (let s = 0; s < shifts; s++) {
-            col.bits.pop();
-            col.bits.unshift(Math.random() < 0.5 ? '0' : '1');
-            if (col.goldRun >= 0) col.goldRun += 1;
-            if (col.goldRun >= rows) col.goldRun = -1;
-          }
-          // Maybe trigger a gold run of leading zeros (rare; rate scales with ths)
-          if (col.goldRun < 0 && Math.random() < 0.0015 + ths * 0.00006) {
-            const runLen = 4 + Math.floor(Math.random() * 3);
-            for (let s = 0; s < runLen; s++) col.bits[s] = '0';
-            col.goldRun = 0;
-            col.goldLife = 0;
-          }
+      // Update + draw bolts
+      for (let i = bolts.length - 1; i >= 0; i--) {
+        const b = bolts[i];
+        b.life += dt;
+        if (b.life >= b.maxLife) { bolts.splice(i, 1); continue; }
+        const p = b.life / b.maxLife;
+        // Bolt stays bright then snaps off
+        const alpha = p < 0.25 ? 1 : Math.pow(1 - (p - 0.25) / 0.75, 0.7);
+        if (b.gold) {
+          ctx.strokeStyle = `rgba(255, 235, 170, ${alpha})`;
+          ctx.shadowColor = 'rgba(255, 220, 130, 0.95)';
+          ctx.shadowBlur = 14;
+          ctx.lineWidth = 2.0;
+        } else {
+          ctx.strokeStyle = `rgba(245, 200, 110, ${alpha * 0.85})`;
+          ctx.shadowColor = 'rgba(245, 166, 35, 0.6)';
+          ctx.shadowBlur = 6;
+          ctx.lineWidth = 1.1;
         }
-        if (col.goldRun >= 0) {
-          col.goldLife += dt;
-          if (col.goldLife > 3.0) col.goldRun = -1;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Main path
+        ctx.beginPath();
+        ctx.moveTo(b.pts[0].x, b.pts[0].y);
+        for (let j = 1; j < b.pts.length; j++) ctx.lineTo(b.pts[j].x, b.pts[j].y);
+        ctx.stroke();
+
+        // Fork branch
+        if (b.fork && b.fork.length > 1) {
+          ctx.lineWidth = b.gold ? 1.4 : 0.8;
+          ctx.beginPath();
+          ctx.moveTo(b.fork[0].x, b.fork[0].y);
+          for (let j = 1; j < b.fork.length; j++) ctx.lineTo(b.fork[j].x, b.fork[j].y);
+          ctx.stroke();
         }
 
-        const x = (i + 0.5) * colWidth;
-        for (let r = 0; r < rows; r++) {
-          const y = r * charH - col.offset;
-          if (y < -charH || y > H + charH) continue;
-          const fromBottom = r / rows;
-          const inGold = col.goldRun >= 0 && r >= col.goldRun && r < col.goldRun + 5;
-          if (inGold) {
-            const goldFade = Math.max(0.4, 1 - col.goldLife / 3.0);
-            const alpha = (0.75 + (1 - fromBottom) * 0.25) * goldFade;
-            ctx.fillStyle = `rgba(255, 215, 90, ${alpha})`;
-            ctx.shadowColor = 'rgba(255, 215, 90, 0.7)';
-            ctx.shadowBlur = 5;
-          } else if (r === 0) {
-            ctx.fillStyle = `rgba(220, 230, 240, 0.9)`;
-            ctx.shadowBlur = 0;
-          } else {
-            const alpha = (1 - fromBottom * 0.85) * 0.55;
-            ctx.fillStyle = `rgba(120, 130, 145, ${alpha})`;
-            ctx.shadowBlur = 0;
-          }
-          ctx.fillText(col.bits[r], x, y);
+        // Bright origin dot
+        if (b.gold) {
+          ctx.fillStyle = `rgba(255, 240, 200, ${alpha})`;
+          ctx.shadowColor = 'rgba(255, 240, 200, 1)';
+          ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(b.pts[0].x, b.pts[0].y, 2.5, 0, Math.PI * 2); ctx.fill();
         }
         ctx.shadowBlur = 0;
       }
     };
 
-    // ─── Crosshair Lock ───────────────────────────────────────────────────
-    const drawCrosshair = (dt, W, H) => {
+    // ─── Pickaxe Strike Field ────────────────────────────────────────────
+    // Pickaxe icons appear at random spots across a dark field. Each strike
+    // leaves a fading impact crater glow. Rare gold strike with shockwave.
+    const drawPickaxe = (dt, W, H) => {
       const ths = (hrRef.current || 0) / 1e12;
-      const cellW = 22;
-      const cellH = 22;
-      const cols = Math.ceil(W / cellW);
-      const rows = Math.ceil(H / cellH);
+      if (!pickaxeRef.current.strikes) pickaxeRef.current.strikes = [];
+      const strikes = pickaxeRef.current.strikes;
 
-      // Init / re-init
-      const cr = crosshairRef.current;
-      if (!cr.locks) {
-        cr.x = W / 2; cr.y = H / 2;
-        cr.tx = W / 2; cr.ty = H / 2;
-        cr.locks = [];
-        cr.timeOnTarget = 0;
+      // Spawn rate scales with hashrate
+      const spawnRate = 1.4 + Math.min(7, ths * 0.07);
+      const expected = spawnRate * dt;
+      let toSpawn = Math.floor(expected) + (Math.random() < (expected - Math.floor(expected)) ? 1 : 0);
+      for (let i = 0; i < toSpawn; i++) {
+        const isGold = Math.random() < 0.05;
+        strikes.push({
+          x: 16 + Math.random() * (W - 32),
+          y: 14 + Math.random() * (H - 28),
+          life: 0,
+          maxLife: isGold ? 1.6 : 0.85,
+          gold: isGold,
+          rot: (Math.random() - 0.5) * 0.4,  // slight rotation for variety
+          size: isGold ? 22 : 16,
+        });
       }
 
-      // Draw faded grid (small dots at cell centers)
-      ctx.fillStyle = 'rgba(245, 166, 35, 0.07)';
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          ctx.beginPath();
-          ctx.arc(c * cellW + cellW / 2, r * cellH + cellH / 2, 0.9, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+      // Draw each strike: crater glow → pickaxe → optional shockwave
+      for (let i = strikes.length - 1; i >= 0; i--) {
+        const s = strikes[i];
+        s.life += dt;
+        if (s.life >= s.maxLife) { strikes.splice(i, 1); continue; }
+        const p = s.life / s.maxLife;
+        const fade = 1 - p;
 
-      // Move reticle toward target (lerp). Speed scales with hashrate.
-      const lerpSpeed = 130 + Math.min(420, ths * 5);
-      const dx = cr.tx - cr.x;
-      const dy = cr.ty - cr.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 3) {
-        cr.timeOnTarget += dt;
-        if (cr.timeOnTarget > 0.12) {
-          // Snap-lock to grid cell + spawn lock effect
-          const c = Math.max(0, Math.min(cols - 1, Math.floor(cr.x / cellW)));
-          const r = Math.max(0, Math.min(rows - 1, Math.floor(cr.y / cellH)));
-          const lx = c * cellW + cellW / 2;
-          const ly = r * cellH + cellH / 2;
-          const isGold = Math.random() < 0.06;
-          cr.locks.push({ x: lx, y: ly, life: 0, maxLife: isGold ? 1.4 : 0.5, gold: isGold });
-          // Pick new target — random cell
-          cr.tx = Math.random() * (W - 16) + 8;
-          cr.ty = Math.random() * (H - 16) + 8;
-          cr.timeOnTarget = 0;
-        }
-      } else {
-        const step = Math.min(dist, lerpSpeed * dt);
-        cr.x += (dx / dist) * step;
-        cr.y += (dy / dist) * step;
-        cr.timeOnTarget = 0;
-      }
-
-      // Draw existing locks (under the reticle)
-      for (let i = cr.locks.length - 1; i >= 0; i--) {
-        const l = cr.locks[i];
-        l.life += dt;
-        if (l.life >= l.maxLife) { cr.locks.splice(i, 1); continue; }
-        const p = l.life / l.maxLife;
-        const al = 1 - p;
-        if (l.gold) {
-          ctx.strokeStyle = `rgba(255, 220, 140, ${al})`;
-          ctx.fillStyle   = `rgba(255, 220, 140, ${al * 0.20})`;
-          ctx.shadowColor = 'rgba(255, 220, 140, 0.85)';
-          ctx.shadowBlur = 11;
+        // Impact crater glow (under the pickaxe)
+        const craterR = 4 + p * (s.gold ? 18 : 9);
+        const craterAlpha = fade * (s.gold ? 0.55 : 0.35);
+        const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, craterR);
+        if (s.gold) {
+          grad.addColorStop(0, `rgba(255, 235, 170, ${craterAlpha})`);
+          grad.addColorStop(1, 'rgba(255, 220, 130, 0)');
         } else {
-          ctx.strokeStyle = `rgba(245, 166, 35, ${al * 0.85})`;
-          ctx.fillStyle   = `rgba(245, 166, 35, ${al * 0.13})`;
+          grad.addColorStop(0, `rgba(245, 166, 35, ${craterAlpha})`);
+          grad.addColorStop(1, 'rgba(245, 166, 35, 0)');
+        }
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(s.x, s.y, craterR, 0, Math.PI * 2); ctx.fill();
+
+        // Gold strike shockwave ring
+        if (s.gold && p < 0.7) {
+          const ringR = 6 + p * 36;
+          const ringAlpha = (1 - p / 0.7) * 0.85;
+          ctx.strokeStyle = `rgba(255, 220, 140, ${ringAlpha})`;
+          ctx.lineWidth = 1.5;
+          ctx.shadowColor = 'rgba(255, 220, 140, 0.8)';
+          ctx.shadowBlur = 8;
+          ctx.beginPath(); ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2); ctx.stroke();
           ctx.shadowBlur = 0;
         }
-        ctx.lineWidth = 1.2;
-        ctx.fillRect(l.x - cellW / 2, l.y - cellH / 2, cellW, cellH);
-        ctx.strokeRect(l.x - cellW / 2 + 0.5, l.y - cellH / 2 + 0.5, cellW - 1, cellH - 1);
-        ctx.shadowBlur = 0;
-      }
 
-      // Draw the reticle on top
-      ctx.strokeStyle = 'rgba(245, 166, 35, 0.9)';
-      ctx.shadowColor = 'rgba(245, 166, 35, 0.7)';
-      ctx.shadowBlur = 6;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.arc(cr.x, cr.y, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cr.x - 12, cr.y); ctx.lineTo(cr.x - 4, cr.y);
-      ctx.moveTo(cr.x + 4,  cr.y); ctx.lineTo(cr.x + 12, cr.y);
-      ctx.moveTo(cr.x, cr.y - 12); ctx.lineTo(cr.x, cr.y - 4);
-      ctx.moveTo(cr.x, cr.y + 4);  ctx.lineTo(cr.x, cr.y + 12);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+        // Pickaxe icon (image if loaded; otherwise small drawn shape)
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.rot);
+        ctx.globalAlpha = fade;
+        if (__pickaxeReady) {
+          // Tint via shadow only — pngs draw at native colors
+          ctx.shadowColor = s.gold ? 'rgba(255, 240, 200, 0.95)' : 'rgba(245, 166, 35, 0.7)';
+          ctx.shadowBlur = s.gold ? 10 : 5;
+          ctx.drawImage(__pickaxeImg, -s.size / 2, -s.size / 2, s.size, s.size);
+        } else {
+          // Procedural fallback: head + handle as 2 strokes
+          const sz = s.size;
+          ctx.strokeStyle = s.gold ? 'rgba(255, 235, 170, 1)' : 'rgba(220, 200, 170, 1)';
+          ctx.shadowColor = s.gold ? 'rgba(255, 220, 140, 0.9)' : 'rgba(245, 166, 35, 0.6)';
+          ctx.shadowBlur = s.gold ? 8 : 4;
+          ctx.lineCap = 'round';
+          ctx.lineWidth = sz * 0.13;
+          // Handle (diagonal)
+          ctx.beginPath();
+          ctx.moveTo(-sz * 0.35,  sz * 0.35);
+          ctx.lineTo( sz * 0.30, -sz * 0.30);
+          ctx.stroke();
+          // Head (perpendicular bar at the top)
+          ctx.lineWidth = sz * 0.18;
+          ctx.beginPath();
+          ctx.moveTo( sz * 0.10, -sz * 0.42);
+          ctx.lineTo( sz * 0.50, -sz * 0.18);
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
     };
 
     const draw = (now) => {
@@ -2190,8 +2233,8 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
 
       const a = huntAnimRef.current;
       if (a === 'sonar') drawSonar(dt, W, H);
-      else if (a === 'bitstream') drawBitstream(dt, W, H);
-      else if (a === 'crosshair') drawCrosshair(dt, W, H);
+      else if (a === 'lightning') drawLightning(dt, W, H);
+      else if (a === 'pickaxe') drawPickaxe(dt, W, H);
       else drawNonceField(dt, W, H);
 
       animRef.current = requestAnimationFrame(draw);
@@ -2253,6 +2296,14 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
     >
       <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
         <span>▸ The Hunt</span>
+        {onOpen && (
+          <span style={{
+            fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em',
+            color:'var(--amber)', textTransform:'uppercase',
+          }}>
+            ▸ Tap for the Reckoning
+          </span>
+        )}
       </div>
 
       <div style={{display:'flex', flexDirection:'column', gap:'0.55rem'}}>
@@ -2273,10 +2324,6 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             </span>
           </div>
           <NonceField hashrate={hashrate} netHashrate={netHashrate} huntAnim={huntAnim}/>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:4}}>
-            <span>Nonce Field · 2³² space</span>
-            <span style={{color:'var(--text-2)'}}>{hashrate>0 ? `${(hashrate/1e12).toFixed(1)} TH/s scanning` : 'idle'}</span>
-          </div>
         </div>
 
         {/* Block reward hero — subsidy + fees breakdown */}
@@ -2370,17 +2417,6 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             </div>
           </div>
         </div>
-
-        {onOpen && (
-          <div style={{
-            borderTop:'1px dashed rgba(245,166,35,0.18)',
-            paddingTop:'0.55rem',
-            fontFamily:'var(--fd)', fontSize:'0.6rem', color:'var(--amber)',
-            letterSpacing:'0.12em', textAlign:'center',
-          }}>
-            ▸ TAP FOR THE RECKONING
-          </div>
-        )}
       </div>
       <div style={{flex:1,minHeight:0}}/>
     </div>
@@ -2430,12 +2466,12 @@ function savePulseBitcoinSymbols(v) {
 }
 
 // Hunt card animation style (mirrors Pulse pattern)
-const LS_HUNT_ANIM = 'ss_hunt_anim_v1';   // 'noncefield' | 'sonar' | 'bitstream' | 'crosshair'
+const LS_HUNT_ANIM = 'ss_hunt_anim_v1';   // 'noncefield' | 'sonar' | 'lightning' | 'pickaxe'
 const HUNT_ANIM_OPTIONS = [
   { id: 'noncefield', label: 'Nonce Field' },
   { id: 'sonar',      label: 'Sonar Sweep' },
-  { id: 'bitstream',  label: 'Bitstream Cascade' },
-  { id: 'crosshair',  label: 'Crosshair Lock' },
+  { id: 'lightning',  label: 'Lightning Strike' },
+  { id: 'pickaxe',    label: 'Pickaxe Strike' },
 ];
 const HUNT_ANIM_DEFAULT = 'noncefield';
 function loadHuntAnim() {
@@ -3793,6 +3829,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             ['display','Display'],
             ['privacy','Privacy'],
             ['pulse','Pulse'],
+            ['hunt','Hunt'],
             ['aliases','Aliases'],
             ['webhooks','Webhooks'],
           ].map(([id,label])=>(
@@ -3816,8 +3853,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
             minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
-            carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
-            huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}/>
+            carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}/>
         )}
         {tab==='privacy' && (
           <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode}
@@ -3827,6 +3863,9 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
             useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}/>
+        )}
+        {tab==='hunt' && (
+          <HuntTab huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}/>
         )}
         {tab==='aliases' && (
           <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
@@ -3876,7 +3915,7 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
 }
 
 // ── Display tab ───────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange, huntAnim, onHuntAnimChange }) {
+function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
   const toggleMetric = (id) => {
     const next = stripSettings.metricIds.includes(id) ? stripSettings.metricIds.filter(x => x !== id) : [...stripSettings.metricIds, id];
     onStripSettingsChange({ ...stripSettings, metricIds: next });
@@ -4133,47 +4172,50 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </>
       )}
 
-      {/* ─── Hunt animation picker (mirrors Pulse picker UX) ──────────── */}
-      {onHuntAnimChange && (
-        <div style={{
-          marginTop: 18, paddingTop: 14,
-          borderTop: '1px solid var(--border)',
-        }}>
-          <div style={{
-            fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
-            color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
-          }}>
-            The Hunt — Animation Style
-          </div>
-          <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
-          }}>
-            {HUNT_ANIM_OPTIONS.map(opt => (
-              <button
-                key={opt.id}
-                onClick={() => onHuntAnimChange(opt.id)}
-                style={{
-                  background: huntAnim === opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
-                  border: `1px solid ${huntAnim === opt.id ? 'var(--amber)' : 'var(--border)'}`,
-                  color: huntAnim === opt.id ? 'var(--amber)' : 'var(--text-2)',
-                  fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.08em',
-                  textTransform: 'uppercase', padding: '0.45rem 0.7rem',
-                  cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 2,
-                  transition: 'all 0.15s ease',
-                }}
-              >{opt.label}</button>
-            ))}
-          </div>
-          <div style={{
-            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
-            marginTop: 6,
-          }}>
-            Choose how the nonce-search visualization on the Hunt card is rendered.
-          </div>
-        </div>
-      )}
-
       <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1rem', textAlign:'center', lineHeight:1.4}}>
+        Changes save automatically and persist on this device
+      </div>
+    </>
+  );
+}
+
+// ── Hunt tab — animation chooser for The Hunt card ────────────────────────────
+function HuntTab({ huntAnim, onHuntAnimChange }) {
+  return (
+    <>
+      <div style={{
+        fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
+        color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
+      }}>
+        The Hunt — Animation Style
+      </div>
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
+      }}>
+        {HUNT_ANIM_OPTIONS.map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => onHuntAnimChange(opt.id)}
+            style={{
+              background: huntAnim === opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+              border: `1px solid ${huntAnim === opt.id ? 'var(--amber)' : 'var(--border)'}`,
+              color: huntAnim === opt.id ? 'var(--amber)' : 'var(--text-2)',
+              fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.08em',
+              textTransform: 'uppercase', padding: '0.45rem 0.7rem',
+              cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 2,
+              transition: 'all 0.15s ease',
+            }}
+          >{opt.label}</button>
+        ))}
+      </div>
+      <div style={{
+        fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+        marginTop: 6, lineHeight: 1.5,
+      }}>
+        Choose how the nonce-search visualization on the Hunt card is rendered.
+      </div>
+
+      <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1.4rem', textAlign:'center', lineHeight:1.4}}>
         Changes save automatically and persist on this device
       </div>
     </>
