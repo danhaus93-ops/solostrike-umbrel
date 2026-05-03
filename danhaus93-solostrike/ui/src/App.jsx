@@ -2180,42 +2180,90 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       for (let i = 0; i < toSpawn; i++) {
         const isGold = Math.random() < 0.05;
         strikes.push({
-          x: 16 + Math.random() * (W - 32),
-          y: 14 + Math.random() * (H - 28),
+          x: 22 + Math.random() * (W - 44),
+          y: 18 + Math.random() * (H - 36),
           life: 0,
-          maxLife: isGold ? 1.6 : 0.85,
+          maxLife: isGold ? 1.8 : 1.1,        // longer so motion is perceptible
           gold: isGold,
-          rot: (Math.random() - 0.5) * 0.4,  // slight rotation for variety
-          size: isGold ? 22 : 16,
+          size: isGold ? 28 : 22,             // bumped from 22/16 for sharper sprite
+          blockSize: isGold ? 18 : 13,
         });
       }
 
-      // Draw each strike: crater glow → pickaxe → optional shockwave
       for (let i = strikes.length - 1; i >= 0; i--) {
         const s = strikes[i];
         s.life += dt;
         if (s.life >= s.maxLife) { strikes.splice(i, 1); continue; }
         const p = s.life / s.maxLife;
-        const fade = 1 - p;
 
-        // Impact crater glow (under the pickaxe)
-        const craterR = 4 + p * (s.gold ? 18 : 9);
-        const craterAlpha = fade * (s.gold ? 0.55 : 0.35);
-        const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, craterR);
-        if (s.gold) {
-          grad.addColorStop(0, `rgba(255, 235, 170, ${craterAlpha})`);
-          grad.addColorStop(1, 'rgba(255, 220, 130, 0)');
-        } else {
-          grad.addColorStop(0, `rgba(245, 166, 35, ${craterAlpha})`);
-          grad.addColorStop(1, 'rgba(245, 166, 35, 0)');
+        // Phase boundaries
+        const blockIn = Math.min(1, p / 0.20);
+        const swingFrom = 0.40, swingTo = 0.55;
+        const swing = Math.max(0, Math.min(1, (p - swingFrom) / (swingTo - swingFrom)));
+        const strike = p >= swingTo ? Math.min(1, (p - swingTo) / 0.30) : 0;
+        const fadeOut = Math.max(0, (p - 0.70) / 0.30);
+
+        const blockAlpha = blockIn * (1 - fadeOut * 0.85);
+        let blockScale = 0.6 + 0.4 * blockIn;
+        if (swing >= 1 && strike < 0.4) {
+          blockScale *= 1 + Math.sin(strike / 0.4 * Math.PI) * 0.25;
         }
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(s.x, s.y, craterR, 0, Math.PI * 2); ctx.fill();
+        const bs = s.blockSize * blockScale;
 
-        // Gold strike shockwave ring
-        if (s.gold && p < 0.7) {
-          const ringR = 6 + p * 36;
-          const ringAlpha = (1 - p / 0.7) * 0.85;
+        // ── ORANGE BTC BLOCK with halo ──
+        if (blockAlpha > 0.05) {
+          const haloR = bs * 1.3;
+          const haloAlpha = blockAlpha * 0.35 * (s.gold ? 1.4 : 1.0);
+          const halo = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, haloR);
+          halo.addColorStop(0, `rgba(255, 165, 60, ${haloAlpha})`);
+          halo.addColorStop(0.5, `rgba(247, 147, 26, ${haloAlpha * 0.5})`);
+          halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+          ctx.fillStyle = halo;
+          ctx.beginPath(); ctx.arc(s.x, s.y, haloR, 0, Math.PI * 2); ctx.fill();
+
+          ctx.save();
+          ctx.globalAlpha = blockAlpha;
+          const bx = s.x - bs / 2, by = s.y - bs / 2;
+          const r = Math.max(2, bs * 0.16);
+          const g = ctx.createLinearGradient(bx, by, bx + bs, by + bs);
+          g.addColorStop(0, s.gold ? '#FFE4A0' : '#FFB347');
+          g.addColorStop(0.45, s.gold ? '#FFC85A' : '#FF8C1A');
+          g.addColorStop(1, s.gold ? '#A0680A' : '#C95800');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.moveTo(bx + r, by);
+          ctx.lineTo(bx + bs - r, by);
+          ctx.quadraticCurveTo(bx + bs, by, bx + bs, by + r);
+          ctx.lineTo(bx + bs, by + bs - r);
+          ctx.quadraticCurveTo(bx + bs, by + bs, bx + bs - r, by + bs);
+          ctx.lineTo(bx + r, by + bs);
+          ctx.quadraticCurveTo(bx, by + bs, bx, by + bs - r);
+          ctx.lineTo(bx, by + r);
+          ctx.quadraticCurveTo(bx, by, bx + r, by);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = `rgba(255, 220, 150, ${blockAlpha * 0.4})`;
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+          if (strike > 0.2) {
+            const crackAlpha = (strike - 0.2) * 1.5 * (1 - fadeOut);
+            ctx.strokeStyle = `rgba(80, 30, 0, ${crackAlpha * 0.65})`;
+            ctx.lineWidth = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(s.x - bs * 0.3, s.y - bs * 0.1);
+            ctx.lineTo(s.x + bs * 0.1, s.y + bs * 0.2);
+            ctx.lineTo(s.x + bs * 0.3, s.y - bs * 0.05);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // (NO crater)
+
+        // Gold shockwave ring
+        if (s.gold && strike > 0 && strike < 0.7) {
+          const ringR = 6 + strike * 36;
+          const ringAlpha = (1 - strike / 0.7) * 0.85;
           ctx.strokeStyle = `rgba(255, 220, 140, ${ringAlpha})`;
           ctx.lineWidth = 1.5;
           ctx.shadowColor = 'rgba(255, 220, 140, 0.8)';
@@ -2224,39 +2272,57 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
           ctx.shadowBlur = 0;
         }
 
-        // Pickaxe icon (image if loaded; otherwise small drawn shape)
-        ctx.save();
-        ctx.translate(s.x, s.y);
-        ctx.rotate(s.rot);
-        ctx.globalAlpha = fade;
-        if (__pickaxeReady) {
-          // Tint via shadow only — pngs draw at native colors
-          ctx.shadowColor = s.gold ? 'rgba(255, 240, 200, 0.95)' : 'rgba(245, 166, 35, 0.7)';
-          ctx.shadowBlur = s.gold ? 10 : 5;
-          ctx.drawImage(__pickaxeImg, -s.size / 2, -s.size / 2, s.size, s.size);
-        } else {
-          // Procedural fallback: head + handle as 2 strokes
-          const sz = s.size;
-          ctx.strokeStyle = s.gold ? 'rgba(255, 235, 170, 1)' : 'rgba(220, 200, 170, 1)';
-          ctx.shadowColor = s.gold ? 'rgba(255, 220, 140, 0.9)' : 'rgba(245, 166, 35, 0.6)';
-          ctx.shadowBlur = s.gold ? 8 : 4;
-          ctx.lineCap = 'round';
-          ctx.lineWidth = sz * 0.13;
-          // Handle (diagonal)
-          ctx.beginPath();
-          ctx.moveTo(-sz * 0.35,  sz * 0.35);
-          ctx.lineTo( sz * 0.30, -sz * 0.30);
-          ctx.stroke();
-          // Head (perpendicular bar at the top)
-          ctx.lineWidth = sz * 0.18;
-          ctx.beginPath();
-          ctx.moveTo( sz * 0.10, -sz * 0.42);
-          ctx.lineTo( sz * 0.50, -sz * 0.18);
-          ctx.stroke();
+        // ── PICKAXE: rise → hold wound back → swing down → impact → fade ──
+        const pickaxeAlpha = blockIn * (1 - fadeOut);
+        if (pickaxeAlpha > 0.05) {
+          let yOffset, xOffset, rotation;
+          if (p < 0.20) {
+            yOffset = -s.size * (0.4 + blockIn * 1.0);
+            xOffset = s.size * 0.25 * blockIn;
+            rotation = -0.7;
+          } else if (p < swingFrom) {
+            const wob = Math.sin((p - 0.20) * 14) * 0.04;
+            yOffset = -s.size * 1.4;
+            xOffset = s.size * 0.25;
+            rotation = -0.7 + wob;
+          } else if (p < swingTo) {
+            const eased = swing * swing;
+            yOffset = -s.size * 1.4 * (1 - eased);
+            xOffset = s.size * 0.25 * (1 - eased);
+            rotation = -0.7 + eased * 1.1;
+          } else {
+            yOffset = -fadeOut * s.size * 0.5;
+            xOffset = 0;
+            rotation = 0.4;
+          }
+
+          ctx.save();
+          ctx.translate(s.x + xOffset, s.y + yOffset);
+          ctx.rotate(rotation);
+          ctx.globalAlpha = pickaxeAlpha;
+          // Sharper rendering: no shadow blur, high-quality smoothing
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          if (__pickaxeReady) {
+            ctx.drawImage(__pickaxeImg, -s.size / 2, -s.size / 2, s.size, s.size);
+          } else {
+            const sz = s.size;
+            ctx.strokeStyle = s.gold ? 'rgba(255, 235, 170, 1)' : 'rgba(220, 200, 170, 1)';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = sz * 0.13;
+            ctx.beginPath();
+            ctx.moveTo(-sz * 0.35, sz * 0.35);
+            ctx.lineTo(sz * 0.30, -sz * 0.30);
+            ctx.stroke();
+            ctx.lineWidth = sz * 0.18;
+            ctx.beginPath();
+            ctx.moveTo(sz * 0.10, -sz * 0.42);
+            ctx.lineTo(sz * 0.50, -sz * 0.18);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          ctx.restore();
         }
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-        ctx.restore();
       }
     };
 
