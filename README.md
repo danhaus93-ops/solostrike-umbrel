@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⛏ SoloStrike
+<img src="danhaus93-solostrike/ui/public/pickaxe-icon.png" width="72" alt="⛏">
+
+# SoloStrike
 
 **Zero-fee solo Bitcoin mining pool for your Umbrel node**
 
@@ -626,7 +628,7 @@ If SoloStrike helps you solo mine, a tip keeps the dev caffeine flowing:
 
 *Lightning address coming soon ⚡*
 
-**⛏ Solo mine responsibly. Keep your keys. Stack your sats. 💎**
+**<img src="danhaus93-solostrike/ui/public/pickaxe-icon.png" width="20" alt="⛏" align="middle"> Solo mine responsibly. Keep your keys. Stack your sats. 💎**
 
 *Find a block? Send a sat.*
 
