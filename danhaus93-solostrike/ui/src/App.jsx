@@ -1868,7 +1868,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const cssWidth = Math.max(120, rect.width);
-      const cssHeight = 130;
+      const cssHeight = Math.max(130, Math.round(rect.height));  // dynamic — fills available space
       canvas.style.width = cssWidth + 'px';
       canvas.style.height = cssHeight + 'px';
       canvas.width  = Math.round(cssWidth * dpr);
@@ -2354,7 +2354,8 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   return (
     <div ref={containerRef} style={{
       width: '100%',
-      height: 130,
+      flex: 1,
+      minHeight: 130,
       position: 'relative',
       overflow: 'hidden',
       background: 'rgba(8, 8, 10, 1)',
@@ -2410,7 +2411,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
         )}
       </div>
 
-      <div style={{display:'flex', flexDirection:'column', gap:'0.55rem'}}>
+      <div style={{display:'flex', flexDirection:'column', gap:'0.55rem', flex:1, minHeight:0}}>
 
         {/* iter27c: PER-BLOCK ODDS / NONCE FIELD
             Visualizes the nonce space (2^32 possibilities per block header).
@@ -2418,8 +2419,8 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             we hash, brighter cells are "recently checked." A subtle scan
             line sweeps L→R representing nonce iteration order. The density
             of activity scales with your live hashrate. */}
-        <div>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6}}>
+        <div style={{display:'flex', flexDirection:'column', flex:1, minHeight:130}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6, flexShrink:0}}>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
               Per-Block Odds
             </span>
