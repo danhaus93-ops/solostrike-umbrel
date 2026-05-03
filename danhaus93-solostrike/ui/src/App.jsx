@@ -4661,8 +4661,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               ctx.shadowBlur = 0;
             }
             ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
-            // In Bitcoin mode, replace gold winner chars with the custom B glyph; non-winners stay hex
-            if (useBitcoinSymbols && isGold) {
+            // Bitcoin mode: emit at most ONE glyph per drop. Non-winner drops show
+            // the glyph at goldIdx; winner drops show it at the head only (rest of
+            // the gold trail keeps the hex char so we don't get a column of Bs).
+            const showGlyph = useBitcoinSymbols && (
+              (d.isWinner && i === len - 1) ||
+              (!d.isWinner && d.goldIdx === i && d.y > 0)
+            );
+            if (showGlyph) {
               drawBtcGlyph(ctx, col.x, charY, 11);
             } else {
               ctx.fillText(d.chars[i], col.x, charY);
