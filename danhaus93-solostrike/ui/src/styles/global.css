@@ -246,6 +246,8 @@ body * {
   margin: 0;
   height: auto;
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Position dots — tiny floating indicator at the bottom of the carousel.
