@@ -649,13 +649,12 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
         <span style={{
           display:'inline-flex', alignItems:'center', justifyContent:'center',
           width:20, height:20, borderRadius:'50%',
-          background:'#000', color:'var(--btc-orange)',
-          fontWeight:700, fontSize:'0.8rem', lineHeight:1,
+          background:'#000',
           border:'1px solid var(--btc-orange)',
           boxShadow:'0 0 8px var(--btc-orange-glow)',
           flexShrink:0,
         }}>
-          <span style={{transform:'translate(0.5px, 0.5px)', display:'inline-block'}}>₿</span>
+          <img src="/btc-glyph.svg" alt="₿" width={12} height={12} style={{display:'block'}}/>
         </span>
         <span style={{color:'var(--amber)', fontWeight:700}}>LATEST BLOCK</span>
       </span>
