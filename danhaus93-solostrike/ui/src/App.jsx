@@ -67,7 +67,7 @@ const ALL_CARDS = [
   { id:'luck',          label:'Hot Streak' },
   { id:'retarget',      label:'Difficulty Retarget' },
   { id:'shares',        label:'Share Stats' },
-  { id:'best',          label:'Top Diggers' },
+  { id:'best',          label:'Top Miners' },
   { id:'closestcalls',  label:'Near Strikes' },
   { id:'jumpers',       label:'Claim Jumpers + Solo Strikes' },
   { id:'recent',        label:'The Ledger' },
@@ -1776,26 +1776,29 @@ function BitcoinNodePanel({ nodeInfo }) {
 // with hashrate. It's not a literal 1:1 cell-per-hash mapping (we'd need
 // 4 billion cells, not 120) — it's a representative visualization where
 // brightness ∝ work being done.
-function NonceField({ hashrate, netHashrate }) {
+function NonceField({ hashrate, netHashrate, huntAnim }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const animRef = useRef(0);
-  const dimsRef = useRef({ w: 600, h: 80, dpr: 1 });
-  // Cell brightness map — index → intensity [0..1]. Decays over time.
-  const cellsRef = useRef(null);
-  // Strike flash — bright burst when a "winner" is found (rare, on a
-  // probabilistic schedule based on hashrate vs network).
+  const dimsRef = useRef({ w: 600, h: 130, dpr: 1 });
+  // Per-animation state refs (each only initialized when its animation runs)
+  const cellsRef = useRef(null);             // nonce field cells
   const strikeRef = useRef({ active: false, t: 0, x: 0, y: 0 });
   const scanXRef = useRef(0);
+  const sonarRef = useRef({ angle: 0, blips: null });
+  const bitstreamRef = useRef({ columns: null });
+  const crosshairRef = useRef({ x: 0, y: 0, tx: 0, ty: 0, locks: null, timeOnTarget: 0 });
   const lastFrameRef = useRef(performance.now());
   const hrRef = useRef(hashrate || 0);
   const netHrRef = useRef(netHashrate || 1);
+  const huntAnimRef = useRef(huntAnim || 'noncefield');
 
-  // Keep latest hashrate accessible inside the animation loop
+  // Keep latest props accessible inside the rAF loop without triggering re-mount
   useEffect(() => {
     hrRef.current = hashrate || 0;
     netHrRef.current = netHashrate || 1;
   }, [hashrate, netHashrate]);
+  useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1804,8 +1807,8 @@ function NonceField({ hashrate, netHashrate }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Grid dimensions — these stay constant; only canvas pixel size changes.
-    const COLS = 32;   // 32 columns ↔ 32 bits in nonce, conceptually
+    // Nonce-field grid params (only used by 'noncefield' draw fn)
+    const COLS = 32;
     const ROWS = 6;
     const TOTAL_CELLS = COLS * ROWS;
     if (!cellsRef.current || cellsRef.current.length !== TOTAL_CELLS) {
@@ -1816,7 +1819,7 @@ function NonceField({ hashrate, netHashrate }) {
       const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const cssWidth = Math.max(120, rect.width);
-      const cssHeight = 80;
+      const cssHeight = 130;
       canvas.style.width = cssWidth + 'px';
       canvas.style.height = cssHeight + 'px';
       canvas.width  = Math.round(cssWidth * dpr);
@@ -1828,43 +1831,25 @@ function NonceField({ hashrate, netHashrate }) {
     const ro = new ResizeObserver(resize);
     ro.observe(container);
 
-    const draw = (now) => {
-      const dt = Math.min(0.1, (now - lastFrameRef.current) / 1000);
-      lastFrameRef.current = now;
-      const { w: W, h: H } = dimsRef.current;
+    // ─── Nonce Field (original) ───────────────────────────────────────────
+    const drawNonceField = (dt, W, H) => {
       const cells = cellsRef.current;
-
-      // Dark background
-      ctx.fillStyle = 'rgba(8, 8, 10, 1)';
-      ctx.fillRect(0, 0, W, H);
-
       // Decay all cells slowly
       const decay = Math.min(1, dt * 1.4);
       for (let i = 0; i < cells.length; i++) {
         if (cells[i] > 0) cells[i] = Math.max(0, cells[i] - decay * cells[i]);
       }
-
-      // Spawn rate scales with hashrate. At 0 TH/s → very few; at 100+ TH/s → many.
-      // We don't model 4 billion checks/sec literally; it's a visual proxy.
       const ths = (hrRef.current || 0) / 1e12;
-      const cellsPerSec = ths > 0
-        ? Math.min(160, 18 + ths * 1.2)
-        : 4;
+      const cellsPerSec = ths > 0 ? Math.min(160, 18 + ths * 1.2) : 4;
       const expectedSpawns = cellsPerSec * dt;
-      // Use Poisson-ish randomness: average expectedSpawns per frame.
       let spawns = Math.floor(expectedSpawns);
       if (Math.random() < (expectedSpawns - spawns)) spawns += 1;
       for (let i = 0; i < spawns; i++) {
         const idx = Math.floor(Math.random() * TOTAL_CELLS);
         cells[idx] = Math.min(1, cells[idx] + 0.6 + Math.random() * 0.4);
       }
-
-      // Scan line — sweeps L→R representing nonce iteration order.
-      // ~6s for full traversal regardless of hashrate (it's symbolic).
       scanXRef.current = (scanXRef.current + dt / 6) % 1;
       const scanX = scanXRef.current * W;
-
-      // Render cells
       const cellW = W / COLS;
       const cellH = H / ROWS;
       const dotMaxR = Math.min(cellW, cellH) * 0.32;
@@ -1874,49 +1859,30 @@ function NonceField({ hashrate, netHashrate }) {
           const x = c * cellW + cellW / 2;
           const y = r * cellH + cellH / 2;
           const v = cells[idx];
-          // Distance to scan line — cells near the line get a brightness boost
           const distToScan = Math.abs(x - scanX);
-          const scanBoost = distToScan < cellW * 1.5
-            ? (1 - distToScan / (cellW * 1.5)) * 0.25
-            : 0;
+          const scanBoost = distToScan < cellW * 1.5 ? (1 - distToScan / (cellW * 1.5)) * 0.25 : 0;
           const lit = Math.min(1, v + scanBoost);
           if (lit < 0.05) {
-            // Idle cell — very dim
             ctx.fillStyle = 'rgba(120, 90, 30, 0.18)';
-            ctx.beginPath();
-            ctx.arc(x, y, dotMaxR * 0.35, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(x, y, dotMaxR * 0.35, 0, Math.PI * 2); ctx.fill();
           } else {
-            // Active cell — amber, brighter with intensity
             const alpha = 0.25 + lit * 0.75;
             ctx.fillStyle = `rgba(245, 166, 35, ${alpha})`;
             ctx.shadowColor = 'rgba(245, 166, 35, 0.6)';
             ctx.shadowBlur = lit > 0.7 ? 8 : 4;
-            ctx.beginPath();
-            ctx.arc(x, y, dotMaxR * (0.45 + lit * 0.55), 0, Math.PI * 2);
-            ctx.fill();
+            ctx.beginPath(); ctx.arc(x, y, dotMaxR * (0.45 + lit * 0.55), 0, Math.PI * 2); ctx.fill();
             ctx.shadowBlur = 0;
           }
         }
       }
-
-      // Probabilistic "share found" strike. Real shares-per-second is
-      // hashrate / 2^32 at diff 1, much rarer at higher diffs. We fire a
-      // visual strike at a rate proportional to ths but capped so it stays
-      // dramatic — about once every 5-15 seconds at typical solo rates.
+      // Strike — rare bright burst
       if (!strikeRef.current.active && ths > 0) {
-        const strikeRate = Math.min(0.25, 0.04 + ths * 0.0015); // per second
+        const strikeRate = Math.min(0.25, 0.04 + ths * 0.0015);
         if (Math.random() < strikeRate * dt) {
           const idx = Math.floor(Math.random() * TOTAL_CELLS);
           const r = Math.floor(idx / COLS);
           const c = idx % COLS;
-          strikeRef.current = {
-            active: true,
-            t: 0,
-            x: c * cellW + cellW / 2,
-            y: r * cellH + cellH / 2,
-          };
-          // Flood the cell to max
+          strikeRef.current = { active: true, t: 0, x: c * cellW + cellW / 2, y: r * cellH + cellH / 2 };
           cells[idx] = 1;
         }
       }
@@ -1924,40 +1890,309 @@ function NonceField({ hashrate, netHashrate }) {
         const s = strikeRef.current;
         s.t += dt;
         const life = 0.55;
-        if (s.t > life) {
-          s.active = false;
-        } else {
+        if (s.t > life) { s.active = false; }
+        else {
           const p = s.t / life;
-          // Expanding ring + bright glow at center
           const ringR = 3 + p * 30;
           const ringAlpha = (1 - p) * 0.85;
           ctx.strokeStyle = `rgba(255, 220, 140, ${ringAlpha})`;
           ctx.lineWidth = 1.4;
           ctx.shadowColor = 'rgba(255, 210, 122, 0.75)';
           ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.beginPath(); ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2); ctx.stroke();
           ctx.shadowBlur = 0;
-          // Center burst
           const burstAlpha = (1 - p) * 0.95;
           ctx.fillStyle = `rgba(255, 240, 200, ${burstAlpha})`;
           ctx.shadowColor = 'rgba(255, 240, 200, 0.9)';
           ctx.shadowBlur = 16;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 2.5 + (1 - p) * 2, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(s.x, s.y, 2.5 + (1 - p) * 2, 0, Math.PI * 2); ctx.fill();
           ctx.shadowBlur = 0;
         }
       }
-
-      // Subtle scan line itself — vertical bar
+      // Scan line itself
       const scanGrad = ctx.createLinearGradient(scanX - 4, 0, scanX + 4, 0);
       scanGrad.addColorStop(0, 'rgba(245, 166, 35, 0)');
       scanGrad.addColorStop(0.5, 'rgba(245, 166, 35, 0.18)');
       scanGrad.addColorStop(1, 'rgba(245, 166, 35, 0)');
       ctx.fillStyle = scanGrad;
       ctx.fillRect(scanX - 4, 0, 8, H);
+    };
+
+    // ─── Sonar Sweep ──────────────────────────────────────────────────────
+    const drawSonar = (dt, W, H) => {
+      const cx = W / 2, cy = H / 2;
+      const maxR = Math.min(cx, cy) - 4;
+      // Faint grid: concentric circles + crosshair lines
+      ctx.strokeStyle = 'rgba(245, 166, 35, 0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 3; i++) {
+        ctx.beginPath(); ctx.arc(cx, cy, (maxR * i) / 3, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(0, cy); ctx.lineTo(W, cy);
+      ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
+      ctx.stroke();
+
+      const ths = (hrRef.current || 0) / 1e12;
+      const sweepSpeed = 0.6 + Math.min(1.6, ths * 0.018); // rad/sec
+      sonarRef.current.angle = (sonarRef.current.angle + sweepSpeed * dt) % (Math.PI * 2);
+      const a = sonarRef.current.angle;
+
+      // Spawn blips ahead of the sweep edge
+      if (!sonarRef.current.blips) sonarRef.current.blips = [];
+      const blipRate = 1.5 + Math.min(20, ths * 0.35);
+      const expected = blipRate * dt;
+      let toSpawn = Math.floor(expected) + (Math.random() < (expected - Math.floor(expected)) ? 1 : 0);
+      for (let i = 0; i < toSpawn; i++) {
+        const spawnAngle = a - Math.random() * 0.25;
+        const r = 6 + Math.random() * (maxR - 8);
+        const isGold = Math.random() < 0.07;
+        sonarRef.current.blips.push({
+          x: cx + Math.cos(spawnAngle) * r,
+          y: cy + Math.sin(spawnAngle) * r,
+          life: 0,
+          maxLife: 1.3 + Math.random() * 1.0,
+          gold: isGold,
+        });
+      }
+
+      // Draw sweep wedge — segments behind leading edge fading out
+      const sweepWidth = Math.PI * 0.42;
+      const segs = 14;
+      for (let i = 0; i < segs; i++) {
+        const segA  = a - (i / segs) * sweepWidth;
+        const segA2 = a - ((i + 1) / segs) * sweepWidth;
+        const al = 0.22 * (1 - i / segs);
+        ctx.fillStyle = `rgba(245, 166, 35, ${al})`;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, maxR, segA2, segA);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Leading edge line
+      ctx.strokeStyle = 'rgba(245, 166, 35, 0.75)';
+      ctx.shadowColor = 'rgba(245, 166, 35, 0.6)';
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Update + draw blips on top
+      for (let i = sonarRef.current.blips.length - 1; i >= 0; i--) {
+        const b = sonarRef.current.blips[i];
+        b.life += dt;
+        if (b.life >= b.maxLife) { sonarRef.current.blips.splice(i, 1); continue; }
+        const p = b.life / b.maxLife;
+        const al = 1 - p;
+        if (b.gold) {
+          ctx.fillStyle = `rgba(255, 220, 140, ${al})`;
+          ctx.shadowColor = 'rgba(255, 220, 140, 0.85)';
+          ctx.shadowBlur = 9;
+          ctx.beginPath(); ctx.arc(b.x, b.y, 2.6 + (1 - p) * 1.2, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = `rgba(245, 166, 35, ${al * 0.85})`;
+          ctx.shadowColor = 'rgba(245, 166, 35, 0.55)';
+          ctx.shadowBlur = 4;
+          ctx.beginPath(); ctx.arc(b.x, b.y, 1.7, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+      }
+      // Center hub
+      ctx.fillStyle = 'rgba(245, 166, 35, 0.85)';
+      ctx.shadowColor = 'rgba(245, 166, 35, 0.7)';
+      ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(cx, cy, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    };
+
+    // ─── Bitstream Cascade ────────────────────────────────────────────────
+    const drawBitstream = (dt, W, H) => {
+      const ths = (hrRef.current || 0) / 1e12;
+      const COLW = 14;
+      const cols = Math.max(8, Math.floor(W / COLW));
+      const colWidth = W / cols;
+      const charH = 12;
+      const rows = Math.ceil(H / charH) + 2;
+
+      if (!bitstreamRef.current.columns || bitstreamRef.current.columns.length !== cols) {
+        bitstreamRef.current.columns = [];
+        for (let i = 0; i < cols; i++) {
+          bitstreamRef.current.columns.push({
+            offset: Math.random() * H,
+            speed: 25 + Math.random() * 30,
+            bits: Array.from({ length: rows }, () => Math.random() < 0.5 ? '0' : '1'),
+            goldRun: -1,
+            goldLife: 0,
+          });
+        }
+      }
+      const speedMul = 1 + Math.min(2.4, ths * 0.025);
+
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      for (let i = 0; i < cols; i++) {
+        const col = bitstreamRef.current.columns[i];
+        col.offset += col.speed * speedMul * dt;
+        if (col.offset >= charH) {
+          const shifts = Math.floor(col.offset / charH);
+          col.offset -= shifts * charH;
+          for (let s = 0; s < shifts; s++) {
+            col.bits.pop();
+            col.bits.unshift(Math.random() < 0.5 ? '0' : '1');
+            if (col.goldRun >= 0) col.goldRun += 1;
+            if (col.goldRun >= rows) col.goldRun = -1;
+          }
+          // Maybe trigger a gold run of leading zeros (rare; rate scales with ths)
+          if (col.goldRun < 0 && Math.random() < 0.0015 + ths * 0.00006) {
+            const runLen = 4 + Math.floor(Math.random() * 3);
+            for (let s = 0; s < runLen; s++) col.bits[s] = '0';
+            col.goldRun = 0;
+            col.goldLife = 0;
+          }
+        }
+        if (col.goldRun >= 0) {
+          col.goldLife += dt;
+          if (col.goldLife > 3.0) col.goldRun = -1;
+        }
+
+        const x = (i + 0.5) * colWidth;
+        for (let r = 0; r < rows; r++) {
+          const y = r * charH - col.offset;
+          if (y < -charH || y > H + charH) continue;
+          const fromBottom = r / rows;
+          const inGold = col.goldRun >= 0 && r >= col.goldRun && r < col.goldRun + 5;
+          if (inGold) {
+            const goldFade = Math.max(0.4, 1 - col.goldLife / 3.0);
+            const alpha = (0.75 + (1 - fromBottom) * 0.25) * goldFade;
+            ctx.fillStyle = `rgba(255, 215, 90, ${alpha})`;
+            ctx.shadowColor = 'rgba(255, 215, 90, 0.7)';
+            ctx.shadowBlur = 5;
+          } else if (r === 0) {
+            ctx.fillStyle = `rgba(220, 230, 240, 0.9)`;
+            ctx.shadowBlur = 0;
+          } else {
+            const alpha = (1 - fromBottom * 0.85) * 0.55;
+            ctx.fillStyle = `rgba(120, 130, 145, ${alpha})`;
+            ctx.shadowBlur = 0;
+          }
+          ctx.fillText(col.bits[r], x, y);
+        }
+        ctx.shadowBlur = 0;
+      }
+    };
+
+    // ─── Crosshair Lock ───────────────────────────────────────────────────
+    const drawCrosshair = (dt, W, H) => {
+      const ths = (hrRef.current || 0) / 1e12;
+      const cellW = 22;
+      const cellH = 22;
+      const cols = Math.ceil(W / cellW);
+      const rows = Math.ceil(H / cellH);
+
+      // Init / re-init
+      const cr = crosshairRef.current;
+      if (!cr.locks) {
+        cr.x = W / 2; cr.y = H / 2;
+        cr.tx = W / 2; cr.ty = H / 2;
+        cr.locks = [];
+        cr.timeOnTarget = 0;
+      }
+
+      // Draw faded grid (small dots at cell centers)
+      ctx.fillStyle = 'rgba(245, 166, 35, 0.07)';
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          ctx.beginPath();
+          ctx.arc(c * cellW + cellW / 2, r * cellH + cellH / 2, 0.9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Move reticle toward target (lerp). Speed scales with hashrate.
+      const lerpSpeed = 130 + Math.min(420, ths * 5);
+      const dx = cr.tx - cr.x;
+      const dy = cr.ty - cr.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 3) {
+        cr.timeOnTarget += dt;
+        if (cr.timeOnTarget > 0.12) {
+          // Snap-lock to grid cell + spawn lock effect
+          const c = Math.max(0, Math.min(cols - 1, Math.floor(cr.x / cellW)));
+          const r = Math.max(0, Math.min(rows - 1, Math.floor(cr.y / cellH)));
+          const lx = c * cellW + cellW / 2;
+          const ly = r * cellH + cellH / 2;
+          const isGold = Math.random() < 0.06;
+          cr.locks.push({ x: lx, y: ly, life: 0, maxLife: isGold ? 1.4 : 0.5, gold: isGold });
+          // Pick new target — random cell
+          cr.tx = Math.random() * (W - 16) + 8;
+          cr.ty = Math.random() * (H - 16) + 8;
+          cr.timeOnTarget = 0;
+        }
+      } else {
+        const step = Math.min(dist, lerpSpeed * dt);
+        cr.x += (dx / dist) * step;
+        cr.y += (dy / dist) * step;
+        cr.timeOnTarget = 0;
+      }
+
+      // Draw existing locks (under the reticle)
+      for (let i = cr.locks.length - 1; i >= 0; i--) {
+        const l = cr.locks[i];
+        l.life += dt;
+        if (l.life >= l.maxLife) { cr.locks.splice(i, 1); continue; }
+        const p = l.life / l.maxLife;
+        const al = 1 - p;
+        if (l.gold) {
+          ctx.strokeStyle = `rgba(255, 220, 140, ${al})`;
+          ctx.fillStyle   = `rgba(255, 220, 140, ${al * 0.20})`;
+          ctx.shadowColor = 'rgba(255, 220, 140, 0.85)';
+          ctx.shadowBlur = 11;
+        } else {
+          ctx.strokeStyle = `rgba(245, 166, 35, ${al * 0.85})`;
+          ctx.fillStyle   = `rgba(245, 166, 35, ${al * 0.13})`;
+          ctx.shadowBlur = 0;
+        }
+        ctx.lineWidth = 1.2;
+        ctx.fillRect(l.x - cellW / 2, l.y - cellH / 2, cellW, cellH);
+        ctx.strokeRect(l.x - cellW / 2 + 0.5, l.y - cellH / 2 + 0.5, cellW - 1, cellH - 1);
+        ctx.shadowBlur = 0;
+      }
+
+      // Draw the reticle on top
+      ctx.strokeStyle = 'rgba(245, 166, 35, 0.9)';
+      ctx.shadowColor = 'rgba(245, 166, 35, 0.7)';
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(cr.x, cr.y, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cr.x - 12, cr.y); ctx.lineTo(cr.x - 4, cr.y);
+      ctx.moveTo(cr.x + 4,  cr.y); ctx.lineTo(cr.x + 12, cr.y);
+      ctx.moveTo(cr.x, cr.y - 12); ctx.lineTo(cr.x, cr.y - 4);
+      ctx.moveTo(cr.x, cr.y + 4);  ctx.lineTo(cr.x, cr.y + 12);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    };
+
+    const draw = (now) => {
+      const dt = Math.min(0.1, (now - lastFrameRef.current) / 1000);
+      lastFrameRef.current = now;
+      const { w: W, h: H } = dimsRef.current;
+
+      // Common dark background
+      ctx.fillStyle = 'rgba(8, 8, 10, 1)';
+      ctx.fillRect(0, 0, W, H);
+
+      const a = huntAnimRef.current;
+      if (a === 'sonar') drawSonar(dt, W, H);
+      else if (a === 'bitstream') drawBitstream(dt, W, H);
+      else if (a === 'crosshair') drawCrosshair(dt, W, H);
+      else drawNonceField(dt, W, H);
 
       animRef.current = requestAnimationFrame(draw);
     };
@@ -1967,12 +2202,12 @@ function NonceField({ hashrate, netHashrate }) {
       cancelAnimationFrame(animRef.current);
       ro.disconnect();
     };
-  }, []); // mount-once; hashrate read via ref
+  }, []); // mount-once; reads vary via refs
 
   return (
     <div ref={containerRef} style={{
       width: '100%',
-      height: 80,
+      height: 130,
       position: 'relative',
       overflow: 'hidden',
       background: 'rgba(8, 8, 10, 1)',
@@ -1983,7 +2218,7 @@ function NonceField({ hashrate, netHashrate }) {
   );
 }
 
-function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, currency, onOpen }) {
+function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, currency, huntAnim, onOpen }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
   // iter27c: `scale` (logarithmic mapping for the gold-vein SVG fill width)
   // is no longer needed — replaced by the NonceField canvas component.
@@ -2037,7 +2272,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
             </span>
           </div>
-          <NonceField hashrate={hashrate} netHashrate={netHashrate}/>
+          <NonceField hashrate={hashrate} netHashrate={netHashrate} huntAnim={huntAnim}/>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)', marginTop:4}}>
             <span>Nonce Field · 2³² space</span>
             <span style={{color:'var(--text-2)'}}>{hashrate>0 ? `${(hashrate/1e12).toFixed(1)} TH/s scanning` : 'idle'}</span>
@@ -2193,6 +2428,23 @@ function loadPulseBitcoinSymbols() {
 function savePulseBitcoinSymbols(v) {
   try { localStorage.setItem(LS_PULSE_BITCOIN_SYMBOLS, String(!!v)); } catch {}
 }
+
+// Hunt card animation style (mirrors Pulse pattern)
+const LS_HUNT_ANIM = 'ss_hunt_anim_v1';   // 'noncefield' | 'sonar' | 'bitstream' | 'crosshair'
+const HUNT_ANIM_OPTIONS = [
+  { id: 'noncefield', label: 'Nonce Field' },
+  { id: 'sonar',      label: 'Sonar Sweep' },
+  { id: 'bitstream',  label: 'Bitstream Cascade' },
+  { id: 'crosshair',  label: 'Crosshair Lock' },
+];
+const HUNT_ANIM_DEFAULT = 'noncefield';
+function loadHuntAnim() {
+  try {
+    const v = localStorage.getItem(LS_HUNT_ANIM);
+    return HUNT_ANIM_OPTIONS.some(o => o.id === v) ? v : HUNT_ANIM_DEFAULT;
+  } catch { return HUNT_ANIM_DEFAULT; }
+}
+function saveHuntAnim(v) { try { localStorage.setItem(LS_HUNT_ANIM, String(v)); } catch {} }
 
 // Detects whether the user is on a "mobile" viewport. Returns true for
 // any width below the 768px breakpoint. Hook re-runs on resize/orientation.
@@ -2927,12 +3179,12 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   );
 }
 
-// ── Top Diggers (best share leaderboard) ──────────────────────────────────────
+// ── Top Miners (best share leaderboard) ──────────────────────────────────────
 function BestShareLeaderboard({ workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
-      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Top Diggers — Best Difficulties</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Top Miners — Best Difficulties</div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem',display:'inline-flex',alignItems:'center',gap:4}}>Keep mining <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.85rem',height:'0.85rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
       ) : (
@@ -3507,7 +3759,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
@@ -3564,7 +3816,8 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
             minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
-            carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}/>
+            carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
+            huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}/>
         )}
         {tab==='privacy' && (
           <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode}
@@ -3623,7 +3876,7 @@ function MainTab({addr,setAddr,poolName,setPoolName,currency,onCurrencyChange,on
 }
 
 // ── Display tab ───────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
+function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange, huntAnim, onHuntAnimChange }) {
   const toggleMetric = (id) => {
     const next = stripSettings.metricIds.includes(id) ? stripSettings.metricIds.filter(x => x !== id) : [...stripSettings.metricIds, id];
     onStripSettingsChange({ ...stripSettings, metricIds: next });
@@ -3878,6 +4131,46 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
             Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.
           </div>
         </>
+      )}
+
+      {/* ─── Hunt animation picker (mirrors Pulse picker UX) ──────────── */}
+      {onHuntAnimChange && (
+        <div style={{
+          marginTop: 18, paddingTop: 14,
+          borderTop: '1px solid var(--border)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
+            color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
+          }}>
+            The Hunt — Animation Style
+          </div>
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
+          }}>
+            {HUNT_ANIM_OPTIONS.map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => onHuntAnimChange(opt.id)}
+                style={{
+                  background: huntAnim === opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+                  border: `1px solid ${huntAnim === opt.id ? 'var(--amber)' : 'var(--border)'}`,
+                  color: huntAnim === opt.id ? 'var(--amber)' : 'var(--text-2)',
+                  fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.08em',
+                  textTransform: 'uppercase', padding: '0.45rem 0.7rem',
+                  cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 2,
+                  transition: 'all 0.15s ease',
+                }}
+              >{opt.label}</button>
+            ))}
+          </div>
+          <div style={{
+            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+            marginTop: 6,
+          }}>
+            Choose how the nonce-search visualization on the Hunt card is rendered.
+          </div>
+        </div>
       )}
 
       <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1rem', textAlign:'center', lineHeight:1.4}}>
@@ -6530,6 +6823,11 @@ export default function App() {
     savePulseAnim(v);
     setPulseAnim(v);
   }, []);
+  const [huntAnim, setHuntAnim] = useState(() => loadHuntAnim());
+  const onHuntAnimChange = useCallback((v) => {
+    saveHuntAnim(v);
+    setHuntAnim(v);
+  }, []);
   const [useBitcoinSymbols, setUseBitcoinSymbols] = useState(() => loadPulseBitcoinSymbols());
   const onBitcoinSymbolsChange = useCallback((v) => {
     savePulseBitcoinSymbols(v);
@@ -6905,6 +7203,7 @@ export default function App() {
             carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
             useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
+            huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
           />
         )}
       </>
@@ -6938,7 +7237,7 @@ export default function App() {
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
     stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
-    vein: <VeinPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} onOpen={()=>setShowReckoning(true)}/>,
+    vein: <VeinPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} onOpen={()=>setShowReckoning(true)}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
@@ -7083,6 +7382,7 @@ export default function App() {
           carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
           pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
           useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
+          huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
         />
       )}
     </>
