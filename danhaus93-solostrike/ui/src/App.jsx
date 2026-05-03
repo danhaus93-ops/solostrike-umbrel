@@ -40,6 +40,44 @@ if (__pickaxeImg) {
   __pickaxeImg.src = '/pickaxe-icon.png';
 }
 
+// ── BTC celebrate glyph (the user's exact icon, transparent bg) ──────────────
+// Used by the BlockFoundModal celebrations — bigger, gradient, with soft glow
+// halo around the B. PNG (not SVG) so the color/glow render exactly as drawn.
+const __btcCelebrateImg = (typeof window !== 'undefined') ? new Image() : null;
+let __btcCelebrateReady = false;
+if (__btcCelebrateImg) {
+  __btcCelebrateImg.decoding = 'async';
+  __btcCelebrateImg.onload = () => { __btcCelebrateReady = true; };
+  __btcCelebrateImg.onerror = () => { __btcCelebrateReady = false; };
+  __btcCelebrateImg.src = '/btc-glyph-celebrate.png';
+}
+// Draw the celebrate glyph at (cx, cy) at the given size. brightness > 1 adds
+// a 'lighter'-composite re-stamp on top to brighten the B (used during the
+// lightning-strike ignition).
+function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
+  if (!__btcCelebrateReady) {
+    // Fallback to vector glyph
+    const prevAlign = ctx.textAlign, prevBaseline = ctx.textBaseline;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `bold ${size}px ${'-apple-system, sans-serif'}`;
+    ctx.fillStyle = '#F7931A';
+    ctx.fillText('\u20BF', cx, cy);
+    ctx.textAlign = prevAlign; ctx.textBaseline = prevBaseline;
+    return;
+  }
+  const dx = cx - size / 2, dy = cy - size / 2;
+  ctx.drawImage(__btcCelebrateImg, dx, dy, size, size);
+  if (brightness && brightness > 1) {
+    const prevComp = ctx.globalCompositeOperation;
+    const prevAlpha = ctx.globalAlpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = (brightness - 1) * 0.7;
+    ctx.drawImage(__btcCelebrateImg, dx, dy, size, size);
+    ctx.globalAlpha = prevAlpha;
+    ctx.globalCompositeOperation = prevComp;
+  }
+}
+
 // ── Style tokens ──────────────────────────────────────────────────────────────
 const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.65rem' };
@@ -2423,6 +2461,774 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOCK FOUND CELEBRATION MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+// Fullscreen takeover that fires when poolState.blocks.length grows. Plays
+// the user's selected Hunt animation theme (lightning / sonar / noncefield /
+// pickaxe) at full screen size with phase progression:
+//   0.0 – 0.5s  buildup begin
+//   0.5 – 1.2s  target appears
+//   1.2 – 1.8s  CLIMAX (strike, sweep, ripple, shatter)
+//   1.8 – 3.0s  B holds bright at center
+//   3.0 – 4.5s  themed text fades in
+//   4.5 – 5.5s  fade out
+// Then 10s detail-hold so user can read block info, then auto-dismiss.
+// Tap-anywhere or Continue button dismisses earlier.
+//
+// ─── BFM constellation pattern (32×6 grid that spells B) ───
+const BFM_COLS = 32, BFM_ROWS = 6, BFM_TOTAL = BFM_COLS * BFM_ROWS;
+const BFM_B_CELLS = (() => {
+  const set = new Set();
+  const startCol = 14;
+  // 4-col-wide × 6-row B pattern
+  const pat = [
+    [1,1,1,1],
+    [1,0,0,1],
+    [1,1,1,1],
+    [1,0,0,1],
+    [1,0,0,1],
+    [1,1,1,1],
+  ];
+  for (let r = 0; r < BFM_ROWS; r++)
+    for (let c = 0; c < 4; c++)
+      if (pat[r][c]) set.add((startCol + c) + r * BFM_COLS);
+  return set;
+})();
+const BFM_DURATION = 5.5; // seconds
+
+// ─── Lightning celebration ───
+function drawBFMLightning(ctx, W, H, t, state) {
+  ctx.fillStyle = 'rgba(8,8,10,1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const iconSize = Math.min(H * 0.55, W * 0.7);
+  const iconTopY = cy - iconSize / 2;
+
+  // Buildup bolts at ramping rate
+  const spawnRate = t < 1.2 ? (3 + t * 30) : (t < 1.8 ? 60 : 5);
+  if (Math.random() < spawnRate * (1 / 60)) {
+    const sx = 8 + Math.random() * (W - 16);
+    const pts = [{ x: sx, y: 0 }];
+    let x = sx, y = 0;
+    while (y < H + 4) {
+      const dy = 8 + Math.random() * 14;
+      y += dy;
+      x += (Math.random() - 0.5) * dy * 0.6;
+      pts.push({ x, y });
+    }
+    state.bolts.push({ pts, life: 0, maxLife: 0.32 });
+  }
+  for (let i = state.bolts.length - 1; i >= 0; i--) {
+    const b = state.bolts[i];
+    b.life += 1 / 60;
+    if (b.life >= b.maxLife) { state.bolts.splice(i, 1); continue; }
+    const p = b.life / b.maxLife;
+    const alpha = p < 0.25 ? 1 : Math.pow(1 - (p - 0.25) / 0.75, 0.7);
+    ctx.strokeStyle = `rgba(245, 200, 110, ${alpha * 0.7})`;
+    ctx.shadowColor = 'rgba(245, 166, 35, 0.6)';
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 2.0;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(b.pts[0].x, b.pts[0].y);
+    for (let j = 1; j < b.pts.length; j++) ctx.lineTo(b.pts[j].x, b.pts[j].y);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  let iconAlpha = 0, iconBrightness = 1, haloR = 0, haloAlpha = 0, iconScale = 1;
+  // Target phase — ghostly icon
+  if (t >= 0.5 && t < 1.4) iconAlpha = (t - 0.5) / 0.9 * 0.40;
+
+  // Mega-bolt + ignition (1.4 – 1.9s)
+  if (t >= 1.4 && t < 1.9) {
+    const sp = (t - 1.4) / 0.5;
+    if (!state.megaBolt) {
+      const startX = cx + (Math.random() - 0.5) * 60;
+      const targetY = iconTopY - 4;
+      const pts = [{ x: startX, y: 0 }];
+      let x = startX, y = 0;
+      while (y < targetY) {
+        const dy = 9 + Math.random() * 14;
+        y += dy;
+        if (y > targetY) y = targetY;
+        x += (Math.random() - 0.5) * dy * 0.5;
+        x += (cx - x) * 0.10;
+        pts.push({ x, y });
+      }
+      pts[pts.length - 1] = { x: cx, y: targetY };
+      const forks = [];
+      for (let f = 0; f < 4; f++) {
+        const fi = Math.floor(2 + Math.random() * (pts.length - 4));
+        const fp = pts[fi];
+        const fpts = [{ x: fp.x, y: fp.y }];
+        let fx = fp.x, fy = fp.y;
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        for (let k = 0; k < 5; k++) {
+          fy += 8 + Math.random() * 12;
+          fx += dir * (4 + Math.random() * 6);
+          fpts.push({ x: fx, y: fy });
+          if (fy > targetY) break;
+        }
+        forks.push(fpts);
+      }
+      state.megaBolt = { pts, forks };
+    }
+    const mb = state.megaBolt;
+    const alpha = sp < 0.1 ? sp / 0.1 : (sp < 0.7 ? 1 : (1 - sp) / 0.3);
+    ctx.strokeStyle = `rgba(255, 240, 180, ${alpha * 0.4})`;
+    ctx.shadowColor = 'rgba(255, 220, 130, 1.0)';
+    ctx.shadowBlur = 50;
+    ctx.lineWidth = 16;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(mb.pts[0].x, mb.pts[0].y);
+    for (let j = 1; j < mb.pts.length; j++) ctx.lineTo(mb.pts[j].x, mb.pts[j].y);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(255, 250, 220, ${alpha})`;
+    ctx.shadowBlur = 28;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(mb.pts[0].x, mb.pts[0].y);
+    for (let j = 1; j < mb.pts.length; j++) ctx.lineTo(mb.pts[j].x, mb.pts[j].y);
+    ctx.stroke();
+    ctx.lineWidth = 3;
+    for (const fk of mb.forks) {
+      ctx.beginPath();
+      ctx.moveTo(fk[0].x, fk[0].y);
+      for (let j = 1; j < fk.length; j++) ctx.lineTo(fk[j].x, fk[j].y);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    if (sp < 0.3) {
+      ctx.fillStyle = `rgba(255, 240, 180, ${(0.3 - sp) * 1.5})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    iconAlpha = 0.40 + sp * 0.60;
+    iconBrightness = 1 + sp * 0.8;
+    haloR = iconSize * 0.6 + sp * iconSize * 1.4;
+    haloAlpha = (1 - sp) * 0.55;
+    iconScale = 1 + sp * 0.10 - Math.max(0, sp - 0.4) * 0.05;
+  } else {
+    state.megaBolt = null;
+  }
+
+  // Blazing phase — sparks + fade
+  if (t >= 1.9 && t < 4.5) {
+    iconAlpha = 1;
+    const dt2 = t - 1.9;
+    iconBrightness = 1 + Math.max(0, 0.6 - dt2 * 0.4);
+    haloR = iconSize * (1.4 - Math.min(0.4, dt2 * 0.2));
+    haloAlpha = Math.max(0, 0.55 - dt2 * 0.30);
+    if (t > 4.0) {
+      const fadeAlpha = (4.5 - t) / 0.5;
+      iconAlpha = fadeAlpha;
+      haloAlpha *= fadeAlpha;
+    }
+    if (Math.random() < 0.4) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = iconSize * 0.55 + Math.random() * 40;
+      state.sparks.push({
+        x: cx + Math.cos(ang) * dist,
+        y: cy + Math.sin(ang) * dist,
+        life: 0, maxLife: 0.4 + Math.random() * 0.3,
+      });
+    }
+    for (let i = state.sparks.length - 1; i >= 0; i--) {
+      const s = state.sparks[i];
+      s.life += 1 / 60;
+      if (s.life >= s.maxLife) { state.sparks.splice(i, 1); continue; }
+      const sa = (1 - s.life / s.maxLife);
+      ctx.fillStyle = `rgba(255, 240, 180, ${sa})`;
+      ctx.shadowColor = 'rgba(255, 220, 140, 0.95)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  if (haloAlpha > 0.01 && haloR > 0) {
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    halo.addColorStop(0, `rgba(255, 220, 130, ${haloAlpha})`);
+    halo.addColorStop(0.4, `rgba(255, 165, 60, ${haloAlpha * 0.7})`);
+    halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+  }
+  if (iconAlpha > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = iconAlpha;
+    drawBtcCelebrate(ctx, cx, cy, iconSize * iconScale, iconBrightness);
+    ctx.restore();
+  }
+  drawBFMText(ctx, W, H, t, 'THE STRIKE', cy, iconSize);
+}
+
+// ─── Sonar celebration ───
+function drawBFMSonar(ctx, W, H, t, state) {
+  ctx.fillStyle = 'rgba(8,8,10,1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const maxR = Math.min(cx, cy) - 8;
+  const iconSize = Math.min(H * 0.42, W * 0.55);
+
+  ctx.strokeStyle = 'rgba(245, 166, 35, 0.10)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 4; i++) {
+    ctx.beginPath(); ctx.arc(cx, cy, maxR * i / 4, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy);
+  ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+
+  const sweepSpeed = 0.8 + Math.min(8, t < 1.8 ? t * 5 : 0.8);
+  state.angle = (state.angle + sweepSpeed * (1 / 60)) % (Math.PI * 2);
+  const a = state.angle;
+
+  if (!state.target && t >= 0.5) {
+    const ang = Math.random() * Math.PI * 2;
+    const dist = maxR * 0.55;
+    state.target = {
+      startX: cx + Math.cos(ang) * dist,
+      startY: cy + Math.sin(ang) * dist,
+    };
+  }
+
+  let bx = cx, by = cy, bAlpha = 0, bBrightness = 1;
+  if (t >= 0.5 && state.target) {
+    if (t < 1.5) {
+      bx = state.target.startX; by = state.target.startY;
+      bAlpha = (t - 0.5) / 1.0 * 0.55;
+    } else if (t < 1.8) {
+      const dp = (t - 1.5) / 0.3;
+      bx = state.target.startX + (cx - state.target.startX) * dp;
+      by = state.target.startY + (cy - state.target.startY) * dp;
+      bAlpha = 0.55 + 0.45 * dp;
+      bBrightness = 1 + dp * 0.4;
+    } else if (t < 4.5) {
+      bx = cx; by = cy;
+      bAlpha = t > 4.0 ? (4.5 - t) / 0.5 : 1;
+      bBrightness = 1 + Math.max(0, 0.4 - (t - 1.8) * 0.4);
+    }
+  }
+
+  const sweepWidth = Math.PI * 0.42, segs = 18;
+  for (let i = 0; i < segs; i++) {
+    const segA  = a - (i / segs) * sweepWidth;
+    const segA2 = a - ((i + 1) / segs) * sweepWidth;
+    ctx.fillStyle = `rgba(245, 166, 35, ${0.32 * (1 - i / segs)})`;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, maxR, segA2, segA);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(245, 166, 35, 0.85)';
+  ctx.shadowColor = 'rgba(245, 166, 35, 0.7)'; ctx.shadowBlur = 10;
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  if (t < 1.8 && Math.random() < 0.6) {
+    const sa = a - Math.random() * 0.2;
+    const rr = 6 + Math.random() * (maxR - 8);
+    state.blips.push({
+      x: cx + Math.cos(sa) * rr, y: cy + Math.sin(sa) * rr,
+      life: 0, maxLife: 1.2,
+    });
+  }
+  for (let i = state.blips.length - 1; i >= 0; i--) {
+    const b = state.blips[i];
+    b.life += 1 / 60;
+    if (b.life >= b.maxLife) { state.blips.splice(i, 1); continue; }
+    const al = (1 - b.life / b.maxLife);
+    ctx.fillStyle = `rgba(255, 220, 140, ${al})`;
+    ctx.shadowColor = 'rgba(255, 220, 140, 0.85)';
+    ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(b.x, b.y, 4.0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  if (t >= 1.5 && t < 3.5 && state.target) {
+    if (Math.floor((t - 1.5) * 4) > state.rings.length - 1) {
+      state.rings.push({
+        x: t < 1.8 ? state.target.startX : cx,
+        y: t < 1.8 ? state.target.startY : cy,
+        life: 0, maxLife: 1.5,
+      });
+    }
+    for (let i = state.rings.length - 1; i >= 0; i--) {
+      const r = state.rings[i];
+      r.life += 1 / 60;
+      if (r.life >= r.maxLife) { state.rings.splice(i, 1); continue; }
+      const p = r.life / r.maxLife;
+      const radius = p * Math.min(W, H) * 0.6;
+      const al = (1 - p) * 0.85;
+      ctx.strokeStyle = `rgba(255, 220, 140, ${al})`;
+      ctx.shadowColor = 'rgba(255, 220, 140, 0.7)';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(r.x, r.y, radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  ctx.fillStyle = 'rgba(245, 166, 35, 0.85)';
+  ctx.shadowColor = 'rgba(245, 166, 35, 0.7)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  if (bAlpha > 0.05) {
+    ctx.save();
+    ctx.globalAlpha = bAlpha;
+    drawBtcCelebrate(ctx, bx, by, iconSize, bBrightness);
+    ctx.restore();
+  }
+  drawBFMText(ctx, W, H, t, 'TARGET ACQUIRED', cy, iconSize);
+}
+
+// ─── Nonce Field celebration ───
+function drawBFMNonce(ctx, W, H, t, state) {
+  ctx.fillStyle = 'rgba(8,8,10,1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const cw = W / BFM_COLS, ch = H / BFM_ROWS;
+  const iconSize = Math.min(H * 0.6, W * 0.85);
+
+  if (t < 0.5) {
+    for (let i = 0; i < BFM_TOTAL; i++) if (Math.random() < 0.25) state.cells[i] = 1;
+  }
+  if (t >= 0.5 && t < 1.2) {
+    for (let i = 0; i < BFM_TOTAL; i++) {
+      if (BFM_B_CELLS.has(i)) state.cells[i] = Math.min(1, state.cells[i] + 0.04);
+      else state.cells[i] = Math.max(0, state.cells[i] - 0.05);
+    }
+  }
+  if (t >= 1.2 && t < 1.8) {
+    for (let i = 0; i < BFM_TOTAL; i++) {
+      if (BFM_B_CELLS.has(i))
+        state.cells[i] = Math.max(0.5 + Math.sin(t * 8 + i) * 0.15, state.cells[i] * 0.97);
+      else state.cells[i] *= 0.85;
+    }
+  }
+  if (t >= 1.8) {
+    for (let i = 0; i < BFM_TOTAL; i++) {
+      const target = BFM_B_CELLS.has(i) ? Math.max(0, 0.4 - (t - 1.8) * 0.35) : 0;
+      state.cells[i] = state.cells[i] * 0.96 + target * 0.04;
+    }
+  }
+
+  const dotR = Math.min(cw, ch) * 0.34;
+  for (let r = 0; r < BFM_ROWS; r++) for (let c = 0; c < BFM_COLS; c++) {
+    const idx = r * BFM_COLS + c;
+    const x = c * cw + cw / 2, y = r * ch + ch / 2;
+    const v = state.cells[idx];
+    if (v < 0.05) {
+      ctx.fillStyle = 'rgba(120,90,30,0.18)';
+      ctx.beginPath(); ctx.arc(x, y, dotR * 0.35, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const alpha = 0.35 + v * 0.65;
+      ctx.fillStyle = `rgba(245,166,35,${alpha})`;
+      ctx.shadowColor = 'rgba(245,166,35,0.7)';
+      ctx.shadowBlur = v > 0.7 ? 12 : 6;
+      ctx.beginPath(); ctx.arc(x, y, dotR * (0.5 + v * 0.5), 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  let bAlpha = 0;
+  if (t >= 1.2 && t < 4.5) {
+    if (t < 1.8) bAlpha = (t - 1.2) / 0.6 * 0.95;
+    else if (t < 4.0) bAlpha = 1;
+    else bAlpha = (4.5 - t) / 0.5;
+  }
+  if (bAlpha > 0.05) {
+    ctx.save();
+    ctx.globalAlpha = bAlpha;
+    drawBtcCelebrate(ctx, cx, cy, iconSize, 1);
+    ctx.restore();
+  }
+  drawBFMText(ctx, W, H, t, 'NONCE FOUND', cy, iconSize);
+}
+
+// ─── Pickaxe celebration ───
+function drawBFMPickaxe(ctx, W, H, t, state) {
+  ctx.fillStyle = 'rgba(8,8,10,1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const iconSize = Math.min(H * 0.55, W * 0.7);
+
+  let blockSize = 0, blockAlpha = 0;
+  if (t < 1.5) {
+    const growT = Math.min(1, t / 0.5);
+    const eased = 1 - Math.pow(1 - growT, 3);
+    blockSize = Math.min(H * 0.45, W * 0.6) * eased;
+    blockAlpha = eased;
+    if (t > 1.0 && t < 1.2) {
+      const sq = (t - 1.0) / 0.2;
+      blockSize *= 1 + Math.sin(sq * Math.PI) * 0.25;
+    }
+    if (t > 1.2) blockAlpha = Math.max(0, 1 - (t - 1.2) / 0.2);
+  }
+  if (blockAlpha > 0.05 && blockSize > 2) {
+    const bx = cx - blockSize / 2, by = cy - blockSize / 2;
+    const r = Math.max(3, blockSize * 0.12);
+    ctx.save();
+    ctx.globalAlpha = blockAlpha;
+    const haloR = blockSize * 1.5;
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    halo.addColorStop(0, 'rgba(255, 165, 60, 0.5)');
+    halo.addColorStop(0.5, 'rgba(247, 147, 26, 0.2)');
+    halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+    const g = ctx.createLinearGradient(bx, by, bx + blockSize, by + blockSize);
+    g.addColorStop(0, '#FFB347');
+    g.addColorStop(0.45, '#FF8C1A');
+    g.addColorStop(1, '#C95800');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by);
+    ctx.lineTo(bx + blockSize - r, by);
+    ctx.quadraticCurveTo(bx + blockSize, by, bx + blockSize, by + r);
+    ctx.lineTo(bx + blockSize, by + blockSize - r);
+    ctx.quadraticCurveTo(bx + blockSize, by + blockSize, bx + blockSize - r, by + blockSize);
+    ctx.lineTo(bx + r, by + blockSize);
+    ctx.quadraticCurveTo(bx, by + blockSize, bx, by + blockSize - r);
+    ctx.lineTo(bx, by + r);
+    ctx.quadraticCurveTo(bx, by, bx + r, by);
+    ctx.closePath();
+    ctx.fill();
+    if (t > 1.0) {
+      ctx.strokeStyle = `rgba(80, 30, 0, ${blockAlpha * 0.7})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - blockSize * 0.3, cy - blockSize * 0.1);
+      ctx.lineTo(cx + blockSize * 0.05, cy + blockSize * 0.18);
+      ctx.lineTo(cx + blockSize * 0.25, cy - blockSize * 0.05);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Mega pickaxe
+  if (t < 1.4) {
+    const pickSize = Math.min(H * 0.45, W * 0.55);
+    let px, py, rot;
+    if (t < 0.5) {
+      px = cx - pickSize * 0.6; py = cy - pickSize * 0.7; rot = -0.6;
+    } else if (t < 1.0) {
+      const sw = (t - 0.5) / 0.5;
+      const eased = sw * sw;
+      px = cx - pickSize * 0.6 * (1 - eased * 0.7);
+      py = cy - pickSize * 0.7 * (1 - eased);
+      rot = -0.6 + eased * 1.0;
+    } else {
+      px = cx - pickSize * 0.18; py = cy; rot = 0.4;
+    }
+    const pAlpha = t < 1.2 ? 1 : Math.max(0, 1 - (t - 1.2) / 0.2);
+    if (pAlpha > 0.05 && __pickaxeReady) {
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(rot);
+      ctx.globalAlpha = pAlpha;
+      ctx.shadowColor = 'rgba(255, 220, 140, 0.9)';
+      ctx.shadowBlur = 18;
+      ctx.drawImage(__pickaxeImg, -pickSize / 2, -pickSize / 2, pickSize, pickSize);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  }
+
+  // Impact flash
+  if (Math.abs(t - 1.0) < 0.15) {
+    const fs = 1 - Math.abs(t - 1.0) / 0.15;
+    ctx.fillStyle = `rgba(255, 230, 180, ${fs * 0.65})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Shards
+  if (t >= 1.2 && t < 3.0) {
+    if (!state.shards) {
+      state.shards = [];
+      for (let i = 0; i < 6; i++) {
+        state.shards.push({
+          ang: (i / 6) * Math.PI * 2 + Math.random() * 0.3,
+          spin: (Math.random() - 0.5) * 8,
+          size: 18 + Math.random() * 12,
+          color: ['#FFB347', '#FF8C1A', '#FFC85A', '#C95800', '#FFA040'][i % 5],
+        });
+      }
+    }
+    const shardT = (t - 1.2) / 1.8;
+    const dist = shardT * Math.min(W, H) * 0.5;
+    const shardAlpha = Math.max(0, 1 - shardT * 1.2);
+    for (const sh of state.shards) {
+      const x = cx + Math.cos(sh.ang) * dist;
+      const y = cy + Math.sin(sh.ang) * dist;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(shardT * sh.spin);
+      ctx.globalAlpha = shardAlpha;
+      ctx.fillStyle = sh.color;
+      ctx.shadowColor = 'rgba(255, 165, 60, 0.7)';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(-sh.size / 2, -sh.size / 2, sh.size, sh.size);
+      ctx.restore();
+    }
+  } else if (t < 1.0) {
+    state.shards = null;
+  }
+
+  // Icon emerges from rubble
+  let bAlpha = 0, bScale = 1;
+  if (t >= 1.3 && t < 4.5) {
+    if (t < 1.7) {
+      const ep = (t - 1.3) / 0.4;
+      bAlpha = ep; bScale = 0.5 + ep * 0.55;
+    } else if (t < 1.9) {
+      bAlpha = 1; bScale = 1.05 - (t - 1.7) / 0.2 * 0.05;
+    } else if (t < 4.0) {
+      bAlpha = 1; bScale = 1;
+    } else {
+      bAlpha = (4.5 - t) / 0.5; bScale = 1;
+    }
+  }
+  if (bAlpha > 0.05) {
+    if (t >= 1.3 && t < 2.5) {
+      const haloR = iconSize * (0.7 + (t - 1.3) * 0.5);
+      const haloAlpha = bAlpha * Math.max(0, 0.55 - (t - 1.3) * 0.3);
+      const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+      halo.addColorStop(0, `rgba(255, 220, 130, ${haloAlpha})`);
+      halo.addColorStop(0.5, `rgba(255, 165, 60, ${haloAlpha * 0.5})`);
+      halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.save();
+    ctx.globalAlpha = bAlpha;
+    drawBtcCelebrate(ctx, cx, cy, iconSize * bScale, 1);
+    ctx.restore();
+  }
+
+  drawBFMText(ctx, W, H, t, 'BLOCK STRUCK', cy, iconSize);
+}
+
+// ─── Shared themed text reveal (3.0 → 5.5s) ───
+function drawBFMText(ctx, W, H, t, text, cy, iconSize) {
+  if (t < 3.0) return;
+  let alpha;
+  if (t < 3.5) alpha = (t - 3.0) / 0.5;
+  else if (t < 4.5) alpha = 1;
+  else alpha = Math.max(0, (5.5 - t) / 1.0);
+  if (alpha < 0.05) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const fontSize = Math.min(H * 0.05, 22);
+  ctx.font = `bold ${fontSize}px ui-monospace, Menlo, Consolas, monospace`;
+  ctx.fillStyle = '#F7931A';
+  ctx.shadowColor = 'rgba(255, 165, 60, 0.9)';
+  ctx.shadowBlur = 16;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text.split('').join(' '), W / 2, cy + iconSize * 0.6);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ─── Modal component ───
+const BFM_HOLD_MS = 10000; // Keep details visible 10s after celebration
+const LS_LAST_CELEBRATED_BLOCK = 'ss_last_celebrated_block_height_v1';
+
+function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const animRef = useRef(0);
+  const startedAtRef = useRef(performance.now());
+  const stateRef = useRef(null);
+  const [closing, setClosing] = useState(false);
+  const [secondsAgo, setSecondsAgo] = useState(0);
+
+  // Reset state on (re)mount
+  useEffect(() => {
+    stateRef.current = {
+      lightning: { bolts: [], megaBolt: null, sparks: [] },
+      sonar:     { angle: 0, blips: [], rings: [], target: null },
+      noncefield:{ cells: new Float32Array(BFM_TOTAL) },
+      pickaxe:   { shards: null },
+    };
+    startedAtRef.current = performance.now();
+  }, [animType]);
+
+  // Animation loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const resize = () => {
+      const r = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = r.width * dpr;
+      canvas.height = r.height * dpr;
+      canvas.style.width = r.width + 'px';
+      canvas.style.height = r.height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+
+    const draw = () => {
+      const r = container.getBoundingClientRect();
+      const W = r.width, H = r.height;
+      const t = (performance.now() - startedAtRef.current) / 1000;
+
+      if (t < BFM_DURATION) {
+        const st = stateRef.current;
+        const fn = animType === 'sonar'     ? drawBFMSonar
+                 : animType === 'lightning' ? drawBFMLightning
+                 : animType === 'pickaxe'   ? drawBFMPickaxe
+                 :                            drawBFMNonce;
+        const stateKey = animType === 'sonar' ? 'sonar'
+                       : animType === 'lightning' ? 'lightning'
+                       : animType === 'pickaxe' ? 'pickaxe'
+                       : 'noncefield';
+        fn(ctx, W, H, t, st[stateKey]);
+      } else {
+        // After the celebration, render a simple dark canvas (block details remain visible)
+        ctx.fillStyle = 'rgba(8,8,10,1)';
+        ctx.fillRect(0, 0, W, H);
+      }
+      animRef.current = requestAnimationFrame(draw);
+    };
+    animRef.current = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      ro.disconnect();
+    };
+  }, [animType]);
+
+  // Auto-dismiss timer (5.5s celebration + 10s hold)
+  useEffect(() => {
+    const totalMs = BFM_DURATION * 1000 + BFM_HOLD_MS;
+    const id = setTimeout(() => {
+      setClosing(true);
+      setTimeout(() => onDismiss && onDismiss(), 240);
+    }, totalMs);
+    return () => clearTimeout(id);
+  }, [onDismiss]);
+
+  // Live "found N seconds ago"
+  useEffect(() => {
+    const baseMs = block?.ts ? new Date(block.ts).getTime() : Date.now();
+    const tick = () => {
+      const sec = Math.max(0, Math.floor((Date.now() - baseMs) / 1000));
+      setSecondsAgo(sec);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [block]);
+
+  const handleDismiss = (e) => {
+    if (e) e.stopPropagation();
+    if (closing) return;
+    setClosing(true);
+    setTimeout(() => onDismiss && onDismiss(), 240);
+  };
+
+  // Block details
+  const height = block?.height ?? null;
+  const reward = block?.reward ?? 0;
+  const fiatPrice = (prices && prices[currency]) || (prices && prices.USD) || 0;
+  const fiat = reward * fiatPrice;
+  const heightStr = height != null ? '#' + Number(height).toLocaleString() : '#—';
+  const btcStr = reward > 0 ? Number(reward).toFixed(8).replace(/0+$/, '').replace(/\.$/, '') : '—';
+  const fiatStr = fiat > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 0 }).format(fiat) : '';
+  const totalSec = Math.floor(BFM_DURATION + BFM_HOLD_MS / 1000);
+  const remaining = Math.max(0, totalSec - secondsAgo);
+
+  return (
+    <div
+      onClick={handleDismiss}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'var(--bg-void, #06070a)',
+        display: 'flex', flexDirection: 'column',
+        opacity: closing ? 0 : 1,
+        transition: 'opacity 240ms ease',
+        animation: closing ? undefined : 'bfmFadeIn 320ms ease',
+      }}
+    >
+      <style>{`
+        @keyframes bfmFadeIn { from { opacity: 0 } to { opacity: 1 } }
+      `}</style>
+      <div
+        onClick={handleDismiss}
+        style={{
+          position: 'absolute', top: 14, right: 14, zIndex: 5,
+          width: 36, height: 36,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-3, #7a6d5e)', fontSize: 22,
+          border: '1px solid rgba(245,166,35,0.18)', borderRadius: 18,
+          background: 'rgba(0,0,0,0.4)', cursor: 'pointer', userSelect: 'none',
+        }}
+      >✕</div>
+
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+      </div>
+
+      <div style={{
+        height: 1, background: 'linear-gradient(90deg, transparent, rgba(245,166,35,0.3), transparent)',
+        margin: '0 24px',
+      }} />
+
+      <div style={{ padding: '20px 24px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontFamily: 'var(--fd)', fontSize: 10, letterSpacing: '0.18em', color: 'var(--text-2)', textTransform: 'uppercase' }}>
+          Block Height
+        </div>
+        <div style={{ fontFamily: 'var(--fd)', fontSize: 28, fontWeight: 800, color: 'var(--amber)', textShadow: '0 0 12px rgba(245,166,35,0.4)', lineHeight: 1, letterSpacing: '0.02em' }}>
+          {heightStr}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)' }}>
+            {btcStr}<span style={{ fontFamily: 'var(--fd)', fontSize: 11, color: 'var(--amber)', marginLeft: 3, letterSpacing: '0.1em' }}>BTC</span>
+          </div>
+          {fiatStr && <div style={{ fontSize: 14, color: 'var(--text-2)' }}>{fiatStr}</div>}
+        </div>
+        <div style={{ fontFamily: 'var(--fd)', fontSize: 11, color: 'var(--text-3)', letterSpacing: '0.06em', marginTop: 4 }}>
+          Found {secondsAgo === 0 ? 'just now' : `${secondsAgo} second${secondsAgo === 1 ? '' : 's'} ago`}
+          {remaining > 0 ? ` · auto-dismiss in ${remaining}s` : ''}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 24px 28px' }}>
+        <button
+          onClick={handleDismiss}
+          style={{
+            width: '100%', padding: 16,
+            background: 'linear-gradient(180deg, rgba(245,166,35,0.15), rgba(245,166,35,0.06))',
+            border: '1px solid var(--amber)',
+            color: 'var(--amber)',
+            fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 700,
+            letterSpacing: '0.18em', textTransform: 'uppercase',
+            cursor: 'pointer',
+            boxShadow: '0 0 18px rgba(245,166,35,0.18)',
+          }}
+        >Continue</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Stratum localStorage helpers (v1.7.16) ──────────────────────────────────
 const LS_STRATUM_HOST       = 'ss_stratum_host_v1';
 const LS_STRATUM_WORKERNAME = 'ss_stratum_workername_v1';
@@ -3795,7 +4601,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange, onPreviewCelebration }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
@@ -3865,7 +4671,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}/>
         )}
         {tab==='hunt' && (
-          <HuntTab huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}/>
+          <HuntTab huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange} onPreviewCelebration={onPreviewCelebration}/>
         )}
         {tab==='aliases' && (
           <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
@@ -4180,7 +4986,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 }
 
 // ── Hunt tab — animation chooser for The Hunt card ────────────────────────────
-function HuntTab({ huntAnim, onHuntAnimChange }) {
+function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
   return (
     <>
       <div style={{
@@ -4214,6 +5020,36 @@ function HuntTab({ huntAnim, onHuntAnimChange }) {
       }}>
         Choose how the nonce-search visualization on the Hunt card is rendered.
       </div>
+
+      {/* ── Block-found celebration preview ─────────────────────────────── */}
+      {onPreviewCelebration && (
+        <>
+          <div style={{
+            fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
+            color: 'var(--text-2)', marginTop: '1.4rem', marginBottom: 8, textTransform: 'uppercase',
+          }}>
+            Block-Found Celebration
+          </div>
+          <button
+            onClick={onPreviewCelebration}
+            style={{
+              width: '100%', padding: '0.7rem 1rem',
+              background: 'linear-gradient(180deg, rgba(245,166,35,0.10), rgba(245,166,35,0.04))',
+              border: '1px solid var(--amber)',
+              color: 'var(--amber)',
+              fontFamily: 'var(--fd)', fontSize: '0.7rem', fontWeight: 700,
+              letterSpacing: '0.14em', textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >▸ Preview Celebration</button>
+          <div style={{
+            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+            marginTop: 6, lineHeight: 1.5,
+          }}>
+            Replays the fullscreen celebration that fires on a real block discovery, using the animation theme selected above.
+          </div>
+        </>
+      )}
 
       <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1.4rem', textAlign:'center', lineHeight:1.4}}>
         Changes save automatically and persist on this device
@@ -6870,6 +7706,51 @@ export default function App() {
     saveHuntAnim(v);
     setHuntAnim(v);
   }, []);
+
+  // ─── BLOCK FOUND modal state + trigger ─────────────────────────────────────
+  // Opens BlockFoundModal when poolState.blocks.length grows by 1+.
+  // Uses a null sentinel for lastBlockHeightRef so the first arrival of
+  // poolState data does NOT trigger a celebration (only real subsequent
+  // increments do). localStorage records the last celebrated block height
+  // so a page refresh right after a block-found event won't re-fire the modal.
+  const [blockFoundCelebration, setBlockFoundCelebration] = useState(null);
+  const lastBlockHeightRef = useRef(null);
+  useEffect(() => {
+    const blocks = Array.isArray(poolState?.blocks) ? poolState.blocks : null;
+    if (!blocks || blocks.length === 0) return;
+    const newest = blocks[0];
+    if (!newest || typeof newest.height !== 'number') return;
+    const height = newest.height;
+
+    // First time we see real data → record sentinel, don't celebrate
+    if (lastBlockHeightRef.current === null) {
+      lastBlockHeightRef.current = height;
+      return;
+    }
+    // Only celebrate if the newest block height is HIGHER than what we've seen
+    if (height > lastBlockHeightRef.current) {
+      lastBlockHeightRef.current = height;
+      // Refresh-protection: don't re-trigger for same block height
+      try {
+        const last = parseInt(localStorage.getItem(LS_LAST_CELEBRATED_BLOCK), 10);
+        if (Number.isFinite(last) && last >= height) return;
+        localStorage.setItem(LS_LAST_CELEBRATED_BLOCK, String(height));
+      } catch {}
+      // Open modal with current Hunt animation theme
+      setBlockFoundCelebration({ animType: huntAnim, block: newest });
+    }
+  }, [poolState?.blocks, huntAnim]);
+  const dismissBlockFound = useCallback(() => setBlockFoundCelebration(null), []);
+  // Settings preview button: opens modal with mock block data using current theme
+  const onPreviewCelebration = useCallback(() => {
+    const mock = {
+      height: poolState?.network?.height || 947128,
+      reward: poolState?.blockReward?.totalBtc || 3.13024891,
+      ts: new Date().toISOString(),
+      hash: '0000000000000000000pre00view0celebrationdataonlyaaaaaaaaaaaa',
+    };
+    setBlockFoundCelebration({ animType: huntAnim, block: mock });
+  }, [poolState, huntAnim]);
   const [useBitcoinSymbols, setUseBitcoinSymbols] = useState(() => loadPulseBitcoinSymbols());
   const onBitcoinSymbolsChange = useCallback((v) => {
     savePulseBitcoinSymbols(v);
@@ -7425,6 +8306,16 @@ export default function App() {
           pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
           useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
           huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
+          onPreviewCelebration={onPreviewCelebration}
+        />
+      )}
+      {blockFoundCelebration && (
+        <BlockFoundModal
+          animType={blockFoundCelebration.animType}
+          block={blockFoundCelebration.block}
+          prices={poolState?.prices}
+          currency={currency}
+          onDismiss={dismissBlockFound}
         />
       )}
     </>
