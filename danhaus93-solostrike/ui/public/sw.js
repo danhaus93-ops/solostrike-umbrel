@@ -7,7 +7,7 @@
 
 // Build marker: 1.8.3-rev22 (impliedHr uses session-scoped acceptedSdiffSum, not lifetime ckpool sum)
 
-const CACHE_NAME = 'solostrike-v1.8.5-splash-rev6';
+const CACHE_NAME = 'solostrike-v1.8.8-block-celebration';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -18,6 +18,9 @@ const SHELL_ASSETS = [
   '/icon-512.png',
   '/splash-btc.png',
   '/splash-pickaxe.png',
+  '/btc-glyph.svg',
+  '/btc-glyph-celebrate.png',
+  '/pickaxe-icon.png',
 ];
 
 // Install: pre-cache the shell assets
