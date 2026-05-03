@@ -5,30 +5,6 @@ import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fm
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 
-// ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
-// Loaded once at module level. Falls back to fillText('₿') if not yet ready or
-// if the SVG fails to decode.
-const __btcGlyphImg = (typeof window !== 'undefined') ? new Image() : null;
-let __btcGlyphReady = false;
-if (__btcGlyphImg) {
-  __btcGlyphImg.decoding = 'async';
-  __btcGlyphImg.onload = () => { __btcGlyphReady = true; };
-  __btcGlyphImg.onerror = () => { __btcGlyphReady = false; };
-  __btcGlyphImg.src = '/btc-glyph.svg';
-}
-// Draw the custom B glyph centered at (x, y) at the given size. Honors the
-// canvas's current textBaseline ('top' vs 'middle'), textAlign is assumed
-// 'center'. globalAlpha + shadowBlur/shadowColor still apply.
-function drawBtcGlyph(ctx, x, y, size) {
-  if (!__btcGlyphReady) {
-    ctx.fillText('\u20BF', x, y);
-    return;
-  }
-  const dx = x - size / 2;
-  const dy = ctx.textBaseline === 'top' ? y : y - size / 2;
-  ctx.drawImage(__btcGlyphImg, dx, dy, size, size);
-}
-
 // ── Style tokens ──────────────────────────────────────────────────────────────
 const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.65rem' };
@@ -673,12 +649,13 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
         <span style={{
           display:'inline-flex', alignItems:'center', justifyContent:'center',
           width:20, height:20, borderRadius:'50%',
-          background:'#000',
+          background:'#000', color:'var(--btc-orange)',
+          fontWeight:700, fontSize:'0.8rem', lineHeight:1,
           border:'1px solid var(--btc-orange)',
           boxShadow:'0 0 8px var(--btc-orange-glow)',
           flexShrink:0,
         }}>
-          <img src="/btc-glyph.svg" alt="₿" width={12} height={12} style={{display:'block'}}/>
+          <span style={{transform:'translate(0.5px, 0.5px)', display:'inline-block'}}>₿</span>
         </span>
         <span style={{color:'var(--amber)', fontWeight:700}}>LATEST BLOCK</span>
       </span>
@@ -4215,14 +4192,14 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBi
               fontFamily: 'var(--fd)', fontSize: '0.7rem', letterSpacing: '0.08em',
               color: 'var(--text-1)', textTransform: 'uppercase',
             }}>
-              Bitcoin Symbols (<img src="/btc-glyph.svg" alt="\u20BF" width={11} height={11} style={{display:'inline-block', verticalAlign:'-2px'}}/>)
+              Bitcoin Symbols (₿)
             </span>
           </label>
           <div style={{
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
             marginTop: 4, marginLeft: 24,
           }}>
-            Replace gold flakes / embers / glints with Bitcoin (<img src="/btc-glyph.svg" alt="\u20BF" width={10} height={10} style={{display:'inline-block', verticalAlign:'-1px'}}/>) symbols.
+            Replace gold flakes / embers / glints with Bitcoin (₿) symbols.
           </div>
         </div>
       )}
@@ -4416,7 +4393,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          drawBtcGlyph(ctx, f.x, f.y, fontPx);
+          ctx.fillText('₿', f.x, f.y);
         } else {
           ctx.beginPath();
           ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
@@ -4516,7 +4493,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
-          drawBtcGlyph(ctx, g.x, g.y, fontPx);
+          ctx.fillText('₿', g.x, g.y);
         } else {
           // Center bright dot
           ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
@@ -4661,18 +4638,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               ctx.shadowBlur = 0;
             }
             ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
-            // Bitcoin mode: emit at most ONE glyph per drop. Non-winner drops show
-            // the glyph at goldIdx; winner drops show it at the head only (rest of
-            // the gold trail keeps the hex char so we don't get a column of Bs).
-            const showGlyph = useBitcoinSymbols && (
-              (d.isWinner && i === len - 1) ||
-              (!d.isWinner && d.goldIdx === i && d.y > 0)
-            );
-            if (showGlyph) {
-              drawBtcGlyph(ctx, col.x, charY, 11);
-            } else {
-              ctx.fillText(d.chars[i], col.x, charY);
-            }
+            // In Bitcoin mode, replace gold winner chars with ₿; non-winners stay hex
+            const renderChar = (useBitcoinSymbols && isGold) ? '₿' : d.chars[i];
+            ctx.fillText(renderChar, col.x, charY);
           }
         }
       }
@@ -4785,7 +4753,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            drawBtcGlyph(ctx, spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, fontPx);
+            ctx.fillText('₿', spot.dx * c.w * 0.4, spot.dy * c.h * 0.4);
           } else {
             ctx.beginPath();
             ctx.arc(spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, spot.r, 0, Math.PI * 2);
@@ -4893,7 +4861,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          drawBtcGlyph(ctx, e.x, e.y, fontPx);
+          ctx.fillText('₿', e.x, e.y);
         } else {
           ctx.beginPath();
           ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
