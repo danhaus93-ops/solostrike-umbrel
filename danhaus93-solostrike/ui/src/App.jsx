@@ -5637,7 +5637,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const [placingPin, setPlacingPin] = useState(false);
   const placingPinRef = useRef(false);
   const poolPinRef = useRef(poolPin);
-  const globeRotYRef = useRef(0);  // last sampled rotation, used by tap math
+  const globeRotYRef = useRef(0);  // last sampled YAW (around Y axis), used by tap math
+  // v1.8.8-rev36: pitch (rotation around X axis) was previously a fixed
+  // 23.5° axial tilt baked into the shader. Now user-controlled via drag.
+  const globeRotXRef = useRef(0);
+  // Drag state — distinguishes between tap (no movement) and drag (rotation).
+  // Initialized lazily in the pointer handlers.
+  const dragStateRef = useRef({ active: false, lastX: 0, lastY: 0, totalMoved: 0, pointerId: null });
   const globeGeomRef = useRef({ cx: 0, cy: 0, radius: 1 });
   useEffect(() => { placingPinRef.current = placingPin; }, [placingPin]);
   useEffect(() => { poolPinRef.current = poolPin; }, [poolPin]);
@@ -5695,24 +5701,31 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const nz = Math.sqrt(Math.max(0, 1 - r2));
 
     // (nx, ny, nz) is the screen-space normal. To recover the geographic
-    // (lat, lon) of where the user tapped, we must INVERT the same
-    // transformation chain the renderer applies: aPos → Y-spin (rotY) →
-    // Z-tilt (23.5°) → screen.
+    // (lat, lon) of where the user tapped, INVERT the renderer's
+    // transformation chain. v1.8.8-rev36: chain is now PITCH (uRotX) then
+    // YAW (uRotY) — no more fixed axial tilt. So inverse is YAW first,
+    // then PITCH.
     let sx = nx, sy = ny, sz = nz;
     if (useWebGL) {
-      // Inverse Z-tilt — rotate (sx, sy) by -uTilt
-      const TILT = 23.5 * Math.PI / 180;
-      const ct = Math.cos(-TILT);
-      const st = Math.sin(-TILT);
-      const ux = sx * ct - sy * st;
-      const uy = sx * st + sy * ct;
-      sx = ux; sy = uy;
+      // 1) Inverse YAW — rotate (sx, sz) by -uRotY
+      const yaw = globeRotYRef.current;
+      const cy = Math.cos(-yaw);
+      const sinY = Math.sin(-yaw);
+      const px =  sx * cy + sz * sinY;
+      const pz = -sx * sinY + sz * cy;
+      sx = px; sz = pz;
+      // 2) Inverse PITCH — rotate (sy, sz) by -uRotX
+      const pitch = globeRotXRef.current;
+      const cp = Math.cos(-pitch);
+      const sp = Math.sin(-pitch);
+      const py = sy * cp - sz * sp;
+      const pz2 = sy * sp + sz * cp;
+      sy = py; sz = pz2;
     }
-    // Now (sx, sy, sz) is in the "spun" frame (after Y-rotation, before tilt).
-    // Inverse Y-rotation: subtract uRotY from longitude.
+    // (sx, sy, sz) is now in OBJECT space — the un-rotated unit sphere.
     const latRad = Math.asin(Math.max(-1, Math.min(1, sy)));
-    const lonSpun = Math.atan2(sx, sz);
-    let lonDeg = (lonSpun - globeRotYRef.current) * 180 / Math.PI;
+    const lonRad = Math.atan2(sx, sz);
+    let lonDeg = lonRad * 180 / Math.PI;
     // Normalize to [-180, 180]
     lonDeg = ((lonDeg + 540) % 360) - 180;
     const latDeg = latRad * 180 / Math.PI;
@@ -5721,11 +5734,85 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     setPlacingPin(false);
   }, [onPoolPinChange]);
 
+  // ── v1.8.8-rev36: pointer-driven drag rotation ───────────────────────
+  // The canvas now responds to drag gestures: horizontal motion updates
+  // YAW (uRotY), vertical motion updates PITCH (uRotX). Auto-spin pauses
+  // while the pointer is down and resumes on release.
+  //
+  // Tap-vs-drag is decided by total movement during the press: under 6px
+  // (CSS) is a tap and routes to handleCanvasTap (only does anything in
+  // pin-placement mode); 6px+ is a drag and consumes the gesture so it
+  // does NOT also fire a pin tap.
+  const handlePointerDown = useCallback((e) => {
+    // Mouse: only respond to primary button. Touch/pen: always.
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.stopPropagation();
+    const target = e.currentTarget;
+    try { target.setPointerCapture(e.pointerId); } catch { /* old Safari */ }
+    dragStateRef.current = {
+      active: true,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      totalMoved: 0,
+      pointerId: e.pointerId,
+    };
+  }, []);
+
+  const handlePointerMove = useCallback((e) => {
+    const drag = dragStateRef.current;
+    if (!drag.active || drag.pointerId !== e.pointerId) return;
+    const dx = e.clientX - drag.lastX;
+    const dy = e.clientY - drag.lastY;
+    drag.lastX = e.clientX;
+    drag.lastY = e.clientY;
+    drag.totalMoved += Math.abs(dx) + Math.abs(dy);
+    // Drag-to-rotate sensitivity. ~0.008 rad per CSS px ≈ 90° per ~200px
+    // of drag, which feels natural for both mouse and touch.
+    const SENS = 0.008;
+    // Horizontal drag → YAW. Direction: dragging right rotates the globe
+    // such that content under the finger moves with the finger (direct
+    // manipulation). This is opposite to incrementing rotY, hence -=.
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas._globeRotY = (canvas._globeRotY || 0) - dx * SENS;
+    }
+    // Vertical drag → PITCH. Clamp to ±85° so the user can't roll past
+    // straight up/down (which would invert the world and confuse the
+    // tap math). Direction: drag DOWN tilts forward (pitch increases).
+    const PITCH_LIMIT = 85 * Math.PI / 180;
+    globeRotXRef.current = Math.max(
+      -PITCH_LIMIT,
+      Math.min(PITCH_LIMIT, globeRotXRef.current - dy * SENS)
+    );
+  }, []);
+
+  const handlePointerUp = useCallback((e) => {
+    const drag = dragStateRef.current;
+    if (!drag.active || drag.pointerId !== e.pointerId) return;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    const wasTap = drag.totalMoved < 6;
+    drag.active = false;
+    drag.pointerId = null;
+    // Only fire the pin tap if (a) it was actually a tap, not a drag,
+    // and (b) the user is in pin-placement mode (handleCanvasTap will
+    // early-return otherwise but no harm in the explicit check).
+    if (wasTap && placingPinRef.current) {
+      handleCanvasTap(e);
+    }
+  }, [handleCanvasTap]);
+
+  const handlePointerCancel = useCallback((e) => {
+    const drag = dragStateRef.current;
+    if (drag.pointerId === e.pointerId) {
+      drag.active = false;
+      drag.pointerId = null;
+    }
+  }, []);
+
   // Toggle pin placement mode. Stop propagation so the click doesn't
   // bubble to the parent's "open strikers" handler.
   const togglePlacingPin = useCallback((e) => {
-    e.stopPropagation();
-    setPlacingPin(prev => !prev);
+    e.stopPropagation();    setPlacingPin(prev => !prev);
   }, []);
 
   // Set up the canvas — handles HiDPI properly so the waveform stays crisp on retina screens
@@ -6265,12 +6352,17 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       const t = canvas._globeT;
       const cx = W / 2, cy = H / 2;
       const radius = Math.min(W, H) * 0.42;
-      // Advance rotation only when not in pin-placement mode. Freezing
-      // gives the user a stable target to tap.
-      if (!placingPinRef.current) {
+      // Advance YAW (auto-spin) only when not in pin-placement mode AND
+      // not currently being dragged. Freezing during placement gives the
+      // user a stable target to tap; freezing during drag keeps user
+      // input from fighting the auto-rotation.
+      // PITCH is never auto-driven — it stays wherever the user dragged
+      // it (or 0, the default upright).
+      if (!placingPinRef.current && !dragStateRef.current.active) {
         canvas._globeRotY = (canvas._globeRotY || 0) + dt * 0.15;
       }
       const rotY = canvas._globeRotY || 0;
+      const rotX = globeRotXRef.current;
       // Cache globe geometry for the tap-to-place handler (it runs outside
       // the animation loop but needs to invert the projection).
       const useWebGL = !!(webglRendererRef.current
@@ -6302,6 +6394,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         // half-resolution on retina screens and looked pixelated.
         webglRendererRef.current.update({
           rotY,
+          rotX,
           dpr: dprRef.current || 1,
           width: W,
           height: H,
@@ -6590,35 +6683,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // 4) Render pool markers — crimson dots for high contrast against
       // the strong amber land. Solid #A8170E with thin green outline on
       // the user's own pin.
-      // v1.8.8-rev27: apply axial tilt (23.5°) to match the WebGL globe
-      // orientation. Markers must be transformed by the SAME Y-rotation
-      // PLUS Z-tilt as the sphere shader, otherwise they drift across
-      // the visible surface as the planet spins. Also: ALL dots same
-      // size (3.4px) — only the green ring distinguishes the user's pin.
+      // v1.8.8-rev36: apply PITCH (uRotX) then YAW (uRotY) to match the
+      // shader's new transform chain (tilt removed in rev36, replaced
+      // with user-controlled pitch via drag). Markers must use the SAME
+      // chain or they drift relative to continents under the cursor.
       const markerRadius = useWebGL ? atmRadius : radius;
-      const TILT_RAD = 23.5 * Math.PI / 180;
-      const cosTilt = Math.cos(TILT_RAD);
-      const sinTilt = Math.sin(TILT_RAD);
+      const pitch = useWebGL ? globeRotXRef.current : 0;
+      const cosPitch = Math.cos(pitch);
+      const sinPitch = Math.sin(pitch);
 
       const pools = canvas._globePools;
       for (const p of pools) {
-        const lonR = p.lon + rotY;
-        // Step 1: spin around Y axis (the planet's rotation)
-        const spunX = Math.cos(p.lat) * Math.sin(lonR);
-        const spunY = Math.sin(p.lat);
-        const spunZ = Math.cos(p.lat) * Math.cos(lonR);
-        // Step 2: tilt around Z axis (the planet's axial tilt)
-        // Only applied when WebGL globe is active (it has the tilt).
-        let x3, y3, z3;
-        if (useWebGL) {
-          x3 = spunX * cosTilt - spunY * sinTilt;
-          y3 = spunX * sinTilt + spunY * cosTilt;
-          z3 = spunZ;
-        } else {
-          x3 = spunX;
-          y3 = spunY;
-          z3 = spunZ;
-        }
+        // Object-space position from lat/lon
+        const ox = Math.cos(p.lat) * Math.sin(p.lon);
+        const oy = Math.sin(p.lat);
+        const oz = Math.cos(p.lat) * Math.cos(p.lon);
+        // Step 1: PITCH around X axis
+        const px3 = ox;
+        const py3 = oy * cosPitch - oz * sinPitch;
+        const pz3 = oy * sinPitch + oz * cosPitch;
+        // Step 2: YAW around Y axis
+        const x3 = px3 * Math.cos(rotY) + pz3 * Math.sin(rotY);
+        const y3 = py3;
+        const z3 = -px3 * Math.sin(rotY) + pz3 * Math.cos(rotY);
         if (z3 < -0.05) continue;
         const px = cx + x3 * markerRadius;
         const py = cy - y3 * markerRadius;
@@ -6902,7 +6989,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         {/* Smaller waveform for embedded mode */}
         <div ref={containerRef} style={{
           width:'100%', height:88,
-          background:'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(245,166,35,0.02) 100%)',
+          background:'#000',
           border:'1px solid var(--border)',
           marginBottom:'0.6rem',
           position:'relative', overflow:'hidden',
@@ -6917,7 +7004,19 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             pointerEvents:'none',
             display: pulseAnim === 'globe' ? 'block' : 'none',
           }}/>
-          <canvas ref={canvasRef} onClick={handleCanvasTap} style={{position:'relative', display:'block', width:'100%', height:'100%'}}/>
+          <canvas
+            ref={canvasRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            style={{
+              position:'relative', display:'block',
+              width:'100%', height:'100%',
+              touchAction:'none',
+              cursor: placingPin ? 'crosshair' : 'grab',
+            }}
+          />
           {pulseAnim === 'globe' && onPoolPinChange && (
             <div style={{
               position:'absolute', bottom:4, right:6,
@@ -7009,7 +7108,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240, max 380 to prevent runaway growth in vertical-scroll mode) */}
       <div ref={containerRef} style={{
         width:'100%', flex:1, minHeight:240, maxHeight:380,
-        background:'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(245,166,35,0.02) 100%)',
+        background:'#000',
         border:'1px solid var(--border)',
         marginBottom:'0.7rem',
         position:'relative', overflow:'hidden',
@@ -7020,7 +7119,19 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           pointerEvents:'none',
           display: pulseAnim === 'globe' ? 'block' : 'none',
         }}/>
-        <canvas ref={canvasRef} onClick={handleCanvasTap} style={{position:'relative', display:'block', width:'100%', height:'100%'}}/>
+        <canvas
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          style={{
+            position:'relative', display:'block',
+            width:'100%', height:'100%',
+            touchAction:'none',
+            cursor: placingPin ? 'crosshair' : 'grab',
+          }}
+        />
         {pulseAnim === 'globe' && onPoolPinChange && (
           <div style={{
             position:'absolute', bottom:8, right:10,

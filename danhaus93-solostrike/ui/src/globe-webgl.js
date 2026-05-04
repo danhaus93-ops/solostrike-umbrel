@@ -22,44 +22,48 @@ precision mediump float;
 
 attribute vec3 aPosition;     // sphere vertex position (radius 1, untransformed)
 
-uniform float uRotY;          // current rotation around Y axis (radians)
-uniform float uTilt;          // axial tilt angle (radians, ~0.41 = 23.5°)
+uniform float uRotY;          // yaw — rotation around Y axis (horizontal drag)
+uniform float uRotX;          // pitch — rotation around X axis (vertical drag)
 uniform float uAspect;        // canvas aspect ratio (W/H)
 uniform float uScale;         // disk scale factor
 
-varying vec3 vNormal;         // world-space normal AFTER rotation+tilt (for lighting)
-varying vec3 vSpun;           // post-Y-rotation, pre-tilt — for terminator-aligned lighting if needed
-varying vec3 vObjectPos;      // ORIGINAL un-rotated position — used for texture UV lookup
-                              // This is the key bug fix: tex coords MUST come from object
-                              // space, otherwise rotation moves the texture with the mesh
-                              // and the globe appears static.
+varying vec3 vNormal;         // world-space normal AFTER rotation (for lighting)
+varying vec3 vSpun;           // post-rotation (kept for shader symmetry)
+varying vec3 vObjectPos;      // ORIGINAL un-rotated position — used for texture UV
+                              // lookup. Texture coords MUST come from object space
+                              // so the rendered surface scrolls under the rotated
+                              // mesh as the user spins it.
 
 void main() {
   vObjectPos = aPosition;
 
-  // First: rotate around Y (planet's spin)
+  // v1.8.8-rev36: removed fixed 23.5° axial tilt; replaced with user-
+  // controlled pitch (uRotX). Apply PITCH first (rotates around X axis,
+  // tipping planet forward/back) then YAW (rotates around Y axis,
+  // spinning around the now-vertical pole). With this order, vertical
+  // drag tips the planet and horizontal drag spins it — the standard
+  // "Earth viewer" feel.
+  float cx = cos(uRotX);
+  float sx = sin(uRotX);
+  vec3 pitched = vec3(
+    aPosition.x,
+    aPosition.y * cx - aPosition.z * sx,
+    aPosition.y * sx + aPosition.z * cx
+  );
+
   float cy = cos(uRotY);
   float sy = sin(uRotY);
   vec3 spun = vec3(
-    aPosition.x * cy + aPosition.z * sy,
-    aPosition.y,
-    -aPosition.x * sy + aPosition.z * cy
+    pitched.x * cy + pitched.z * sy,
+    pitched.y,
+    -pitched.x * sy + pitched.z * cy
   );
   vSpun = spun;
-
-  // Then: tilt around Z (axial tilt — leans the spin axis)
-  float ct = cos(uTilt);
-  float st = sin(uTilt);
-  vec3 tilted = vec3(
-    spun.x * ct - spun.y * st,
-    spun.x * st + spun.y * ct,
-    spun.z
-  );
-  vNormal = tilted;
+  vNormal = spun;
 
   // Orthographic projection — disk fills uScale * canvas height
-  vec2 screen = vec2(tilted.x * uScale / uAspect, tilted.y * uScale);
-  gl_Position = vec4(screen, -tilted.z, 1.0);
+  vec2 screen = vec2(spun.x * uScale / uAspect, spun.y * uScale);
+  gl_Position = vec4(screen, -spun.z, 1.0);
 }
 `;
 
@@ -165,8 +169,21 @@ void main() {
   float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
   baseColor *= mix(0.75, 1.0, limb);
 
-  // v1.8.8-rev27: Fresnel rim glow REMOVED. Atmosphere is now exclusively
-  // the 2D radial halo drawn OUTSIDE the disk on the 2D canvas.
+  // v1.8.8-rev35: Fresnel rim glow RESTORED. This is the actual fix for
+  // the persistent "top is clipped" reports across rev30→rev34. The
+  // night-side hemisphere of the sphere paints at uOceanColor * ambient
+  // ≈ RGB(0.018, 0.015, 0.010) — visually identical to the dark card
+  // background. The unlit rim therefore disappears entirely, making
+  // the globe look like a half-disc with a flat edge wherever lit meets
+  // unlit. The 2D halo helps OUTSIDE the disk but doesn't put any light
+  // ON the disk's silhouette — that has to come from the shader.
+  //
+  // pow(...,3.0) makes the falloff sharp so only the very rim glows;
+  // the rest of the sphere is unaffected. Multiplier 0.55 is strong
+  // enough to be visible against the dark background but doesn't blow
+  // out the lit-side rim. uAtmColor is the existing warm amber.
+  float fresnel = pow(1.0 - max(0.0, vNormal.z), 3.0);
+  baseColor += uAtmColor * fresnel * 0.55;
 
   gl_FragColor = vec4(baseColor, 1.0);
 }
@@ -256,7 +273,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
   const locs = {
     aPosition: gl.getAttribLocation(program, 'aPosition'),
     uRotY: gl.getUniformLocation(program, 'uRotY'),
-    uTilt: gl.getUniformLocation(program, 'uTilt'),
+    uRotX: gl.getUniformLocation(program, 'uRotX'),
     uAspect: gl.getUniformLocation(program, 'uAspect'),
     uScale: gl.getUniformLocation(program, 'uScale'),
     uMap: gl.getUniformLocation(program, 'uMap'),
@@ -316,16 +333,16 @@ export function createGlobeWebGL(canvas, opts = {}) {
   // this number — they're tied to uScale/2.
   gl.uniform1f(locs.uScale, 0.72);
 
-  // Axial tilt — Earth's actual tilt is 23.5°. Adds visual interest
-  // and makes it feel like a "real planet" rather than a perfect upright sphere.
-  gl.uniform1f(locs.uTilt, 23.5 * Math.PI / 180);
+  // v1.8.8-rev36: axial tilt removed. Replaced with user-controlled
+  // pitch (uRotX) so the user can drag the planet to any orientation.
+  // Initial value 0 = upright. App.jsx drives uRotX from drag state.
 
   // GL state
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LESS);
   gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.BACK);
-  gl.clearColor(0.016, 0.020, 0.039, 0); // matches SoloStrike --bg-0 with alpha 0
+  gl.clearColor(0, 0, 0, 0); // transparent — page bg now solid #000 (rev36)
 
   let _ready = true;
   let _destroyed = false;
@@ -342,7 +359,9 @@ export function createGlobeWebGL(canvas, opts = {}) {
     },
 
     // Draw a frame.
-    update({ rotY = 0, dpr = 1, width = 100, height = 100 }) {
+    // v1.8.8-rev36: now accepts both rotY (yaw) and rotX (pitch) so the
+    // caller can drive full 2-axis rotation from drag state.
+    update({ rotY = 0, rotX = 0, dpr = 1, width = 100, height = 100 }) {
       if (_destroyed || !_ready) return;
       const W = Math.round(width * dpr);
       const H = Math.round(height * dpr);
@@ -352,6 +371,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.useProgram(program);
       gl.uniform1f(locs.uRotY, rotY);
+      gl.uniform1f(locs.uRotX, rotX);
       gl.uniform1f(locs.uAspect, W / H);
       gl.uniform1f(locs.uTime, performance.now() / 1000);
       gl.bindTexture(gl.TEXTURE_2D, tex);
