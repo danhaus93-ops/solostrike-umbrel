@@ -6310,34 +6310,31 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             sv[i] = z3 > -0.02 ? 1 : 0;
           }
 
-          // ── Fill pass — only large rings, alpha 0.06 ──
-          // Tiny islands skip this; their fill would be invisible anyway
-          // and just costs paint. Big landmasses get the warm wash so
-          // continents read as solid gentle shapes.
+          // ── Fill pass — only large rings entirely on front hemisphere ──
+          // v1.8.8-rev23: bleed-fix. The previous "subpath wrap cull"
+          // approach didn't fully prevent fill-rule artifacts when a
+          // polygon's vertices straddled the visible edge — ctx.fill()
+          // would implicitly close the path and paint diagonals across
+          // the disk. Geometric solution: skip any ring that has even
+          // one back-hemisphere vertex (sv[i]==0). Front-only rings
+          // close cleanly with no diagonals possible. Trade-off: we
+          // lose fill on rings that cross the rim, but those would have
+          // been the visually problematic cases anyway. Net: clean fills.
           if (rings[r].length >= 12) {
-            ctx.fillStyle = 'rgba(245,166,35,0.06)';
-            ctx.beginPath();
-            let started = false;
+            let allVisible = true;
             for (let i = 0; i < n; i++) {
-              if (sv[i]) {
-                if (!started) {
-                  ctx.moveTo(sx[i], sy[i]);
-                  started = true;
-                } else {
-                  // Cull polygon-wrap jumps inside the fill path
-                  const dx = sx[i] - sx[i-1];
-                  const dy = sy[i] - sy[i-1];
-                  if (dx*dx + dy*dy < MAX_SEG_DIST_SQ) {
-                    ctx.lineTo(sx[i], sy[i]);
-                  } else {
-                    ctx.moveTo(sx[i], sy[i]);
-                  }
-                }
-              } else {
-                started = false;
-              }
+              if (!sv[i]) { allVisible = false; break; }
             }
-            ctx.fill();
+            if (allVisible) {
+              ctx.fillStyle = 'rgba(245,166,35,0.05)';
+              ctx.beginPath();
+              ctx.moveTo(sx[0], sy[0]);
+              for (let i = 1; i < n; i++) {
+                ctx.lineTo(sx[i], sy[i]);
+              }
+              ctx.closePath();
+              ctx.fill();
+            }
           }
         }
 
@@ -6478,11 +6475,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         if (z3 < -0.05) continue;
         const px = cx + x3 * radius;
         const py = cy - y3 * radius;
-        // Solid BTC orange (#F7931A = rgb(247,147,26)). One fillStyle,
-        // one arc, one fill. Period.
-        ctx.fillStyle = '#F7931A';
+        // Deeper, richer orange (#D87A0E). The canonical #F7931A reads
+        // too light against the amber coastline outlines — gets visually
+        // washed out and hard to spot. This shade is more saturated and
+        // creates real contrast with the warm wash of the globe.
+        ctx.fillStyle = '#D87A0E';
         ctx.beginPath();
-        ctx.arc(px, py, p.isOwn ? 3.4 : 2.8, 0, Math.PI*2);
+        ctx.arc(px, py, p.isOwn ? 4.0 : 3.4, 0, Math.PI*2);
         ctx.fill();
         if (p.isOwn) {
           // Thin green outline — only thing that distinguishes "you"
