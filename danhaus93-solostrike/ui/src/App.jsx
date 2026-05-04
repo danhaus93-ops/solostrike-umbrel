@@ -3327,7 +3327,7 @@ function saveStratumPass(v)      { try { localStorage.setItem(LS_STRATUM_PASS, v
 // ── Carousel + Stratum rotation helpers (v1.7.17) ───────────────────────────
 const LS_CAROUSEL_ENABLED        = 'ss_carousel_enabled_v1';
 const LS_STRATUM_ROTATED         = 'ss_stratum_rotated_v1';   // '1' once we've moved Stratum to last
-const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'sluice' | 'glimmers' | 'ticker' | 'conveyor' | 'embers'
+const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'sluice' | 'glimmers' | 'ticker' | 'globe' | 'embers'
 function loadCarouselEnabled() { try { const v = localStorage.getItem(LS_CAROUSEL_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveCarouselEnabled(v){ try { localStorage.setItem(LS_CAROUSEL_ENABLED, String(!!v)); } catch {} }
 function loadStratumRotated()  { try { return localStorage.getItem(LS_STRATUM_ROTATED) === '1'; } catch { return false; } }
@@ -3336,7 +3336,7 @@ const PULSE_ANIM_OPTIONS = [
   { id: 'sluice',   label: 'Sluice Box' },
   { id: 'glimmers', label: 'Cave Glimmers' },
   { id: 'ticker',   label: 'Hash Ticker' },
-  { id: 'conveyor', label: 'Conveyor of Ore' },
+  { id: 'globe',    label: 'Solo Strike Map' },
   { id: 'embers',   label: 'Forge Embers' },
 ];
 const PULSE_ANIM_DEFAULT = 'ticker';
@@ -5934,121 +5934,173 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       ctx.shadowBlur = 0;
     };
 
-    // ─── Conveyor of Ore ──────────────────────────────────────
-    const drawConveyor = (dt, W, H) => {
-      if (!canvas._chunks) canvas._chunks = [];
-      if (canvas._chunkAccum === undefined) canvas._chunkAccum = 0;
-      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
-      canvas._timeAccum += dt;
+    // ─── Solo Strike Map (Globe) ──────────────────────────────
+    // Slowly-rotating 3D globe with real Natural Earth coastline outlines
+    // drawn as faint amber lines + glowing amber pool dots pulsing on the
+    // visible hemisphere at approximate (not exact) regional locations.
+    // Coastline TopoJSON fetched once from CDN, cached on the canvas element.
+    const drawGlobe = (dt, W, H) => {
+      // First-call initialization (one-time per canvas)
+      if (canvas._globeInit === undefined) {
+        canvas._globeInit = false;
+        canvas._globeRings = null;
+        canvas._globePools = [];
+        canvas._globeT = 0;
 
-      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
-      // Conveyor speed: 30 + 0.6 per TH/s
-      const speed = enabled ? 30 + Math.min(150, ths * 0.6) : 12;
-      // Chunks per sec: 0.6 + 0.08 per TH/s
-      const chunkRate = enabled ? 0.6 + Math.min(8, ths * 0.08) : 0.2;
-
-      canvas._chunkAccum += dt * chunkRate;
-      while (canvas._chunkAccum >= 1) {
-        canvas._chunkAccum -= 1;
-        // Chunk size + how much gold it has (random)
-        const isGoldRich = Math.random() < 0.35;
-        canvas._chunks.push({
-          x: -16,
-          y: H * 0.55, // resting on the conveyor belt
-          w: 12 + Math.random() * 10,
-          h: 8 + Math.random() * 5,
-          tilt: (Math.random() - 0.5) * 0.3,
-          // Gold spots embedded in this chunk
-          spots: Array.from({ length: isGoldRich ? 3 + Math.floor(Math.random() * 3) : Math.floor(Math.random() * 2) }, () => ({
-            dx: (Math.random() - 0.5),
-            dy: (Math.random() - 0.5),
-            r: 0.6 + Math.random() * 1.2,
-          })),
-          rich: isGoldRich,
-          big: false,
-        });
-      }
-
-      spikesRef.current = spikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) {
-          // Big nugget chunk — extra-rich gold
-          canvas._chunks.push({
-            x: -22, y: H * 0.55,
-            w: 22, h: 14, tilt: (Math.random() - 0.5) * 0.2,
-            spots: Array.from({ length: 6 }, () => ({
-              dx: (Math.random() - 0.5), dy: (Math.random() - 0.5),
-              r: 1 + Math.random() * 1.5,
-            })),
-            rich: true, big: true,
+        // ─ Decode TopoJSON helpers ────────────────────────────
+        const decodeArcs = (topo) => {
+          const { scale, translate } = topo.transform;
+          return topo.arcs.map(arc => {
+            let x = 0, y = 0;
+            return arc.map(([dx, dy]) => {
+              x += dx; y += dy;
+              return [x * scale[0] + translate[0], y * scale[1] + translate[1]];
+            });
           });
-        }
+        };
+        const arcsToRing = (arcIndices, decodedArcs) => {
+          const ring = [];
+          for (const idx of arcIndices) {
+            const reverse = idx < 0;
+            const arc = decodedArcs[reverse ? ~idx : idx];
+            const pts = reverse ? arc.slice().reverse() : arc;
+            if (ring.length === 0) ring.push(...pts);
+            else ring.push(...pts.slice(1));
+          }
+          return ring;
+        };
+        const geometryRings = (geom, decodedArcs) => {
+          const rings = [];
+          const collect = (a) => rings.push(arcsToRing(a, decodedArcs));
+          if (geom.type === 'Polygon') geom.arcs.forEach(collect);
+          else if (geom.type === 'MultiPolygon') geom.arcs.forEach(p => p.forEach(collect));
+          return rings;
+        };
+
+        // ─ Async fetch coastline data, biased pool generation ─
+        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json')
+          .then(r => r.json())
+          .then(topo => {
+            const decodedArcs = decodeArcs(topo);
+            const rings = [];
+            for (const geom of topo.objects.land.geometries) {
+              rings.push(...geometryRings(geom, decodedArcs));
+            }
+            canvas._globeRings = rings;
+
+            const allVerts = [];
+            for (const ring of rings) {
+              if (ring.length < 8) continue; // skip tiny islands
+              for (let i = 0; i < ring.length; i += 2) allVerts.push(ring[i]);
+            }
+            const numPools = Math.max(8, Math.min(80, ns.pools || 30));
+            for (let i = 0; i < numPools; i++) {
+              const v = allVerts[Math.floor(Math.random() * allVerts.length)];
+              const lon = v[0] + (Math.random() - 0.5) * 4;
+              const lat = v[1] + (Math.random() - 0.5) * 4;
+              canvas._globePools.push({
+                lat: lat * Math.PI / 180,
+                lon: lon * Math.PI / 180,
+                rate: 0.4 + Math.random() * 1.6,
+                phase: Math.random() * Math.PI * 2,
+                bright: 0.45 + Math.random() * 0.5,
+              });
+            }
+            canvas._globeInit = true;
+          })
+          .catch(e => {
+            console.warn('Globe coastline fetch failed:', e);
+            canvas._globeInit = true; // proceed without coastlines
+          });
       }
 
-      const chunks = canvas._chunks;
-      for (let i = chunks.length - 1; i >= 0; i--) {
-        chunks[i].x += speed * dt;
-        if (chunks[i].x > W + 25) chunks.splice(i, 1);
-      }
+      canvas._globeT += dt;
+      const t = canvas._globeT;
+      const cx = W / 2, cy = H / 2;
+      const radius = Math.min(W, H) * 0.42;
+      const rotY = t * 0.15;
 
-      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      // Background
+      ctx.fillStyle = 'rgba(4,5,8,1)';
       ctx.fillRect(0, 0, W, H);
 
-      // Conveyor belt — two horizontal rails with cross-segments scrolling
-      const beltY = H * 0.7;
-      ctx.strokeStyle = 'rgba(120, 90, 60, 0.55)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(0, beltY); ctx.lineTo(W, beltY);
-      ctx.moveTo(0, beltY + 6); ctx.lineTo(W, beltY + 6);
-      ctx.stroke();
-
-      // Belt segments scrolling at conveyor speed
-      ctx.strokeStyle = 'rgba(160, 130, 90, 0.4)';
-      const segSpacing = 10;
-      const offset = (canvas._timeAccum * speed) % segSpacing;
-      ctx.beginPath();
-      for (let x = -segSpacing + offset; x < W; x += segSpacing) {
-        ctx.moveTo(x, beltY); ctx.lineTo(x, beltY + 6);
+      // 1) Faint lat/lon dot grid
+      for (let lat = -Math.PI/2; lat <= Math.PI/2 + 0.01; lat += Math.PI/12) {
+        for (let lon = 0; lon < Math.PI*2; lon += Math.PI/24) {
+          const lonR = lon + rotY;
+          const x3 = Math.cos(lat) * Math.sin(lonR);
+          const y3 = Math.sin(lat);
+          const z3 = Math.cos(lat) * Math.cos(lonR);
+          if (z3 < 0) continue;
+          const px = cx + x3 * radius;
+          const py = cy - y3 * radius;
+          const alpha = 0.04 + z3 * 0.06;
+          ctx.fillStyle = `rgba(245,166,35,${alpha})`;
+          ctx.fillRect(Math.floor(px), Math.floor(py), 1, 1);
+        }
       }
-      ctx.stroke();
 
-      // Render chunks
-      for (const c of chunks) {
-        ctx.save();
-        ctx.translate(c.x, c.y);
-        ctx.rotate(c.tilt);
-        // Rock body
-        const rockColor = c.rich ? 'rgba(95, 75, 50, 0.95)' : 'rgba(70, 65, 60, 0.95)';
-        ctx.fillStyle = rockColor;
-        ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
-        // Highlight edge
-        ctx.strokeStyle = c.rich ? 'rgba(140, 110, 70, 0.9)' : 'rgba(100, 95, 90, 0.7)';
-        ctx.lineWidth = 0.8;
-        ctx.strokeRect(-c.w / 2, -c.h / 2, c.w, c.h);
-        // Gold spots
-        const goldDim = enabled ? 1 : 0.5;
-        for (const spot of c.spots) {
-          ctx.fillStyle = c.big ? `rgba(255, 230, 130, ${0.95 * goldDim})` : `rgba(245, 180, 60, ${0.85 * goldDim})`;
-          ctx.shadowColor = c.big ? 'rgba(255,230,130,0.9)' : 'rgba(245,180,60,0.6)';
-          ctx.shadowBlur = c.big ? 6 : 3;
-          if (useBitcoinSymbols) {
-            // Render gold spots as tiny ₿ glyphs
-            const fontPx = Math.max(7, Math.round(4 + spot.r * 3));
-            ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            drawBtcGlyph(ctx, spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, fontPx);
-          } else {
-            ctx.beginPath();
-            ctx.arc(spot.dx * c.w * 0.4, spot.dy * c.h * 0.4, spot.r, 0, Math.PI * 2);
-            ctx.fill();
+      // 2) Globe rim
+      ctx.strokeStyle = 'rgba(245,166,35,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
+
+      // 3) Continent outlines (dimmed so pool dots stand out)
+      const rings = canvas._globeRings;
+      if (rings) {
+        ctx.lineWidth = 1.0;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const ring of rings) {
+          let prev = null;
+          for (let i = 0; i < ring.length; i++) {
+            const lat = ring[i][1] * Math.PI / 180;
+            const lon = ring[i][0] * Math.PI / 180 + rotY;
+            const x3 = Math.cos(lat) * Math.sin(lon);
+            const y3 = Math.sin(lat);
+            const z3 = Math.cos(lat) * Math.cos(lon);
+            const visible = z3 > -0.02;
+            const p = { x: cx + x3 * radius, y: cy - y3 * radius, z: z3, visible };
+            if (visible && prev && prev.visible) {
+              const dx = p.x - prev.x, dy = p.y - prev.y;
+              if (dx*dx + dy*dy < 2500) { // cull polygon-wrap jumps
+                const avgZ = (p.z + prev.z) / 2;
+                const alpha = 0.18 + avgZ * 0.22;
+                ctx.strokeStyle = `rgba(245,166,35,${alpha})`;
+                ctx.beginPath();
+                ctx.moveTo(prev.x, prev.y);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+              }
+            }
+            prev = p;
           }
         }
-        ctx.shadowBlur = 0;
-        ctx.restore();
+      }
+
+      // 4) Pool dots — pulsing at approximate locations
+      const pools = canvas._globePools;
+      for (const p of pools) {
+        const lonR = p.lon + rotY;
+        const x3 = Math.cos(p.lat) * Math.sin(lonR);
+        const y3 = Math.sin(p.lat);
+        const z3 = Math.cos(p.lat) * Math.cos(lonR);
+        if (z3 < -0.05) continue;
+        const px = cx + x3 * radius;
+        const py = cy - y3 * radius;
+        const phase = (t * p.rate + p.phase) % (Math.PI * 2);
+        const pulse = 0.4 + 0.6 * (Math.sin(phase) * 0.5 + 0.5);
+        const visible = Math.max(0.3, z3 + 0.1);
+        const dotAlpha = pulse * visible * p.bright;
+        const haloR = 8 + pulse * 5;
+        const halo = ctx.createRadialGradient(px, py, 0, px, py, haloR);
+        halo.addColorStop(0, `rgba(255,200,120,${dotAlpha * 0.85})`);
+        halo.addColorStop(0.5, `rgba(247,147,26,${dotAlpha * 0.4})`);
+        halo.addColorStop(1, 'rgba(247,147,26,0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(px, py, haloR, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = `rgba(255,225,150,${Math.min(1, dotAlpha + 0.3)})`;
+        ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI*2); ctx.fill();
       }
     };
 
@@ -6171,7 +6223,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       ctx.clearRect(0, 0, W, H);
       if (pulseAnim === 'sluice') drawSluice(dt, W, H);
       else if (pulseAnim === 'glimmers') drawGlimmers(dt, W, H);
-      else if (pulseAnim === 'conveyor') drawConveyor(dt, W, H);
+      else if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else if (pulseAnim === 'embers') drawEmbers(dt, W, H);
       else drawTicker(dt, W, H); // default 'ticker'
       animationFrameRef.current = requestAnimationFrame(draw);
@@ -6306,14 +6358,25 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           </div>
         </div>
 
-        {/* Footer tagline — single line in compact, leave room for stamp on right */}
+        {/* Footer tagline — single line in compact, leave room for stamp on right.
+            v1.8.8-globe-rev7: when 'Solo Strike Map' is the active animation we
+            swap in a privacy disclaimer (locations are approximate, miners stay
+            private). Other animations keep the existing 100% SOLO tagline. */}
         <div style={{
           borderTop:'1px dashed rgba(245,166,35,0.18)',
           paddingTop:'0.4rem',
           fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
           lineHeight:1.4, paddingRight:'4rem',
         }}>
-          <span style={{color:'var(--amber)', fontWeight:600}}>100% SOLO ·</span> Your blocks stay yours.
+          {pulseAnim === 'globe' ? (
+            <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
+              Pool locations are approximate, not exact — miners remain private.
+            </span>
+          ) : (
+            <>
+              <span style={{color:'var(--amber)', fontWeight:600}}>100% SOLO ·</span> Your blocks stay yours.
+            </>
+          )}
           {onOpenStrikers && (ns.peers && ns.peers.length > 0) && (
             <span style={{marginLeft:6, color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em'}}>▸ TAP STRIKERS</span>
           )}
@@ -6367,14 +6430,24 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         </div>
       </div>
 
-      {/* Footer tagline */}
+      {/* Footer tagline.
+          v1.8.8-globe-rev7: privacy caption replaces the 'census' tagline when
+          'Solo Strike Map' is the active animation. Other animations unchanged. */}
       <div style={{
         borderTop:'1px dashed rgba(245,166,35,0.18)',
         paddingTop:'0.5rem',
         fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)',
         lineHeight:1.5, paddingRight:'4rem' /* leave room for the rotated stamp */,
       }}>
-        Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+        {pulseAnim === 'globe' ? (
+          <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
+            Pool locations are approximate, not exact — miners remain private.
+          </span>
+        ) : (
+          <>
+            Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+          </>
+        )}
         {onOpenStrikers && (ns.peers && ns.peers.length > 0) && (
           <span style={{display:'block', marginTop:4, color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>▸ TAP TO SEE STRIKERS</span>
         )}
