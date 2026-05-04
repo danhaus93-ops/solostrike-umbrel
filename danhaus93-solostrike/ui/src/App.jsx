@@ -6252,8 +6252,19 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
 
-      // 3) Continent outlines — uses precomputed sin/cos per vertex.
-      // Per-frame cost is multiplies-only (no Math.sin/cos in the hot loop).
+      // 3) Continent outlines + subtle fill — uses precomputed sin/cos
+      // per vertex. Per-frame cost is multiplies-only (no Math.sin/cos
+      // in the hot loop).
+      // v1.8.8-rev22: subtle land shading. Two-step approach to avoid
+      // the polygon-wrap bleed bug from earlier attempts:
+      //   1) ctx.clip() to the visible disk circle so any polygon
+      //      that wraps around the back can't bleed onto blank canvas
+      //   2) Fill at a very low alpha (0.06) so any residual wrap
+      //      artifacts inside the disk are masked by the dark ocean
+      //      gradient — basically invisible to the eye.
+      // Net result: continents read as gently lit shapes instead of
+      // bare line drawings, without the patchy fill bug that killed
+      // earlier rev16 attempts.
       const rings = canvas._globeRings;
       const trigs = canvas._globeRingTrigs;
       if (rings && trigs) {
@@ -6276,16 +6287,70 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const sy = canvas._globeScratchY;
         const sv = canvas._globeScratchVis;
 
-        ctx.lineWidth = 1.4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(245,166,35,0.50)';
+        // Clip to the visible disk for the entire continent pass.
+        // Anything outside the disk gets discarded automatically — no
+        // way for a wrapped polygon to bleed across blank canvas.
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.clip();
 
         for (let r = 0; r < rings.length; r++) {
           const t = trigs[r];
           const n = t.n;
+          // Project once, reuse for fill + stroke.
           for (let i = 0; i < n; i++) {
-            // Angle-sum identity: sin(lon+rotY) = sinLon*cosR + cosLon*sinR
+            const sLon = t.sinLon[i] * cosR + t.cosLon[i] * sinR;
+            const cLon = t.cosLon[i] * cosR - t.sinLon[i] * sinR;
+            const x3 = t.cosLat[i] * sLon;
+            const y3 = t.sinLat[i];
+            const z3 = t.cosLat[i] * cLon;
+            sx[i] = cx + x3 * radius;
+            sy[i] = cy - y3 * radius;
+            sv[i] = z3 > -0.02 ? 1 : 0;
+          }
+
+          // ── Fill pass — only large rings, alpha 0.06 ──
+          // Tiny islands skip this; their fill would be invisible anyway
+          // and just costs paint. Big landmasses get the warm wash so
+          // continents read as solid gentle shapes.
+          if (rings[r].length >= 12) {
+            ctx.fillStyle = 'rgba(245,166,35,0.06)';
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < n; i++) {
+              if (sv[i]) {
+                if (!started) {
+                  ctx.moveTo(sx[i], sy[i]);
+                  started = true;
+                } else {
+                  // Cull polygon-wrap jumps inside the fill path
+                  const dx = sx[i] - sx[i-1];
+                  const dy = sy[i] - sy[i-1];
+                  if (dx*dx + dy*dy < MAX_SEG_DIST_SQ) {
+                    ctx.lineTo(sx[i], sy[i]);
+                  } else {
+                    ctx.moveTo(sx[i], sy[i]);
+                  }
+                }
+              } else {
+                started = false;
+              }
+            }
+            ctx.fill();
+          }
+        }
+
+        // ── Stroke pass — coastline outlines on top of fill ──
+        ctx.lineWidth = 1.4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(245,166,35,0.50)';
+        for (let r = 0; r < rings.length; r++) {
+          const t = trigs[r];
+          const n = t.n;
+          // Re-project (cheap — angle-sum identity, no trig).
+          for (let i = 0; i < n; i++) {
             const sLon = t.sinLon[i] * cosR + t.cosLon[i] * sinR;
             const cLon = t.cosLon[i] * cosR - t.sinLon[i] * sinR;
             const x3 = t.cosLat[i] * sLon;
@@ -6319,6 +6384,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           }
           if (pathOpen) { ctx.stroke(); pathOpen = false; }
         }
+
+        ctx.restore(); // release the disk clip
       }
 
       // Pool markers — peer-aware sync. Each broadcast peer becomes a
@@ -6399,10 +6466,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         canvas._globePools = nextPools;
       }
 
-      // 4) Render pool markers — pulsing glowing orange dots. Own pin
-      // gets a thin green outline so the user spots themselves at a
-      // glance. v1.8.8-rev20: gradient color only — sizes unchanged
-      // from rev17/18 (rev19 made them too big).
+      // 4) Render pool markers — flat solid BTC orange dots.
+      // No halo, no glow, no pulse, no warm-white core. Just #F7931A.
+      // Own pin still gets a thin green outline so you can spot yourself.
       const pools = canvas._globePools;
       for (const p of pools) {
         const lonR = p.lon + rotY;
@@ -6412,24 +6478,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         if (z3 < -0.05) continue;
         const px = cx + x3 * radius;
         const py = cy - y3 * radius;
-        const phase = (t * p.rate + p.phase) % (Math.PI * 2);
-        const pulse = 0.4 + 0.6 * (Math.sin(phase) * 0.5 + 0.5);
-        const visible = Math.max(0.3, z3 + 0.1);
-        const dotAlpha = pulse * visible * p.bright;
-        const haloR = (p.isOwn ? 11 : 8) + pulse * 5;
-        // Saturated orange gradient — same radii as before, just deeper
-        // colour stops so dots read as a glow instead of a smudge.
-        const halo = ctx.createRadialGradient(px, py, 0, px, py, haloR);
-        halo.addColorStop(0,    `rgba(255,210,130,${Math.min(1, dotAlpha * 1.1)})`);
-        halo.addColorStop(0.4,  `rgba(255,150,40,${dotAlpha * 0.65})`);
-        halo.addColorStop(1,    'rgba(247,120,20,0)');
-        ctx.fillStyle = halo;
-        ctx.beginPath(); ctx.arc(px, py, haloR, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = `rgba(255,235,180,${Math.min(1, dotAlpha + 0.4)})`;
-        ctx.beginPath(); ctx.arc(px, py, p.isOwn ? 2.8 : 2.2, 0, Math.PI*2); ctx.fill();
+        // Solid BTC orange (#F7931A = rgb(247,147,26)). One fillStyle,
+        // one arc, one fill. Period.
+        ctx.fillStyle = '#F7931A';
+        ctx.beginPath();
+        ctx.arc(px, py, p.isOwn ? 3.4 : 2.8, 0, Math.PI*2);
+        ctx.fill();
         if (p.isOwn) {
-          // Thin green outline marks "you" — same green as LIVE / ROCK SOLID
-          ctx.strokeStyle = `rgba(57,255,106,${0.5 + visible * 0.3})`;
+          // Thin green outline — only thing that distinguishes "you"
+          ctx.strokeStyle = 'rgba(57,255,106,0.75)';
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
         }
