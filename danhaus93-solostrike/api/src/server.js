@@ -855,6 +855,30 @@ app.post('/api/network-stats/regenerate', (req, res) => {
   res.json({ ok: true, message: 'Identity regenerated. Restart the API container to apply.' });
 });
 
+// User pool location pin. Body: { lat, lon } — both numbers — or
+// { lat: null, lon: null } to clear. Server always snaps to 5° grid before
+// storing or broadcasting (privacy invariant: never finer than ~500km).
+app.post('/api/network-stats/location', async (req, res) => {
+  if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
+  if (typeof networkStatsController.setPoolLocation !== 'function') {
+    return res.status(501).json({ error: 'setPoolLocation not supported in this API version' });
+  }
+  const { lat, lon } = req.body || {};
+  if (lat === null && lon === null) {
+    networkStatsController.setPoolLocation(null);
+    await saveConfig();
+    return res.json({ ok: true, location: null });
+  }
+  const latNum = Number(lat), lonNum = Number(lon);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) {
+    return res.status(400).json({ error: 'lat and lon must be numbers' });
+  }
+  const ok = networkStatsController.setPoolLocation([latNum, lonNum]);
+  if (!ok) return res.status(400).json({ error: 'Coordinates out of range (lat: -90..90, lon: -180..180)' });
+  await saveConfig();
+  res.json({ ok: true, location: cfg.poolLocation });
+});
+
 // v1.7.1 — Backup the encrypted identity to plaintext on user demand (localhost-only).
 app.post('/api/network-stats/export-backup', (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });

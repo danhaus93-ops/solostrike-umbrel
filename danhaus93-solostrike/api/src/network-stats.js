@@ -139,6 +139,19 @@ function isOutlier(value, median, mad) {
   return Math.abs(value - median) > OUTLIER_MAD_MULTIPLIER * mad;
 }
 
+// ── Pool pin location (privacy-preserving 5° grid snap) ────────────────────
+// Users can opt into broadcasting a coarse approximate location for the
+// network globe. We always SNAP server-side too — never store/transmit
+// finer than 5° (~500km cells, US-state-sized regions). Even if a malicious
+// client sent precise coordinates, this re-snap step discards the precision.
+const LOC_GRID_DEG = 5;
+function snapToLocGrid(lat, lon) {
+  return [
+    Math.round(lat / LOC_GRID_DEG) * LOC_GRID_DEG,
+    Math.round(lon / LOC_GRID_DEG) * LOC_GRID_DEG,
+  ];
+}
+
 // ── Identity encryption (Tier 2 hardening) ─────────────────────────────────
 // Encrypt the privkey at rest with a device-bound salt that we store in the
 // same config file. This is NOT a security boundary against an attacker who
@@ -251,6 +264,21 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ? data.version
     : 'unknown';
 
+  // Optional pool location. Validate range; always re-snap server-side
+  // even if the broadcaster pre-snapped, so the privacy invariant (≤5°
+  // resolution) is enforced regardless of whether peers respect it.
+  let loc = null;
+  if (data.loc !== undefined) {
+    if (Array.isArray(data.loc) && data.loc.length === 2) {
+      const [latRaw, lonRaw] = data.loc;
+      if (Number.isFinite(latRaw) && Number.isFinite(lonRaw)
+          && latRaw >= -90 && latRaw <= 90
+          && lonRaw >= -180 && lonRaw <= 180) {
+        loc = snapToLocGrid(latRaw, lonRaw);
+      }
+    }
+  }
+
   // Signature — verify last (most expensive). Skip our own (we trust local).
   if (ev.pubkey === ourPubkey) {
     // Echo of our own broadcast — fine, accept
@@ -264,7 +292,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown' },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc },
   };
 }
 
@@ -544,6 +572,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
       workers: result.payload.workers,
       blocks: result.payload.blocks,
       version: result.payload.version,
+      loc: result.payload.loc,  // null if not broadcast by peer
       receivedAt: result.created_at,
     });
     state.networkStats.security.eventsAccepted++;
@@ -600,6 +629,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
       workers: e.workers,
       blocks: e.blocks,
       version: e.version,
+      loc: e.loc || null,  // [lat, lon] on 5° grid, or null
       lastSeenAgoSec: Math.max(0, Math.floor(Date.now() / 1000 - e.receivedAt)),
       filtered: !filteredPubkeys.has(pk),
       isOwn: pk === pubkey,
@@ -645,6 +675,14 @@ function startNetworkStats({ state, cfg, savePersist }) {
       workers: safeWorkers,
       version: safeVersion,
       blocks: safeBlocks,
+      // Optional: only include if user has opted into broadcasting their
+      // approximate pool location. Always re-snapped to 5° grid here as a
+      // belt-and-suspenders against any UI bug that might submit finer
+      // resolution.
+      ...(Array.isArray(cfg.poolLocation) && cfg.poolLocation.length === 2
+          && Number.isFinite(cfg.poolLocation[0]) && Number.isFinite(cfg.poolLocation[1])
+        ? { loc: snapToLocGrid(cfg.poolLocation[0], cfg.poolLocation[1]) }
+        : {}),
     });
 
     const template = {
@@ -689,6 +727,22 @@ function startNetworkStats({ state, cfg, savePersist }) {
       lastOwnBroadcastAt = 0;
       publishOurStats();
       saveIdentity();
+    },
+    setPoolLocation(loc) {
+      // loc: null to clear, or [lat, lon] in decimal degrees (will be snapped to 5°)
+      if (loc === null) {
+        cfg.poolLocation = null;
+      } else if (Array.isArray(loc) && loc.length === 2) {
+        const [lat, lon] = loc;
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
+        cfg.poolLocation = snapToLocGrid(lat, lon);
+      } else {
+        return false;
+      }
+      // Force re-broadcast on next cycle so the new pin propagates fast
+      lastOwnBroadcastAt = 0;
+      return true;
     },
     disable() {
       cfg.networkStatsEnabled = false;
