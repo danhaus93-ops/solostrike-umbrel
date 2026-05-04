@@ -20,17 +20,23 @@
 const VERT_SHADER = `
 precision mediump float;
 
-attribute vec3 aPosition;     // sphere vertex position (radius 1)
+attribute vec3 aPosition;     // sphere vertex position (radius 1, untransformed)
 
 uniform float uRotY;          // current rotation around Y axis (radians)
 uniform float uTilt;          // axial tilt angle (radians, ~0.41 = 23.5°)
 uniform float uAspect;        // canvas aspect ratio (W/H)
 uniform float uScale;         // disk scale factor
 
-varying vec3 vNormal;         // world-space normal AFTER rotation (for tex lookup + lighting)
-varying vec3 vUntilted;       // normal in axial frame — used for terminator calc
+varying vec3 vNormal;         // world-space normal AFTER rotation+tilt (for lighting)
+varying vec3 vSpun;           // post-Y-rotation, pre-tilt — for terminator-aligned lighting if needed
+varying vec3 vObjectPos;      // ORIGINAL un-rotated position — used for texture UV lookup
+                              // This is the key bug fix: tex coords MUST come from object
+                              // space, otherwise rotation moves the texture with the mesh
+                              // and the globe appears static.
 
 void main() {
+  vObjectPos = aPosition;
+
   // First: rotate around Y (planet's spin)
   float cy = cos(uRotY);
   float sy = sin(uRotY);
@@ -39,7 +45,7 @@ void main() {
     aPosition.y,
     -aPosition.x * sy + aPosition.z * cy
   );
-  vUntilted = spun;
+  vSpun = spun;
 
   // Then: tilt around Z (axial tilt — leans the spin axis)
   float ct = cos(uTilt);
@@ -51,7 +57,7 @@ void main() {
   );
   vNormal = tilted;
 
-  // Orthographic projection
+  // Orthographic projection — disk fills uScale * canvas height
   vec2 screen = vec2(tilted.x * uScale / uAspect, tilted.y * uScale);
   gl_Position = vec4(screen, -tilted.z, 1.0);
 }
@@ -65,9 +71,11 @@ uniform vec3 uOceanColor;     // dark amber-tinted near black
 uniform vec3 uLandColor;      // strong amber wash
 uniform vec3 uAtmColor;       // atmospheric glow color (used at rim)
 uniform float uTime;          // for any subtle effects
+uniform float uRotY;          // current rotation — used to advance the texture lookup
 
-varying vec3 vNormal;         // tilted, rotated sphere normal
-varying vec3 vUntilted;       // pre-tilt rotated normal (for tex lookup)
+varying vec3 vNormal;         // tilted, rotated sphere normal (for lighting)
+varying vec3 vSpun;           // post-Y-rotation pre-tilt (for ground-fixed effects)
+varying vec3 vObjectPos;      // original un-rotated position (for texture UV)
 
 const float PI = 3.14159265359;
 
@@ -80,7 +88,7 @@ float hash(vec3 p) {
 float noise3(vec3 p) {
   vec3 i = floor(p);
   vec3 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);  // smoothstep
+  f = f * f * (3.0 - 2.0 * f);
   return mix(
     mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
         mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
@@ -91,40 +99,40 @@ float noise3(vec3 p) {
 }
 
 void main() {
-  // Compute equirectangular UV from the UN-tilted rotated normal, in
-  // fragment shader. atan2 is continuous so no seam issue. This is the
-  // key fix for the vertical line bug.
-  float lon = atan(vUntilted.x, vUntilted.z);  // -PI..PI
-  float lat = asin(clamp(vUntilted.y, -1.0, 1.0));  // -PI/2..PI/2
+  // CRITICAL: compute UV from the ORIGINAL un-rotated position (vObjectPos).
+  // The geometry rotates so the mesh spins, BUT vObjectPos interpolates
+  // across each rotated triangle in screen space — so each screen pixel
+  // ends up looking up the texture using the original (un-rotated) sphere
+  // coordinates of whatever triangle currently covers it. As triangles
+  // rotate into view, different parts of the texture come into view.
+  float lon = atan(vObjectPos.x, vObjectPos.z);
+  float lat = asin(clamp(vObjectPos.y, -1.0, 1.0));
   vec2 uv = vec2(
-    lon / (2.0 * PI) + 0.5,
+    fract(lon / (2.0 * PI) + 0.5),
     1.0 - (lat / PI + 0.5)
   );
 
   // Sample land mask from texture
   float landMask = texture2D(uMap, uv).r;
 
-  // Lighting — sun "above-left" relative to the tilted globe.
-  // Use vNormal (the tilted normal) so the lit hemisphere stays steady
-  // as the planet spins.
+  // Lighting — sun "above-left" relative to the camera frame.
+  // Use vNormal (the rotated + tilted normal) so the lit hemisphere
+  // stays anchored to the sun direction in screen space.
   vec3 light = normalize(vec3(-0.4, 0.5, 0.85));
   float NdotL = max(0.0, dot(vNormal, light));
   float lit = 0.30 + 0.70 * NdotL;
 
-  // Land color — strong amber, modulated by lighting + procedural noise.
-  // Noise sampled from world-space (un-tilted) so it stays "fixed to the
-  // ground" as the planet rotates instead of swimming.
-  float noise = noise3(vUntilted * 8.0) * 0.5
-              + noise3(vUntilted * 16.0) * 0.25
-              + noise3(vUntilted * 32.0) * 0.125;
-  // Bring noise from [0,1] to [-1,1], then scale to subtle relief
+  // Procedural noise for land texture. Sample in OBJECT space so the
+  // noise pattern is stuck to the planet surface — rotates with the
+  // continents instead of swimming over them.
+  float noise = noise3(vObjectPos * 8.0) * 0.5
+              + noise3(vObjectPos * 16.0) * 0.25
+              + noise3(vObjectPos * 32.0) * 0.125;
   noise = (noise - 0.5) * 2.0;
 
-  // Blend land + ocean by mask
+  // Blend land + ocean
   vec3 oceanLit = uOceanColor * lit;
-  // Land base: full amber where lit, dim brown where shadow
   vec3 landBase = uLandColor * (0.40 + 0.85 * NdotL);
-  // Apply noise as a brightness modulation (±18%)
   landBase *= (1.0 + noise * 0.18);
   vec3 baseColor = mix(oceanLit, landBase, landMask);
 
@@ -132,10 +140,8 @@ void main() {
   float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
   baseColor *= mix(0.62, 1.0, limb);
 
-  // v1.8.8-rev27: Fresnel rim glow REMOVED. It was painting amber INSIDE
-  // the silhouette which made the "atmospheric glow" look like it was
-  // inside the globe. Atmosphere is now exclusively the 2D radial halo
-  // drawn OUTSIDE the disk on the 2D canvas.
+  // v1.8.8-rev27: Fresnel rim glow REMOVED. Atmosphere is now exclusively
+  // the 2D radial halo drawn OUTSIDE the disk on the 2D canvas.
 
   gl_FragColor = vec4(baseColor, 1.0);
 }

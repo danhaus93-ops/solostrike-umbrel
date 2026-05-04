@@ -6281,20 +6281,19 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       }
 
       // ── Atmospheric halo (drawn on 2D canvas in both WebGL + fallback) ──
-      // v1.8.8-rev27: balanced halo OUTSIDE the disk. Inner-transparent
-      // zone goes to 1.00× radius (right at globe edge) so we never
-      // bleed into the WebGL sphere. Peak at 1.05× at alpha 0.38, then
-      // a wide falloff out to 1.40×. Net: visible warm halo around the
-      // globe without competing for visual attention.
-      const atmGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, atmRadius * 1.40);
-      const innerPct = (atmRadius * 1.00) / (atmRadius * 1.40);
-      const peakPct  = (atmRadius * 1.05) / (atmRadius * 1.40);
+      // v1.8.8-rev28: push the inner-transparent zone CLEARLY past the
+      // WebGL globe's visible edge to avoid any inner-tint perception.
+      // Inner at 1.05× radius (5% past the disk edge), peak at 1.10×,
+      // outer fades to 0 at 1.45×. Larger safety margin than rev27.
+      const atmGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, atmRadius * 1.45);
+      const innerPct = (atmRadius * 1.05) / (atmRadius * 1.45);
+      const peakPct  = (atmRadius * 1.10) / (atmRadius * 1.45);
       atmGrad.addColorStop(0,         'rgba(245,166,35,0)');
       atmGrad.addColorStop(innerPct,  'rgba(245,166,35,0)');
       atmGrad.addColorStop(peakPct,   'rgba(245,166,35,0.38)');
       atmGrad.addColorStop(1,         'rgba(245,166,35,0)');
       ctx.fillStyle = atmGrad;
-      ctx.beginPath(); ctx.arc(cx, cy, atmRadius * 1.40, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy, atmRadius * 1.45, 0, Math.PI*2); ctx.fill();
 
       if (!useWebGL) {
 
