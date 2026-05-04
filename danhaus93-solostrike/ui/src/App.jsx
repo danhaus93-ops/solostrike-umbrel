@@ -6399,9 +6399,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         canvas._globePools = nextPools;
       }
 
-      // 4) Render pool markers — pulsing glowing dots; own pin gets a
-      // green outline ring + slightly brighter halo so the user can spot
-      // themselves at a glance.
+      // 4) Render pool markers — pulsing glowing orange dots. Own pin
+      // gets a thin green outline so the user spots themselves at a
+      // glance. v1.8.8-rev20: gradient color only — sizes unchanged
+      // from rev17/18 (rev19 made them too big).
       const pools = canvas._globePools;
       for (const p of pools) {
         const lonR = p.lon + rotY;
@@ -6416,13 +6417,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const visible = Math.max(0.3, z3 + 0.1);
         const dotAlpha = pulse * visible * p.bright;
         const haloR = (p.isOwn ? 11 : 8) + pulse * 5;
+        // Saturated orange gradient — same radii as before, just deeper
+        // colour stops so dots read as a glow instead of a smudge.
         const halo = ctx.createRadialGradient(px, py, 0, px, py, haloR);
-        halo.addColorStop(0, `rgba(255,200,120,${dotAlpha * 0.85})`);
-        halo.addColorStop(0.5, `rgba(247,147,26,${dotAlpha * 0.4})`);
-        halo.addColorStop(1, 'rgba(247,147,26,0)');
+        halo.addColorStop(0,    `rgba(255,210,130,${Math.min(1, dotAlpha * 1.1)})`);
+        halo.addColorStop(0.4,  `rgba(255,150,40,${dotAlpha * 0.65})`);
+        halo.addColorStop(1,    'rgba(247,120,20,0)');
         ctx.fillStyle = halo;
         ctx.beginPath(); ctx.arc(px, py, haloR, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = `rgba(255,225,150,${Math.min(1, dotAlpha + 0.3)})`;
+        ctx.fillStyle = `rgba(255,235,180,${Math.min(1, dotAlpha + 0.4)})`;
         ctx.beginPath(); ctx.arc(px, py, p.isOwn ? 2.8 : 2.2, 0, Math.PI*2); ctx.fill();
         if (p.isOwn) {
           // Thin green outline marks "you" — same green as LIVE / ROCK SOLID
