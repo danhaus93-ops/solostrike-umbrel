@@ -6141,7 +6141,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         // ~9000+ arcs vs 50m's 1424. Italy looks like Italy, archipelagos
         // show individual islands, fjords are visible. One-time fetch then
         // browser-cached. Larger file is worth it for the visual leap.
-        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-10m.json')
+        // v1.8.8-rev17: 10m (~1MB, 9000+ arcs) caused ticker stalls on
+        // iPhone Safari main thread even with the precomputed sin/cos
+        // optimization in rev16 — too many vertices to batch per frame.
+        // 50m has ~1424 arcs, which is plenty of detail at 380px globe
+        // size and runs smooth. Italy is still a recognizable boot.
+        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json')
           .then(r => r.json())
           .then(topo => {
             const decodedArcs = decodeArcs(topo);
@@ -6283,39 +6288,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             sy[i] = cy - y3 * radius;
             sv[i] = z3 > -0.02 ? 1 : 0;
           }
-
-          // ── Fill pass — only large rings, only fully visible runs ──
-          // Skip tiny islands (< 12 verts) where the fill would be nearly
-          // invisible and just wastes paint. Big landmasses get a dark
-          // amber wash so continents read as continents.
-          const ring = rings[r];
-          if (ring.length >= 12) {
-            ctx.fillStyle = 'rgba(245,166,35,0.05)';
-            ctx.beginPath();
-            let started = false;
-            for (let i = 0; i < n; i++) {
-              if (sv[i]) {
-                if (!started) {
-                  ctx.moveTo(sx[i], sy[i]);
-                  started = true;
-                } else {
-                  // Cull polygon-wrap jumps inside the fill path
-                  const dx = sx[i] - sx[i-1];
-                  const dy = sy[i] - sy[i-1];
-                  if (dx*dx + dy*dy < MAX_SEG_DIST_SQ) {
-                    ctx.lineTo(sx[i], sy[i]);
-                  } else {
-                    ctx.moveTo(sx[i], sy[i]);
-                  }
-                }
-              } else {
-                started = false;
-              }
-            }
-            ctx.closePath();
-            ctx.fill();
-          }
         }
+
+        // v1.8.8-rev17: removed the land fill pass — when a country's
+        // polygon wraps around the back of the globe (e.g. Russia, USA
+        // including Alaska), the fill bleeds across the visible disk and
+        // creates weird shaded patches. Outlines alone read cleaner.
 
         // ── Stroke pass — bolder outlines on top of the fill ──
         ctx.lineWidth = 1.4;
