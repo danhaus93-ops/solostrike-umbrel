@@ -6407,21 +6407,18 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillRect(0, 0, W, H);
       }
 
-      // v1.8.8-rev30: atmospheric halo restored. Drawn on the 2D canvas
-      // (which sits in front of the WebGL canvas with a transparent
-      // background) as a radial gradient ring centered on the globe.
-      // Inside atmRadius the gradient is transparent so the WebGL disk
-      // shows through unobstructed; from atmRadius outward it ramps up
-      // to a warm amber peak just past the rim, then falls back to
-      // transparent. Net effect: a soft glow hugging the silhouette of
-      // the planet, matching the look of the legacy 2D globe.
+      // v1.8.8-rev35: atmospheric halo, outer-only so the WebGL globe's
+      // rim isn't painted over by amber alpha. Inner stop at 1.02× disk
+      // radius (safely outside), peak at 1.10× alpha 0.20, falling to
+      // 0 at outer radius 1.34×. Net: soft warm glow around the planet
+      // silhouette, matching the look of the target screenshots.
       if (useWebGL) {
-        const haloInner = atmRadius * 0.96;
+        const haloInner = atmRadius * 1.02;
         const haloOuter = atmRadius * 1.34;
         const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
         halo.addColorStop(0.00, 'rgba(245,166,35,0.00)');
-        halo.addColorStop(0.18, 'rgba(245,166,35,0.22)');
-        halo.addColorStop(0.45, 'rgba(245,166,35,0.08)');
+        halo.addColorStop(0.25, 'rgba(245,166,35,0.20)');
+        halo.addColorStop(0.55, 'rgba(245,166,35,0.07)');
         halo.addColorStop(1.00, 'rgba(245,166,35,0.00)');
         ctx.fillStyle = halo;
         ctx.fillRect(0, 0, W, H);
