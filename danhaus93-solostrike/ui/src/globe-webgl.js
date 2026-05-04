@@ -289,9 +289,16 @@ export function createGlobeWebGL(canvas, opts = {}) {
   gl.uniform3f(locs.uAtmColor, 0.96, 0.65, 0.14);
 
   // Disk scale — controls how much of the canvas the sphere takes up.
-  // 0.78 leaves room around the edge for the atmospheric glow halo
-  // (drawn on the 2D canvas) to fully spread without clipping.
-  gl.uniform1f(locs.uScale, 0.78);
+  // v1.8.8-rev31: dropped 0.78 → 0.72. The 2D atmospheric halo has an
+  // outer radius of atmRadius * 1.34, and atmRadius = uScale/2 * H. With
+  // uScale 0.78 that put the halo's outer edge at 0.5226 * H from
+  // center, ~9px past the canvas top/bottom on a 380px-tall container —
+  // the halo got clipped at the top edge and the residual polar pinch
+  // ended up right at the visible silhouette. 0.72 puts the halo outer
+  // at 0.482 * H, leaving ~7px breathing room. Marker render radius
+  // (atmRadius in App.jsx) and tap inverse-projection radius MUST track
+  // this number — they're tied to uScale/2.
+  gl.uniform1f(locs.uScale, 0.72);
 
   // Axial tilt — Earth's actual tilt is 23.5°. Adds visual interest
   // and makes it feel like a "real planet" rather than a perfect upright sphere.

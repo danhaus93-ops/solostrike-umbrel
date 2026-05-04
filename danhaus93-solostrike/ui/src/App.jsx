@@ -5677,16 +5677,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const clickY = e.clientY - rect.top;
     const { cx, cy, radius, useWebGL } = globeGeomRef.current;
     if (!radius) return;
-    // v1.8.8-rev30: when WebGL is active, the visible globe disk has
-    // radius = canvas-HEIGHT * 0.39 (matches uScale 0.78 in the vertex
+    // v1.8.8-rev31: when WebGL is active, the visible globe disk has
+    // radius = canvas-HEIGHT * 0.36 (matches uScale 0.72 in the vertex
     // shader). The X axis is divided by aspect (W/H), so both X and Y
-    // disk radius equal H*0.39 regardless of W. Using min(W,H) was
-    // wrong — when W<H (carousel mode on iPhone, container ~340x380),
-    // markers anchored at radius W*0.39 drift relative to the globe
-    // surface they were placed on. The legacy `radius` field uses 0.42
-    // for the 2D fallback. Both in CSS pixels (matching gBCR).
+    // disk radius equal H*0.36 regardless of W. This MUST stay in sync
+    // with atmRadius and the shader's uScale — otherwise pins land at
+    // one place and render at another (the drift bug from rev29). The
+    // legacy `radius` field uses 0.42 for the 2D fallback.
+    // Both in CSS pixels (matching gBCR).
     const tapRadius = useWebGL
-      ? rect.height * 0.39
+      ? rect.height * 0.36
       : radius;
     const nx = (clickX - cx) / tapRadius;
     const ny = -(clickY - cy) / tapRadius;
@@ -6283,13 +6283,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
       // user sees — same warm amber radial gradient as the old vector
       // globe. WebGL Fresnel rim glow is too subtle on its own.
-      // Use 0.39 of canvas HEIGHT to match WebGL uScale 0.78 (disk
-      // diameter = 78% of canvas height = radius 39% of H). The X axis
-      // is divided by aspect in the shader so the disk is always a
-      // circle of radius H*0.39, regardless of W. Using min(W,H) was
-      // wrong when W<H — markers ended up on a smaller circle than the
-      // visible globe and drifted as the planet rotated.
-      const atmRadius = useWebGL ? H * 0.39 : radius;
+      // Use 0.36 of canvas HEIGHT to match WebGL uScale 0.72 (disk
+      // diameter = 72% of canvas H, radius = 36% of H). The X axis is
+      // divided by aspect in the shader so the disk is always a circle
+      // of radius H*0.36, regardless of W. v1.8.8-rev31: shrunk from
+      // 0.39 → 0.36 (uScale 0.78 → 0.72) so the atmospheric halo
+      // (atmRadius * 1.34) fits inside the canvas without clipping at
+      // the top/bottom edges.
+      const atmRadius = useWebGL ? H * 0.36 : radius;
 
       if (useWebGL) {
         // Drive the WebGL renderer with the same rotation.
