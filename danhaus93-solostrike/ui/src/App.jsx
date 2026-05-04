@@ -2335,6 +2335,16 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     const draw = (now) => {
       const dt = Math.min(0.1, (now - lastFrameRef.current) / 1000);
       lastFrameRef.current = now;
+      // Self-heal stale dims. v1.8.8-rev15: in vertical-scroll (non-carousel)
+      // mode the parent flex chain occasionally finishes laying out AFTER the
+      // initial ResizeObserver callback fires, leaving dimsRef pointing at the
+      // 600×130 default. Detect mismatch and re-measure inline.
+      const live = container.getBoundingClientRect();
+      if (live.width >= 60 && live.height >= 60
+          && (Math.abs(live.width  - dimsRef.current.w) > 2
+           || Math.abs(live.height - dimsRef.current.h) > 2)) {
+        resize();
+      }
       const { w: W, h: H } = dimsRef.current;
 
       // Common dark background
@@ -2364,10 +2374,16 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       // left in the card after the header / reward / fees / stats rows have
       // taken theirs. Floor of 130 preserves the original look on short
       // viewports and matches the old hardcoded height.
+      // v1.8.8-rev15: maxHeight ceiling prevents runaway growth when the
+      // outer flex chain has no parent height bound (vertical-scroll mode
+      // on iOS PWA). Without this cap, `height:100%` of an unbounded parent
+      // can land on the canvas's natural pre-render content size and create
+      // a feedback loop.
       width: '100%',
       height: '100%',
       flex: '1 1 auto',
       minHeight: 130,
+      maxHeight: 280,
       position: 'relative',
       overflow: 'hidden',
       background: 'rgba(8, 8, 10, 1)',
@@ -6472,8 +6488,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const draw = (now) => {
       const dt = Math.min(0.05, (now - lastTickRef.current) / 1000);
       lastTickRef.current = now;
-      const W = canvasWidthRef.current;
-      const H = canvasHeightRef.current;
+      let W = canvasWidthRef.current;
+      let H = canvasHeightRef.current;
+      // Self-heal stale dims. v1.8.8-rev15: ResizeObserver sometimes misses
+      // the post-layout resize in vertical-scroll mode, leaving W/H = 0 and
+      // the canvas stuck blank. Inline re-measure if values look wrong, then
+      // re-read. Keeps cost trivial in steady state (one rect read per frame).
+      if (!W || !H || W < 60 || H < 60) {
+        const c = containerRef.current;
+        if (c) {
+          const r = c.getBoundingClientRect();
+          if (r.width >= 60 && r.height >= 60) {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.style.width = r.width + 'px';
+            canvas.style.height = r.height + 'px';
+            canvas.width = Math.round(r.width * dpr);
+            canvas.height = Math.round(r.height * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            canvasWidthRef.current = r.width;
+            canvasHeightRef.current = r.height;
+            W = r.width; H = r.height;
+          }
+        }
+      }
       if (!W || !H) {
         animationFrameRef.current = requestAnimationFrame(draw);
         return;
@@ -6683,9 +6720,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         style={{ cursor: onOpenStrikers ? 'pointer' : 'default', flex:1, minHeight:0, display:'flex', flexDirection:'column' }}
         title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
       >
-      {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240) */}
+      {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240, max 380 to prevent runaway growth in vertical-scroll mode) */}
       <div ref={containerRef} style={{
-        width:'100%', flex:1, minHeight:240,
+        width:'100%', flex:1, minHeight:240, maxHeight:380,
         background:'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(245,166,35,0.02) 100%)',
         border:'1px solid var(--border)',
         marginBottom:'0.7rem',
