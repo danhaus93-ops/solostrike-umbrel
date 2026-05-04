@@ -331,7 +331,17 @@ export function createGlobeWebGL(canvas, opts = {}) {
                 new Uint8Array([0, 0, 0, 255]));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  // v1.8.8-rev38: trilinear with auto-generated mipmaps. With bilinear-
+  // only filtering, the polar region aliased badly: at the pole, atan2()
+  // is geometrically ill-conditioned (lon = atan2(~0, ~0)), so adjacent
+  // screen pixels in the polar cap sample wildly different longitudes.
+  // A 2x2 LINEAR window can't average out 1024-wide land/ocean stripes,
+  // so it shows up as concentric high-frequency rings centered on the
+  // visible pole. With mipmapping, the GPU's per-fragment dFdx/dFdy of
+  // UV picks a coarser mip when UV is jumping fast — at the pole, that
+  // collapses the polar cap to the averaged equirectangular row, which
+  // reads as a soft fade rather than ringing.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.uniform1i(locs.uMap, 0);
 
@@ -383,6 +393,9 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      // v1.8.8-rev38: regenerate mipmap chain after every upload. Texture
+      // dims (1024x512) are power-of-two so this is well-defined in WebGL1.
+      gl.generateMipmap(gl.TEXTURE_2D);
     },
 
     // Draw a frame.
