@@ -4,6 +4,7 @@ import { usePool } from './hooks/usePool.js';
 import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
+import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 
 // ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
 // Loaded once at module level. Falls back to fillText('₿') if not yet ready or
@@ -5619,6 +5620,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const canvasHeightRef = useRef(0);
   const dprRef = useRef(window.devicePixelRatio || 1);
 
+  // v1.8.8-rev24: WebGL globe renderer. Lives behind the 2D canvas as a
+  // sibling element. The 2D canvas remains transparent in globe mode so
+  // pin/marker overlays paint on top. If WebGL fails to initialize, the
+  // ref stays null and the existing vector globe code runs unchanged.
+  const webglCanvasRef = useRef(null);
+  const webglRendererRef = useRef(null);
+  const webglTextureReadyRef = useRef(false);
+
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
   // the user to tap, and the next tap on the canvas converts screen coords
@@ -5632,6 +5641,27 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const globeGeomRef = useRef({ cx: 0, cy: 0, radius: 1 });
   useEffect(() => { placingPinRef.current = placingPin; }, [placingPin]);
   useEffect(() => { poolPinRef.current = poolPin; }, [poolPin]);
+
+  // v1.8.8-rev24: initialize WebGL globe renderer once on mount.
+  // Stays alive across pulseAnim changes — when not in globe mode the
+  // canvas is hidden via CSS, but the renderer doesn't need teardown.
+  useEffect(() => {
+    if (!webglCanvasRef.current) return;
+    const renderer = createGlobeWebGL(webglCanvasRef.current);
+    if (renderer) {
+      webglRendererRef.current = renderer;
+    } else {
+      webglRendererRef.current = null;
+      console.warn('WebGL globe init failed; falling back to vector renderer');
+    }
+    return () => {
+      if (webglRendererRef.current) {
+        webglRendererRef.current.destroy();
+        webglRendererRef.current = null;
+      }
+      webglTextureReadyRef.current = false;
+    };
+  }, []);
 
   // Inverse orthographic projection — converts a tap on the canvas to
   // lat/lon (in degrees), un-rotated against the current globe rotation,
@@ -6181,6 +6211,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             }
             canvas._globeAllVerts = allVerts;
             canvas._globeInit = true;
+
+            // v1.8.8-rev24: bake the equirectangular world map texture
+            // and upload to the WebGL renderer. Uses the SAME rings we
+            // just built, so no second fetch. ~30ms one-time work.
+            try {
+              const renderer = webglRendererRef.current;
+              if (renderer && renderer.isReady()) {
+                const texCanvas = bakeWorldMapTexture(rings);
+                renderer.setTexture(texCanvas);
+                webglTextureReadyRef.current = true;
+              }
+            } catch (e) {
+              console.warn('WebGL texture bake failed:', e);
+              webglTextureReadyRef.current = false;
+            }
           })
           .catch(e => {
             console.warn('Globe coastline fetch failed:', e);
@@ -6203,9 +6248,33 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       globeRotYRef.current = rotY;
       globeGeomRef.current = { cx, cy, radius };
 
-      // Background
-      ctx.fillStyle = 'rgba(4,5,8,1)';
-      ctx.fillRect(0, 0, W, H);
+      // v1.8.8-rev24: WebGL globe path. When the renderer is initialized
+      // AND has a texture uploaded, it draws the entire sphere (continents,
+      // ocean, lighting, atmosphere) on the sibling canvas behind us.
+      // We only draw markers + pin overlay on top in 2D.
+      const useWebGL = !!(webglRendererRef.current
+                          && webglRendererRef.current.isReady()
+                          && webglTextureReadyRef.current);
+
+      if (useWebGL) {
+        // Drive the WebGL renderer with the same rotation. Match canvas size
+        // exactly (the WebGL canvas sits behind this one).
+        webglRendererRef.current.update({
+          rotY,
+          dpr: dprRef.current || 1,
+          width: W / (dprRef.current || 1),
+          height: H / (dprRef.current || 1),
+        });
+        // Clear 2D canvas to transparent so WebGL shows through.
+        ctx.clearRect(0, 0, W, H);
+      } else {
+        // ─── Legacy 2D path (fallback if WebGL fails to init) ──────────
+        // Background
+        ctx.fillStyle = 'rgba(4,5,8,1)';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      if (!useWebGL) {
 
       // 1a) Atmospheric rim glow — soft amber halo just outside the disk.
       // Sells the "lit sphere in space" illusion. Drawn first so the disk
@@ -6310,31 +6379,34 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             sv[i] = z3 > -0.02 ? 1 : 0;
           }
 
-          // ── Fill pass — only large rings entirely on front hemisphere ──
-          // v1.8.8-rev23: bleed-fix. The previous "subpath wrap cull"
-          // approach didn't fully prevent fill-rule artifacts when a
-          // polygon's vertices straddled the visible edge — ctx.fill()
-          // would implicitly close the path and paint diagonals across
-          // the disk. Geometric solution: skip any ring that has even
-          // one back-hemisphere vertex (sv[i]==0). Front-only rings
-          // close cleanly with no diagonals possible. Trade-off: we
-          // lose fill on rings that cross the rim, but those would have
-          // been the visually problematic cases anyway. Net: clean fills.
+          // ── Fill pass — only large rings, alpha 0.06 ──
+          // Tiny islands skip this; their fill would be invisible anyway
+          // and just costs paint. Big landmasses get the warm wash so
+          // continents read as solid gentle shapes.
           if (rings[r].length >= 12) {
-            let allVisible = true;
+            ctx.fillStyle = 'rgba(245,166,35,0.06)';
+            ctx.beginPath();
+            let started = false;
             for (let i = 0; i < n; i++) {
-              if (!sv[i]) { allVisible = false; break; }
-            }
-            if (allVisible) {
-              ctx.fillStyle = 'rgba(245,166,35,0.05)';
-              ctx.beginPath();
-              ctx.moveTo(sx[0], sy[0]);
-              for (let i = 1; i < n; i++) {
-                ctx.lineTo(sx[i], sy[i]);
+              if (sv[i]) {
+                if (!started) {
+                  ctx.moveTo(sx[i], sy[i]);
+                  started = true;
+                } else {
+                  // Cull polygon-wrap jumps inside the fill path
+                  const dx = sx[i] - sx[i-1];
+                  const dy = sy[i] - sy[i-1];
+                  if (dx*dx + dy*dy < MAX_SEG_DIST_SQ) {
+                    ctx.lineTo(sx[i], sy[i]);
+                  } else {
+                    ctx.moveTo(sx[i], sy[i]);
+                  }
+                }
+              } else {
+                started = false;
               }
-              ctx.closePath();
-              ctx.fill();
             }
+            ctx.fill();
           }
         }
 
@@ -6463,6 +6535,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         canvas._globePools = nextPools;
       }
 
+      } // ── end if (!useWebGL) — coastline rendering only in 2D fallback ──
+
       // 4) Render pool markers — flat solid BTC orange dots.
       // No halo, no glow, no pulse, no warm-white core. Just #F7931A.
       // Own pin still gets a thin green outline so you can spot yourself.
@@ -6475,13 +6549,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         if (z3 < -0.05) continue;
         const px = cx + x3 * radius;
         const py = cy - y3 * radius;
-        // Deeper, richer orange (#D87A0E). The canonical #F7931A reads
-        // too light against the amber coastline outlines — gets visually
-        // washed out and hard to spot. This shade is more saturated and
-        // creates real contrast with the warm wash of the globe.
-        ctx.fillStyle = '#D87A0E';
+        // Solid BTC orange (#F7931A = rgb(247,147,26)). One fillStyle,
+        // one arc, one fill. Period.
+        ctx.fillStyle = '#F7931A';
         ctx.beginPath();
-        ctx.arc(px, py, p.isOwn ? 4.0 : 3.4, 0, Math.PI*2);
+        ctx.arc(px, py, p.isOwn ? 3.4 : 2.8, 0, Math.PI*2);
         ctx.fill();
         if (p.isOwn) {
           // Thin green outline — only thing that distinguishes "you"
@@ -6763,7 +6835,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           position:'relative', overflow:'hidden',
         }}>
 
-          <canvas ref={canvasRef} onClick={handleCanvasTap} style={{display:'block', width:'100%', height:'100%'}}/>
+          {/* v1.8.8-rev24: WebGL globe sibling canvas. Renders the sphere
+              behind the 2D canvas in globe mode. Hidden in other pulseAnim
+              modes via display:none. pointerEvents:none so taps still hit
+              the 2D canvas above. */}
+          <canvas ref={webglCanvasRef} style={{
+            position:'absolute', inset:0, width:'100%', height:'100%',
+            pointerEvents:'none',
+            display: pulseAnim === 'globe' ? 'block' : 'none',
+          }}/>
+          <canvas ref={canvasRef} onClick={handleCanvasTap} style={{position:'relative', display:'block', width:'100%', height:'100%'}}/>
           {pulseAnim === 'globe' && onPoolPinChange && (
             <div style={{
               position:'absolute', bottom:4, right:6,
@@ -6860,7 +6941,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         marginBottom:'0.7rem',
         position:'relative', overflow:'hidden',
       }}>
-        <canvas ref={canvasRef} onClick={handleCanvasTap} style={{display:'block', width:'100%', height:'100%'}}/>
+        {/* v1.8.8-rev24: WebGL globe sibling canvas (full-mode). */}
+        <canvas ref={webglCanvasRef} style={{
+          position:'absolute', inset:0, width:'100%', height:'100%',
+          pointerEvents:'none',
+          display: pulseAnim === 'globe' ? 'block' : 'none',
+        }}/>
+        <canvas ref={canvasRef} onClick={handleCanvasTap} style={{position:'relative', display:'block', width:'100%', height:'100%'}}/>
         {pulseAnim === 'globe' && onPoolPinChange && (
           <div style={{
             position:'absolute', bottom:8, right:10,
