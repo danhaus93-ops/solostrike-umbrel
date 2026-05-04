@@ -5977,7 +5977,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           return rings;
         };
 
-        // ─ Async fetch coastline data, biased pool generation ─
+        // ─ Async fetch coastline data ─
         fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json')
           .then(r => r.json())
           .then(topo => {
@@ -5988,30 +5988,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             }
             canvas._globeRings = rings;
 
+            // Pool of candidate vertices for marker placement (sampled from
+            // landmasses, skipping tiny islands). Cached so we can regenerate
+            // _globePools whenever ns.pools changes without re-fetching.
             const allVerts = [];
             for (const ring of rings) {
-              if (ring.length < 8) continue; // skip tiny islands
+              if (ring.length < 8) continue;
               for (let i = 0; i < ring.length; i += 2) allVerts.push(ring[i]);
             }
-            const numPools = Math.max(8, Math.min(80, ns.pools || 30));
-            for (let i = 0; i < numPools; i++) {
-              const v = allVerts[Math.floor(Math.random() * allVerts.length)];
-              const lon = v[0] + (Math.random() - 0.5) * 4;
-              const lat = v[1] + (Math.random() - 0.5) * 4;
-              canvas._globePools.push({
-                lat: lat * Math.PI / 180,
-                lon: lon * Math.PI / 180,
-                rate: 0.4 + Math.random() * 1.6,
-                phase: Math.random() * Math.PI * 2,
-                bright: 0.45 + Math.random() * 0.5,
-              });
-            }
+            canvas._globeAllVerts = allVerts;
             canvas._globeInit = true;
           })
           .catch(e => {
             console.warn('Globe coastline fetch failed:', e);
             canvas._globeInit = true; // proceed without coastlines
           });
+
+        // ─ Load BTC glyph icon for pool markers ─
+        // Inlined as data URL — no extra network request, works offline,
+        // SVG scales cleanly to whatever pixel size we need each frame.
+        const BTC_GLYPH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="190 140 219 319"><defs><linearGradient id="o" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffb347"/><stop offset="35%" stop-color="#ff9500"/><stop offset="65%" stop-color="#f7931a"/><stop offset="100%" stop-color="#a05209"/></linearGradient></defs><path fill="url(%23o)" fill-rule="evenodd" d="M267 140L267 175L265 177L190 177L190 204L215 204L219 205L221 206L224 208L226 210L228 213L229 215L230 218L230 381L229 384L228 386L227 388L223 392L221 393L219 394L216 395L190 395L191 423L265 422L267 424L267 459L287 459L288 422L292 423L312 423L312 459L333 459L334 419L339 419L344 418L349 417L353 416L362 413L367 411L371 409L377 406L380 404L384 401L396 389L398 386L400 383L402 379L405 373L406 370L407 367L408 363L409 356L409 343L408 336L407 332L406 329L405 326L402 320L399 315L395 310L389 304L385 301L382 299L379 297L373 294L368 292L365 291L362 288L364 288L372 284L377 281L381 278L391 268L393 265L395 261L398 255L399 252L400 248L401 240L401 235L400 227L399 223L398 219L396 215L393 209L391 206L388 202L385 199L379 194L376 192L369 188L367 187L360 184L357 183L354 182L350 181L346 180L341 179L336 179L334 178L333 140L312 141L311 177L287 176L287 140Z M284 313L314 313L320 314L324 315L328 316L331 317L337 320L340 322L347 329L349 332L350 334L351 337L352 340L352 354L351 358L350 361L349 363L347 366L338 375L330 379L327 380L324 381L319 382L312 383L288 383L283 381Z M289 216L319 216L324 217L327 218L332 220L335 222L338 224L341 227L343 230L344 232L345 234L346 237L347 243L347 245L346 251L345 254L344 256L343 258L341 261L337 265L334 267L331 269L329 270L320 273L315 274L285 275L283 273L284 217Z"/></svg>';
+        const btcImg = new Image();
+        btcImg.src = 'data:image/svg+xml;utf8,' + BTC_GLYPH_SVG;
+        canvas._globeBtcImg = btcImg;
       }
 
       canvas._globeT += dt;
@@ -6078,8 +6077,36 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         }
       }
 
-      // 4) Pool dots — pulsing at approximate locations
+      // Sync pool marker count to actual ns.pools value (0..80 range).
+      // Regenerates positions if the count changes — so 2 reported pools
+      // means 2 markers, 0 means 0. Locations are decorative since the
+      // SoloStrike Pulse architecture deliberately transmits no geo data.
+      if (canvas._globeAllVerts) {
+        const desiredCount = Math.max(0, Math.min(80, ns.pools || 0));
+        if (canvas._globePools.length !== desiredCount) {
+          canvas._globePools = [];
+          const verts = canvas._globeAllVerts;
+          for (let i = 0; i < desiredCount; i++) {
+            const v = verts[Math.floor(Math.random() * verts.length)];
+            const lon = v[0] + (Math.random() - 0.5) * 4;
+            const lat = v[1] + (Math.random() - 0.5) * 4;
+            canvas._globePools.push({
+              lat: lat * Math.PI / 180,
+              lon: lon * Math.PI / 180,
+              rate: 0.4 + Math.random() * 1.6,
+              phase: Math.random() * Math.PI * 2,
+              bright: 0.45 + Math.random() * 0.5,
+            });
+          }
+        }
+      }
+
+      // 4) Pool markers — pulsing glowing BTC glyph at each pool location
       const pools = canvas._globePools;
+      const btcImg = canvas._globeBtcImg;
+      const imgReady = btcImg && btcImg.complete && btcImg.naturalWidth > 0;
+      const GLYPH_ASPECT = 219 / 319; // svg viewBox: width / height
+      const GLYPH_BASE_H = 14;        // base on-screen height in CSS px
       for (const p of pools) {
         const lonR = p.lon + rotY;
         const x3 = Math.cos(p.lat) * Math.sin(lonR);
@@ -6092,15 +6119,31 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const pulse = 0.4 + 0.6 * (Math.sin(phase) * 0.5 + 0.5);
         const visible = Math.max(0.3, z3 + 0.1);
         const dotAlpha = pulse * visible * p.bright;
-        const haloR = 8 + pulse * 5;
+
+        // Pulsing amber glow halo behind the glyph
+        const haloR = 14 + pulse * 8;
         const halo = ctx.createRadialGradient(px, py, 0, px, py, haloR);
-        halo.addColorStop(0, `rgba(255,200,120,${dotAlpha * 0.85})`);
-        halo.addColorStop(0.5, `rgba(247,147,26,${dotAlpha * 0.4})`);
+        halo.addColorStop(0, `rgba(255,200,120,${dotAlpha * 0.7})`);
+        halo.addColorStop(0.5, `rgba(247,147,26,${dotAlpha * 0.35})`);
         halo.addColorStop(1, 'rgba(247,147,26,0)');
         ctx.fillStyle = halo;
         ctx.beginPath(); ctx.arc(px, py, haloR, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = `rgba(255,225,150,${Math.min(1, dotAlpha + 0.3)})`;
-        ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI*2); ctx.fill();
+
+        if (imgReady) {
+          // BTC glyph with subtle pulse-driven scale + opacity
+          const h = GLYPH_BASE_H + pulse * 4;
+          const w = h * GLYPH_ASPECT;
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, 0.55 + dotAlpha * 0.6);
+          ctx.shadowColor = `rgba(255,180,80,${pulse * 0.7})`;
+          ctx.shadowBlur = 6 + pulse * 4;
+          ctx.drawImage(btcImg, px - w / 2, py - h / 2, w, h);
+          ctx.restore();
+        } else {
+          // Fallback dot if the glyph image hasn't decoded yet
+          ctx.fillStyle = `rgba(255,225,150,${Math.min(1, dotAlpha + 0.3)})`;
+          ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI*2); ctx.fill();
+        }
       }
     };
 
