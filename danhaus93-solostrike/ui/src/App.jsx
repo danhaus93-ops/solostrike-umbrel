@@ -6121,11 +6121,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         };
 
         // ─ Async fetch coastline data ─
-        // Using Natural Earth 1:50m (~250KB) — significantly sharper than
-        // 1:110m (~80KB) at the size we render: ~10x more vertices means
-        // smooth curves instead of visible polygon facets. Fetched once
-        // per session, then browser-cached.
-        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json')
+        // Using Natural Earth 1:10m (~1MB) — highest available resolution.
+        // ~9000+ arcs vs 50m's 1424. Italy looks like Italy, archipelagos
+        // show individual islands, fjords are visible. One-time fetch then
+        // browser-cached. Larger file is worth it for the visual leap.
+        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-10m.json')
           .then(r => r.json())
           .then(topo => {
             const decodedArcs = decodeArcs(topo);
@@ -6601,8 +6601,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           <canvas ref={canvasRef} onClick={handleCanvasTap} style={{display:'block', width:'100%', height:'100%'}}/>
           {pulseAnim === 'globe' && onPoolPinChange && (
             <div style={{
-              position:'absolute', bottom:4, left:0, right:0,
-              display:'flex', justifyContent:'center', pointerEvents:'none',
+              position:'absolute', bottom:4, right:6,
+              display:'flex', justifyContent:'flex-end', pointerEvents:'none',
             }}>
               <button
                 onClick={togglePlacingPin}
@@ -6694,8 +6694,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         <canvas ref={canvasRef} onClick={handleCanvasTap} style={{display:'block', width:'100%', height:'100%'}}/>
         {pulseAnim === 'globe' && onPoolPinChange && (
           <div style={{
-            position:'absolute', bottom:8, left:0, right:0,
-            display:'flex', justifyContent:'center', pointerEvents:'none',
+            position:'absolute', bottom:8, right:10,
+            display:'flex', justifyContent:'flex-end', pointerEvents:'none',
           }}>
             <button
               onClick={togglePlacingPin}
