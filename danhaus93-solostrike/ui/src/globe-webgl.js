@@ -20,11 +20,10 @@
 //   When the user pitches the planet to look at a pole, this shows up
 //   as a visible "hole" in the middle of the disk.
 //
-//   Solution: in the fragment shader, use texture derivatives (dFdx/dFdy)
-//   on the UV coords. When adjacent pixels span more than a small fraction
-//   of a longitude/360° unit, we know we're in the pinch zone and force
-//   ocean color. This works with free pitch because the detection is
-//   per-pixel and doesn't depend on where the geographic pole is.
+//   Solution: smoothly fade landMask to 0 over the last ~10° of latitude
+//   near each pole. Pure latitude-based fade — no derivative tricks (which
+//   create visible circular ring boundaries on the sphere surface).
+//   Pole becomes ocean-only, no smearing, no visible threshold.
 
 const VERT_SHADER = `
 precision highp float;
@@ -68,7 +67,6 @@ void main() {
 `;
 
 const FRAG_SHADER = `
-#extension GL_OES_standard_derivatives : enable
 precision highp float;
 
 uniform sampler2D uMap;
@@ -111,26 +109,24 @@ void main() {
   float u = fract(lon / (2.0 * PI) + 0.5);
   float v = 1.0 - (lat / PI + 0.5);
 
-  // 2) POLAR PINCH DETECTION using texture derivatives.
-  //    Near the pole, adjacent fragments span huge longitude ranges
-  //    (because longitude lines converge to a point). dFdx(u) and dFdy(u)
-  //    tell us how much u changes per pixel. If that change is large,
-  //    we're sampling across the equirectangular smear zone — force ocean.
+  // 2) POLAR PINCH FADE — smooth latitude-based fade.
+  //    The texture's top/bottom rows are equirectangular singularities
+  //    where 1024 different texel values map to a single geographic point.
+  //    Sampling near v=0 or v=1 produces visible smearing.
   //
-  //    Standard fragment-shader trick. Works for any rotation, any pitch.
-  float dudx = dFdx(u);
-  float dudy = dFdy(u);
-  float duMag = sqrt(dudx * dudx + dudy * dudy);
-  // Wrap-around: when crossing the lon 0/1 seam, dFdx jumps by ~1.0.
-  // Take the smaller of duMag and (1 - duMag) so seam doesn't false-positive.
-  duMag = min(duMag, abs(1.0 - duMag));
+  //    Solution: gently fade landMask to 0 over the last ~10° of latitude
+  //    near each pole. Smooth in latitude space, NOT in screen-space
+  //    derivatives — the latter creates a visible circular ring boundary
+  //    around the pole.
+  //
+  //    Fades 80°→90°: at 80° latitude pinchFade is 1.0 (full land), at
+  //    90° it's 0.0 (ocean only). The transition is gradual across the
+  //    surface so there's no visible threshold ring.
+  float absLatDeg = abs(lat) * 180.0 / PI;
+  float pinchFade = 1.0 - smoothstep(80.0, 90.0, absLatDeg);
 
   // 3) Sample texture
   float landMask = texture2D(uMap, vec2(u, v)).r;
-
-  // 4) Pinch fade: large duMag (>0.05 normalized lon per pixel) = polar
-  //    pinch zone — fade landMask toward 0 (ocean only).
-  float pinchFade = 1.0 - smoothstep(0.02, 0.08, duMag);
   landMask *= pinchFade;
 
   // 5) Lighting — sun upper-left, slightly toward camera
@@ -213,12 +209,6 @@ export function createGlobeWebGL(canvas) {
     });
   } catch {}
   if (!gl) return null;
-
-  // Enable OES_standard_derivatives extension (needed for dFdx/dFdy)
-  const derivExt = gl.getExtension('OES_standard_derivatives');
-  if (!derivExt) {
-    console.warn('OES_standard_derivatives not supported — polar pinch detection disabled');
-  }
 
   const vs = compileShader(gl, gl.VERTEX_SHADER, VERT_SHADER);
   const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SHADER);

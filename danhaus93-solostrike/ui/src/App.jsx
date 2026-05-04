@@ -6407,18 +6407,18 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillRect(0, 0, W, H);
       }
 
-      // v1.8.8-rev35: atmospheric halo, outer-only so the WebGL globe's
-      // rim isn't painted over by amber alpha. Inner stop at 1.02× disk
-      // radius (safely outside), peak at 1.10× alpha 0.20, falling to
-      // 0 at outer radius 1.34×. Net: soft warm glow around the planet
-      // silhouette, matching the look of the target screenshots.
+      // v1.8.8-rev37: atmospheric halo, inner edge AT the disk edge so
+      // the glow appears continuous with the globe silhouette. Previously
+      // had inner at 1.02× which created a visible black ring between
+      // disk and halo. Inner = 1.00× touches exactly. Peak at 1.10× alpha
+      // 0.20, falling to 0 at outer 1.34×.
       if (useWebGL) {
-        const haloInner = atmRadius * 1.02;
+        const haloInner = atmRadius * 1.00;
         const haloOuter = atmRadius * 1.34;
         const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
-        halo.addColorStop(0.00, 'rgba(245,166,35,0.00)');
-        halo.addColorStop(0.25, 'rgba(245,166,35,0.20)');
-        halo.addColorStop(0.55, 'rgba(245,166,35,0.07)');
+        halo.addColorStop(0.00, 'rgba(245,166,35,0.30)');
+        halo.addColorStop(0.30, 'rgba(245,166,35,0.20)');
+        halo.addColorStop(0.60, 'rgba(245,166,35,0.07)');
         halo.addColorStop(1.00, 'rgba(245,166,35,0.00)');
         ctx.fillStyle = halo;
         ctx.fillRect(0, 0, W, H);
