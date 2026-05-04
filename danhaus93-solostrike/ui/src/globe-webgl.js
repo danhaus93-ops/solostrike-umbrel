@@ -21,87 +21,132 @@ const VERT_SHADER = `
 precision mediump float;
 
 attribute vec3 aPosition;     // sphere vertex position (radius 1)
-attribute vec2 aLatLon;       // (lat, lon) in radians, for tex lookup
 
 uniform float uRotY;          // current rotation around Y axis (radians)
+uniform float uTilt;          // axial tilt angle (radians, ~0.41 = 23.5°)
 uniform float uAspect;        // canvas aspect ratio (W/H)
-uniform float uScale;         // disk scale factor (e.g. 0.84)
+uniform float uScale;         // disk scale factor
 
-varying vec3 vNormal;         // world-space normal (= rotated position)
-varying vec2 vTexCoord;       // 0..1 equirectangular tex coord
+varying vec3 vNormal;         // world-space normal AFTER rotation (for tex lookup + lighting)
+varying vec3 vUntilted;       // normal in axial frame — used for terminator calc
 
 void main() {
-  // Rotate the sphere around the Y axis
-  float c = cos(uRotY);
-  float s = sin(uRotY);
-  vec3 rotated = vec3(
-    aPosition.x * c + aPosition.z * s,
+  // First: rotate around Y (planet's spin)
+  float cy = cos(uRotY);
+  float sy = sin(uRotY);
+  vec3 spun = vec3(
+    aPosition.x * cy + aPosition.z * sy,
     aPosition.y,
-    -aPosition.x * s + aPosition.z * c
+    -aPosition.x * sy + aPosition.z * cy
   );
-  vNormal = rotated;
+  vUntilted = spun;
 
-  // Equirectangular tex coord: lon in [0,2pi] → u in [0,1], lat in [-pi/2,pi/2] → v in [0,1]
-  vTexCoord = vec2(
-    fract(aLatLon.y / 6.2831853 + 0.5),
-    1.0 - (aLatLon.x / 3.1415927 + 0.5)
+  // Then: tilt around Z (axial tilt — leans the spin axis)
+  float ct = cos(uTilt);
+  float st = sin(uTilt);
+  vec3 tilted = vec3(
+    spun.x * ct - spun.y * st,
+    spun.x * st + spun.y * ct,
+    spun.z
   );
+  vNormal = tilted;
 
-  // Orthographic projection — disk fills uScale * canvas height
-  vec2 screen = vec2(rotated.x * uScale / uAspect, rotated.y * uScale);
-  // Z used only for depth ordering (visible hemisphere only).
-  // Map z=[-1,1] -> depth=[1,-1] so front of sphere wins
-  gl_Position = vec4(screen, -rotated.z, 1.0);
+  // Orthographic projection
+  vec2 screen = vec2(tilted.x * uScale / uAspect, tilted.y * uScale);
+  gl_Position = vec4(screen, -tilted.z, 1.0);
 }
 `;
 
 const FRAG_SHADER = `
 precision mediump float;
 
-uniform sampler2D uMap;       // equirectangular world texture (1024x512)
+uniform sampler2D uMap;       // equirectangular world texture
 uniform vec3 uOceanColor;     // dark amber-tinted near black
-uniform vec3 uLandColor;      // amber wash
-uniform vec3 uAtmColor;       // atmospheric glow color
+uniform vec3 uLandColor;      // strong amber wash
+uniform vec3 uAtmColor;       // atmospheric glow color (used at rim)
 uniform float uTime;          // for any subtle effects
 
-varying vec3 vNormal;
-varying vec2 vTexCoord;
+varying vec3 vNormal;         // tilted, rotated sphere normal
+varying vec3 vUntilted;       // pre-tilt rotated normal (for tex lookup)
+
+const float PI = 3.14159265359;
+
+// Hash-based 3D noise — cheap and stable for procedural land relief
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float noise3(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);  // smoothstep
+  return mix(
+    mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+        mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+        mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+    f.z
+  );
+}
 
 void main() {
-  // The texture is grayscale where land=bright, ocean=dark.
-  // Blend ocean->land based on luminance.
-  float landMask = texture2D(uMap, vTexCoord).r;
+  // Compute equirectangular UV from the UN-tilted rotated normal, in
+  // fragment shader. atan2 is continuous so no seam issue. This is the
+  // key fix for the vertical line bug.
+  float lon = atan(vUntilted.x, vUntilted.z);  // -PI..PI
+  float lat = asin(clamp(vUntilted.y, -1.0, 1.0));  // -PI/2..PI/2
+  vec2 uv = vec2(
+    lon / (2.0 * PI) + 0.5,
+    1.0 - (lat / PI + 0.5)
+  );
 
-  // Sphere normal lighting — fake "noon" at upper-left
-  vec3 light = normalize(vec3(-0.4, 0.3, 0.85));
+  // Sample land mask from texture
+  float landMask = texture2D(uMap, uv).r;
+
+  // Lighting — sun "above-left" relative to the tilted globe.
+  // Use vNormal (the tilted normal) so the lit hemisphere stays steady
+  // as the planet spins.
+  vec3 light = normalize(vec3(-0.4, 0.5, 0.85));
   float NdotL = max(0.0, dot(vNormal, light));
-  // Ambient + diffuse combo
-  float lit = 0.35 + 0.65 * NdotL;
+  float lit = 0.30 + 0.70 * NdotL;
 
-  // Ocean + land blend
+  // Land color — strong amber, modulated by lighting + procedural noise.
+  // Noise sampled from world-space (un-tilted) so it stays "fixed to the
+  // ground" as the planet rotates instead of swimming.
+  float noise = noise3(vUntilted * 8.0) * 0.5
+              + noise3(vUntilted * 16.0) * 0.25
+              + noise3(vUntilted * 32.0) * 0.125;
+  // Bring noise from [0,1] to [-1,1], then scale to subtle relief
+  noise = (noise - 0.5) * 2.0;
+
+  // Blend land + ocean by mask
   vec3 oceanLit = uOceanColor * lit;
-  vec3 landLit = uLandColor * (0.45 + 0.65 * NdotL);
-  vec3 baseColor = mix(oceanLit, landLit, landMask);
+  // Land base: full amber where lit, dim brown where shadow
+  vec3 landBase = uLandColor * (0.40 + 0.85 * NdotL);
+  // Apply noise as a brightness modulation (±18%)
+  landBase *= (1.0 + noise * 0.18);
+  vec3 baseColor = mix(oceanLit, landBase, landMask);
 
-  // Limb darkening — pixels near the rim of the visible disk fade
-  // slightly toward black. vNormal.z is camera-facing (1 at center, 0 at rim).
-  float limb = clamp(vNormal.z * 1.3 + 0.05, 0.0, 1.0);
-  baseColor *= mix(0.55, 1.0, limb);
+  // Limb darkening — pixels at the rim fade slightly
+  float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
+  baseColor *= mix(0.62, 1.0, limb);
 
-  // Fresnel atmospheric glow — bright at silhouette where normal.z → 0
-  float fresnel = pow(1.0 - max(0.0, vNormal.z), 3.5);
-  baseColor += uAtmColor * fresnel * 0.55;
+  // Atmospheric Fresnel rim glow — adds warm amber at the silhouette
+  float fresnel = pow(1.0 - max(0.0, vNormal.z), 3.0);
+  baseColor += uAtmColor * fresnel * 0.45;
 
   gl_FragColor = vec4(baseColor, 1.0);
 }
 `;
 
 // Build a sphere mesh as triangle strips. nLat × nLon vertices.
-// Returns { positions, latLons, indices } as Float32Array / Uint16Array.
+// Returns { positions, indices } as Float32Array / Uint16Array.
+// (UVs are computed per-pixel in the fragment shader from the rotated
+// normal — fixes the seam-line bug.)
 function buildSphereMesh(nLat = 48, nLon = 96) {
   const positions = new Float32Array(nLat * nLon * 3);
-  const latLons = new Float32Array(nLat * nLon * 2);
-  let p = 0, ll = 0;
+  let p = 0;
   for (let i = 0; i < nLat; i++) {
     const lat = -Math.PI / 2 + (i / (nLat - 1)) * Math.PI;
     const cosLat = Math.cos(lat);
@@ -114,8 +159,6 @@ function buildSphereMesh(nLat = 48, nLon = 96) {
       positions[p++] = x;
       positions[p++] = y;
       positions[p++] = z;
-      latLons[ll++] = lat;
-      latLons[ll++] = lon;
     }
   }
 
@@ -131,7 +174,7 @@ function buildSphereMesh(nLat = 48, nLon = 96) {
       indices.push(b, d, c);
     }
   }
-  return { positions, latLons, indices: new Uint16Array(indices) };
+  return { positions, indices: new Uint16Array(indices) };
 }
 
 function compileShader(gl, type, src) {
@@ -180,8 +223,8 @@ export function createGlobeWebGL(canvas, opts = {}) {
   // Cache uniform/attribute locations
   const locs = {
     aPosition: gl.getAttribLocation(program, 'aPosition'),
-    aLatLon: gl.getAttribLocation(program, 'aLatLon'),
     uRotY: gl.getUniformLocation(program, 'uRotY'),
+    uTilt: gl.getUniformLocation(program, 'uTilt'),
     uAspect: gl.getUniformLocation(program, 'uAspect'),
     uScale: gl.getUniformLocation(program, 'uScale'),
     uMap: gl.getUniformLocation(program, 'uMap'),
@@ -198,12 +241,6 @@ export function createGlobeWebGL(canvas, opts = {}) {
   gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
   gl.enableVertexAttribArray(locs.aPosition);
   gl.vertexAttribPointer(locs.aPosition, 3, gl.FLOAT, false, 0, 0);
-
-  const llBuf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, llBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, mesh.latLons, gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(locs.aLatLon);
-  gl.vertexAttribPointer(locs.aLatLon, 2, gl.FLOAT, false, 0, 0);
 
   const idxBuf = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
@@ -222,18 +259,25 @@ export function createGlobeWebGL(canvas, opts = {}) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.uniform1i(locs.uMap, 0);
 
-  // Set the colors — match SoloStrike amber palette
-  // Ocean: very dark warm (almost black, slight amber undertone)
-  gl.uniform3f(locs.uOceanColor, 0.040, 0.034, 0.024);
-  // Land: amber wash. #F5A623 = (0.961, 0.651, 0.137). Toned down so the
-  // texture mask + lighting can modulate without clipping.
-  gl.uniform3f(locs.uLandColor, 0.78, 0.50, 0.10);
-  // Atmosphere: slightly warmer amber, used for the Fresnel rim glow
+  // Set the colors — strong SoloStrike amber palette
+  // Ocean: very dark warm (almost black with slight amber undertone)
+  gl.uniform3f(locs.uOceanColor, 0.060, 0.050, 0.034);
+  // Land: STRONG amber. Pure #F5A623 = (0.961, 0.651, 0.137).
+  // Pushed up vs prior (0.78, 0.50, 0.10) so continents read warmly even
+  // in shadow. Lighting modulation in fragment shader brings down the
+  // shadow side appropriately.
+  gl.uniform3f(locs.uLandColor, 0.96, 0.65, 0.14);
+  // Atmosphere: warm amber for the Fresnel rim glow
   gl.uniform3f(locs.uAtmColor, 0.96, 0.65, 0.14);
 
   // Disk scale — controls how much of the canvas the sphere takes up.
-  // 0.84 leaves room around the edge for the atmospheric glow to spread
-  gl.uniform1f(locs.uScale, 0.84);
+  // 0.78 leaves room around the edge for the atmospheric glow halo
+  // (drawn on the 2D canvas) to fully spread without clipping.
+  gl.uniform1f(locs.uScale, 0.78);
+
+  // Axial tilt — Earth's actual tilt is 23.5°. Adds visual interest
+  // and makes it feel like a "real planet" rather than a perfect upright sphere.
+  gl.uniform1f(locs.uTilt, 23.5 * Math.PI / 180);
 
   // GL state
   gl.enable(gl.DEPTH_TEST);
@@ -278,7 +322,6 @@ export function createGlobeWebGL(canvas, opts = {}) {
       _destroyed = true;
       try {
         gl.deleteBuffer(posBuf);
-        gl.deleteBuffer(llBuf);
         gl.deleteBuffer(idxBuf);
         gl.deleteTexture(tex);
         gl.deleteProgram(program);

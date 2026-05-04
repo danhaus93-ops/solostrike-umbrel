@@ -6256,35 +6256,47 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                           && webglRendererRef.current.isReady()
                           && webglTextureReadyRef.current);
 
+      // v1.8.8-rev25: atmospheric halo ALWAYS drawn on 2D canvas as a
+      // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
+      // user sees — same warm amber radial gradient as the old vector
+      // globe. WebGL Fresnel rim glow is too subtle on its own.
+      // Use 0.39 of canvas dim to match WebGL uScale 0.78 (disk diameter
+      // = 78% of canvas height = radius 39%).
+      const atmRadius = useWebGL ? Math.min(W, H) * 0.39 : radius;
+
       if (useWebGL) {
-        // Drive the WebGL renderer with the same rotation. Match canvas size
-        // exactly (the WebGL canvas sits behind this one).
+        // Drive the WebGL renderer with the same rotation.
         webglRendererRef.current.update({
           rotY,
           dpr: dprRef.current || 1,
           width: W / (dprRef.current || 1),
           height: H / (dprRef.current || 1),
         });
-        // Clear 2D canvas to transparent so WebGL shows through.
+        // Clear 2D canvas to transparent so WebGL shows through behind.
         ctx.clearRect(0, 0, W, H);
       } else {
         // ─── Legacy 2D path (fallback if WebGL fails to init) ──────────
-        // Background
         ctx.fillStyle = 'rgba(4,5,8,1)';
         ctx.fillRect(0, 0, W, H);
       }
 
-      if (!useWebGL) {
-
-      // 1a) Atmospheric rim glow — soft amber halo just outside the disk.
-      // Sells the "lit sphere in space" illusion. Drawn first so the disk
-      // proper paints over its inner edge.
-      const atmGrad = ctx.createRadialGradient(cx, cy, radius * 0.96, cx, cy, radius * 1.18);
-      atmGrad.addColorStop(0,   'rgba(245,166,35,0.18)');
-      atmGrad.addColorStop(0.5, 'rgba(245,166,35,0.06)');
-      atmGrad.addColorStop(1,   'rgba(245,166,35,0)');
+      // ── Atmospheric halo (drawn on 2D canvas in both WebGL + fallback) ──
+      // Sells the "lit sphere in space" illusion. The gradient runs from
+      // disk-center (inner radius 0) to outer (1.30 × globe radius), with
+      // alpha ZERO at the center so the WebGL globe behind shows clean,
+      // peaking around the rim, then fading to 0 at the outer edge.
+      const atmGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, atmRadius * 1.30);
+      // Inside the globe disk: full transparent (let WebGL show through)
+      const innerPct = (atmRadius * 0.92) / (atmRadius * 1.30);
+      const peakPct  = (atmRadius * 1.02) / (atmRadius * 1.30);
+      atmGrad.addColorStop(0,         'rgba(245,166,35,0)');
+      atmGrad.addColorStop(innerPct,  'rgba(245,166,35,0)');
+      atmGrad.addColorStop(peakPct,   'rgba(245,166,35,0.32)');
+      atmGrad.addColorStop(1,         'rgba(245,166,35,0)');
       ctx.fillStyle = atmGrad;
-      ctx.beginPath(); ctx.arc(cx, cy, radius * 1.18, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy, atmRadius * 1.30, 0, Math.PI*2); ctx.fill();
+
+      if (!useWebGL) {
 
       // 1b) Ocean disk — radial gradient inside the globe creates limb
       // darkening (brighter at center, dark at edge). Pure 2D canvas, near
@@ -6457,6 +6469,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.restore(); // release the disk clip
       }
 
+      } // ── end if (!useWebGL) — coastline rendering only in 2D fallback ──
+
       // Pool markers — peer-aware sync. Each broadcast peer becomes a
       // dot. If a peer broadcasts a `loc` (5°-snapped lat/lon), we use it;
       // otherwise we generate a stable random landmass position keyed by
@@ -6535,11 +6549,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         canvas._globePools = nextPools;
       }
 
-      } // ── end if (!useWebGL) — coastline rendering only in 2D fallback ──
-
-      // 4) Render pool markers — flat solid BTC orange dots.
-      // No halo, no glow, no pulse, no warm-white core. Just #F7931A.
-      // Own pin still gets a thin green outline so you can spot yourself.
+      // 4) Render pool markers — crimson dots for high contrast against
+      // the strong amber land. Solid #A8170E with thin green outline on
+      // the user's own pin.
       const pools = canvas._globePools;
       for (const p of pools) {
         const lonR = p.lon + rotY;
@@ -6549,14 +6561,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         if (z3 < -0.05) continue;
         const px = cx + x3 * radius;
         const py = cy - y3 * radius;
-        // Solid BTC orange (#F7931A = rgb(247,147,26)). One fillStyle,
-        // one arc, one fill. Period.
-        ctx.fillStyle = '#F7931A';
+        // Crimson (#A8170E = rgb(168,23,14)) — steps out of the amber
+        // family entirely so dots read as alert points, not blending in.
+        ctx.fillStyle = '#A8170E';
         ctx.beginPath();
-        ctx.arc(px, py, p.isOwn ? 3.4 : 2.8, 0, Math.PI*2);
+        ctx.arc(px, py, p.isOwn ? 4.0 : 3.4, 0, Math.PI*2);
         ctx.fill();
         if (p.isOwn) {
-          // Thin green outline — only thing that distinguishes "you"
+          // Thin green outline marks "you" — same green as LIVE / ROCK SOLID
           ctx.strokeStyle = 'rgba(57,255,106,0.75)';
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
