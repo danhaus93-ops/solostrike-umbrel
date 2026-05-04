@@ -6281,20 +6281,20 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       }
 
       // ── Atmospheric halo (drawn on 2D canvas in both WebGL + fallback) ──
-      // Sells the "lit sphere in space" illusion. The gradient runs from
-      // disk-center (inner radius 0) to outer (1.30 × globe radius), with
-      // alpha ZERO at the center so the WebGL globe behind shows clean,
-      // peaking around the rim, then fading to 0 at the outer edge.
-      const atmGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, atmRadius * 1.30);
-      // Inside the globe disk: full transparent (let WebGL show through)
-      const innerPct = (atmRadius * 0.92) / (atmRadius * 1.30);
-      const peakPct  = (atmRadius * 1.02) / (atmRadius * 1.30);
+      // v1.8.8-rev27: balanced halo OUTSIDE the disk. Inner-transparent
+      // zone goes to 1.00× radius (right at globe edge) so we never
+      // bleed into the WebGL sphere. Peak at 1.05× at alpha 0.38, then
+      // a wide falloff out to 1.40×. Net: visible warm halo around the
+      // globe without competing for visual attention.
+      const atmGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, atmRadius * 1.40);
+      const innerPct = (atmRadius * 1.00) / (atmRadius * 1.40);
+      const peakPct  = (atmRadius * 1.05) / (atmRadius * 1.40);
       atmGrad.addColorStop(0,         'rgba(245,166,35,0)');
       atmGrad.addColorStop(innerPct,  'rgba(245,166,35,0)');
-      atmGrad.addColorStop(peakPct,   'rgba(245,166,35,0.32)');
+      atmGrad.addColorStop(peakPct,   'rgba(245,166,35,0.38)');
       atmGrad.addColorStop(1,         'rgba(245,166,35,0)');
       ctx.fillStyle = atmGrad;
-      ctx.beginPath(); ctx.arc(cx, cy, atmRadius * 1.30, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy, atmRadius * 1.40, 0, Math.PI*2); ctx.fill();
 
       if (!useWebGL) {
 
@@ -6552,20 +6552,43 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // 4) Render pool markers — crimson dots for high contrast against
       // the strong amber land. Solid #A8170E with thin green outline on
       // the user's own pin.
+      // v1.8.8-rev27: apply axial tilt (23.5°) to match the WebGL globe
+      // orientation. Markers must be transformed by the SAME Y-rotation
+      // PLUS Z-tilt as the sphere shader, otherwise they drift across
+      // the visible surface as the planet spins. Also: ALL dots same
+      // size (3.4px) — only the green ring distinguishes the user's pin.
+      const markerRadius = useWebGL ? atmRadius : radius;
+      const TILT_RAD = 23.5 * Math.PI / 180;
+      const cosTilt = Math.cos(TILT_RAD);
+      const sinTilt = Math.sin(TILT_RAD);
+
       const pools = canvas._globePools;
       for (const p of pools) {
         const lonR = p.lon + rotY;
-        const x3 = Math.cos(p.lat) * Math.sin(lonR);
-        const y3 = Math.sin(p.lat);
-        const z3 = Math.cos(p.lat) * Math.cos(lonR);
+        // Step 1: spin around Y axis (the planet's rotation)
+        const spunX = Math.cos(p.lat) * Math.sin(lonR);
+        const spunY = Math.sin(p.lat);
+        const spunZ = Math.cos(p.lat) * Math.cos(lonR);
+        // Step 2: tilt around Z axis (the planet's axial tilt)
+        // Only applied when WebGL globe is active (it has the tilt).
+        let x3, y3, z3;
+        if (useWebGL) {
+          x3 = spunX * cosTilt - spunY * sinTilt;
+          y3 = spunX * sinTilt + spunY * cosTilt;
+          z3 = spunZ;
+        } else {
+          x3 = spunX;
+          y3 = spunY;
+          z3 = spunZ;
+        }
         if (z3 < -0.05) continue;
-        const px = cx + x3 * radius;
-        const py = cy - y3 * radius;
+        const px = cx + x3 * markerRadius;
+        const py = cy - y3 * markerRadius;
         // Crimson (#A8170E = rgb(168,23,14)) — steps out of the amber
         // family entirely so dots read as alert points, not blending in.
         ctx.fillStyle = '#A8170E';
         ctx.beginPath();
-        ctx.arc(px, py, p.isOwn ? 4.0 : 3.4, 0, Math.PI*2);
+        ctx.arc(px, py, 3.4, 0, Math.PI*2);
         ctx.fill();
         if (p.isOwn) {
           // Thin green outline marks "you" — same green as LIVE / ROCK SOLID

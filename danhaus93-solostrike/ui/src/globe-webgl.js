@@ -132,9 +132,10 @@ void main() {
   float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
   baseColor *= mix(0.62, 1.0, limb);
 
-  // Atmospheric Fresnel rim glow — adds warm amber at the silhouette
-  float fresnel = pow(1.0 - max(0.0, vNormal.z), 3.0);
-  baseColor += uAtmColor * fresnel * 0.45;
+  // v1.8.8-rev27: Fresnel rim glow REMOVED. It was painting amber INSIDE
+  // the silhouette which made the "atmospheric glow" look like it was
+  // inside the globe. Atmosphere is now exclusively the 2D radial halo
+  // drawn OUTSIDE the disk on the 2D canvas.
 
   gl_FragColor = vec4(baseColor, 1.0);
 }
