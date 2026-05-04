@@ -3355,6 +3355,52 @@ function savePulseBitcoinSymbols(v) {
   try { localStorage.setItem(LS_PULSE_BITCOIN_SYMBOLS, String(!!v)); } catch {}
 }
 
+// User's approximate pool pin location. Stored as { lat, lon } in decimal
+// degrees, snapped to a 5° grid (~500km cells, US-state-sized) before save.
+// The same value also broadcasts over nostr when set, so other Strikers see
+// our marker on the globe — but resolution is deliberately coarse so it
+// reveals only country/region, never city or address.
+const LS_POOL_PIN = 'ss_pool_pin_v1';
+const POOL_PIN_GRID_DEG = 5;
+function snapPinTo5Deg(lat, lon) {
+  return {
+    lat: Math.round(lat / POOL_PIN_GRID_DEG) * POOL_PIN_GRID_DEG,
+    lon: Math.round(lon / POOL_PIN_GRID_DEG) * POOL_PIN_GRID_DEG,
+  };
+}
+function loadPoolPin() {
+  try {
+    const raw = localStorage.getItem(LS_POOL_PIN);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== 'object') return null;
+    if (!Number.isFinite(v.lat) || !Number.isFinite(v.lon)) return null;
+    if (v.lat < -90 || v.lat > 90 || v.lon < -180 || v.lon > 180) return null;
+    return snapPinTo5Deg(v.lat, v.lon);
+  } catch { return null; }
+}
+function savePoolPin(pin) {
+  try {
+    if (pin) localStorage.setItem(LS_POOL_PIN, JSON.stringify(pin));
+    else localStorage.removeItem(LS_POOL_PIN);
+  } catch {}
+}
+// Push the user's pin to the API so it gets included in nostr broadcasts.
+// Fire-and-forget — UI is the source of truth via localStorage; this just
+// notifies the back-end so the next broadcast cycle includes it.
+async function publishPoolPinToApi(pin) {
+  try {
+    const body = pin ? { lat: pin.lat, lon: pin.lon } : { lat: null, lon: null };
+    await fetch('/api/network-stats/location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    console.warn('Pool pin sync to API failed:', e);
+  }
+}
+
 // Hunt card animation style (mirrors Pulse pattern)
 const LS_HUNT_ANIM = 'ss_hunt_anim_v1';   // 'noncefield' | 'sonar' | 'lightning' | 'pickaxe'
 const HUNT_ANIM_OPTIONS = [
@@ -4685,7 +4731,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange, onPreviewCelebration }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
@@ -4752,7 +4798,8 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {tab==='pulse' && (
           <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
-            useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}/>
+            useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
+            poolPin={poolPin} onPoolPinChange={onPoolPinChange}/>
         )}
         {tab==='hunt' && (
           <HuntTab huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange} onPreviewCelebration={onPreviewCelebration}/>
@@ -5165,7 +5212,7 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
 }
 
 // ── Pulse tab ─────────────────────────────────────────────────────────────────
-function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange }) {
+function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, poolPin, onPoolPinChange }) {
   const [err, setErr] = useState('');
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
@@ -5481,6 +5528,51 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBi
           </div>
         </div>
       )}
+
+      {/* ─── Your Pool Location ─────────────────────────────────────────── */}
+      {onPoolPinChange && (
+        <div style={{
+          marginTop: 18, padding: '0.8rem',
+          border: '1px solid var(--border)', borderRadius: 4,
+          background: 'rgba(245,166,35,0.04)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--fd)', fontSize: '0.72rem', letterSpacing: '0.08em',
+            color: 'var(--amber)', textTransform: 'uppercase', marginBottom: 8,
+          }}>
+            Your Pool Location
+          </div>
+          <div style={{
+            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+            lineHeight: 1.5, marginBottom: 8,
+          }}>
+            {poolPin ? (
+              <>
+                Pinned to <span style={{ color: 'var(--text-1)' }}>
+                  {Math.abs(poolPin.lat)}°{poolPin.lat >= 0 ? 'N' : 'S'},{' '}
+                  {Math.abs(poolPin.lon)}°{poolPin.lon >= 0 ? 'E' : 'W'}
+                </span>{' · '}snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.
+              </>
+            ) : (
+              <>Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to <span style={{ color: 'var(--text-1)' }}>Globe</span>, then tap "Pin My Pool" below the globe.</>
+            )}
+          </div>
+          {poolPin && (
+            <button
+              onClick={() => onPoolPinChange(null)}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(225,80,80,0.5)',
+                color: '#ff8a8a',
+                fontFamily: 'var(--fd)', fontSize: '0.62rem',
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                padding: '0.4rem 0.7rem',
+                cursor: 'pointer', borderRadius: 2,
+              }}
+            >Remove Pin</button>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -5495,7 +5587,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -5510,6 +5602,57 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const canvasWidthRef = useRef(0);
   const canvasHeightRef = useRef(0);
   const dprRef = useRef(window.devicePixelRatio || 1);
+
+  // ─── Pin placement mode (globe only) ───────────────────────────────────
+  // When `placingPin` is true, the globe stops rotating, an overlay prompts
+  // the user to tap, and the next tap on the canvas converts screen coords
+  // → 3D unit sphere → lat/lon → 5° grid snap → poolPin update.
+  // Refs (not state) so the running animation loop can read the current
+  // value without re-mounting the canvas effect.
+  const [placingPin, setPlacingPin] = useState(false);
+  const placingPinRef = useRef(false);
+  const poolPinRef = useRef(poolPin);
+  const globeRotYRef = useRef(0);  // last sampled rotation, used by tap math
+  const globeGeomRef = useRef({ cx: 0, cy: 0, radius: 1 });
+  useEffect(() => { placingPinRef.current = placingPin; }, [placingPin]);
+  useEffect(() => { poolPinRef.current = poolPin; }, [poolPin]);
+
+  // Inverse orthographic projection — converts a tap on the canvas to
+  // lat/lon (in degrees), un-rotated against the current globe rotation,
+  // then snapped to a 5° grid for the privacy guarantee. Returns null if
+  // the tap missed the globe disk or pin placement isn't active.
+  const handleCanvasTap = useCallback((e) => {
+    if (!placingPinRef.current || !onPoolPinChange) return;
+    e.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const { cx, cy, radius } = globeGeomRef.current;
+    if (!radius) return;
+    const nx = (clickX - cx) / radius;
+    const ny = -(clickY - cy) / radius;
+    const r2 = nx * nx + ny * ny;
+    if (r2 > 0.985) return; // tap missed the globe disk — ignore (small fudge for edges)
+    const nz = Math.sqrt(Math.max(0, 1 - r2));
+    const latRad = Math.asin(Math.max(-1, Math.min(1, ny)));
+    const lonRotated = Math.atan2(nx, nz);
+    let lonDeg = (lonRotated - globeRotYRef.current) * 180 / Math.PI;
+    // Normalize to [-180, 180]
+    lonDeg = ((lonDeg + 540) % 360) - 180;
+    const latDeg = latRad * 180 / Math.PI;
+    const pinned = snapPinTo5Deg(latDeg, lonDeg);
+    onPoolPinChange(pinned);
+    setPlacingPin(false);
+  }, [onPoolPinChange]);
+
+  // Toggle pin placement mode. Stop propagation so the click doesn't
+  // bubble to the parent's "open strikers" handler.
+  const togglePlacingPin = useCallback((e) => {
+    e.stopPropagation();
+    setPlacingPin(prev => !prev);
+  }, []);
 
   // Set up the canvas — handles HiDPI properly so the waveform stays crisp on retina screens
   useEffect(() => {
@@ -5978,7 +6121,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         };
 
         // ─ Async fetch coastline data ─
-        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json')
+        // Using Natural Earth 1:50m (~250KB) — significantly sharper than
+        // 1:110m (~80KB) at the size we render: ~10x more vertices means
+        // smooth curves instead of visible polygon facets. Fetched once
+        // per session, then browser-cached.
+        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json')
           .then(r => r.json())
           .then(topo => {
             const decodedArcs = decodeArcs(topo);
@@ -6009,7 +6156,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       const t = canvas._globeT;
       const cx = W / 2, cy = H / 2;
       const radius = Math.min(W, H) * 0.42;
-      const rotY = t * 0.15;
+      // Advance rotation only when not in pin-placement mode. Freezing
+      // gives the user a stable target to tap.
+      if (!placingPinRef.current) {
+        canvas._globeRotY = (canvas._globeRotY || 0) + dt * 0.15;
+      }
+      const rotY = canvas._globeRotY || 0;
+      // Cache globe geometry for the tap-to-place handler (it runs outside
+      // the animation loop but needs to invert the projection).
+      globeRotYRef.current = rotY;
+      globeGeomRef.current = { cx, cy, radius };
 
       // Background
       ctx.fillStyle = 'rgba(4,5,8,1)';
@@ -6036,14 +6192,20 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
 
-      // 3) Continent outlines (dimmed so pool dots stand out)
+      // 3) Continent outlines — batched per-run polyline strokes.
+      // The whole visible portion of each ring is drawn in ONE beginPath,
+      // letting the canvas anti-alias the curve continuously instead of
+      // stippling N separate 1-pixel segments.
       const rings = canvas._globeRings;
       if (rings) {
         ctx.lineWidth = 1.0;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(245,166,35,0.34)';
+        const MAX_SEG_DIST_SQ = 2500;
         for (const ring of rings) {
           let prev = null;
+          let pathOpen = false;
           for (let i = 0; i < ring.length; i++) {
             const lat = ring[i][1] * Math.PI / 180;
             const lon = ring[i][0] * Math.PI / 180 + rotY;
@@ -6051,50 +6213,110 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             const y3 = Math.sin(lat);
             const z3 = Math.cos(lat) * Math.cos(lon);
             const visible = z3 > -0.02;
-            const p = { x: cx + x3 * radius, y: cy - y3 * radius, z: z3, visible };
+            const x = cx + x3 * radius;
+            const y = cy - y3 * radius;
             if (visible && prev && prev.visible) {
-              const dx = p.x - prev.x, dy = p.y - prev.y;
-              if (dx*dx + dy*dy < 2500) { // cull polygon-wrap jumps
-                const avgZ = (p.z + prev.z) / 2;
-                const alpha = 0.18 + avgZ * 0.22;
-                ctx.strokeStyle = `rgba(245,166,35,${alpha})`;
-                ctx.beginPath();
-                ctx.moveTo(prev.x, prev.y);
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
+              const dx = x - prev.x, dy = y - prev.y;
+              if (dx*dx + dy*dy < MAX_SEG_DIST_SQ) {
+                if (!pathOpen) {
+                  ctx.beginPath();
+                  ctx.moveTo(prev.x, prev.y);
+                  pathOpen = true;
+                }
+                ctx.lineTo(x, y);
+              } else if (pathOpen) {
+                ctx.stroke(); pathOpen = false;
               }
+            } else if (pathOpen) {
+              ctx.stroke(); pathOpen = false;
             }
-            prev = p;
+            prev = { x, y, visible };
           }
+          if (pathOpen) { ctx.stroke(); pathOpen = false; }
         }
       }
 
-      // Sync pool marker count to actual ns.pools value 1:1 — no cap.
-      // Regenerates positions if the count changes — so 2 reported pools
-      // means 2 markers, 100 reported = 100, etc. Locations are
-      // decorative since the SoloStrike Pulse architecture deliberately
-      // transmits no geo data.
+      // Pool markers — peer-aware sync. Each broadcast peer becomes a
+      // dot. If a peer broadcasts a `loc` (5°-snapped lat/lon), we use it;
+      // otherwise we generate a stable random landmass position keyed by
+      // their pubkey (so it doesn't jitter every frame). Own pin from
+      // localStorage takes precedence over any echoed-back broadcast.
       if (canvas._globeAllVerts) {
-        const desiredCount = Math.max(0, ns.pools || 0);
-        if (canvas._globePools.length !== desiredCount) {
-          canvas._globePools = [];
-          const verts = canvas._globeAllVerts;
-          for (let i = 0; i < desiredCount; i++) {
-            const v = verts[Math.floor(Math.random() * verts.length)];
-            const lon = v[0] + (Math.random() - 0.5) * 4;
-            const lat = v[1] + (Math.random() - 0.5) * 4;
-            canvas._globePools.push({
-              lat: lat * Math.PI / 180,
-              lon: lon * Math.PI / 180,
-              rate: 0.4 + Math.random() * 1.6,
-              phase: Math.random() * Math.PI * 2,
-              bright: 0.45 + Math.random() * 0.5,
-            });
-          }
+        const peers = Array.isArray(ns.peers)
+          ? ns.peers.filter(p => !p.filtered)
+          : [];
+        const verts = canvas._globeAllVerts;
+        const ourPin = poolPinRef.current;          // {lat, lon} or null
+        const prevByPk = new Map();
+        for (const p of canvas._globePools) {
+          if (p.pubkey) prevByPk.set(p.pubkey, p);
         }
+        const nextPools = [];
+        let ownIncluded = false;
+
+        for (const peer of peers) {
+          const prev = prevByPk.get(peer.pubkey);
+          const isOwn = !!peer.isOwn;
+          let lat, lon;
+          let realLoc = false;
+
+          if (isOwn && ourPin) {
+            // Use local pin even before our broadcast cycle echoes back
+            lat = ourPin.lat;
+            lon = ourPin.lon;
+            realLoc = true;
+            ownIncluded = true;
+          } else if (Array.isArray(peer.loc) && peer.loc.length === 2
+                     && Number.isFinite(peer.loc[0]) && Number.isFinite(peer.loc[1])) {
+            lat = peer.loc[0];
+            lon = peer.loc[1];
+            realLoc = true;
+            if (isOwn) ownIncluded = true;
+          } else if (prev) {
+            // Reuse prior random position for stability
+            nextPools.push({ ...prev, isOwn });
+            if (isOwn) ownIncluded = true;
+            continue;
+          } else {
+            // Generate new random landmass position
+            const v = verts[Math.floor(Math.random() * verts.length)];
+            lon = v[0] + (Math.random() - 0.5) * 4;
+            lat = v[1] + (Math.random() - 0.5) * 4;
+          }
+
+          nextPools.push({
+            pubkey: peer.pubkey,
+            isOwn,
+            realLoc,
+            lat: lat * Math.PI / 180,
+            lon: lon * Math.PI / 180,
+            rate: prev ? prev.rate : 0.4 + Math.random() * 1.6,
+            phase: prev ? prev.phase : Math.random() * Math.PI * 2,
+            bright: prev ? prev.bright : 0.45 + Math.random() * 0.5,
+          });
+        }
+
+        // If user has a pin but no own peer entry yet (broadcast not echoed
+        // back), still render their pin so the placement feels instant.
+        if (ourPin && !ownIncluded) {
+          nextPools.push({
+            pubkey: '__own_local__',
+            isOwn: true,
+            realLoc: true,
+            lat: ourPin.lat * Math.PI / 180,
+            lon: ourPin.lon * Math.PI / 180,
+            rate: 1.0,
+            phase: 0,
+            bright: 0.85,
+          });
+        }
+
+        canvas._globePools = nextPools;
       }
 
-      // 4) Pool markers — pulsing glowing dots at each location
+      // 4) Render pool markers — pulsing glowing dots; own pin gets a
+      // green outline ring + slightly brighter halo so the user can spot
+      // themselves at a glance.
       const pools = canvas._globePools;
       for (const p of pools) {
         const lonR = p.lon + rotY;
@@ -6108,7 +6330,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const pulse = 0.4 + 0.6 * (Math.sin(phase) * 0.5 + 0.5);
         const visible = Math.max(0.3, z3 + 0.1);
         const dotAlpha = pulse * visible * p.bright;
-        const haloR = 8 + pulse * 5;
+        const haloR = (p.isOwn ? 11 : 8) + pulse * 5;
         const halo = ctx.createRadialGradient(px, py, 0, px, py, haloR);
         halo.addColorStop(0, `rgba(255,200,120,${dotAlpha * 0.85})`);
         halo.addColorStop(0.5, `rgba(247,147,26,${dotAlpha * 0.4})`);
@@ -6116,7 +6338,27 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillStyle = halo;
         ctx.beginPath(); ctx.arc(px, py, haloR, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = `rgba(255,225,150,${Math.min(1, dotAlpha + 0.3)})`;
-        ctx.beginPath(); ctx.arc(px, py, 2.2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px, py, p.isOwn ? 2.8 : 2.2, 0, Math.PI*2); ctx.fill();
+        if (p.isOwn) {
+          // Thin green outline marks "you" — same green as LIVE / ROCK SOLID
+          ctx.strokeStyle = `rgba(57,255,106,${0.5 + visible * 0.3})`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
+        }
+      }
+
+      // Pin-placement overlay — dim the globe and prompt to tap
+      if (placingPinRef.current) {
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(245,166,35,0.95)';
+        ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('TAP ANYWHERE ON THE GLOBE', cx, cy - 8);
+        ctx.fillStyle = 'rgba(245,166,35,0.55)';
+        ctx.font = '500 9px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.fillText('Snapped to ~500km region', cx, cy + 8);
       }
     };
 
@@ -6356,7 +6598,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           position:'relative', overflow:'hidden',
         }}>
 
-          <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
+          <canvas ref={canvasRef} onClick={handleCanvasTap} style={{display:'block', width:'100%', height:'100%'}}/>
+          {pulseAnim === 'globe' && onPoolPinChange && (
+            <div style={{
+              position:'absolute', bottom:4, left:0, right:0,
+              display:'flex', justifyContent:'center', pointerEvents:'none',
+            }}>
+              <button
+                onClick={togglePlacingPin}
+                style={{
+                  pointerEvents:'auto',
+                  background: placingPin ? 'rgba(225,80,80,0.18)' : 'rgba(0,0,0,0.55)',
+                  border: `1px solid ${placingPin ? 'rgba(225,80,80,0.6)' : 'var(--amber)'}`,
+                  color: placingPin ? '#ff8a8a' : 'var(--amber)',
+                  fontFamily:'var(--fd)', fontSize:'0.5rem',
+                  letterSpacing:'0.12em', textTransform:'uppercase',
+                  padding:'0.25rem 0.55rem',
+                  cursor:'pointer', borderRadius:2,
+                }}
+              >
+                {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+              </button>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
@@ -6427,7 +6691,29 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         marginBottom:'0.7rem',
         position:'relative', overflow:'hidden',
       }}>
-        <canvas ref={canvasRef} style={{display:'block', width:'100%', height:'100%'}}/>
+        <canvas ref={canvasRef} onClick={handleCanvasTap} style={{display:'block', width:'100%', height:'100%'}}/>
+        {pulseAnim === 'globe' && onPoolPinChange && (
+          <div style={{
+            position:'absolute', bottom:8, left:0, right:0,
+            display:'flex', justifyContent:'center', pointerEvents:'none',
+          }}>
+            <button
+              onClick={togglePlacingPin}
+              style={{
+                pointerEvents:'auto',
+                background: placingPin ? 'rgba(225,80,80,0.18)' : 'rgba(0,0,0,0.55)',
+                border: `1px solid ${placingPin ? 'rgba(225,80,80,0.6)' : 'var(--amber)'}`,
+                color: placingPin ? '#ff8a8a' : 'var(--amber)',
+                fontFamily:'var(--fd)', fontSize:'0.6rem',
+                letterSpacing:'0.12em', textTransform:'uppercase',
+                padding:'0.35rem 0.75rem',
+                cursor:'pointer', borderRadius:2,
+              }}
+            >
+              {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* The 3 stat tiles */}
@@ -7879,6 +8165,17 @@ export default function App() {
     saveHuntAnim(v);
     setHuntAnim(v);
   }, []);
+  // Pool pin location — user's approximate location on the Pulse globe.
+  // localStorage is the source of truth; updates also POST to the API so
+  // the next nostr broadcast includes it.
+  const [poolPin, setPoolPin] = useState(() => loadPoolPin());
+  const onPoolPinChange = useCallback((nextPin) => {
+    // nextPin: { lat, lon } or null
+    const snapped = nextPin ? snapPinTo5Deg(nextPin.lat, nextPin.lon) : null;
+    savePoolPin(snapped);
+    setPoolPin(snapped);
+    publishPoolPinToApi(snapped);
+  }, []);
 
   // ─── BLOCK FOUND modal state + trigger ─────────────────────────────────────
   // Opens BlockFoundModal when poolState.blocks.length grows by 1+.
@@ -8300,6 +8597,7 @@ export default function App() {
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
             useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
             huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
+            poolPin={poolPin} onPoolPinChange={onPoolPinChange}
           />
         )}
       </>
@@ -8328,6 +8626,8 @@ export default function App() {
       pulseAnim={pulseAnim}
       onPulseAnimChange={onPulseAnimChange}
       useBitcoinSymbols={useBitcoinSymbols}
+      poolPin={poolPin}
+      onPoolPinChange={onPoolPinChange}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
@@ -8479,6 +8779,7 @@ export default function App() {
           pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
           useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
           huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
+            poolPin={poolPin} onPoolPinChange={onPoolPinChange}
           onPreviewCelebration={onPreviewCelebration}
         />
       )}
