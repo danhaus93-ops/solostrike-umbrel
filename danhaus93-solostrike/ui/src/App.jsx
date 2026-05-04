@@ -5675,16 +5675,40 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const rect = canvas.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
-    const { cx, cy, radius } = globeGeomRef.current;
+    const { cx, cy, radius, useWebGL } = globeGeomRef.current;
     if (!radius) return;
-    const nx = (clickX - cx) / radius;
-    const ny = -(clickY - cy) / radius;
+    // v1.8.8-rev29: when WebGL is active, the visible globe disk has
+    // radius = canvas-min-dim * 0.39 (matches uScale 0.78). The legacy
+    // `radius` field uses 0.42 for the 2D fallback. Pick the right one.
+    // Both are in CSS pixels (matching getBoundingClientRect).
+    const tapRadius = useWebGL
+      ? Math.min(rect.width, rect.height) * 0.39
+      : radius;
+    const nx = (clickX - cx) / tapRadius;
+    const ny = -(clickY - cy) / tapRadius;
     const r2 = nx * nx + ny * ny;
-    if (r2 > 0.985) return; // tap missed the globe disk — ignore (small fudge for edges)
+    if (r2 > 0.985) return; // tap missed the globe disk
     const nz = Math.sqrt(Math.max(0, 1 - r2));
-    const latRad = Math.asin(Math.max(-1, Math.min(1, ny)));
-    const lonRotated = Math.atan2(nx, nz);
-    let lonDeg = (lonRotated - globeRotYRef.current) * 180 / Math.PI;
+
+    // (nx, ny, nz) is the screen-space normal. To recover the geographic
+    // (lat, lon) of where the user tapped, we must INVERT the same
+    // transformation chain the renderer applies: aPos → Y-spin (rotY) →
+    // Z-tilt (23.5°) → screen.
+    let sx = nx, sy = ny, sz = nz;
+    if (useWebGL) {
+      // Inverse Z-tilt — rotate (sx, sy) by -uTilt
+      const TILT = 23.5 * Math.PI / 180;
+      const ct = Math.cos(-TILT);
+      const st = Math.sin(-TILT);
+      const ux = sx * ct - sy * st;
+      const uy = sx * st + sy * ct;
+      sx = ux; sy = uy;
+    }
+    // Now (sx, sy, sz) is in the "spun" frame (after Y-rotation, before tilt).
+    // Inverse Y-rotation: subtract uRotY from longitude.
+    const latRad = Math.asin(Math.max(-1, Math.min(1, sy)));
+    const lonSpun = Math.atan2(sx, sz);
+    let lonDeg = (lonSpun - globeRotYRef.current) * 180 / Math.PI;
     // Normalize to [-180, 180]
     lonDeg = ((lonDeg + 540) % 360) - 180;
     const latDeg = latRad * 180 / Math.PI;
@@ -6245,16 +6269,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       const rotY = canvas._globeRotY || 0;
       // Cache globe geometry for the tap-to-place handler (it runs outside
       // the animation loop but needs to invert the projection).
-      globeRotYRef.current = rotY;
-      globeGeomRef.current = { cx, cy, radius };
-
-      // v1.8.8-rev24: WebGL globe path. When the renderer is initialized
-      // AND has a texture uploaded, it draws the entire sphere (continents,
-      // ocean, lighting, atmosphere) on the sibling canvas behind us.
-      // We only draw markers + pin overlay on top in 2D.
       const useWebGL = !!(webglRendererRef.current
                           && webglRendererRef.current.isReady()
                           && webglTextureReadyRef.current);
+      globeRotYRef.current = rotY;
+      globeGeomRef.current = { cx, cy, radius, useWebGL };
 
       // v1.8.8-rev25: atmospheric halo ALWAYS drawn on 2D canvas as a
       // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
@@ -6280,20 +6299,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillRect(0, 0, W, H);
       }
 
-      // ── Atmospheric halo (drawn on 2D canvas in both WebGL + fallback) ──
-      // v1.8.8-rev28: push the inner-transparent zone CLEARLY past the
-      // WebGL globe's visible edge to avoid any inner-tint perception.
-      // Inner at 1.05× radius (5% past the disk edge), peak at 1.10×,
-      // outer fades to 0 at 1.45×. Larger safety margin than rev27.
-      const atmGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, atmRadius * 1.45);
-      const innerPct = (atmRadius * 1.05) / (atmRadius * 1.45);
-      const peakPct  = (atmRadius * 1.10) / (atmRadius * 1.45);
-      atmGrad.addColorStop(0,         'rgba(245,166,35,0)');
-      atmGrad.addColorStop(innerPct,  'rgba(245,166,35,0)');
-      atmGrad.addColorStop(peakPct,   'rgba(245,166,35,0.38)');
-      atmGrad.addColorStop(1,         'rgba(245,166,35,0)');
-      ctx.fillStyle = atmGrad;
-      ctx.beginPath(); ctx.arc(cx, cy, atmRadius * 1.45, 0, Math.PI*2); ctx.fill();
+      // v1.8.8-rev29: atmospheric halo REMOVED per user request. The WebGL
+      // globe stands alone. May add back later in different form.
 
       if (!useWebGL) {
 
