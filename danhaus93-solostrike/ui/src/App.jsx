@@ -5677,12 +5677,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const clickY = e.clientY - rect.top;
     const { cx, cy, radius, useWebGL } = globeGeomRef.current;
     if (!radius) return;
-    // v1.8.8-rev29: when WebGL is active, the visible globe disk has
-    // radius = canvas-min-dim * 0.39 (matches uScale 0.78). The legacy
-    // `radius` field uses 0.42 for the 2D fallback. Pick the right one.
+    // v1.8.8-rev30: when WebGL is active, the visible globe disk has
+    // radius = canvas-HEIGHT * 0.39 (matches uScale 0.78). The vertex
+    // shader divides X by aspect (W/H), so the disk is height-bound on
+    // both axes regardless of canvas width. Using min(W,H) caused the
+    // pin to orbit a smaller circle than the globe surface in tall
+    // (W<H) carousel layouts, producing visible drift on rotation.
+    // The legacy `radius` field uses 0.42 for the 2D fallback.
     // Both are in CSS pixels (matching getBoundingClientRect).
     const tapRadius = useWebGL
-      ? Math.min(rect.width, rect.height) * 0.39
+      ? rect.height * 0.39
       : radius;
     const nx = (clickX - cx) / tapRadius;
     const ny = -(clickY - cy) / tapRadius;
@@ -6279,9 +6283,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
       // user sees — same warm amber radial gradient as the old vector
       // globe. WebGL Fresnel rim glow is too subtle on its own.
-      // Use 0.39 of canvas dim to match WebGL uScale 0.78 (disk diameter
-      // = 78% of canvas height = radius 39%).
-      const atmRadius = useWebGL ? Math.min(W, H) * 0.39 : radius;
+      // v1.8.8-rev30: disk radius is canvas-HEIGHT * 0.39, NOT
+      // min(W,H)*0.39. The WebGL vertex shader divides x by aspect
+      // (W/H) so the visible circle is height-bound on both axes.
+      // Markers and atmosphere must use the same height-based radius
+      // or pins drift relative to the surface when W<H.
+      const atmRadius = useWebGL ? H * 0.39 : radius;
 
       if (useWebGL) {
         // Drive the WebGL renderer with the same rotation.
