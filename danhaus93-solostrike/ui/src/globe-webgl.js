@@ -115,15 +115,17 @@ void main() {
   // Sample land mask from texture
   float landMask = texture2D(uMap, uv).r;
 
-  // v1.8.8-rev30: hide equirectangular polar pinch.
+  // v1.8.8-rev32: hide equirectangular polar pinch.
   // At |lat| → 90° the texture's top/bottom row smears 360° around the
   // rotation axis (every longitude samples the same texel column), which
   // looks like a flat "cap" or jagged plateau at the top of the visible
-  // globe. Fade the land mask to ocean over the last ~15° toward each
+  // globe. Fade the land mask to ocean over the last ~25° toward each
   // pole so the polar singularity dissolves into water — visually it
   // reads as the Arctic / Antarctic seas, which are mostly empty anyway.
+  // rev32 widened the fade zone from (75, 89) → (65, 89) because the
+  // user reports continued visible artifacts at the top of the globe.
   float absLatDeg = abs(lat) * 180.0 / PI;
-  float polarFade = 1.0 - smoothstep(75.0, 89.0, absLatDeg);
+  float polarFade = 1.0 - smoothstep(65.0, 89.0, absLatDeg);
   landMask *= polarFade;
 
   // Lighting — sun "above-left" relative to the camera frame.
@@ -131,15 +133,25 @@ void main() {
   // stays anchored to the sun direction in screen space.
   vec3 light = normalize(vec3(-0.4, 0.5, 0.85));
   float NdotL = max(0.0, dot(vNormal, light));
-  float lit = 0.30 + 0.70 * NdotL;
+  // v1.8.8-rev32: bump night-side floor 0.30 → 0.42 so the night-side
+  // silhouette is visible against the dark page background. Without this
+  // the night-side ocean rendered at ~RGB(0.01, 0.01, 0.01), identical
+  // to the canvas backdrop, making the top/bottom of the globe look
+  // "clipped" where the night-side rim met the background.
+  float lit = 0.42 + 0.58 * NdotL;
 
   // Procedural noise for land texture. Sample in OBJECT space so the
   // noise pattern is stuck to the planet surface — rotates with the
   // continents instead of swimming over them.
+  // v1.8.8-rev32: scale noise by polarFade too. At the poles, adjacent
+  // mesh triangles have wildly different interpolated vObjectPos.x/z
+  // values (because they meet at the same y=±1 point but come from
+  // different longitudes), causing noise() to read jaggedly across the
+  // pole. Fading noise to 0 there kills the visible striping.
   float noise = noise3(vObjectPos * 8.0) * 0.5
               + noise3(vObjectPos * 16.0) * 0.25
               + noise3(vObjectPos * 32.0) * 0.125;
-  noise = (noise - 0.5) * 2.0;
+  noise = (noise - 0.5) * 2.0 * polarFade;
 
   // Blend land + ocean
   vec3 oceanLit = uOceanColor * lit;
@@ -147,9 +159,11 @@ void main() {
   landBase *= (1.0 + noise * 0.18);
   vec3 baseColor = mix(oceanLit, landBase, landMask);
 
-  // Limb darkening — pixels at the rim fade slightly
+  // Limb darkening — pixels at the rim fade slightly. v1.8.8-rev32:
+  // raised the floor 0.62 → 0.75 so the night-side silhouette remains
+  // visible against the dark page background.
   float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
-  baseColor *= mix(0.62, 1.0, limb);
+  baseColor *= mix(0.75, 1.0, limb);
 
   // v1.8.8-rev27: Fresnel rim glow REMOVED. Atmosphere is now exclusively
   // the 2D radial halo drawn OUTSIDE the disk on the 2D canvas.
@@ -278,8 +292,10 @@ export function createGlobeWebGL(canvas, opts = {}) {
   gl.uniform1i(locs.uMap, 0);
 
   // Set the colors — strong SoloStrike amber palette
-  // Ocean: very dark warm (almost black with slight amber undertone)
-  gl.uniform3f(locs.uOceanColor, 0.060, 0.050, 0.034);
+  // Ocean: dark warm with amber undertone. v1.8.8-rev32: bumped from
+  // (0.060, 0.050, 0.034) so night-side ocean stays visible against
+  // the dark page background (~rgb(4,5,10)/256 = ~0.018).
+  gl.uniform3f(locs.uOceanColor, 0.090, 0.075, 0.050);
   // Land: STRONG amber. Pure #F5A623 = (0.961, 0.651, 0.137).
   // Pushed up vs prior (0.78, 0.50, 0.10) so continents read warmly even
   // in shadow. Lighting modulation in fragment shader brings down the
