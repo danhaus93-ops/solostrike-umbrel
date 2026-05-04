@@ -5678,13 +5678,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const { cx, cy, radius, useWebGL } = globeGeomRef.current;
     if (!radius) return;
     // v1.8.8-rev30: when WebGL is active, the visible globe disk has
-    // radius = canvas-HEIGHT * 0.39 (matches uScale 0.78). The vertex
-    // shader divides X by aspect (W/H), so the disk is height-bound on
-    // both axes regardless of canvas width. Using min(W,H) caused the
-    // pin to orbit a smaller circle than the globe surface in tall
-    // (W<H) carousel layouts, producing visible drift on rotation.
-    // The legacy `radius` field uses 0.42 for the 2D fallback.
-    // Both are in CSS pixels (matching getBoundingClientRect).
+    // radius = canvas-HEIGHT * 0.39 (matches uScale 0.78 in the vertex
+    // shader). The X axis is divided by aspect (W/H), so both X and Y
+    // disk radius equal H*0.39 regardless of W. Using min(W,H) was
+    // wrong — when W<H (carousel mode on iPhone, container ~340x380),
+    // markers anchored at radius W*0.39 drift relative to the globe
+    // surface they were placed on. The legacy `radius` field uses 0.42
+    // for the 2D fallback. Both in CSS pixels (matching gBCR).
     const tapRadius = useWebGL
       ? rect.height * 0.39
       : radius;
@@ -6283,20 +6283,27 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
       // user sees — same warm amber radial gradient as the old vector
       // globe. WebGL Fresnel rim glow is too subtle on its own.
-      // v1.8.8-rev30: disk radius is canvas-HEIGHT * 0.39, NOT
-      // min(W,H)*0.39. The WebGL vertex shader divides x by aspect
-      // (W/H) so the visible circle is height-bound on both axes.
-      // Markers and atmosphere must use the same height-based radius
-      // or pins drift relative to the surface when W<H.
+      // Use 0.39 of canvas HEIGHT to match WebGL uScale 0.78 (disk
+      // diameter = 78% of canvas height = radius 39% of H). The X axis
+      // is divided by aspect in the shader so the disk is always a
+      // circle of radius H*0.39, regardless of W. Using min(W,H) was
+      // wrong when W<H — markers ended up on a smaller circle than the
+      // visible globe and drifted as the planet rotated.
       const atmRadius = useWebGL ? H * 0.39 : radius;
 
       if (useWebGL) {
         // Drive the WebGL renderer with the same rotation.
+        // v1.8.8-rev30: W/H here are CSS pixels (canvasWidthRef.current,
+        // see line 6757). The renderer's update() multiplies by dpr
+        // internally to compute backing-store size. Previously we passed
+        // W/dpr — the renderer then multiplied by dpr getting CSS_W
+        // (not CSS_W*dpr) for canvas.width, so the globe rendered at
+        // half-resolution on retina screens and looked pixelated.
         webglRendererRef.current.update({
           rotY,
           dpr: dprRef.current || 1,
-          width: W / (dprRef.current || 1),
-          height: H / (dprRef.current || 1),
+          width: W,
+          height: H,
         });
         // Clear 2D canvas to transparent so WebGL shows through behind.
         ctx.clearRect(0, 0, W, H);
@@ -6306,8 +6313,25 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillRect(0, 0, W, H);
       }
 
-      // v1.8.8-rev29: atmospheric halo REMOVED per user request. The WebGL
-      // globe stands alone. May add back later in different form.
+      // v1.8.8-rev30: atmospheric halo restored. Drawn on the 2D canvas
+      // (which sits in front of the WebGL canvas with a transparent
+      // background) as a radial gradient ring centered on the globe.
+      // Inside atmRadius the gradient is transparent so the WebGL disk
+      // shows through unobstructed; from atmRadius outward it ramps up
+      // to a warm amber peak just past the rim, then falls back to
+      // transparent. Net effect: a soft glow hugging the silhouette of
+      // the planet, matching the look of the legacy 2D globe.
+      if (useWebGL) {
+        const haloInner = atmRadius * 0.96;
+        const haloOuter = atmRadius * 1.34;
+        const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
+        halo.addColorStop(0.00, 'rgba(245,166,35,0.00)');
+        halo.addColorStop(0.18, 'rgba(245,166,35,0.22)');
+        halo.addColorStop(0.45, 'rgba(245,166,35,0.08)');
+        halo.addColorStop(1.00, 'rgba(245,166,35,0.00)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(0, 0, W, H);
+      }
 
       if (!useWebGL) {
 

@@ -115,6 +115,17 @@ void main() {
   // Sample land mask from texture
   float landMask = texture2D(uMap, uv).r;
 
+  // v1.8.8-rev30: hide equirectangular polar pinch.
+  // At |lat| → 90° the texture's top/bottom row smears 360° around the
+  // rotation axis (every longitude samples the same texel column), which
+  // looks like a flat "cap" or jagged plateau at the top of the visible
+  // globe. Fade the land mask to ocean over the last ~15° toward each
+  // pole so the polar singularity dissolves into water — visually it
+  // reads as the Arctic / Antarctic seas, which are mostly empty anyway.
+  float absLatDeg = abs(lat) * 180.0 / PI;
+  float polarFade = 1.0 - smoothstep(75.0, 89.0, absLatDeg);
+  landMask *= polarFade;
+
   // Lighting — sun "above-left" relative to the camera frame.
   // Use vNormal (the rotated + tilted normal) so the lit hemisphere
   // stays anchored to the sun direction in screen space.
