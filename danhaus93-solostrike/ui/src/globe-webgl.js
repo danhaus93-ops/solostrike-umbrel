@@ -75,11 +75,17 @@ uniform vec3 uOceanColor;     // dark amber-tinted near black
 uniform vec3 uLandColor;      // strong amber wash
 uniform vec3 uAtmColor;       // atmospheric glow color (used at rim)
 uniform float uTime;          // for any subtle effects
-uniform float uRotY;          // current rotation — used to advance the texture lookup
+uniform float uRotY;          // yaw — needed to inverse-rotate the
+                              // reconstructed sphere normal back to
+                              // object space for texture lookup
+uniform float uRotX;          // pitch — same purpose as uRotY (rev37)
 
-varying vec3 vNormal;         // tilted, rotated sphere normal (for lighting)
-varying vec3 vSpun;           // post-Y-rotation pre-tilt (for ground-fixed effects)
-varying vec3 vObjectPos;      // original un-rotated position (for texture UV)
+varying vec3 vNormal;         // (legacy, kept for shader symmetry — the
+                              // exact normal is now reconstructed below)
+varying vec3 vSpun;           // post-rotation vertex position. Linearly
+                              // interpolated x,y == fragment's actual
+                              // screen-space position (orthographic).
+varying vec3 vObjectPos;      // (legacy, kept for shader symmetry)
 
 const float PI = 3.14159265359;
 
@@ -103,86 +109,102 @@ float noise3(vec3 p) {
 }
 
 void main() {
-  // CRITICAL: compute UV from the ORIGINAL un-rotated position (vObjectPos).
-  // The geometry rotates so the mesh spins, BUT vObjectPos interpolates
-  // across each rotated triangle in screen space — so each screen pixel
-  // ends up looking up the texture using the original (un-rotated) sphere
-  // coordinates of whatever triangle currently covers it. As triangles
-  // rotate into view, different parts of the texture come into view.
-  float lon = atan(vObjectPos.x, vObjectPos.z);
-  float lat = asin(clamp(vObjectPos.y, -1.0, 1.0));
+  // ─── v1.8.8-rev37: EXACT sphere-position reconstruction ──────────────
+  //
+  // The rev30→rev36 path used the linearly-interpolated un-rotated vertex
+  // position (vObjectPos) for the texture UV lookup. That works fine over
+  // most of the sphere, but the UV-sphere mesh has DEGENERATE FAN
+  // TRIANGLES at the poles (one vertex collapsed to y=±1). For fragments
+  // inside those fan triangles, interpolated x and z are tiny noisy
+  // values, so atan2(x, z) returns a basically-random longitude and the
+  // texture sampling is wrong over a wide cap around each pole. The
+  // polar-fade hack (smoothstep(65°, 89°)) hid this by erasing land in
+  // that band — which only "worked" visually while the globe was locked
+  // upright, because the band appeared as a thin sliver at the disk's
+  // top/bottom edge. rev36 added user-driven pitch, so the fade band
+  // can now be rotated into the middle of the visible disk, where it
+  // shows up as a giant concentric ring with continents (Greenland,
+  // Svalbard, Russian Arctic, Canadian Arctic) erased inside it. That
+  // is the "land masses don't align at the top of the globe" report.
+  //
+  // The fix: stop trusting the vertex-interpolated position. Instead
+  // reconstruct the rotated sphere normal EXACTLY per fragment, then
+  // inverse-rotate it to get the object-space normal for the texture.
+  //
+  // Why this works: the vertex shader uses an ORTHOGRAPHIC projection
+  //     screen.x = spun.x * uScale / uAspect
+  //     screen.y = spun.y * uScale
+  // which is linear in spun.x and spun.y. The rasterizer's linear
+  // interpolation of vSpun.xy across the triangle therefore reproduces
+  // the EXACT spun.x and spun.y at each fragment's screen position.
+  // Only spun.z is wrong (linear interp doesn't preserve the unit-sphere
+  // constraint), and we can recompute it directly: z = sqrt(1 - x² - y²)
+  // for any point on the front hemisphere of the unit sphere.
+  //
+  // Once we have the exact rotated normal, the inverse rotation chain
+  // (un-YAW then un-PITCH, the reverse of the vertex shader's chain)
+  // gives the exact object-space normal. Texture UV computed from this
+  // is geometrically exact at every latitude — no mesh artifacts, no
+  // need for any polar fade.
+  vec3 spun = vec3(
+    vSpun.xy,
+    sqrt(max(0.0, 1.0 - dot(vSpun.xy, vSpun.xy)))
+  );
+
+  // Inverse YAW (rotate by -uRotY around Y axis)
+  float cy = cos(uRotY);
+  float sy = sin(uRotY);
+  vec3 unyawed = vec3(
+    spun.x * cy - spun.z * sy,
+    spun.y,
+    spun.x * sy + spun.z * cy
+  );
+  // Inverse PITCH (rotate by -uRotX around X axis)
+  float cx = cos(uRotX);
+  float sx = sin(uRotX);
+  vec3 obj = vec3(
+    unyawed.x,
+    unyawed.y * cx + unyawed.z * sx,
+    -unyawed.y * sx + unyawed.z * cx
+  );
+
+  float lon = atan(obj.x, obj.z);
+  float lat = asin(clamp(obj.y, -1.0, 1.0));
   vec2 uv = vec2(
     fract(lon / (2.0 * PI) + 0.5),
     1.0 - (lat / PI + 0.5)
   );
 
-  // Sample land mask from texture
+  // Sample land mask. No more polar fade — sampling is exact, and the
+  // equirectangular texture's actual polar singularity (one row covers
+  // all longitudes at lat=±90°) is sub-pixel at any sane resolution.
   float landMask = texture2D(uMap, uv).r;
 
-  // v1.8.8-rev32: hide equirectangular polar pinch.
-  // At |lat| → 90° the texture's top/bottom row smears 360° around the
-  // rotation axis (every longitude samples the same texel column), which
-  // looks like a flat "cap" or jagged plateau at the top of the visible
-  // globe. Fade the land mask to ocean over the last ~25° toward each
-  // pole so the polar singularity dissolves into water — visually it
-  // reads as the Arctic / Antarctic seas, which are mostly empty anyway.
-  // rev32 widened the fade zone from (75, 89) → (65, 89) because the
-  // user reports continued visible artifacts at the top of the globe.
-  float absLatDeg = abs(lat) * 180.0 / PI;
-  float polarFade = 1.0 - smoothstep(65.0, 89.0, absLatDeg);
-  landMask *= polarFade;
-
-  // Lighting — sun "above-left" relative to the camera frame.
-  // Use vNormal (the rotated + tilted normal) so the lit hemisphere
-  // stays anchored to the sun direction in screen space.
+  // Lighting uses the exact rotated normal (== spun, since it's a unit
+  // vector by construction). Sun is "above-left" relative to camera.
   vec3 light = normalize(vec3(-0.4, 0.5, 0.85));
-  float NdotL = max(0.0, dot(vNormal, light));
-  // v1.8.8-rev32: bump night-side floor 0.30 → 0.42 so the night-side
-  // silhouette is visible against the dark page background. Without this
-  // the night-side ocean rendered at ~RGB(0.01, 0.01, 0.01), identical
-  // to the canvas backdrop, making the top/bottom of the globe look
-  // "clipped" where the night-side rim met the background.
+  float NdotL = max(0.0, dot(spun, light));
   float lit = 0.42 + 0.58 * NdotL;
 
-  // Procedural noise for land texture. Sample in OBJECT space so the
-  // noise pattern is stuck to the planet surface — rotates with the
-  // continents instead of swimming over them.
-  // v1.8.8-rev32: scale noise by polarFade too. At the poles, adjacent
-  // mesh triangles have wildly different interpolated vObjectPos.x/z
-  // values (because they meet at the same y=±1 point but come from
-  // different longitudes), causing noise() to read jaggedly across the
-  // pole. Fading noise to 0 there kills the visible striping.
-  float noise = noise3(vObjectPos * 8.0) * 0.5
-              + noise3(vObjectPos * 16.0) * 0.25
-              + noise3(vObjectPos * 32.0) * 0.125;
-  noise = (noise - 0.5) * 2.0 * polarFade;
+  // Procedural noise — sampled in object space (rotates with planet).
+  // Now safe to sample at the poles too because obj is exact.
+  float noise = noise3(obj * 8.0) * 0.5
+              + noise3(obj * 16.0) * 0.25
+              + noise3(obj * 32.0) * 0.125;
+  noise = (noise - 0.5) * 2.0;
 
-  // Blend land + ocean
   vec3 oceanLit = uOceanColor * lit;
   vec3 landBase = uLandColor * (0.40 + 0.85 * NdotL);
   landBase *= (1.0 + noise * 0.18);
   vec3 baseColor = mix(oceanLit, landBase, landMask);
 
-  // Limb darkening — pixels at the rim fade slightly. v1.8.8-rev32:
-  // raised the floor 0.62 → 0.75 so the night-side silhouette remains
-  // visible against the dark page background.
-  float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
+  // Limb darkening — uses exact spun.z so the falloff is geometrically
+  // correct, matching the visible silhouette exactly.
+  float limb = clamp(spun.z * 1.3 + 0.10, 0.0, 1.0);
   baseColor *= mix(0.75, 1.0, limb);
 
-  // v1.8.8-rev35: Fresnel rim glow RESTORED. This is the actual fix for
-  // the persistent "top is clipped" reports across rev30→rev34. The
-  // night-side hemisphere of the sphere paints at uOceanColor * ambient
-  // ≈ RGB(0.018, 0.015, 0.010) — visually identical to the dark card
-  // background. The unlit rim therefore disappears entirely, making
-  // the globe look like a half-disc with a flat edge wherever lit meets
-  // unlit. The 2D halo helps OUTSIDE the disk but doesn't put any light
-  // ON the disk's silhouette — that has to come from the shader.
-  //
-  // pow(...,3.0) makes the falloff sharp so only the very rim glows;
-  // the rest of the sphere is unaffected. Multiplier 0.55 is strong
-  // enough to be visible against the dark background but doesn't blow
-  // out the lit-side rim. uAtmColor is the existing warm amber.
-  float fresnel = pow(1.0 - max(0.0, vNormal.z), 3.0);
+  // Fresnel rim glow (rev35) — also uses exact spun.z.
+  float fresnel = pow(1.0 - max(0.0, spun.z), 3.0);
   baseColor += uAtmColor * fresnel * 0.55;
 
   gl_FragColor = vec4(baseColor, 1.0);
@@ -269,7 +291,12 @@ export function createGlobeWebGL(canvas, opts = {}) {
   }
   gl.useProgram(program);
 
-  // Cache uniform/attribute locations
+  // Cache uniform/attribute locations.
+  // v1.8.8-rev37: uRotX and uRotY are now used in the FRAGMENT shader
+  // too (for the per-fragment inverse-rotation that powers the exact
+  // sphere reconstruction). The uniform location lookup automatically
+  // picks up the merged usage — same name, same uniform, just visible
+  // to both stages.
   const locs = {
     aPosition: gl.getAttribLocation(program, 'aPosition'),
     uRotY: gl.getUniformLocation(program, 'uRotY'),
