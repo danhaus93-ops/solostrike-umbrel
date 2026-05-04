@@ -6137,15 +6137,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         };
 
         // ─ Async fetch coastline data ─
-        // Using Natural Earth 1:10m (~1MB) — highest available resolution.
-        // ~9000+ arcs vs 50m's 1424. Italy looks like Italy, archipelagos
-        // show individual islands, fjords are visible. One-time fetch then
-        // browser-cached. Larger file is worth it for the visual leap.
-        // v1.8.8-rev17: 10m (~1MB, 9000+ arcs) caused ticker stalls on
-        // iPhone Safari main thread even with the precomputed sin/cos
-        // optimization in rev16 — too many vertices to batch per frame.
-        // 50m has ~1424 arcs, which is plenty of detail at 380px globe
-        // size and runs smooth. Italy is still a recognizable boot.
+        // v1.8.8-rev17: 50m TopoJSON (~250KB, 1424 arcs). 10m caused
+        // ticker stalls on iPhone main thread. 50m is plenty of detail
+        // at 380px globe size and runs smooth.
         fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json')
           .then(r => r.json())
           .then(topo => {
@@ -6156,14 +6150,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             }
             canvas._globeRings = rings;
 
-            // v1.8.8-rev16: precompute sin(lat), cos(lat), sin(lon), cos(lon)
-            // per vertex once at load time. The per-frame loop then needs zero
-            // Math.sin/cos calls per vertex — only multiplies via angle-sum
-            // identity:
-            //   sin(lon + rotY) = sin(lon)cos(rotY) + cos(lon)sin(rotY)
-            //   cos(lon + rotY) = cos(lon)cos(rotY) - sin(lon)sin(rotY)
-            // With ~720k vertices/frame at 10m, this drops ~3M trig ops/frame
-            // off the main thread, fixing the ticker lag the user was seeing.
+            // Precompute sin(lat), cos(lat), sin(lon), cos(lon) per
+            // vertex once at load. Per-frame loop uses angle-sum
+            // identity to rotate, no Math.sin/cos calls per vertex.
             const ringTrigs = rings.map(ring => {
               const n = ring.length;
               const sinLat = new Float32Array(n);
@@ -6218,7 +6207,31 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       ctx.fillStyle = 'rgba(4,5,8,1)';
       ctx.fillRect(0, 0, W, H);
 
-      // 1) Faint lat/lon dot grid
+      // 1a) Atmospheric rim glow — soft amber halo just outside the disk.
+      // Sells the "lit sphere in space" illusion. Drawn first so the disk
+      // proper paints over its inner edge.
+      const atmGrad = ctx.createRadialGradient(cx, cy, radius * 0.96, cx, cy, radius * 1.18);
+      atmGrad.addColorStop(0,   'rgba(245,166,35,0.18)');
+      atmGrad.addColorStop(0.5, 'rgba(245,166,35,0.06)');
+      atmGrad.addColorStop(1,   'rgba(245,166,35,0)');
+      ctx.fillStyle = atmGrad;
+      ctx.beginPath(); ctx.arc(cx, cy, radius * 1.18, 0, Math.PI*2); ctx.fill();
+
+      // 1b) Ocean disk — radial gradient inside the globe creates limb
+      // darkening (brighter at center, dark at edge). Pure 2D canvas, near
+      // zero cost. The "lit from above" feel is what makes the globe feel
+      // 3D rather than a circle drawn on a screen.
+      const oceanGrad = ctx.createRadialGradient(
+        cx - radius * 0.25, cy - radius * 0.25, 0,
+        cx, cy, radius
+      );
+      oceanGrad.addColorStop(0,   'rgba(20, 18, 14, 1)');
+      oceanGrad.addColorStop(0.7, 'rgba(10, 9, 7, 1)');
+      oceanGrad.addColorStop(1,   'rgba(4, 4, 6, 1)');
+      ctx.fillStyle = oceanGrad;
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.fill();
+
+      // 1) Faint lat/lon dot grid (z-modulated brightness)
       for (let lat = -Math.PI/2; lat <= Math.PI/2 + 0.01; lat += Math.PI/12) {
         for (let lon = 0; lon < Math.PI*2; lon += Math.PI/24) {
           const lonR = lon + rotY;
@@ -6234,30 +6247,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         }
       }
 
-      // 2) Globe rim
-      ctx.strokeStyle = 'rgba(245,166,35,0.18)';
+      // 2) Globe rim — slightly brighter than before to anchor the disk
+      ctx.strokeStyle = 'rgba(245,166,35,0.28)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
 
-      // 3) Continent outlines + land fill — uses precomputed sin/cos per
-      // vertex (set up once at fetch time). Per-frame cost is multiplies-only.
-      // v1.8.8-rev16:
-      //  • Land fill — subtle dark amber wash inside each ring so continents
-      //    read as solid shapes instead of disconnected line scribbles.
-      //  • Thicker (1.4px) brighter (alpha 0.5) outlines — the 10m data has
-      //    so many vertices that thin antialiased lines become sub-pixel and
-      //    look ghostly. A heavier stroke makes coastlines confident.
-      //  • Zero per-vertex trig — angle-sum identity rotation only.
+      // 3) Continent outlines — uses precomputed sin/cos per vertex.
+      // Per-frame cost is multiplies-only (no Math.sin/cos in the hot loop).
       const rings = canvas._globeRings;
       const trigs = canvas._globeRingTrigs;
       if (rings && trigs) {
-        // Cache cos/sin of the current rotation once
         const cosR = Math.cos(rotY);
         const sinR = Math.sin(rotY);
         const MAX_SEG_DIST_SQ = 2500;
 
-        // Pre-allocate scratch arrays sized to the largest ring so we
-        // don't churn the GC each frame
+        // Pre-allocate scratch arrays sized to the largest ring once.
         let scratchN = canvas._globeScratchN || 0;
         for (const ring of rings) {
           if (ring.length > scratchN) scratchN = ring.length;
@@ -6272,41 +6276,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const sy = canvas._globeScratchY;
         const sv = canvas._globeScratchVis;
 
-        // First pass: project all vertices once — used by both fill + stroke
-        for (let r = 0; r < rings.length; r++) {
-          const t = trigs[r];
-          const n = t.n;
-          for (let i = 0; i < n; i++) {
-            // sin(lon + rotY) = sin(lon)cos(rotY) + cos(lon)sin(rotY)
-            // cos(lon + rotY) = cos(lon)cos(rotY) - sin(lon)sin(rotY)
-            const sLon = t.sinLon[i] * cosR + t.cosLon[i] * sinR;
-            const cLon = t.cosLon[i] * cosR - t.sinLon[i] * sinR;
-            const x3 = t.cosLat[i] * sLon;
-            const y3 = t.sinLat[i];
-            const z3 = t.cosLat[i] * cLon;
-            sx[i] = cx + x3 * radius;
-            sy[i] = cy - y3 * radius;
-            sv[i] = z3 > -0.02 ? 1 : 0;
-          }
-        }
-
-        // v1.8.8-rev17: removed the land fill pass — when a country's
-        // polygon wraps around the back of the globe (e.g. Russia, USA
-        // including Alaska), the fill bleeds across the visible disk and
-        // creates weird shaded patches. Outlines alone read cleaner.
-
-        // ── Stroke pass — bolder outlines on top of the fill ──
         ctx.lineWidth = 1.4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = 'rgba(245,166,35,0.50)';
+
         for (let r = 0; r < rings.length; r++) {
           const t = trigs[r];
           const n = t.n;
-          // Re-project (cheap) — keeps the loop simple. ~1.5M ops/frame
-          // total which is negligible compared to the 6M trig ops we
-          // just removed.
           for (let i = 0; i < n; i++) {
+            // Angle-sum identity: sin(lon+rotY) = sinLon*cosR + cosLon*sinR
             const sLon = t.sinLon[i] * cosR + t.cosLon[i] * sinR;
             const cLon = t.cosLon[i] * cosR - t.sinLon[i] * sinR;
             const x3 = t.cosLat[i] * sLon;
@@ -6316,6 +6295,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             sy[i] = cy - y3 * radius;
             sv[i] = z3 > -0.02 ? 1 : 0;
           }
+
           let pathOpen = false;
           let prevVis = false;
           for (let i = 0; i < n; i++) {
@@ -6734,13 +6714,17 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 onClick={togglePlacingPin}
                 style={{
                   pointerEvents:'auto',
-                  background: placingPin ? 'rgba(225,80,80,0.18)' : 'rgba(0,0,0,0.55)',
-                  border: `1px solid ${placingPin ? 'rgba(225,80,80,0.6)' : 'var(--amber)'}`,
+                  background: 'transparent',
+                  border: 'none',
                   color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                  fontFamily:'var(--fd)', fontSize:'0.5rem',
-                  letterSpacing:'0.12em', textTransform:'uppercase',
-                  padding:'0.25rem 0.55rem',
-                  cursor:'pointer', borderRadius:2,
+                  fontFamily:'var(--fd)', fontSize:'0.55rem',
+                  letterSpacing:'0.14em', textTransform:'uppercase',
+                  fontWeight: 700,
+                  padding:'0.25rem 0.4rem',
+                  cursor:'pointer',
+                  textShadow: placingPin
+                    ? '0 0 8px rgba(225,80,80,0.6)'
+                    : '0 0 8px rgba(245,166,35,0.55)',
                 }}
               >
                 {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
@@ -6827,13 +6811,17 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               onClick={togglePlacingPin}
               style={{
                 pointerEvents:'auto',
-                background: placingPin ? 'rgba(225,80,80,0.18)' : 'rgba(0,0,0,0.55)',
-                border: `1px solid ${placingPin ? 'rgba(225,80,80,0.6)' : 'var(--amber)'}`,
+                background: 'transparent',
+                border: 'none',
                 color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                fontFamily:'var(--fd)', fontSize:'0.6rem',
-                letterSpacing:'0.12em', textTransform:'uppercase',
-                padding:'0.35rem 0.75rem',
-                cursor:'pointer', borderRadius:2,
+                fontFamily:'var(--fd)', fontSize:'0.62rem',
+                letterSpacing:'0.14em', textTransform:'uppercase',
+                fontWeight: 700,
+                padding:'0.35rem 0.5rem',
+                cursor:'pointer',
+                textShadow: placingPin
+                  ? '0 0 8px rgba(225,80,80,0.6)'
+                  : '0 0 8px rgba(245,166,35,0.55)',
               }}
             >
               {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
