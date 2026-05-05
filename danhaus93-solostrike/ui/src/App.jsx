@@ -5771,10 +5771,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // Vertical drag → PITCH. Clamp to ±85° so the user can't roll past
     // straight up/down (which would invert the world and confuse the
     // tap math). Direction: drag DOWN tilts forward (pitch increases).
-    // rev42 (rev27 restoration): pitch disabled. rev27 used a fixed
-    // 23.5° axial tilt in the shader; user-controlled pitch was the
-    // rev36+ addition that exposed the polar pinch artifact.
-    const PITCH_LIMIT = 0;
+    // rev43-debug: full pitch enabled so user can drag straight up/down
+    // to look directly at north/south poles. Combined with debug
+    // wireframe, this lets us inspect pole topology at any angle.
+    const PITCH_LIMIT = Math.PI / 2;  // ±90° = full vertical range
     globeRotXRef.current = Math.max(
       -PITCH_LIMIT,
       Math.min(PITCH_LIMIT, globeRotXRef.current - dy * SENS)

@@ -22,6 +22,7 @@ precision mediump float;
 attribute vec3 aPosition;
 
 uniform float uRotY;
+uniform float uRotX;
 uniform float uTilt;
 uniform float uAspect;
 uniform float uScale;
@@ -33,7 +34,7 @@ varying vec3 vObjectPos;
 void main() {
   vObjectPos = aPosition;
 
-  // Rotate around Y (planetary spin)
+  // 1) Rotate around Y (planetary spin / yaw)
   float cy = cos(uRotY);
   float sy = sin(uRotY);
   vec3 spun = vec3(
@@ -43,7 +44,7 @@ void main() {
   );
   vSpun = spun;
 
-  // Axial tilt around Z
+  // 2) Axial tilt around Z (fixed 23.5°)
   float ct = cos(uTilt);
   float st = sin(uTilt);
   vec3 tilted = vec3(
@@ -51,11 +52,20 @@ void main() {
     spun.x * st + spun.y * ct,
     spun.z
   );
-  vNormal = tilted;
+
+  // 3) User-controlled pitch around X (look up/down at poles)
+  float cp = cos(uRotX);
+  float sp = sin(uRotX);
+  vec3 pitched = vec3(
+    tilted.x,
+    tilted.y * cp - tilted.z * sp,
+    tilted.y * sp + tilted.z * cp
+  );
+  vNormal = pitched;
 
   // Orthographic projection
-  vec2 screen = vec2(tilted.x * uScale / uAspect, tilted.y * uScale);
-  gl_Position = vec4(screen, -tilted.z, 1.0);
+  vec2 screen = vec2(pitched.x * uScale / uAspect, pitched.y * uScale);
+  gl_Position = vec4(screen, -pitched.z, 1.0);
 }
 `;
 
@@ -245,6 +255,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
   const locs = {
     aPosition:   gl.getAttribLocation(program, 'aPosition'),
     uRotY:       gl.getUniformLocation(program, 'uRotY'),
+    uRotX:       gl.getUniformLocation(program, 'uRotX'),
     uTilt:       gl.getUniformLocation(program, 'uTilt'),
     uAspect:     gl.getUniformLocation(program, 'uAspect'),
     uScale:      gl.getUniformLocation(program, 'uScale'),
@@ -258,6 +269,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
   const debugLocs = debugProgram ? {
     aPosition: gl.getAttribLocation(debugProgram, 'aPosition'),
     uRotY:     gl.getUniformLocation(debugProgram, 'uRotY'),
+    uRotX:     gl.getUniformLocation(debugProgram, 'uRotX'),
     uTilt:     gl.getUniformLocation(debugProgram, 'uTilt'),
     uAspect:   gl.getUniformLocation(debugProgram, 'uAspect'),
     uScale:    gl.getUniformLocation(debugProgram, 'uScale'),
@@ -321,7 +333,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     },
 
-    update({ rotY = 0, dpr = 1, width = 100, height = 100 }) {
+    update({ rotY = 0, rotX = 0, dpr = 1, width = 100, height = 100 }) {
       if (_destroyed || !_ready) return;
       const W = Math.round(width * dpr);
       const H = Math.round(height * dpr);
@@ -333,6 +345,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
       // Main pass — solid sphere
       gl.useProgram(program);
       gl.uniform1f(locs.uRotY, rotY);
+      gl.uniform1f(locs.uRotX, rotX);
       gl.uniform1f(locs.uAspect, W / H);
       gl.uniform1f(locs.uTime, performance.now() / 1000);
       gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
@@ -347,6 +360,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
       if (debugMode && debugProgram) {
         gl.useProgram(debugProgram);
         gl.uniform1f(debugLocs.uRotY, rotY);
+        gl.uniform1f(debugLocs.uRotX, rotX);
         gl.uniform1f(debugLocs.uTilt, 23.5 * Math.PI / 180);
         gl.uniform1f(debugLocs.uAspect, W / H);
         gl.uniform1f(debugLocs.uScale, 0.78);
