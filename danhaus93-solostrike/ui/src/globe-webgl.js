@@ -400,6 +400,22 @@ export function createGlobeWebGL(canvas, opts = {}) {
 
 // Bake equirectangular world map texture from TopoJSON-style rings.
 // rings: arrays of [lon, lat] in degrees.
+//
+// Two issues this handles that the naive renderer misses:
+//
+// 1) ANTIMERIDIAN CROSSINGS. When consecutive ring points jump from
+//    lon=+179° to lon=-179°, naive code draws a horizontal stripe
+//    across the texture. We detect jumps > 180° and split the path
+//    into multiple sub-paths that each stay on one side.
+//
+// 2) ANTARCTICA POLAR FILL. The TopoJSON polygon for Antarctica
+//    traces its coastline plus a closing edge along lat=-90° that
+//    wraps around the south pole. In equirectangular projection
+//    that closing edge becomes a radial fan when sphere-mapped.
+//    Fix: detect any ring with vertices reaching lat <= -85° and
+//    explicitly fill the entire bottom strip of the texture below
+//    the lowest non-pole-touching latitude, ensuring the polar cap
+//    is uniform amber land.
 export function bakeWorldMapTexture(rings, opts = {}) {
   const W = opts.width || 1024;
   const H = opts.height || 512;
@@ -413,21 +429,70 @@ export function bakeWorldMapTexture(rings, opts = {}) {
   ctx.fillRect(0, 0, W, H);
 
   ctx.fillStyle = 'rgb(240,240,240)';
-  ctx.beginPath();
+
+  // Track if any ring reaches polar regions; if so, paint a polar cap
+  // strip directly onto the texture so the pole renders as solid land.
+  let touchesSouthPole = false;
+  let touchesNorthPole = false;
+
   for (const ring of rings) {
     if (ring.length < 3) continue;
-    let started = false;
+
+    // Check polar-touch + collect projected points with antimeridian split
+    let southMin = 0;  // most-negative lat in this ring
+    let northMax = 0;
+    for (const pt of ring) {
+      if (pt[1] < southMin) southMin = pt[1];
+      if (pt[1] > northMax) northMax = pt[1];
+    }
+    if (southMin <= -85) touchesSouthPole = true;
+    if (northMax >= 85) touchesNorthPole = true;
+
+    // Split ring at antimeridian crossings.
+    // Each sub-path is a contiguous run that doesn't wrap.
+    const subPaths = [];
+    let current = [];
+    let prevLon = null;
     for (let i = 0; i < ring.length; i++) {
       const lon = ring[i][0];
       const lat = ring[i][1];
-      const x = (lon + 180) / 360 * W;
-      const y = (90 - lat) / 180 * H;
-      if (!started) { ctx.moveTo(x, y); started = true; }
-      else { ctx.lineTo(x, y); }
+      if (prevLon !== null && Math.abs(lon - prevLon) > 180) {
+        // Antimeridian crossing — push current sub-path and start new
+        if (current.length > 1) subPaths.push(current);
+        current = [];
+      }
+      current.push([lon, lat]);
+      prevLon = lon;
     }
-    ctx.closePath();
+    if (current.length > 1) subPaths.push(current);
+
+    // Draw each sub-path as a separate filled shape
+    for (const sub of subPaths) {
+      ctx.beginPath();
+      for (let i = 0; i < sub.length; i++) {
+        const lon = sub[i][0];
+        const lat = sub[i][1];
+        const x = (lon + 180) / 360 * W;
+        const y = (90 - lat) / 180 * H;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
   }
-  ctx.fill('evenodd');
+
+  // Polar caps: fill the bottom 5% of the texture if any ring reaches
+  // the south pole (Antarctica), and the top 5% if any reaches north.
+  // The 5% threshold corresponds to lat ±81° — Antarctica's coast
+  // averages around -80° so this fully covers it without spilling.
+  const polarCapPx = Math.floor(H * 0.05);
+  if (touchesSouthPole) {
+    ctx.fillRect(0, H - polarCapPx, W, polarCapPx);
+  }
+  if (touchesNorthPole) {
+    ctx.fillRect(0, 0, W, polarCapPx);
+  }
 
   return c;
 }
