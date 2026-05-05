@@ -2394,9 +2394,11 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
               nonceFieldGLRef.current.triggerStrike({ gold: true, isBlock: true });
             }
           }
-          nonceFieldGLRef.current.step(dt, (hrRef.current || 0) / 1e12, {
-            enabled: enabled,
-          });
+          // rev59 fix: opts={} — the previous { enabled: enabled } referenced
+          // an undefined variable, which threw ReferenceError every frame and
+          // crashed the rAF loop. Renderer dims itself when hashrate hits 0
+          // (no need for an explicit enabled flag here).
+          nonceFieldGLRef.current.step(dt, (hrRef.current || 0) / 1e12, {});
           animRef.current = requestAnimationFrame(draw);
           return;
         }
@@ -6607,10 +6609,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         // CDN fallback is intentionally allowed via CSP connect-src for
         // robustness; if the local copy is somehow missing (mis-configured
         // deploy), the globe still renders.
+        // rev59 fix: removed duplicate .then(r => r.json()) — both the local
+        // fetch and the CDN fallback already return parsed JSON, so calling
+        // .json() again on already-parsed data threw TypeError and broke the
+        // globe whenever the local file wasn't bundled.
         fetch('/world-atlas-land-50m.json')
           .then(r => r.ok ? r.json() : Promise.reject(new Error('local atlas missing')))
           .catch(() => fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()))
-          .then(r => r.json())
           .then(topo => {
             const decodedArcs = decodeArcs(topo);
             const rings = [];
