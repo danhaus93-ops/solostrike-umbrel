@@ -63,7 +63,7 @@ export function CustomizableTopStrip({
       width:'100%',
       boxSizing:'border-box',
       display:'flex', alignItems:'center', gap:'1rem',
-      fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.08em',
+      fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.08em',
       textTransform:'uppercase',
       minHeight:32,
       overflow:'hidden', whiteSpace:'nowrap',
