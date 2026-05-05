@@ -5,6 +5,7 @@ import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fm
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
+import { createLightningWebGL } from './lightning-webgl.js';
 
 // ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
 // Loaded once at module level. Falls back to fillText('₿') if not yet ready or
@@ -1828,6 +1829,8 @@ function BitcoinNodePanel({ nodeInfo }) {
 // brightness ∝ work being done.
 function NonceField({ hashrate, netHashrate, huntAnim }) {
   const canvasRef = useRef(null);
+  const lightningGLCanvasRef = useRef(null);   // rev54: WebGL canvas for lightning mode
+  const lightningGLRef = useRef(null);          // rev54: WebGL renderer instance
   const containerRef = useRef(null);
   const animRef = useRef(0);
   const dimsRef = useRef({ w: 600, h: 130, dpr: 1 });
@@ -2353,6 +2356,28 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       ctx.fillRect(0, 0, W, H);
 
       const a = huntAnimRef.current;
+
+      // rev54: WebGL lightning path. Init lazily on first lightning frame.
+      // If init fails, fall through to 2D drawLightning (keeps old behavior).
+      if (a === 'lightning') {
+        if (!lightningGLRef.current && lightningGLCanvasRef.current) {
+          const r = createLightningWebGL(lightningGLCanvasRef.current, { scale: 'hunt' });
+          if (r && !r.failed) lightningGLRef.current = r;
+          else lightningGLRef.current = { failed: true };
+        }
+        if (lightningGLRef.current && !lightningGLRef.current.failed) {
+          // Drive WebGL renderer; 2D canvas is hidden via display:none in JSX
+          lightningGLRef.current.step(dt, (hrRef.current || 0) / 1e12, true);
+          animRef.current = requestAnimationFrame(draw);
+          return;
+        }
+        // Fallback: continue into 2D path
+      }
+
+      // Common dark background
+      ctx.fillStyle = 'rgba(8, 8, 10, 1)';
+      ctx.fillRect(0, 0, W, H);
+
       if (a === 'sonar') drawSonar(dt, W, H);
       else if (a === 'lightning') drawLightning(dt, W, H);
       else if (a === 'pickaxe') drawPickaxe(dt, W, H);
@@ -2365,6 +2390,11 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     return () => {
       cancelAnimationFrame(animRef.current);
       ro.disconnect();
+      // rev54: tear down WebGL on unmount
+      if (lightningGLRef.current && !lightningGLRef.current.failed) {
+        try { lightningGLRef.current.destroy(); } catch {}
+        lightningGLRef.current = null;
+      }
     };
   }, []); // mount-once; reads vary via refs
 
@@ -2390,7 +2420,17 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       background: 'rgba(8, 8, 10, 1)',
       border: '1px solid var(--border)',
     }}>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }}/>
+      <canvas ref={canvasRef} style={{
+        display: huntAnim === 'lightning' ? 'none' : 'block',
+        width: '100%', height: '100%',
+      }}/>
+      {/* rev54: dedicated WebGL canvas for lightning mode. Layered separately
+          because once a canvas has a 2D context you can't get a WebGL one. */}
+      <canvas ref={lightningGLCanvasRef} style={{
+        display: huntAnim === 'lightning' ? 'block' : 'none',
+        position: 'absolute', inset: 0,
+        width: '100%', height: '100%',
+      }}/>
     </div>
   );
 }
@@ -2763,6 +2803,87 @@ function drawBFMLightning(ctx, W, H, t, state) {
     drawBtcCelebrate(ctx, cx, cy, iconSize * iconScale, iconBrightness);
     ctx.restore();
   }
+  drawBFMText(ctx, W, H, t, 'THE STRIKE', cy, iconSize);
+}
+
+// rev54: Overlay-only version of the BFM lightning. Used when the WebGL
+// renderer is driving the bolts/clouds/flash on a separate canvas behind
+// this 2D canvas. This function only draws the icon, halo, sparks around
+// the icon during blazing phase, and the title text. Bolts and screen
+// flash are drawn by the WebGL canvas behind. The 2D canvas should be
+// cleared (clearRect) before calling this so the WebGL canvas shows
+// through.
+function drawBFMLightningOverlay(ctx, W, H, t, state) {
+  const cx = W / 2, cy = H / 2;
+  const iconSize = Math.min(H * 0.55, W * 0.7);
+
+  let iconAlpha = 0, iconBrightness = 1, haloR = 0, haloAlpha = 0, iconScale = 1;
+
+  // Target phase — ghostly icon
+  if (t >= 0.5 && t < 1.4) iconAlpha = (t - 0.5) / 0.9 * 0.40;
+
+  // Ignition phase (1.4–1.9): icon brightens, halo grows
+  if (t >= 1.4 && t < 1.9) {
+    const sp = (t - 1.4) / 0.5;
+    iconAlpha = 0.40 + sp * 0.60;
+    iconBrightness = 1 + sp * 0.8;
+    haloR = iconSize * 0.6 + sp * iconSize * 1.4;
+    haloAlpha = (1 - sp) * 0.55;
+    iconScale = 1 + sp * 0.10 - Math.max(0, sp - 0.4) * 0.05;
+  }
+
+  // Blazing phase (1.9–4.5): sparks + fade
+  if (t >= 1.9 && t < 4.5) {
+    iconAlpha = 1;
+    const dt2 = t - 1.9;
+    iconBrightness = 1 + Math.max(0, 0.6 - dt2 * 0.4);
+    haloR = iconSize * (1.4 - Math.min(0.4, dt2 * 0.2));
+    haloAlpha = Math.max(0, 0.55 - dt2 * 0.30);
+    if (t > 4.0) {
+      const fadeAlpha = (4.5 - t) / 0.5;
+      iconAlpha = fadeAlpha;
+      haloAlpha *= fadeAlpha;
+    }
+    if (Math.random() < 0.4) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = iconSize * 0.55 + Math.random() * 40;
+      state.sparks.push({
+        x: cx + Math.cos(ang) * dist,
+        y: cy + Math.sin(ang) * dist,
+        life: 0, maxLife: 0.4 + Math.random() * 0.3,
+      });
+    }
+    for (let i = state.sparks.length - 1; i >= 0; i--) {
+      const s = state.sparks[i];
+      s.life += 1 / 60;
+      if (s.life >= s.maxLife) { state.sparks.splice(i, 1); continue; }
+      const sa = (1 - s.life / s.maxLife);
+      ctx.fillStyle = `rgba(255, 240, 180, ${sa})`;
+      ctx.shadowColor = 'rgba(255, 220, 140, 0.95)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // Halo
+  if (haloAlpha > 0.01 && haloR > 0) {
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    halo.addColorStop(0, `rgba(255, 220, 130, ${haloAlpha})`);
+    halo.addColorStop(0.4, `rgba(255, 165, 60, ${haloAlpha * 0.7})`);
+    halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Icon
+  if (iconAlpha > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = iconAlpha;
+    drawBtcCelebrate(ctx, cx, cy, iconSize * iconScale, iconBrightness);
+    ctx.restore();
+  }
+
   drawBFMText(ctx, W, H, t, 'THE STRIKE', cy, iconSize);
 }
 
@@ -3147,6 +3268,8 @@ const LS_LAST_CELEBRATED_BLOCK = 'ss_last_celebrated_block_height_v1';
 
 function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
   const canvasRef = useRef(null);
+  const lightningGLCanvasRef = useRef(null);  // rev54: WebGL canvas for lightning
+  const lightningGLRef = useRef(null);         // rev54: WebGL renderer instance
   const containerRef = useRef(null);
   const animRef = useRef(0);
   const startedAtRef = useRef(performance.now());
@@ -3157,7 +3280,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
   // Reset state on (re)mount
   useEffect(() => {
     stateRef.current = {
-      lightning: { bolts: [], megaBolt: null, sparks: [] },
+      lightning: { bolts: [], megaBolt: null, sparks: [], megaBoltFired: false },
       sonar:     { angle: 0, blips: [], rings: [], target: null },
       noncefield:{ cells: new Float32Array(BFM_TOTAL) },
       pickaxe:   { shards: null },
@@ -3193,6 +3316,42 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
 
       if (t < BFM_DURATION) {
         const st = stateRef.current;
+
+        // rev54: WebGL path for lightning. Drives bolts/clouds/flash on a
+        // dedicated WebGL canvas behind this 2D canvas; the 2D canvas
+        // renders only the BTC icon, halo, sparks, and title text.
+        if (animType === 'lightning') {
+          if (!lightningGLRef.current && lightningGLCanvasRef.current) {
+            const r2 = createLightningWebGL(lightningGLCanvasRef.current, { scale: 'bfm' });
+            if (r2 && !r2.failed) lightningGLRef.current = r2;
+            else lightningGLRef.current = { failed: true };
+          }
+          const glr = lightningGLRef.current;
+          if (glr && !glr.failed) {
+            // Phase-aware spawn rate, matching original BFM cadence
+            let spawnRate;
+            if (t < 1.2) spawnRate = 3 + t * 30;
+            else if (t < 1.8) spawnRate = 60;
+            else spawnRate = 5;
+            // Mega-bolt at t=1.4, fired once, aimed at icon top-center
+            if (t >= 1.4 && !st.lightning.megaBoltFired) {
+              const cx = W / 2, cy = H / 2;
+              const iconSize = Math.min(H * 0.55, W * 0.7);
+              const iconTopY = cy - iconSize / 2;
+              glr.spawnBolt({ type: 'mega', x: cx, targetY: iconTopY - 4 });
+              st.lightning.megaBoltFired = true;
+            }
+            const glDt = 1 / 60;
+            glr.step(glDt, 0, true, { spawnRateOverride: spawnRate });
+            // Now overlay on 2D canvas: clear (transparent) + draw icon/halo/text
+            ctx.clearRect(0, 0, W, H);
+            drawBFMLightningOverlay(ctx, W, H, t, st.lightning);
+            animRef.current = requestAnimationFrame(draw);
+            return;
+          }
+          // Fallback: 2D path
+        }
+
         const fn = animType === 'sonar'     ? drawBFMSonar
                  : animType === 'lightning' ? drawBFMLightning
                  : animType === 'pickaxe'   ? drawBFMPickaxe
@@ -3213,6 +3372,11 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
     return () => {
       cancelAnimationFrame(animRef.current);
       ro.disconnect();
+      // rev54: tear down WebGL on unmount
+      if (lightningGLRef.current && !lightningGLRef.current.failed) {
+        try { lightningGLRef.current.destroy(); } catch {}
+        lightningGLRef.current = null;
+      }
     };
   }, [animType]);
 
@@ -3284,7 +3448,18 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
       >✕</div>
 
       <div ref={containerRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+        {/* rev54: WebGL canvas behind the 2D canvas. Visible only during
+            lightning animType. Renders bolts/clouds/flash; 2D canvas on
+            top renders BTC icon + halo + sparks + title text. */}
+        <canvas ref={lightningGLCanvasRef} style={{
+          display: animType === 'lightning' ? 'block' : 'none',
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%',
+        }} />
+        <canvas ref={canvasRef} style={{
+          display: 'block', width: '100%', height: '100%',
+          position: 'relative',
+        }} />
       </div>
 
       <div style={{
