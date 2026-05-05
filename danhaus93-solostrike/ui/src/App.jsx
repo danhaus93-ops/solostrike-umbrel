@@ -5684,9 +5684,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // one place and render at another (the drift bug from rev29). The
     // legacy `radius` field uses 0.42 for the 2D fallback.
     // Both in CSS pixels (matching gBCR).
-    // rev51: matches atmRadius formula. Disk radius = min(W,H) * 0.42.
+    // rev52: matches atmRadius formula. Disk radius = min(W,H) * 0.46.
     const tapRadius = useWebGL
-      ? Math.min(rect.width, rect.height) * 0.42
+      ? Math.min(rect.width, rect.height) * 0.46
       : radius;
     const nx = (clickX - cx) / tapRadius;
     const ny = -(clickY - cy) / tapRadius;
@@ -6383,11 +6383,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
       // user sees — same warm amber radial gradient as the old vector
       // globe. WebGL Fresnel rim glow is too subtle on its own.
-      // rev51: atmRadius = min(W,H) * 0.42. Bumped from 0.37 to fill more
-      // of the canvas in both carousel and vertical modes. Halo outer
-      // ratio reduced to 1.18 to compensate (0.42 * 1.18 = 0.496, still
-      // inside canvas edge at 0.5).
-      const atmRadius = useWebGL ? Math.min(W, H) * 0.42 : radius;
+      // rev52: atmRadius = min(W,H) * 0.46. Bumped from 0.42. Halo
+      // outer ratio further reduced to 1.08 to compensate (0.46 *
+      // 1.08 = 0.497, just inside canvas edge at 0.5).
+      const atmRadius = useWebGL ? Math.min(W, H) * 0.46 : radius;
 
       if (useWebGL) {
         // Drive the WebGL renderer with the same rotation.
@@ -6417,7 +6416,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // radial gradient ring centered on the globe.
       if (useWebGL) {
         const haloInner = atmRadius * 0.96;
-        const haloOuter = atmRadius * 1.18;
+        const haloOuter = atmRadius * 1.08;
         const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
         halo.addColorStop(0.00, 'rgba(245,166,35,0.00)');
         halo.addColorStop(0.18, 'rgba(245,166,35,0.22)');

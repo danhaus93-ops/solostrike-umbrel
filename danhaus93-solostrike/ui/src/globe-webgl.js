@@ -28,7 +28,6 @@ uniform float uAspect;
 uniform float uScale;
 
 varying vec3 vNormal;
-varying vec3 vSpun;
 varying vec3 vObjectPos;
 
 void main() {
@@ -42,7 +41,6 @@ void main() {
     aPosition.y,
     -aPosition.x * sy + aPosition.z * cy
   );
-  vSpun = spun;
 
   // 2) Axial tilt around Z (fixed 23.5°)
   float ct = cos(uTilt);
@@ -73,35 +71,11 @@ const FRAG_SHADER = `
 precision mediump float;
 
 uniform sampler2D uMap;
-uniform vec3 uOceanColor;
-uniform vec3 uLandColor;
-uniform vec3 uAtmColor;
-uniform float uTime;
-uniform float uRotY;
 
 varying vec3 vNormal;
-varying vec3 vSpun;
 varying vec3 vObjectPos;
 
 const float PI = 3.14159265359;
-
-float hash(vec3 p) {
-  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
-  p *= 17.0;
-  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
-}
-float noise3(vec3 p) {
-  vec3 i = floor(p);
-  vec3 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
-        mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
-    mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
-        mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
-    f.z
-  );
-}
 
 void main() {
   // UV from object position (rev27 critical fix — texture stays anchored
@@ -114,26 +88,23 @@ void main() {
     1.0 - (lat / PI + 0.5)
   );
 
-  // Sample land mask
-  float landMask = texture2D(uMap, uv).r;
+  // rev52 combo: texture is full color (amber land with biome shading,
+  // coastline ink, polar ice, city lights). Sample directly.
+  vec3 texColor = texture2D(uMap, uv).rgb;
 
   // Lighting — sun upper-left
   vec3 light = normalize(vec3(-0.4, 0.5, 0.85));
   float NdotL = max(0.0, dot(vNormal, light));
-  // rev27 values
   float lit = 0.30 + 0.70 * NdotL;
 
-  // Procedural noise on land
-  float noise = noise3(vObjectPos * 8.0) * 0.5
-              + noise3(vObjectPos * 16.0) * 0.25
-              + noise3(vObjectPos * 32.0) * 0.125;
-  noise = (noise - 0.5) * 2.0;
+  // Detect bright spots (city lights) — they should glow even on the
+  // night side. r > 0.85 AND g > 0.85 means bright pinpoint pixel.
+  float cityLight = step(0.85, texColor.r) * step(0.85, texColor.g);
 
-  // Blend land + ocean
-  vec3 oceanLit = uOceanColor * lit;
-  vec3 landBase = uLandColor * (0.40 + 0.85 * NdotL);
-  landBase *= (1.0 + noise * 0.18);
-  vec3 baseColor = mix(oceanLit, landBase, landMask);
+  // Day-side: full lit color. Night-side: dark, but city lights glow.
+  vec3 baseColor = texColor * lit;
+  // Add city light glow (amber-ish) on the dark side
+  baseColor += texColor * cityLight * (1.0 - NdotL) * 0.6;
 
   // Limb darkening — rev27 values
   float limb = clamp(vNormal.z * 1.3 + 0.10, 0.0, 1.0);
@@ -260,10 +231,6 @@ export function createGlobeWebGL(canvas, opts = {}) {
     uAspect:     gl.getUniformLocation(program, 'uAspect'),
     uScale:      gl.getUniformLocation(program, 'uScale'),
     uMap:        gl.getUniformLocation(program, 'uMap'),
-    uOceanColor: gl.getUniformLocation(program, 'uOceanColor'),
-    uLandColor:  gl.getUniformLocation(program, 'uLandColor'),
-    uAtmColor:   gl.getUniformLocation(program, 'uAtmColor'),
-    uTime:       gl.getUniformLocation(program, 'uTime'),
   };
 
   const debugLocs = debugProgram ? {
@@ -307,10 +274,6 @@ export function createGlobeWebGL(canvas, opts = {}) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.uniform1i(locs.uMap, 0);
 
-  // rev27 colors
-  gl.uniform3f(locs.uOceanColor, 0.060, 0.050, 0.034);
-  gl.uniform3f(locs.uLandColor,  0.96, 0.65, 0.14);
-  gl.uniform3f(locs.uAtmColor,   0.96, 0.65, 0.14);
   gl.uniform1f(locs.uScale, 0.72);
   // rev44+: in debug mode, zero out the axial tilt so the user can
   // pitch straight down to look directly at either pole. The 23.5° tilt
@@ -347,10 +310,9 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.viewport(0, 0, W, H);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      // rev51: dynamic uScale so disk size = min(W,H) * 0.42 in pixels
-      // regardless of container shape. Pixel disk radius = uScale * H / 2,
-      // so for that to equal 0.42 * min(W,H): uScale = 0.84 * min(W,H) / H.
-      const dynScale = 0.84 * Math.min(W, H) / H;
+      // rev52: dynamic uScale so disk size = min(W,H) * 0.46 in pixels.
+      // Pixel disk radius = uScale * H / 2, so uScale = 0.92 * min(W,H)/H.
+      const dynScale = 0.92 * Math.min(W, H) / H;
 
       // Main pass — solid sphere
       gl.useProgram(program);
@@ -358,7 +320,6 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.uniform1f(locs.uRotX, rotX);
       gl.uniform1f(locs.uAspect, W / H);
       gl.uniform1f(locs.uScale, dynScale);
-      gl.uniform1f(locs.uTime, performance.now() / 1000);
       gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
       gl.enableVertexAttribArray(locs.aPosition);
       gl.vertexAttribPointer(locs.aPosition, 3, gl.FLOAT, false, 0, 0);
@@ -404,58 +365,73 @@ export function createGlobeWebGL(canvas, opts = {}) {
   };
 }
 
+// Hash-based deterministic noise. Reproducible across reloads.
+function _hash2(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177 | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 0xffffffff;
+}
+function _valueNoise(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const a = _hash2(ix, iy);
+  const b = _hash2(ix + 1, iy);
+  const c = _hash2(ix, iy + 1);
+  const d = _hash2(ix + 1, iy + 1);
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  return a*(1-sx)*(1-sy) + b*sx*(1-sy) + c*(1-sx)*sy + d*sx*sy;
+}
+function _fbm(x, y) {
+  let v = 0, amp = 1, freq = 1, total = 0;
+  for (let i = 0; i < 4; i++) {
+    v += _valueNoise(x * freq, y * freq) * amp;
+    total += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return v / total;
+}
+
 // Bake equirectangular world map texture from TopoJSON-style rings.
 // rings: arrays of [lon, lat] in degrees.
 //
-// Two issues this handles that the naive renderer misses:
+// rev52 COMBO bake — outputs full-color RGB texture (not grayscale mask):
+//   - Amber land base with FBM biome variation
+//   - Coastline ink (dark amber stroke on every land edge)
+//   - Polar ice caps for Antarctica + Arctic
+//   - City lights (bright pinpoints scattered on land)
+//   - Antimeridian split (so polygons don't draw stripes across map)
+//   - Polar fill (so Antarctica doesn't render as a fan)
 //
-// 1) ANTIMERIDIAN CROSSINGS. When consecutive ring points jump from
-//    lon=+179° to lon=-179°, naive code draws a horizontal stripe
-//    across the texture. We detect jumps > 180° and split the path
-//    into multiple sub-paths that each stay on one side.
-//
-// 2) ANTARCTICA POLAR FILL. The TopoJSON polygon for Antarctica
-//    traces its coastline plus a closing edge along lat=-90° that
-//    wraps around the south pole. In equirectangular projection
-//    that closing edge becomes a radial fan when sphere-mapped.
-//    Fix: detect any ring with vertices reaching lat <= -85° and
-//    explicitly fill the entire bottom strip of the texture below
-//    the lowest non-pole-touching latitude, ensuring the polar cap
-//    is uniform amber land.
+// The shader was updated to use texture color directly. Don't use this
+// with the legacy grayscale-mask shader path.
 export function bakeWorldMapTexture(rings, opts = {}) {
-  const W = opts.width || 1024;
-  const H = opts.height || 512;
+  const W = opts.width || 2048;
+  const H = opts.height || 1024;
 
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const ctx = c.getContext('2d');
 
-  ctx.fillStyle = 'rgb(15,15,15)';
+  // OCEAN — solid dark base. Shader will tint based on lighting.
+  ctx.fillStyle = 'rgb(15, 13, 9)';
   ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = 'rgb(240,240,240)';
-
-  // Track if any ring reaches polar regions; if so, paint a polar cap
-  // strip directly onto the texture so the pole renders as solid land.
+  // Track polar touches
   let touchesSouthPole = false;
   let touchesNorthPole = false;
-
   for (const ring of rings) {
     if (ring.length < 3) continue;
-
-    // Check polar-touch + collect projected points with antimeridian split
-    let southMin = 0;  // most-negative lat in this ring
-    let northMax = 0;
     for (const pt of ring) {
-      if (pt[1] < southMin) southMin = pt[1];
-      if (pt[1] > northMax) northMax = pt[1];
+      if (pt[1] <= -85) touchesSouthPole = true;
+      if (pt[1] >= 85) touchesNorthPole = true;
     }
-    if (southMin <= -85) touchesSouthPole = true;
-    if (northMax >= 85) touchesNorthPole = true;
+  }
 
-    // Split ring at antimeridian crossings.
-    // Each sub-path is a contiguous run that doesn't wrap.
+  // Helper: split ring at antimeridian and draw each sub-path
+  const drawRingSplit = (ring, fillStyle, strokeStyle, lineWidth) => {
     const subPaths = [];
     let current = [];
     let prevLon = null;
@@ -463,7 +439,6 @@ export function bakeWorldMapTexture(rings, opts = {}) {
       const lon = ring[i][0];
       const lat = ring[i][1];
       if (prevLon !== null && Math.abs(lon - prevLon) > 180) {
-        // Antimeridian crossing — push current sub-path and start new
         if (current.length > 1) subPaths.push(current);
         current = [];
       }
@@ -471,33 +446,110 @@ export function bakeWorldMapTexture(rings, opts = {}) {
       prevLon = lon;
     }
     if (current.length > 1) subPaths.push(current);
-
-    // Draw each sub-path as a separate filled shape
     for (const sub of subPaths) {
       ctx.beginPath();
       for (let i = 0; i < sub.length; i++) {
-        const lon = sub[i][0];
-        const lat = sub[i][1];
-        const x = (lon + 180) / 360 * W;
-        const y = (90 - lat) / 180 * H;
+        const x = (sub[i][0] + 180) / 360 * W;
+        const y = (90 - sub[i][1]) / 180 * H;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.fill();
+      if (fillStyle) { ctx.fillStyle = fillStyle; ctx.fill(); }
+      if (strokeStyle) {
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth || 1;
+        ctx.stroke();
+      }
     }
+  };
+
+  // 1) Fill all land with amber base
+  const LAND_BASE = 'rgb(245, 168, 50)';
+  for (const ring of rings) {
+    if (ring.length < 3) continue;
+    drawRingSplit(ring, LAND_BASE, null, 0);
   }
 
-  // Polar caps: fill the bottom 5% of the texture if any ring reaches
-  // the south pole (Antarctica), and the top 5% if any reaches north.
-  // The 5% threshold corresponds to lat ±81° — Antarctica's coast
-  // averages around -80° so this fully covers it without spilling.
+  // 2) Polar caps as solid amber first (covers Antarctica fan)
   const polarCapPx = Math.floor(H * 0.05);
   if (touchesSouthPole) {
+    ctx.fillStyle = LAND_BASE;
     ctx.fillRect(0, H - polarCapPx, W, polarCapPx);
   }
   if (touchesNorthPole) {
+    ctx.fillStyle = LAND_BASE;
     ctx.fillRect(0, 0, W, polarCapPx);
+  }
+
+  // 3) Biome shading — FBM noise modulates land brightness ±25
+  // Then polar ice tint over high latitudes. Done in one pixel pass.
+  const img = ctx.getImageData(0, 0, W, H);
+  const data = img.data;
+  const STEP = 1;
+  for (let y = 0; y < H; y += STEP) {
+    for (let x = 0; x < W; x += STEP) {
+      const i = (y * W + x) * 4;
+      const r = data[i];
+
+      // Skip ocean
+      if (r < 100) continue;
+
+      // Biome noise on land
+      const n = _fbm(x / 60, y / 60);  // FBM 0..1
+      const tint = (n - 0.5) * 50;     // -25..+25
+      let nr = data[i]   + tint;
+      let ng = data[i+1] + tint * 0.7;
+      let nb = data[i+2] + tint * 0.4;
+
+      // Polar ice tint — cooler/paler color near poles. Smooth blend
+      // from lat ±60° to ±85° (then solid ice in the polar cap rect).
+      const lat = 90 - (y / H) * 180;
+      const absLat = Math.abs(lat);
+      if (absLat > 60) {
+        const t = Math.min(1, (absLat - 60) / 25);  // 0 at 60°, 1 at 85°
+        // Pale frost color: rgb(220, 200, 170)
+        nr = nr * (1 - t) + 220 * t;
+        ng = ng * (1 - t) + 200 * t;
+        nb = nb * (1 - t) + 170 * t;
+      }
+
+      data[i]   = Math.max(0, Math.min(255, nr));
+      data[i+1] = Math.max(0, Math.min(255, ng));
+      data[i+2] = Math.max(0, Math.min(255, nb));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // 4) Coastline ink — dark amber stroke along every coast.
+  for (const ring of rings) {
+    if (ring.length < 3) continue;
+    drawRingSplit(ring, null, 'rgb(80, 40, 8)', 1.5);
+  }
+
+  // 5) City lights — bright amber pinpoints scattered on land.
+  // Sample by reading land pixels and dropping points.
+  const cityImg = ctx.getImageData(0, 0, W, H);
+  const cityData = cityImg.data;
+  ctx.fillStyle = 'rgb(255, 240, 180)';
+  // Use seeded PRNG for stable lights across reloads
+  let seed = 12345;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const NUM_LIGHTS = 1500;
+  for (let i = 0; i < NUM_LIGHTS; i++) {
+    const x = Math.floor(rand() * W);
+    const y = Math.floor(rand() * H);
+    const idx = (y * W + x) * 4;
+    const r = cityData[idx];
+    const g = cityData[idx + 1];
+    // Skip ocean (dark r) AND polar ice (high r AND high b — frost is bluish-pale)
+    if (r > 130 && g > 80 && cityData[idx + 2] < 130) {
+      const size = rand() < 0.85 ? 1 : 2;
+      ctx.fillRect(x, y, size, size);
+    }
   }
 
   return c;
