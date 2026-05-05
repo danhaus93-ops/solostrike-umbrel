@@ -82,10 +82,18 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 }
 
 // ── Style tokens ──────────────────────────────────────────────────────────────
-const card = { background:'var(--bg-surface)', border:'1px solid var(--border)', padding:'1.25rem' };
-const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.65rem' };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.5rem 0.75rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.25rem' };
-const label = { fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+// rev62 premium pass — card gets vertical gradient + 1px inset top highlight
+// for physical-surface depth; cardTitle and label bumped 0.6→0.7rem for
+// readability without overflow risk (audited against tightest containers).
+const card = {
+  background:'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
+  border:'1px solid var(--border)',
+  padding:'1.25rem',
+  boxShadow:'inset 0 1px 0 rgba(245,166,35,0.07), 0 1px 2px rgba(0,0,0,0.4)',
+};
+const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.7rem' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem' };
+const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
@@ -1461,8 +1469,22 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
         <span>▸ Firepower — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize: compact ? '0.55rem' : '0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>PEAK {fmtHr(peak)}</span>}
       </div>
-      <div style={{ fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700, color:'var(--amber)', letterSpacing:'0.01em', lineHeight:1, textShadow:'0 0 30px rgba(245,166,35,0.35)', marginBottom:numberMarginBottom, display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem' }}>
-        <span>{p0}<span style={{ fontSize: compact ? '0.85rem' : '1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span></span>
+      <div style={{ fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700, letterSpacing:'0.01em', lineHeight:1, marginBottom:numberMarginBottom, display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem', fontVariantNumeric:'tabular-nums' }}>
+        {/* rev62 premium pass — metallic gold gradient on hero hashrate
+            number (the most-stared-at element in the app). Flat #F5A623
+            amber → 3-stop gradient (#FFD27F → #F5A623 → #B27414) gives a
+            brushed-gold weight that flat color can't reach. The numeric
+            portion (p0) wears the gradient via background-clip:text; the
+            unit (p1) stays solid amber-dim because units look better not
+            metallic. text-shadow doesn't apply to clipped text so glow
+            comes from filter:drop-shadow on the wrapper. */}
+        <span style={{
+          background:'linear-gradient(180deg, #FFD27F 0%, #F5A623 50%, #B27414 100%)',
+          WebkitBackgroundClip:'text', backgroundClip:'text',
+          WebkitTextFillColor:'transparent',
+          filter:'drop-shadow(0 0 30px rgba(245,166,35,0.35))',
+        }}>{p0}</span>
+        <span style={{ fontSize: compact ? '0.85rem' : '1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
         <HashrateTrend history={history} current={current}/>
       </div>
       {/* iter27a: range buttons (1H/6H/24H/7D) removed — the Hashrate
@@ -2573,7 +2595,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
         <span>▸ The Hunt</span>
         {onOpen && (
           <span style={{
-            fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em',
+            fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em',
             color:'var(--amber)', textTransform:'uppercase',
           }}>
             ▸ Tap for the Reckoning
@@ -2597,10 +2619,10 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             wrapper takes the remaining space inside via flex:1, minHeight:0. */}
         <div style={{display:'flex', flexDirection:'column', flex:1, minHeight:240}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6, flexShrink:0}}>
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
               Per-Block Odds
             </span>
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.88rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)', fontVariantNumeric:'tabular-nums'}}>
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
             </span>
           </div>
@@ -2619,11 +2641,21 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
           {/* Row 1: label + BTC value (left) · fiat (right) */}
           <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:10}}>
             <div style={{display:'flex', alignItems:'baseline', gap:8, flex:1, minWidth:0}}>
-              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-2)', whiteSpace:'nowrap'}}>
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-2)', whiteSpace:'nowrap'}}>
                 BLOCK REWARD
               </span>
-              <span style={{fontFamily:'var(--fd)', fontSize:'1.05rem', fontWeight:800, color:'var(--amber)', lineHeight:1, textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>
-                {totalBtc > 0 ? totalBtc.toFixed(4) : '—'}<span style={{fontSize:'0.65rem', marginLeft:2}}>BTC</span>
+              <span style={{
+                fontFamily:'var(--fd)', fontSize:'1.05rem', fontWeight:800, lineHeight:1,
+                fontVariantNumeric:'tabular-nums',
+                /* rev62 premium pass — same metallic gold gradient as the
+                   live hashrate. Block reward is the second-most stared-at
+                   number; gradient unifies them as a hero pair. */
+                background:'linear-gradient(180deg, #FFD27F 0%, #F5A623 50%, #B27414 100%)',
+                WebkitBackgroundClip:'text', backgroundClip:'text',
+                WebkitTextFillColor:'transparent',
+                filter:'drop-shadow(0 0 8px rgba(245,166,35,0.4))',
+              }}>
+                {totalBtc > 0 ? totalBtc.toFixed(4) : '—'}<span style={{fontSize:'0.65rem', marginLeft:2, WebkitTextFillColor:'var(--amber-dim)'}}>BTC</span>
               </span>
             </div>
             {fiatPrice > 0 && totalBtc > 0 && (
@@ -7328,7 +7360,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     <div style={{
       position:'absolute', right:'0.5rem', bottom:'0.6rem',
       transform:'rotate(-12deg)',
-      fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:800,
+      fontFamily:'var(--fd)', fontSize:'0.6rem', fontWeight:800,
       letterSpacing:'0.18em', textTransform:'uppercase',
       color:'rgba(245,166,35,0.65)',
       border:'2px solid rgba(245,166,35,0.5)',
@@ -7355,8 +7387,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         </div>
         <div style={{textAlign:'center', padding:'1.5rem 0.75rem', color:'var(--text-2)'}}>
           <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>Pulse is offline</div>
-          <div style={{fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5, maxWidth:300, margin:'0 auto'}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>Pulse is offline</div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)', lineHeight:1.5, maxWidth:300, margin:'0 auto'}}>
             See how many other solo pools are running, combined hashrate, and miner count across the network.
           </div>
           <button
