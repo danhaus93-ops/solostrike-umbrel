@@ -347,11 +347,17 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.viewport(0, 0, W, H);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+      // rev50: dynamic uScale so disk size = min(W,H) * 0.37 in pixels
+      // regardless of container shape. Pixel disk radius = uScale * H / 2,
+      // so for that to equal 0.37 * min(W,H): uScale = 0.74 * min(W,H) / H.
+      const dynScale = 0.74 * Math.min(W, H) / H;
+
       // Main pass — solid sphere
       gl.useProgram(program);
       gl.uniform1f(locs.uRotY, rotY);
       gl.uniform1f(locs.uRotX, rotX);
       gl.uniform1f(locs.uAspect, W / H);
+      gl.uniform1f(locs.uScale, dynScale);
       gl.uniform1f(locs.uTime, performance.now() / 1000);
       gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
       gl.enableVertexAttribArray(locs.aPosition);
@@ -368,7 +374,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
         gl.uniform1f(debugLocs.uRotX, rotX);
         gl.uniform1f(debugLocs.uTilt, initialTilt);
         gl.uniform1f(debugLocs.uAspect, W / H);
-        gl.uniform1f(debugLocs.uScale, 0.72);
+        gl.uniform1f(debugLocs.uScale, dynScale);
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
         gl.enableVertexAttribArray(debugLocs.aPosition);
         gl.vertexAttribPointer(debugLocs.aPosition, 3, gl.FLOAT, false, 0, 0);

@@ -5684,8 +5684,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // one place and render at another (the drift bug from rev29). The
     // legacy `radius` field uses 0.42 for the 2D fallback.
     // Both in CSS pixels (matching gBCR).
+    // rev50: matches atmRadius formula. Disk radius = min(W,H) * 0.37.
     const tapRadius = useWebGL
-      ? rect.height * 0.36
+      ? Math.min(rect.width, rect.height) * 0.37
       : radius;
     const nx = (clickX - cx) / tapRadius;
     const ny = -(clickY - cy) / tapRadius;
@@ -6382,10 +6383,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // halo OUTSIDE the disk. In WebGL mode this is the "atmosphere" the
       // user sees — same warm amber radial gradient as the old vector
       // globe. WebGL Fresnel rim glow is too subtle on its own.
-      // Use 0.36 of canvas HEIGHT to match WebGL uScale 0.72 (disk
-      // rev46: atmRadius 0.36 of H (uScale 0.72 in shader) so the
-      // atmospheric halo at 1.34× radius fits cleanly inside the canvas.
-      const atmRadius = useWebGL ? H * 0.36 : radius;
+      // rev50: atmRadius = min(W,H) * 0.37. Switching from H-based to
+      // min-based makes the globe scale with the SMALLER dimension, so
+      // the halo stays inside the canvas regardless of container shape.
+      // 0.37 chosen so halo outer (1.34×) = 0.496 < 0.5 (canvas edge).
+      const atmRadius = useWebGL ? Math.min(W, H) * 0.37 : radius;
 
       if (useWebGL) {
         // Drive the WebGL renderer with the same rotation.
