@@ -93,6 +93,17 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 // edges). Inner glow is a radial gradient ellipse at top-center. Both
 // are built into the background shorthand so no pseudo-elements are
 // needed — works with all the existing `style={{...card, ...}}` spreads.
+//
+// rev64: dropped `position: relative` and `overflow: hidden` — they were
+// breaking the carousel page-indicator dots. iOS Safari's scroll-snap
+// detection mis-fires when a snap-target's child has overflow:hidden,
+// causing the parent .ss-carousel scroll handler to stop receiving
+// scroll events mid-swipe → activeIndex never updates → dots froze.
+// Background-image layers are clipped to border-radius automatically
+// without overflow:hidden, so the visual is preserved. The radial inner
+// glow fades to transparent within ~70% of its ellipse, well inside the
+// card so corner-bleed isn't visible. Cards that genuinely need
+// overflow:hidden (e.g., the StampSolo wrapper) set it inline locally.
 const card = {
   background:
     /* Hot amber edge along the top (centered, fading out at the sides) */
@@ -109,8 +120,6 @@ const card = {
     'inset 0 0 0 1px rgba(0,0,0,0.4), '       /* dark inner ring (depth) */ +
     '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
     '0 0 32px rgba(245,166,35,0.06)',         /* faint amber halo */
-  position:'relative',
-  overflow:'hidden',
 };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.7rem' };
 const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
