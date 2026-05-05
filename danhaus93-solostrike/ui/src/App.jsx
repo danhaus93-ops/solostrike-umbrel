@@ -6,6 +6,8 @@ import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createLightningWebGL } from './lightning-webgl.js';
+import { createNonceFieldWebGL } from './nonce-field-webgl.js';
+import { createBFMNonceWebGL } from './bfm-nonce-webgl.js';
 
 // ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
 // Loaded once at module level. Falls back to fillText('₿') if not yet ready or
@@ -1831,6 +1833,8 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   const canvasRef = useRef(null);
   const lightningGLCanvasRef = useRef(null);   // rev54: WebGL canvas for lightning mode
   const lightningGLRef = useRef(null);          // rev54: WebGL renderer instance
+  const nonceFieldGLCanvasRef = useRef(null);   // rev55+: WebGL canvas for noncefield (particle stream)
+  const nonceFieldGLRef = useRef(null);          // rev55+: WebGL renderer instance
   const containerRef = useRef(null);
   const animRef = useRef(0);
   const dimsRef = useRef({ w: 600, h: 130, dpr: 1 });
@@ -2374,6 +2378,32 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
         // Fallback: continue into 2D path
       }
 
+      // rev55+: WebGL noncefield path (Particle Stream). Init lazily on first
+      // noncefield frame; fall back to existing 2D grid drawNonceField if init
+      // fails. Block-found spikes are forwarded to the renderer's strike fn.
+      if (a === 'noncefield') {
+        if (!nonceFieldGLRef.current && nonceFieldGLCanvasRef.current) {
+          const r = createNonceFieldWebGL(nonceFieldGLCanvasRef.current);
+          if (r && !r.failed) nonceFieldGLRef.current = r;
+          else nonceFieldGLRef.current = { failed: true };
+        }
+        if (nonceFieldGLRef.current && !nonceFieldGLRef.current.failed) {
+          // Forward fresh block-found spikes from spikesRef to WebGL renderer.
+          // (spikesRef is filled by the share-watcher when a block is found.)
+          for (const s of spikesRef.current) {
+            if (s.age < dt * 1.5) {
+              nonceFieldGLRef.current.triggerStrike({ gold: true, isBlock: true });
+            }
+          }
+          nonceFieldGLRef.current.step(dt, (hrRef.current || 0) / 1e12, {
+            enabled: enabled,
+          });
+          animRef.current = requestAnimationFrame(draw);
+          return;
+        }
+        // Fallback: continue into 2D drawNonceField path
+      }
+
       // Common dark background
       ctx.fillStyle = 'rgba(8, 8, 10, 1)';
       ctx.fillRect(0, 0, W, H);
@@ -2394,6 +2424,11 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       if (lightningGLRef.current && !lightningGLRef.current.failed) {
         try { lightningGLRef.current.destroy(); } catch {}
         lightningGLRef.current = null;
+      }
+      // rev55+: same for noncefield WebGL
+      if (nonceFieldGLRef.current && !nonceFieldGLRef.current.failed) {
+        try { nonceFieldGLRef.current.destroy(); } catch {}
+        nonceFieldGLRef.current = null;
       }
     };
   }, []); // mount-once; reads vary via refs
@@ -2428,6 +2463,13 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
           because once a canvas has a 2D context you can't get a WebGL one. */}
       <canvas ref={lightningGLCanvasRef} style={{
         display: huntAnim === 'lightning' ? 'block' : 'none',
+        position: 'absolute', inset: 0,
+        width: '100%', height: '100%',
+      }}/>
+      {/* rev55+: dedicated WebGL canvas for noncefield (Particle Stream).
+          Same separation rationale as lightning above. */}
+      <canvas ref={nonceFieldGLCanvasRef} style={{
+        display: huntAnim === 'noncefield' ? 'block' : 'none',
         position: 'absolute', inset: 0,
         width: '100%', height: '100%',
       }}/>
@@ -3240,6 +3282,52 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
   drawBFMText(ctx, W, H, t, 'BLOCK STRUCK', cy, iconSize);
 }
 
+// rev57: Overlay-only version of the BFM Nonce celebration. Used when the
+// WebGL Convergence Storm renderer (bfm-nonce-webgl) is active. The 2D
+// canvas only draws the ₿ glyph + halo + title text; particles, gold ring,
+// bloom rays, and shockwave are all rendered on the WebGL canvas behind.
+function drawBFMNonceOverlay(ctx, W, H, t) {
+  const cx = W / 2, cy = H / 2;
+  const iconSize = Math.min(H * 0.55, W * 0.7);
+
+  // Glyph fade — visible 1.5..4.5s, fade in/out at the edges.
+  // Matches the WebGL formation-phase ring (1.5–2.5s) and outburst (4.0–5.5s).
+  let glyphAlpha = 0;
+  if (t >= 1.5 && t < 4.5) {
+    if (t < 2.2) glyphAlpha = (t - 1.5) / 0.7;
+    else if (t < 4.0) glyphAlpha = 1;
+    else glyphAlpha = (4.5 - t) / 0.5;
+  }
+
+  // Halo around glyph during hold (2.5..4.0s)
+  if (t >= 2.5 && t < 4.0) {
+    const haloT = (t - 2.5) / 1.5;
+    const haloR = iconSize * (0.65 + Math.sin(t * 4) * 0.04);
+    const haloAlpha = (1 - haloT) * 0.45;
+    if (haloAlpha > 0.02) {
+      const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+      halo.addColorStop(0, `rgba(255, 220, 130, ${haloAlpha})`);
+      halo.addColorStop(0.5, `rgba(255, 165, 60, ${haloAlpha * 0.5})`);
+      halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // ₿ glyph — scale up briefly during outburst for impact
+  if (glyphAlpha > 0.02) {
+    let scale = 1;
+    if (t > 4.0 && t < 4.5) scale = 1 + (t - 4.0) / 0.5 * 0.15;
+    ctx.save();
+    ctx.globalAlpha = glyphAlpha;
+    drawBtcCelebrate(ctx, cx, cy, iconSize * scale, 1);
+    ctx.restore();
+  }
+
+  // Themed title — 'NONCE FOUND' (drawBFMText handles 3.0–5.5s reveal)
+  drawBFMText(ctx, W, H, t, 'NONCE FOUND', cy, iconSize);
+}
+
 // ─── Shared themed text reveal (3.0 → 5.5s) ───
 function drawBFMText(ctx, W, H, t, text, cy, iconSize) {
   if (t < 3.0) return;
@@ -3270,6 +3358,8 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
   const canvasRef = useRef(null);
   const lightningGLCanvasRef = useRef(null);  // rev54: WebGL canvas for lightning
   const lightningGLRef = useRef(null);         // rev54: WebGL renderer instance
+  const bfmNonceGLCanvasRef = useRef(null);    // rev57: WebGL canvas for noncefield BFM
+  const bfmNonceGLRef = useRef(null);           // rev57: WebGL renderer instance
   const containerRef = useRef(null);
   const animRef = useRef(0);
   const startedAtRef = useRef(performance.now());
@@ -3352,6 +3442,27 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
           // Fallback: 2D path
         }
 
+        // rev57: WebGL path for noncefield BFM (Convergence Storm). Drives
+        // particles, gold ring, bloom rays, and burst shockwave on the
+        // dedicated WebGL canvas. The 2D canvas overlays only the ₿ glyph
+        // + halo + title text via drawBFMNonceOverlay.
+        if (animType === 'noncefield') {
+          if (!bfmNonceGLRef.current && bfmNonceGLCanvasRef.current) {
+            const r3 = createBFMNonceWebGL(bfmNonceGLCanvasRef.current);
+            if (r3 && !r3.failed) bfmNonceGLRef.current = r3;
+            else bfmNonceGLRef.current = { failed: true };
+          }
+          const glr2 = bfmNonceGLRef.current;
+          if (glr2 && !glr2.failed) {
+            glr2.step(1 / 60, t);
+            ctx.clearRect(0, 0, W, H);
+            drawBFMNonceOverlay(ctx, W, H, t);
+            animRef.current = requestAnimationFrame(draw);
+            return;
+          }
+          // Fallback: 2D path (existing drawBFMNonce)
+        }
+
         const fn = animType === 'sonar'     ? drawBFMSonar
                  : animType === 'lightning' ? drawBFMLightning
                  : animType === 'pickaxe'   ? drawBFMPickaxe
@@ -3376,6 +3487,11 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
       if (lightningGLRef.current && !lightningGLRef.current.failed) {
         try { lightningGLRef.current.destroy(); } catch {}
         lightningGLRef.current = null;
+      }
+      // rev57: same for noncefield BFM WebGL
+      if (bfmNonceGLRef.current && !bfmNonceGLRef.current.failed) {
+        try { bfmNonceGLRef.current.destroy(); } catch {}
+        bfmNonceGLRef.current = null;
       }
     };
   }, [animType]);
@@ -3453,6 +3569,15 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
             top renders BTC icon + halo + sparks + title text. */}
         <canvas ref={lightningGLCanvasRef} style={{
           display: animType === 'lightning' ? 'block' : 'none',
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%',
+        }} />
+        {/* rev57: WebGL canvas for noncefield BFM (Convergence Storm).
+            Same layering rationale as lightning above. Renders particles,
+            gold ring, bloom rays, shockwave; 2D canvas overlays the ₿
+            glyph + halo + title text. */}
+        <canvas ref={bfmNonceGLCanvasRef} style={{
+          display: animType === 'noncefield' ? 'block' : 'none',
           position: 'absolute', inset: 0,
           width: '100%', height: '100%',
         }} />
@@ -5555,7 +5680,13 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBi
               if (!window.confirm('Show your Pulse identity backup?\n\nThis reveals your private signing key. Anyone with this key can sign Pulse events as you.\n\nUse only if you intend to back it up offline (paper, encrypted vault).')) return;
               setErr('');
               try {
-                const r = await fetch('/api/network-stats/export-backup', { method:'POST' });
+                // rev55 #2: Server requires explicit confirmation string in
+                // body (defense against CSRF/XSS triggering this silently).
+                const r = await fetch('/api/network-stats/export-backup', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ confirm: 'I-UNDERSTAND-EXPORT-MY-NOSTR-KEY' }),
+                });
                 if (!r.ok) {
                   const j = await r.json().catch(()=>({}));
                   throw new Error(j.error || ('server returned ' + r.status));
@@ -6468,7 +6599,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         // v1.8.8-rev17: 50m TopoJSON (~250KB, 1424 arcs). 10m caused
         // ticker stalls on iPhone main thread. 50m is plenty of detail
         // at 380px globe size and runs smooth.
-        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json')
+        // rev55: Self-hosted world atlas. Removes runtime CDN trust from
+        // jsdelivr.net. Bundled at /world-atlas-land-50m.json by Dockerfile.
+        // CDN fallback is intentionally allowed via CSP connect-src for
+        // robustness; if the local copy is somehow missing (mis-configured
+        // deploy), the globe still renders.
+        fetch('/world-atlas-land-50m.json')
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('local atlas missing')))
+          .catch(() => fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()))
           .then(r => r.json())
           .then(topo => {
             const decodedArcs = decodeArcs(topo);
@@ -8292,7 +8430,7 @@ function WebhooksTab() {
               <div key={h.id} style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',display:'flex',gap:8}}>
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontFamily:'var(--fm)',fontSize:'0.78rem',color:'var(--text-1)',fontWeight:600}}>{h.name}</div>
-                  <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.url}</div>
+                  <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.urlPreview || h.url}</div>
                   <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:3,letterSpacing:'0.05em',textTransform:'uppercase'}}>{(h.events||[]).join(' · ')}</div>
                 </div>
                 <button onClick={()=>remove(h.id)} style={{background:'transparent',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.55rem',padding:'4px 8px',cursor:'pointer',letterSpacing:'0.1em'}}>REMOVE</button>
