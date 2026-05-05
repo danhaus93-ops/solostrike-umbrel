@@ -7,7 +7,7 @@
 
 // Build marker: 1.8.3-rev22 (impliedHr uses session-scoped acceptedSdiffSum, not lifetime ckpool sum)
 
-const CACHE_NAME = 'solostrike-v1.8.8-webgl-rev54';
+const CACHE_NAME = 'solostrike-v1.8.8-webgl-rev57';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -21,6 +21,7 @@ const SHELL_ASSETS = [
   '/btc-glyph.svg',
   '/btc-glyph-celebrate.png',
   '/pickaxe-icon.png',
+  '/sw-register.js',
 ];
 
 // Install: pre-cache the shell assets
