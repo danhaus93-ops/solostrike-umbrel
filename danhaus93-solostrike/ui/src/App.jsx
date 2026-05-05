@@ -7,7 +7,6 @@ import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWiz
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
-import { createBFMNonceWebGL } from './bfm-nonce-webgl.js';
 
 // ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
 // Loaded once at module level. Falls back to fillText('₿') if not yet ready or
@@ -2383,7 +2382,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       // fails. Block-found spikes are forwarded to the renderer's strike fn.
       if (a === 'noncefield') {
         if (!nonceFieldGLRef.current && nonceFieldGLCanvasRef.current) {
-          const r = createNonceFieldWebGL(nonceFieldGLCanvasRef.current);
+          const r = createNonceFieldWebGL(nonceFieldGLCanvasRef.current, { mode: 'hunt' });
           if (r && !r.failed) nonceFieldGLRef.current = r;
           else nonceFieldGLRef.current = { failed: true };
         }
@@ -3283,9 +3282,10 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
 }
 
 // rev57: Overlay-only version of the BFM Nonce celebration. Used when the
-// WebGL Convergence Storm renderer (bfm-nonce-webgl) is active. The 2D
-// canvas only draws the ₿ glyph + halo + title text; particles, gold ring,
-// bloom rays, and shockwave are all rendered on the WebGL canvas behind.
+// WebGL Convergence Storm renderer (nonce-field-webgl in BFM mode) is
+// active. The 2D canvas only draws the ₿ glyph + halo + title text;
+// particles, gold ring, bloom rays, and shockwave are all rendered on the
+// WebGL canvas behind.
 function drawBFMNonceOverlay(ctx, W, H, t) {
   const cx = W / 2, cy = H / 2;
   const iconSize = Math.min(H * 0.55, W * 0.7);
@@ -3445,16 +3445,19 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
         // rev57: WebGL path for noncefield BFM (Convergence Storm). Drives
         // particles, gold ring, bloom rays, and burst shockwave on the
         // dedicated WebGL canvas. The 2D canvas overlays only the ₿ glyph
-        // + halo + title text via drawBFMNonceOverlay.
+        // + halo + title text via drawBFMNonceOverlay. Uses the same
+        // nonce-field-webgl module as the in-card animation, just with
+        // mode='bfm' to switch shader programs (matches lightning pattern).
         if (animType === 'noncefield') {
           if (!bfmNonceGLRef.current && bfmNonceGLCanvasRef.current) {
-            const r3 = createBFMNonceWebGL(bfmNonceGLCanvasRef.current);
+            const r3 = createNonceFieldWebGL(bfmNonceGLCanvasRef.current, { mode: 'bfm' });
             if (r3 && !r3.failed) bfmNonceGLRef.current = r3;
             else bfmNonceGLRef.current = { failed: true };
           }
           const glr2 = bfmNonceGLRef.current;
           if (glr2 && !glr2.failed) {
-            glr2.step(1 / 60, t);
+            // Pass BFM time directly so phase boundaries are precise.
+            glr2.step(1 / 60, 0, { bfmTime: t });
             ctx.clearRect(0, 0, W, H);
             drawBFMNonceOverlay(ctx, W, H, t);
             animRef.current = requestAnimationFrame(draw);
