@@ -347,10 +347,10 @@ export function createGlobeWebGL(canvas, opts = {}) {
       gl.viewport(0, 0, W, H);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      // rev50: dynamic uScale so disk size = min(W,H) * 0.37 in pixels
+      // rev51: dynamic uScale so disk size = min(W,H) * 0.42 in pixels
       // regardless of container shape. Pixel disk radius = uScale * H / 2,
-      // so for that to equal 0.37 * min(W,H): uScale = 0.74 * min(W,H) / H.
-      const dynScale = 0.74 * Math.min(W, H) / H;
+      // so for that to equal 0.42 * min(W,H): uScale = 0.84 * min(W,H) / H.
+      const dynScale = 0.84 * Math.min(W, H) / H;
 
       // Main pass — solid sphere
       gl.useProgram(program);
