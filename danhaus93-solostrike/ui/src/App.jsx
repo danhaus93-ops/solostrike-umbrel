@@ -5640,11 +5640,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   useEffect(() => { placingPinRef.current = placingPin; }, [placingPin]);
   useEffect(() => { poolPinRef.current = poolPin; }, [poolPin]);
 
-  // v1.8.8-rev43: debug overlay forced ON. Wireframe mesh drawn in red
-  // over the globe so we can see topology directly.
+  // v1.8.8-rev47: debug overlay opt-in via URL hash '#debug-globe'.
+  // Default OFF for production rendering.
   useEffect(() => {
     if (!webglCanvasRef.current) return;
-    const debugMode = true;
+    const debugMode = typeof window !== 'undefined'
+      && window.location.hash.includes('debug-globe');
     const renderer = createGlobeWebGL(webglCanvasRef.current, { debug: debugMode });
     if (renderer) {
       webglRendererRef.current = renderer;
@@ -5693,26 +5694,37 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const nz = Math.sqrt(Math.max(0, 1 - r2));
 
     // (nx, ny, nz) is the screen-space normal. To recover the geographic
-    // (lat, lon) of where the user tapped, INVERT the renderer's
-    // transformation chain. v1.8.8-rev36: chain is now PITCH (uRotX) then
-    // YAW (uRotY) — no more fixed axial tilt. So inverse is YAW first,
-    // then PITCH.
+    // (lat, lon) of where the user tapped, INVERT the renderer's full
+    // transformation chain. Forward is YAW → TILT(Z, 23.5°) → PITCH(X);
+    // inverse is inv-PITCH → inv-TILT → inv-YAW.
     let sx = nx, sy = ny, sz = nz;
     if (useWebGL) {
-      // 1) Inverse YAW — rotate (sx, sz) by -uRotY
-      const yaw = globeRotYRef.current;
-      const cy = Math.cos(-yaw);
-      const sinY = Math.sin(-yaw);
-      const px =  sx * cy + sz * sinY;
-      const pz = -sx * sinY + sz * cy;
-      sx = px; sz = pz;
-      // 2) Inverse PITCH — rotate (sy, sz) by -uRotX
+      const debugMode = typeof window !== 'undefined'
+        && window.location.hash.includes('debug-globe');
+      const tiltRad = debugMode ? 0 : (23.5 * Math.PI / 180);
+
+      // 1) Inverse PITCH — rotate (sy, sz) by -uRotX
       const pitch = globeRotXRef.current;
       const cp = Math.cos(-pitch);
       const sp = Math.sin(-pitch);
-      const py = sy * cp - sz * sp;
-      const pz2 = sy * sp + sz * cp;
-      sy = py; sz = pz2;
+      const py1 = sy * cp - sz * sp;
+      const pz1 = sy * sp + sz * cp;
+      sy = py1; sz = pz1;
+
+      // 2) Inverse TILT — rotate (sx, sy) by -tiltRad around Z
+      const ct = Math.cos(-tiltRad);
+      const st = Math.sin(-tiltRad);
+      const tx = sx * ct - sy * st;
+      const ty = sx * st + sy * ct;
+      sx = tx; sy = ty;
+
+      // 3) Inverse YAW — rotate (sx, sz) by -uRotY around Y
+      const yaw = globeRotYRef.current;
+      const cyy = Math.cos(-yaw);
+      const syy = Math.sin(-yaw);
+      const yx = sx * cyy + sz * syy;
+      const yz = -sx * syy + sz * cyy;
+      sx = yx; sz = yz;
     }
     // (sx, sy, sz) is now in OBJECT space — the un-rotated unit sphere.
     const latRad = Math.asin(Math.max(-1, Math.min(1, sy)));
