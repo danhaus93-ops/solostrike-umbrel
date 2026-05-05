@@ -46,6 +46,19 @@ function bakeTexture(rings) {
     ctx.closePath();
   }
   ctx.fill('evenodd');
+
+  // v1.8.8-rev41: force top/bottom rows of equirectangular texture to be
+  // uniform ocean color. Without this, Antarctica (which extends to
+  // lat=-90°) fills the texture's bottom row with land color, and that
+  // single row gets stretched into a visible "spike" pattern when wrapped
+  // around the sphere's south pole. Same idea applies to the north pole
+  // if any land touches lat=+90° (rare). Painting the top/bottom 5% of
+  // the image with ocean color hides the polar singularity entirely.
+  const polarBandHeight = Math.floor(H * 0.05);  // ~5% of image height
+  ctx.fillStyle = OCEAN_DARK;
+  ctx.fillRect(0, 0, W, polarBandHeight);              // top band
+  ctx.fillRect(0, H - polarBandHeight, W, polarBandHeight);  // bottom band
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
