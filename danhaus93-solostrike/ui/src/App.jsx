@@ -82,17 +82,38 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 }
 
 // ── Style tokens ──────────────────────────────────────────────────────────────
-// rev62 premium pass — card gets vertical gradient + 1px inset top highlight
-// for physical-surface depth; cardTitle and label bumped 0.6→0.7rem for
-// readability without overflow risk (audited against tightest containers).
+// rev63 premium pass — Forge Tile treatment.
+// Multi-layer background: hot amber edge along top + soft inner glow
+// fading from top + base vertical fill gradient. Multiple inset/outer
+// shadows give the card pronounced "lifted from the surface" depth.
+// 16px border-radius reads as a polished tile rather than a tech border.
+//
+// The "hot top edge" is a 1.5px amber gradient line painted as a
+// background-image at the top center (10%-90% width, transparent at
+// edges). Inner glow is a radial gradient ellipse at top-center. Both
+// are built into the background shorthand so no pseudo-elements are
+// needed — works with all the existing `style={{...card, ...}}` spreads.
 const card = {
-  background:'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
-  border:'1px solid var(--border)',
-  padding:'1.25rem',
-  boxShadow:'inset 0 1px 0 rgba(245,166,35,0.07), 0 1px 2px rgba(0,0,0,0.4)',
+  background:
+    /* Hot amber edge along the top (centered, fading out at the sides) */
+    'linear-gradient(90deg, transparent 10%, rgba(245,166,35,0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    /* Soft inner glow fading from the top edge into the card */
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(245,166,35,0.13) 0%, transparent 70%), ' +
+    /* Base vertical fill */
+    'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
+  border:'1px solid rgba(245,166,35,0.22)',
+  borderRadius:'16px',
+  padding:'1.3rem',
+  boxShadow:
+    'inset 0 1px 0 rgba(245,166,35,0.18), '   /* sheen along very top edge */ +
+    'inset 0 0 0 1px rgba(0,0,0,0.4), '       /* dark inner ring (depth) */ +
+    '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
+    '0 0 32px rgba(245,166,35,0.06)',         /* faint amber halo */
+  position:'relative',
+  overflow:'hidden',
 };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.7rem' };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
