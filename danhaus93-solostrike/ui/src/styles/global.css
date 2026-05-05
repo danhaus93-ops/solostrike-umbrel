@@ -10,6 +10,10 @@
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
+  /* rev63 premium pass — body bg painted behind the animated canvas as
+     a fallback for browsers without WebGL. The canvas (z-index:-1 fixed)
+     paints over it when GL is available. The radial gradient stays as a
+     subtle top-glow accent layered on top of the animated bg. */
   background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%);
   /* rev62 premium pass — tabular-nums locks every column of digits to
      equal width so values like 871,432 / 117.83 / 0.00432 stop "dancing"
@@ -18,6 +22,21 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   font-variant-numeric:tabular-nums;
   font-feature-settings:'tnum' 1;
 }
+
+/* rev63 premium pass — animated WebGL bg canvas. Mounted by main.jsx as
+   a sibling of #root, fixed full-viewport, behind every other element.
+   pointer-events:none so taps pass straight through to UI underneath. */
+#ss-animated-bg{
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  z-index:-1;
+  pointer-events:none;
+  display:block;
+}
+/* Ensure #root is positioned + has a stacking context above the canvas */
+#root{position:relative;z-index:1}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--bg-deep)}::-webkit-scrollbar-thumb{background:var(--amber-dim)}
 ::selection{background:rgba(245,166,35,0.2)}
 
@@ -151,11 +170,13 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 /* feels native on iOS. Used for card press feedback + state transitions. */
 .ss-card{position:relative;transition:opacity 0.2s cubic-bezier(0.32,0.72,0,1),transform 0.18s cubic-bezier(0.32,0.72,0,1)}
 .ss-card.ss-dragging{opacity:0.4;transform:scale(0.98)}
-.ss-card.ss-drag-over{outline:2px dashed var(--amber);outline-offset:-2px}
+.ss-card.ss-drag-over{outline:2px dashed var(--amber);outline-offset:-2px;border-radius:16px}
 /* v1.8.1-rev7: tap-feedback for cards that act as buttons (Share Stats,
    The Hunt, etc). Pure CSS scale-down on press; no JS overhead. The
-   transition above handles the smooth release. */
-.ss-card:active{transform:scale(0.992)}
+   transition above handles the smooth release.
+   rev63 premium pass: scale slightly more aggressive + 1px translateY for
+   the "press into the surface" feel that matches the Forge Tile depth. */
+.ss-card:active{transform:scale(0.992) translateY(1px)}
 
 /* rev62 premium pass — reusable gradient divider class. Replaces flat
    `border-bottom: 1px solid var(--border)` between sections inside cards.
