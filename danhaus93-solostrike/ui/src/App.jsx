@@ -4,7 +4,7 @@ import { usePool } from './hooks/usePool.js';
 import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
-import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
+import GlobeRenderer from './GlobeRenderer.jsx';
 
 // ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
 // Loaded once at module level. Falls back to fillText('₿') if not yet ready or
@@ -5620,13 +5620,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const canvasHeightRef = useRef(0);
   const dprRef = useRef(window.devicePixelRatio || 1);
 
-  // v1.8.8-rev24: WebGL globe renderer. Lives behind the 2D canvas as a
-  // sibling element. The 2D canvas remains transparent in globe mode so
-  // pin/marker overlays paint on top. If WebGL fails to initialize, the
-  // ref stays null and the existing vector globe code runs unchanged.
+  // v1.8.8-rev39: WebGL renderer DISABLED. Replaced by GlobeRenderer
+  // (react-globe.gl). Legacy 2D vector globe code remains as fallback.
+  // Refs kept for type compatibility with downstream code that may
+  // reference them; they always stay null in rev39+.
   const webglCanvasRef = useRef(null);
   const webglRendererRef = useRef(null);
   const webglTextureReadyRef = useRef(false);
+
+  // v1.8.8-rev39: globe TopoJSON rings, fetched once at mount and passed
+  // to GlobeRenderer for texture baking. Same data the legacy 2D code
+  // uses (it stashes onto canvas._globeRings). We hold both copies for
+  // simplicity; ~250KB of geometry, fetched only when the user sees the
+  // pulse panel for the first time.
+  const [landRings, setLandRings] = useState(null);
+  const [containerSize, setContainerSize] = useState({ w: 380, h: 380 });
 
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
@@ -5648,25 +5656,72 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   useEffect(() => { placingPinRef.current = placingPin; }, [placingPin]);
   useEffect(() => { poolPinRef.current = poolPin; }, [poolPin]);
 
-  // v1.8.8-rev24: initialize WebGL globe renderer once on mount.
-  // Stays alive across pulseAnim changes — when not in globe mode the
-  // canvas is hidden via CSS, but the renderer doesn't need teardown.
+  // v1.8.8-rev39: WebGL init is a no-op now (GlobeRenderer handles 3D).
+  // Leaving the effect in place but inert keeps the cleanup contract.
   useEffect(() => {
-    if (!webglCanvasRef.current) return;
-    const renderer = createGlobeWebGL(webglCanvasRef.current);
-    if (renderer) {
-      webglRendererRef.current = renderer;
-    } else {
-      webglRendererRef.current = null;
-      console.warn('WebGL globe init failed; falling back to vector renderer');
-    }
+    webglRendererRef.current = null;
     return () => {
-      if (webglRendererRef.current) {
-        webglRendererRef.current.destroy();
-        webglRendererRef.current = null;
-      }
+      webglRendererRef.current = null;
       webglTextureReadyRef.current = false;
     };
+  }, []);
+
+  // v1.8.8-rev39: fetch coastline rings once for GlobeRenderer texture
+  // bake. Same TopoJSON the legacy 2D path uses. Fired once per mount.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json')
+      .then(r => r.json())
+      .then(topo => {
+        if (cancelled) return;
+        const decodeArcs = (t) => {
+          const { scale, translate } = t.transform;
+          return t.arcs.map(arc => {
+            let x = 0, y = 0;
+            return arc.map(([dx, dy]) => {
+              x += dx; y += dy;
+              return [x * scale[0] + translate[0], y * scale[1] + translate[1]];
+            });
+          });
+        };
+        const arcsToRing = (arcIndices, decodedArcs) => {
+          const ring = [];
+          for (const idx of arcIndices) {
+            const reverse = idx < 0;
+            const arc = decodedArcs[reverse ? ~idx : idx];
+            const pts = reverse ? arc.slice().reverse() : arc;
+            if (ring.length === 0) ring.push(...pts);
+            else ring.push(...pts.slice(1));
+          }
+          return ring;
+        };
+        const decodedArcs = decodeArcs(topo);
+        const rings = [];
+        for (const geom of topo.objects.land.geometries) {
+          if (geom.type === 'Polygon') {
+            geom.arcs.forEach(a => rings.push(arcsToRing(a, decodedArcs)));
+          } else if (geom.type === 'MultiPolygon') {
+            geom.arcs.forEach(p => p.forEach(a => rings.push(arcsToRing(a, decodedArcs))));
+          }
+        }
+        setLandRings(rings);
+      })
+      .catch(e => {
+        console.warn('Globe coastline fetch failed:', e);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // v1.8.8-rev39: track container size for GlobeRenderer width/height props
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const r = entries[0].contentRect;
+      setContainerSize({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Inverse orthographic projection — converts a tap on the canvas to
@@ -5814,6 +5869,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const togglePlacingPin = useCallback((e) => {
     e.stopPropagation();    setPlacingPin(prev => !prev);
   }, []);
+
+  // v1.8.8-rev39: GlobeRenderer click handler. react-globe.gl gives us
+  // {lat, lng} in degrees directly — no inverse projection needed.
+  const handleGlobeTap = useCallback(({ lat, lng }) => {
+    if (!placingPinRef.current || !onPoolPinChange) return;
+    const pinned = snapPinTo5Deg(lat, lng);
+    onPoolPinChange(pinned);
+    setPlacingPin(false);
+  }, [onPoolPinChange]);
 
   // Set up the canvas — handles HiDPI properly so the waveform stays crisp on retina screens
   useEffect(() => {
@@ -6407,18 +6471,18 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillRect(0, 0, W, H);
       }
 
-      // v1.8.8-rev37: atmospheric halo, inner edge AT the disk edge so
-      // the glow appears continuous with the globe silhouette. Previously
-      // had inner at 1.02× which created a visible black ring between
-      // disk and halo. Inner = 1.00× touches exactly. Peak at 1.10× alpha
-      // 0.20, falling to 0 at outer 1.34×.
+      // v1.8.8-rev35: atmospheric halo, outer-only so the WebGL globe's
+      // rim isn't painted over by amber alpha. Inner stop at 1.02× disk
+      // radius (safely outside), peak at 1.10× alpha 0.20, falling to
+      // 0 at outer radius 1.34×. Net: soft warm glow around the planet
+      // silhouette, matching the look of the target screenshots.
       if (useWebGL) {
-        const haloInner = atmRadius * 1.00;
+        const haloInner = atmRadius * 1.02;
         const haloOuter = atmRadius * 1.34;
         const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
-        halo.addColorStop(0.00, 'rgba(245,166,35,0.30)');
-        halo.addColorStop(0.30, 'rgba(245,166,35,0.20)');
-        halo.addColorStop(0.60, 'rgba(245,166,35,0.07)');
+        halo.addColorStop(0.00, 'rgba(245,166,35,0.00)');
+        halo.addColorStop(0.25, 'rgba(245,166,35,0.20)');
+        halo.addColorStop(0.55, 'rgba(245,166,35,0.07)');
         halo.addColorStop(1.00, 'rgba(245,166,35,0.00)');
         ctx.fillStyle = halo;
         ctx.fillRect(0, 0, W, H);
@@ -6992,15 +7056,24 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           position:'relative', overflow:'hidden',
         }}>
 
-          {/* v1.8.8-rev24: WebGL globe sibling canvas. Renders the sphere
-              behind the 2D canvas in globe mode. Hidden in other pulseAnim
-              modes via display:none. pointerEvents:none so taps still hit
-              the 2D canvas above. */}
-          <canvas ref={webglCanvasRef} style={{
-            position:'absolute', inset:0, width:'100%', height:'100%',
-            pointerEvents:'none',
-            display: pulseAnim === 'globe' ? 'block' : 'none',
-          }}/>
+          {/* v1.8.8-rev39: GlobeRenderer (react-globe.gl) replaces the
+              custom WebGL canvas. Renders OVER the 2D canvas when in
+              globe mode. The 2D canvas continues to render the waveform
+              for non-globe pulseAnim modes. */}
+          {pulseAnim === 'globe' && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
+              <GlobeRenderer
+                peers={ns.peers || []}
+                ownPin={poolPin}
+                onTap={onPoolPinChange ? handleGlobeTap : null}
+                placingPin={placingPin}
+                landRings={landRings}
+                width={containerSize.w}
+                height={containerSize.h}
+              />
+            </div>
+          )}
+          <canvas ref={webglCanvasRef} style={{ display: 'none' }}/>
           <canvas
             ref={canvasRef}
             onPointerDown={handlePointerDown}
@@ -7008,7 +7081,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
             style={{
-              position:'relative', display:'block',
+              position:'relative', display: pulseAnim === 'globe' ? 'none' : 'block',
               width:'100%', height:'100%',
               touchAction:'none',
               cursor: placingPin ? 'crosshair' : 'grab',
@@ -7016,7 +7089,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           />
           {pulseAnim === 'globe' && onPoolPinChange && (
             <div style={{
-              position:'absolute', bottom:4, right:6,
+              position:'absolute', bottom:4, right:6, zIndex: 3,
               display:'flex', justifyContent:'flex-end', pointerEvents:'none',
             }}>
               <button
@@ -7110,12 +7183,22 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         marginBottom:'0.7rem',
         position:'relative', overflow:'hidden',
       }}>
-        {/* v1.8.8-rev24: WebGL globe sibling canvas (full-mode). */}
-        <canvas ref={webglCanvasRef} style={{
-          position:'absolute', inset:0, width:'100%', height:'100%',
-          pointerEvents:'none',
-          display: pulseAnim === 'globe' ? 'block' : 'none',
-        }}/>
+        {/* v1.8.8-rev39: GlobeRenderer (react-globe.gl) replaces the
+            custom WebGL canvas in standalone mode. */}
+        {pulseAnim === 'globe' && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
+            <GlobeRenderer
+              peers={ns.peers || []}
+              ownPin={poolPin}
+              onTap={onPoolPinChange ? handleGlobeTap : null}
+              placingPin={placingPin}
+              landRings={landRings}
+              width={containerSize.w}
+              height={containerSize.h}
+            />
+          </div>
+        )}
+        <canvas ref={webglCanvasRef} style={{ display: 'none' }}/>
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
@@ -7123,7 +7206,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
           style={{
-            position:'relative', display:'block',
+            position:'relative', display: pulseAnim === 'globe' ? 'none' : 'block',
             width:'100%', height:'100%',
             touchAction:'none',
             cursor: placingPin ? 'crosshair' : 'grab',
@@ -7131,7 +7214,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         />
         {pulseAnim === 'globe' && onPoolPinChange && (
           <div style={{
-            position:'absolute', bottom:8, right:10,
+            position:'absolute', bottom:8, right:10, zIndex: 3,
             display:'flex', justifyContent:'flex-end', pointerEvents:'none',
           }}>
             <button
