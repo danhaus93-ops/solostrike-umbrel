@@ -311,7 +311,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
   gl.uniform3f(locs.uOceanColor, 0.060, 0.050, 0.034);
   gl.uniform3f(locs.uLandColor,  0.96, 0.65, 0.14);
   gl.uniform3f(locs.uAtmColor,   0.96, 0.65, 0.14);
-  gl.uniform1f(locs.uScale, 0.78);
+  gl.uniform1f(locs.uScale, 0.72);
   // rev44+: in debug mode, zero out the axial tilt so the user can
   // pitch straight down to look directly at either pole. The 23.5° tilt
   // is the cosmetic axial tilt of Earth — useful for the live globe but
@@ -368,7 +368,7 @@ export function createGlobeWebGL(canvas, opts = {}) {
         gl.uniform1f(debugLocs.uRotX, rotX);
         gl.uniform1f(debugLocs.uTilt, initialTilt);
         gl.uniform1f(debugLocs.uAspect, W / H);
-        gl.uniform1f(debugLocs.uScale, 0.78);
+        gl.uniform1f(debugLocs.uScale, 0.72);
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
         gl.enableVertexAttribArray(debugLocs.aPosition);
         gl.vertexAttribPointer(debugLocs.aPosition, 3, gl.FLOAT, false, 0, 0);

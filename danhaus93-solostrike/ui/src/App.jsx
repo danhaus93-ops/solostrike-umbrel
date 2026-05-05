@@ -6371,9 +6371,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // user sees — same warm amber radial gradient as the old vector
       // globe. WebGL Fresnel rim glow is too subtle on its own.
       // Use 0.36 of canvas HEIGHT to match WebGL uScale 0.72 (disk
-      // rev27 atmosphere sizing: uScale 0.78 in shader → disk radius
-      // = 0.39 * H. Halo extends from 0.96 × atmRadius to 1.34 × atmRadius.
-      const atmRadius = useWebGL ? H * 0.39 : radius;
+      // rev46: atmRadius 0.36 of H (uScale 0.72 in shader) so the
+      // atmospheric halo at 1.34× radius fits cleanly inside the canvas.
+      const atmRadius = useWebGL ? H * 0.36 : radius;
 
       if (useWebGL) {
         // Drive the WebGL renderer with the same rotation.
@@ -6669,14 +6669,22 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // 4) Render pool markers — crimson dots for high contrast against
       // the strong amber land. Solid #A8170E with thin green outline on
       // the user's own pin.
-      // v1.8.8-rev36: apply PITCH (uRotX) then YAW (uRotY) to match the
-      // shader's new transform chain (tilt removed in rev36, replaced
-      // with user-controlled pitch via drag). Markers must use the SAME
-      // chain or they drift relative to continents under the cursor.
+      // v1.8.8-rev46: marker transform chain MUST match shader exactly:
+      // (1) yaw around Y, (2) axial tilt around Z, (3) user pitch around X.
+      // Earlier revs were missing the tilt and had pitch in the wrong
+      // order, causing dots to slide off the continents during drag.
       const markerRadius = useWebGL ? atmRadius : radius;
       const pitch = useWebGL ? globeRotXRef.current : 0;
       const cosPitch = Math.cos(pitch);
       const sinPitch = Math.sin(pitch);
+      // Tilt: 23.5° in normal mode, 0° in debug mode (matches shader).
+      const debugMode = typeof window !== 'undefined'
+        && window.location.hash.includes('debug-globe');
+      const tiltRad = (useWebGL && !debugMode) ? (23.5 * Math.PI / 180) : 0;
+      const cosTilt = Math.cos(tiltRad);
+      const sinTilt = Math.sin(tiltRad);
+      const cosYaw = Math.cos(rotY);
+      const sinYaw = Math.sin(rotY);
 
       const pools = canvas._globePools;
       for (const p of pools) {
@@ -6684,25 +6692,26 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const ox = Math.cos(p.lat) * Math.sin(p.lon);
         const oy = Math.sin(p.lat);
         const oz = Math.cos(p.lat) * Math.cos(p.lon);
-        // Step 1: PITCH around X axis
-        const px3 = ox;
-        const py3 = oy * cosPitch - oz * sinPitch;
-        const pz3 = oy * sinPitch + oz * cosPitch;
-        // Step 2: YAW around Y axis
-        const x3 = px3 * Math.cos(rotY) + pz3 * Math.sin(rotY);
-        const y3 = py3;
-        const z3 = -px3 * Math.sin(rotY) + pz3 * Math.cos(rotY);
+        // Step 1: YAW around Y
+        const yx = ox * cosYaw + oz * sinYaw;
+        const yy = oy;
+        const yz = -ox * sinYaw + oz * cosYaw;
+        // Step 2: TILT around Z
+        const tx = yx * cosTilt - yy * sinTilt;
+        const ty = yx * sinTilt + yy * cosTilt;
+        const tz = yz;
+        // Step 3: PITCH around X
+        const x3 = tx;
+        const y3 = ty * cosPitch - tz * sinPitch;
+        const z3 = ty * sinPitch + tz * cosPitch;
         if (z3 < -0.05) continue;
         const px = cx + x3 * markerRadius;
         const py = cy - y3 * markerRadius;
-        // Crimson (#A8170E = rgb(168,23,14)) — steps out of the amber
-        // family entirely so dots read as alert points, not blending in.
         ctx.fillStyle = '#A8170E';
         ctx.beginPath();
         ctx.arc(px, py, 3.4, 0, Math.PI*2);
         ctx.fill();
         if (p.isOwn) {
-          // Thin green outline marks "you" — same green as LIVE / ROCK SOLID
           ctx.strokeStyle = 'rgba(57,255,106,0.75)';
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
