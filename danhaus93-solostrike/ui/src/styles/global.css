@@ -10,7 +10,14 @@
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
-  background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%)}
+  background-image:radial-gradient(ellipse 80% 40% at 50% -5%,rgba(245,166,35,0.05) 0%,transparent 60%);
+  /* rev62 premium pass — tabular-nums locks every column of digits to
+     equal width so values like 871,432 / 117.83 / 0.00432 stop "dancing"
+     when they refresh. JetBrains Mono and Chakra Petch both expose tnum;
+     applying at body level inherits everywhere unless explicitly overridden. */
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:'tnum' 1;
+}
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--bg-deep)}::-webkit-scrollbar-thumb{background:var(--amber-dim)}
 ::selection{background:rgba(245,166,35,0.2)}
 
@@ -139,13 +146,22 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @media (min-width:640px){.ss-span-2{grid-column:span 2}}
 
 /* --- Drag and drop card styles ------------------------------------------ */
-.ss-card{position:relative;transition:opacity 0.2s,transform 0.15s ease}
+/* rev62 premium pass — cubic-bezier easing curves replace bare `ease`. */
+/* (0.32, 0.72, 0, 1) is Apple's standard "snappy in, gentle out" curve;  */
+/* feels native on iOS. Used for card press feedback + state transitions. */
+.ss-card{position:relative;transition:opacity 0.2s cubic-bezier(0.32,0.72,0,1),transform 0.18s cubic-bezier(0.32,0.72,0,1)}
 .ss-card.ss-dragging{opacity:0.4;transform:scale(0.98)}
 .ss-card.ss-drag-over{outline:2px dashed var(--amber);outline-offset:-2px}
 /* v1.8.1-rev7: tap-feedback for cards that act as buttons (Share Stats,
    The Hunt, etc). Pure CSS scale-down on press; no JS overhead. The
    transition above handles the smooth release. */
 .ss-card:active{transform:scale(0.992)}
+
+/* rev62 premium pass — reusable gradient divider class. Replaces flat
+   `border-bottom: 1px solid var(--border)` between sections inside cards.
+   Already used inline in HashPulsePanel + JumpersPanel; this class makes
+   it trivially applied anywhere. Use as <div className="ss-divider"/>. */
+.ss-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(245,166,35,0.25),transparent);margin:0.7rem 0;border:none}
 .ss-drag-handle{position:absolute;top:8px;right:8px;font-size:14px;color:var(--text-3);cursor:grab;user-select:none;padding:2px 6px;z-index:2;touch-action:none}
 .ss-drag-handle:hover{color:var(--amber)}
 .ss-drag-handle:active{cursor:grabbing}
