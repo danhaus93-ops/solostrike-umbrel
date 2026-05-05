@@ -2387,17 +2387,16 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
           else nonceFieldGLRef.current = { failed: true };
         }
         if (nonceFieldGLRef.current && !nonceFieldGLRef.current.failed) {
-          // Forward fresh block-found spikes from spikesRef to WebGL renderer.
-          // (spikesRef is filled by the share-watcher when a block is found.)
-          for (const s of spikesRef.current) {
-            if (s.age < dt * 1.5) {
-              nonceFieldGLRef.current.triggerStrike({ gold: true, isBlock: true });
-            }
-          }
-          // rev59 fix: opts={} — the previous { enabled: enabled } referenced
-          // an undefined variable, which threw ReferenceError every frame and
-          // crashed the rAF loop. Renderer dims itself when hashrate hits 0
-          // (no need for an explicit enabled flag here).
+          // rev60 fix: removed broken spikesRef.current loop — that ref
+          // doesn't exist in NonceField scope (it lives on the main app
+          // component), so the for-of threw ReferenceError every frame and
+          // crashed the rAF loop. Block-found events visually escalate via
+          // the full-screen BFM Convergence Storm anyway, so the in-card
+          // strike trigger isn't needed for the user-facing experience.
+          //
+          // rev59 fix: opts={} — the previous { enabled: enabled } also
+          // referenced an undefined variable. Renderer dims itself when
+          // hashrate hits 0.
           nonceFieldGLRef.current.step(dt, (hrRef.current || 0) / 1e12, {});
           animRef.current = requestAnimationFrame(draw);
           return;
