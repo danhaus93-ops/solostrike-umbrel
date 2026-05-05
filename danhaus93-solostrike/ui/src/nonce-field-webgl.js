@@ -42,7 +42,16 @@ void main() {
 }
 `;
 
-// ─── Hunt mode: Particle Stream ───────────────────────────────────────────
+// ─── Hunt mode: Beveled Blocks (rev61) ───────────────────────────────────
+//
+// 2D grid of beveled rounded blocks in Bitcoin orange. Active cells pulse
+// at frequencies seeded by their grid ID; pulse threshold scales with hash-
+// rate so higher hashrate = more cells lit at once. Block-found events
+// show as a radial wave that lights the whole grid briefly.
+//
+// Replaced the rev55-rev60 Particle Stream shader (the "tron-grid" lanes
+// look) per user pick after evaluating 4 block-style variants. Beveled is
+// the most tactile / "this is mining" reading.
 const FS_STREAM = `
 precision highp float;
 varying vec2 uv;
@@ -52,65 +61,79 @@ uniform float uStrike;
 uniform float uStrikeGold;
 uniform float uEnabled;
 uniform vec2  uRes;
+uniform vec2  uGrid;        // (cols, rows)
+uniform float uBright;      // 0..1
+uniform float uShowScan;    // 0 or 1
+uniform float uShowVig;     // 0 or 1
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
+float cellAct(vec2 cId, float t, float hr) {
+  float seed = hash(cId);
+  float freq = 0.4 + hr * 0.03 + seed * 1.5;
+  float pulse = sin(t * freq + seed * 6.28) * 0.5 + 0.5;
+  float thresh = clamp(0.55 - hr * 0.004, 0.15, 0.75);
+  return smoothstep(thresh, thresh + 0.08, pulse);
+}
+
 void main() {
+  // Bitcoin orange palette (anchored on #FB940D)
+  vec3 BTC_BG    = vec3(0.022, 0.018, 0.012);
+  vec3 BTC_DIM   = vec3(0.140, 0.085, 0.022);
+  vec3 BTC_MID   = vec3(0.984, 0.580, 0.051);
+  vec3 BTC_DARK  = vec3(0.480, 0.260, 0.030);
+  vec3 BTC_LIGHT = vec3(1.000, 0.820, 0.420);
+
   vec2 p = uv;
-  vec3 col = vec3(0.008, 0.011, 0.016);
+  vec2 cId = floor(p * uGrid);
+  vec2 cuv = fract(p * uGrid);
+  float a = cellAct(cId, uT, uHashTHS) * uEnabled;
 
-  float band = smoothstep(0.495, 0.5, abs(fract(p.y * 8.0) - 0.5));
-  col += vec3(0.04, 0.06, 0.09) * band * 0.35 * uEnabled;
-
-  float density = clamp(uHashTHS * 0.04 + 0.30, 0.30, 1.50);
-  float baseSpeed = 0.15 + uHashTHS * 0.012;
-
-  for (int j = 0; j < 12; j++) {
-    float fj = float(j);
-    float yLane = (fj + 0.5) / 12.0;
-    float laneSpeed = baseSpeed * (0.7 + hash(vec2(fj, 0.0)) * 0.6);
-    float x = mod(p.x - uT * laneSpeed, 1.0);
-    float bin = floor(x * 60.0);
-    float xCell = fract(x * 60.0);
-    float frame = floor(uT * laneSpeed * 60.0);
-    float onProb = density * 0.18 * uEnabled;
-    float on = step(1.0 - onProb, hash(vec2(bin, fj + frame)));
-    vec2 d = vec2(xCell - 0.5, (p.y - yLane) * 4.0);
-    float pix = exp(-dot(d, d) * 25.0) * on;
-    float trailX = (xCell - 0.5);
-    float trail = smoothstep(0.0, -0.4, trailX) * exp(-d.y * d.y * 6.0) * on * 0.45;
-    float colorRoll = hash(vec2(fj, bin + 7.0));
-    vec3 hue;
-    if (colorRoll < 0.10) hue = vec3(0.30, 0.85, 1.00);
-    else if (colorRoll < 0.30) hue = vec3(1.00, 0.92, 0.55);
-    else hue = vec3(0.96, 0.65, 0.18);
-    col += hue * (pix + trail);
-  }
-
+  // Block-found wave: forward strike pulses the whole grid radially
   if (uStrike > 0.01) {
-    float maxR = mix(0.6, 1.4, uStrikeGold);
-    float r = (1.0 - uStrike) * maxR;
-    for (int k = 0; k < 8; k++) {
-      float fk = float(k);
-      float ang = fk * 0.7853982;
-      vec2 dir = vec2(cos(ang), sin(ang) * 0.4);
-      vec2 sp = vec2(0.5) + dir * r;
-      float sd = distance(p, sp);
-      float intensity = exp(-sd * sd * 120.0) * uStrike;
-      float gainMul = mix(1.2, 2.5, uStrikeGold);
-      vec3 strikeCol = mix(vec3(1.0, 0.85, 0.40), vec3(1.0, 0.95, 0.70), uStrikeGold);
-      col += strikeCol * intensity * gainMul;
-    }
-    if (uStrikeGold > 0.5) {
-      col += vec3(0.6, 0.45, 0.18) * uStrike * uStrike * 0.18;
-    }
+    float sR = (1.0 - uStrike) * 1.4;
+    float sD = distance(p, vec2(0.5));
+    float wave = exp(-pow((sD - sR) * 8.0, 2.0));
+    a = max(a, wave * uStrike * mix(1.0, 1.4, uStrikeGold));
   }
 
-  col *= 0.94 + 0.06 * sin(uv.y * uRes.y * 1.3);
-  float vig = 1.0 - smoothstep(0.7, 1.0, length(p - 0.5) * 1.5);
-  col *= vig;
+  // Scan sweep highlight
+  if (uShowScan > 0.5) {
+    float sx = mod(uT * 0.3, 1.0);
+    a = max(a, exp(-pow((p.x - sx) * 15.0, 2.0)) * 0.3 * uEnabled);
+  }
+
+  // Block bounds with gap
+  vec2 d = abs(cuv - 0.5);
+  float gap = 0.08;
+  float dInside = max(d.x, d.y);
+  float inBlock = step(dInside, 0.5 - gap);
+
+  // Bevel: top-left bright, bottom-right dark
+  vec2 bevD = (cuv - 0.5);
+  float bevel = (bevD.x + bevD.y) * 4.0;
+
+  // Base fill: dim block + active mix
+  vec3 col = BTC_BG;
+  vec3 fillBase = mix(BTC_DIM * 0.4, BTC_MID * uBright, a);
+  vec3 fillBeveled = fillBase;
+  fillBeveled += BTC_LIGHT * (1.0 - smoothstep(-1.0, 0.5, bevel)) * 0.18 * (a * 0.6 + 0.4);
+  fillBeveled -= BTC_DARK  * smoothstep(0.5, 1.0, bevel) * 0.4 * (a * 0.6 + 0.4);
+  col = mix(col, fillBeveled, inBlock);
+
+  // Inner edge highlight on top + left
+  if (cuv.x < 0.06 + gap || cuv.y < 0.06 + gap) {
+    col += BTC_LIGHT * inBlock * (a * 0.6 + 0.3) * 0.25;
+  }
+
+  // Gold strike overlay (extra warmth on block-found events)
+  if (uStrike > 0.01 && uStrikeGold > 0.5) {
+    col += vec3(0.5, 0.40, 0.15) * uStrike * uStrike * 0.20;
+  }
+
+  if (uShowVig > 0.5) col *= 1.0 - smoothstep(0.6, 1.05, length(p - 0.5) * 1.4) * 0.7;
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -255,6 +278,11 @@ export function createNonceFieldWebGL(canvas, options) {
   const uStrike = mode === 'hunt' ? gl.getUniformLocation(prog, 'uStrike') : null;
   const uStrikeGold = mode === 'hunt' ? gl.getUniformLocation(prog, 'uStrikeGold') : null;
   const uEnabled = mode === 'hunt' ? gl.getUniformLocation(prog, 'uEnabled') : null;
+  // rev61: Beveled Blocks shader uniforms
+  const uGrid = mode === 'hunt' ? gl.getUniformLocation(prog, 'uGrid') : null;
+  const uBright = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBright') : null;
+  const uShowScan = mode === 'hunt' ? gl.getUniformLocation(prog, 'uShowScan') : null;
+  const uShowVig = mode === 'hunt' ? gl.getUniformLocation(prog, 'uShowVig') : null;
   const aLoc = gl.getAttribLocation(prog, 'a');
 
   // Internal state (hunt mode)
@@ -309,6 +337,16 @@ export function createNonceFieldWebGL(canvas, options) {
       gl.uniform1f(uStrikeGold, strikeGold);
       gl.uniform1f(uEnabled, enabled);
       gl.uniform2f(uRes, canvas.width, canvas.height);
+      // rev61: Beveled Blocks grid + post-processing uniforms.
+      // Block size 72 → 72 cols. Rows derived from aspect so cells stay
+      // roughly square-ish (the user picked 72/100%/scan+vig in preview).
+      const aspect = canvas.width / Math.max(1, canvas.height);
+      const cols = 72;
+      const rows = Math.max(3, Math.round(cols / aspect / 2.5));
+      gl.uniform2f(uGrid, cols, rows);
+      gl.uniform1f(uBright, 1.0);
+      gl.uniform1f(uShowScan, 1.0);
+      gl.uniform1f(uShowVig, 1.0);
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);

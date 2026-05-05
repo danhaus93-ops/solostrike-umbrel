@@ -2182,24 +2182,57 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     // Pickaxe icons appear at random spots across a dark field. Each strike
     // leaves a fading impact crater glow. Rare gold strike with shockwave.
     const drawPickaxe = (dt, W, H) => {
+      // rev61: Cool background tint specific to pickaxe mode (the brown handle
+      // reads better against #0e1218 than the common rgba(8,8,10) backdrop).
+      ctx.fillStyle = '#0e1218';
+      ctx.fillRect(0, 0, W, H);
+
       const ths = (hrRef.current || 0) / 1e12;
       if (!pickaxeRef.current.strikes) pickaxeRef.current.strikes = [];
       const strikes = pickaxeRef.current.strikes;
 
-      // Spawn rate scales with hashrate
-      const spawnRate = 1.4 + Math.min(7, ths * 0.07);
+      // rev61: 1.25× speed multiplier across the lifecycle. Spawn rate scaled
+      // up; per-strike maxLife scaled down — both compound so the swing AND
+      // the cadence feel ~25% snappier.
+      const SPEED_MULT = 1.25;
+      const spawnRate = (1.4 + Math.min(7, ths * 0.07)) * SPEED_MULT;
       const expected = spawnRate * dt;
       let toSpawn = Math.floor(expected) + (Math.random() < (expected - Math.floor(expected)) ? 1 : 0);
       for (let i = 0; i < toSpawn; i++) {
         const isGold = Math.random() < 0.05;
+        // rev61: pre-bake polygon shard shapes at spawn (each strike gets
+        // 7-11 unique irregular polygons — like real rock fragments).
+        const numShards = 7 + Math.floor(Math.random() * 5);
+        const shards = [];
+        for (let k = 0; k < numShards; k++) {
+          const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.2;
+          const speed = 30 + Math.random() * 55;
+          const sz = 1.2 + Math.random() * 1.8;
+          const numVerts = 3 + Math.floor(Math.random() * 3);
+          const verts = [];
+          for (let v = 0; v < numVerts; v++) {
+            const vAng = (v / numVerts) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
+            const vR = sz * (0.6 + Math.random() * 0.7);
+            verts.push({ x: Math.cos(vAng) * vR, y: Math.sin(vAng) * vR });
+          }
+          shards.push({
+            vx: Math.cos(ang) * speed,
+            vy: Math.sin(ang) * speed - 18,
+            sz, verts,
+            rot: Math.random() * Math.PI * 2,
+            spin: (Math.random() - 0.5) * 14,
+            shade: Math.random(),
+          });
+        }
         strikes.push({
           x: 22 + Math.random() * (W - 44),
           y: 18 + Math.random() * (H - 36),
           life: 0,
-          maxLife: isGold ? 1.8 : 1.1,        // longer so motion is perceptible
+          maxLife: (isGold ? 1.8 : 1.1) / SPEED_MULT,
           gold: isGold,
-          size: isGold ? 28 : 22,             // bumped from 22/16 for sharper sprite
+          size: isGold ? 28 : 22,
           blockSize: isGold ? 18 : 13,
+          shards,                                      // rev61: pre-baked shard polygons
         });
       }
 
@@ -2283,6 +2316,32 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
           ctx.shadowBlur = 8;
           ctx.beginPath(); ctx.arc(s.x, s.y, ringR, 0, Math.PI * 2); ctx.stroke();
           ctx.shadowBlur = 0;
+        }
+
+        // ── rev61: POLYGON SHARDS on impact ──
+        if (s.shards && strike > 0) {
+          const shardElapsed = strike * 0.30 * s.maxLife;
+          const shardLife = 0.85;
+          for (const sh of s.shards) {
+            const px = s.x + sh.vx * shardElapsed;
+            const py = (s.y - bs * 0.2) + sh.vy * shardElapsed + 0.5 * 200 * shardElapsed * shardElapsed;
+            const alpha = Math.max(0, 1 - shardElapsed / shardLife) * (1 - fadeOut);
+            if (alpha < 0.05) continue;
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.rotate(sh.rot + sh.spin * shardElapsed);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = sh.shade < 0.33 ? '#FFC25A' : sh.shade < 0.66 ? '#FF8C1A' : '#C9500F';
+            ctx.beginPath();
+            ctx.moveTo(sh.verts[0].x, sh.verts[0].y);
+            for (let v = 1; v < sh.verts.length; v++) ctx.lineTo(sh.verts[v].x, sh.verts[v].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = `rgba(40,15,0,${alpha * 0.85})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+            ctx.restore();
+          }
         }
 
         // ── PICKAXE: rise → hold wound back → swing down → impact → fade ──
@@ -3215,33 +3274,54 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Shards
-  if (t >= 1.2 && t < 3.0) {
+  // rev61: POLYGON SHARDS — irregular rock-fragment shapes (matches hunt-mode
+  // shard upgrade). Pre-baked on first frame after impact, then ballistic
+  // trajectory with gravity over the 1.8s window.
+  if (t >= 1.0 && t < 4.0) {
     if (!state.shards) {
       state.shards = [];
-      for (let i = 0; i < 6; i++) {
+      const numShards = 14;
+      for (let i = 0; i < numShards; i++) {
+        const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.3;
+        const speed = 60 + Math.random() * 120;
+        const sz = 4 + Math.random() * 6;
+        const numVerts = 3 + Math.floor(Math.random() * 3);
+        const verts = [];
+        for (let v = 0; v < numVerts; v++) {
+          const vAng = (v / numVerts) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
+          const vR = sz * (0.6 + Math.random() * 0.7);
+          verts.push({ x: Math.cos(vAng) * vR, y: Math.sin(vAng) * vR });
+        }
         state.shards.push({
-          ang: (i / 6) * Math.PI * 2 + Math.random() * 0.3,
-          spin: (Math.random() - 0.5) * 8,
-          size: 18 + Math.random() * 12,
-          color: ['#FFB347', '#FF8C1A', '#FFC85A', '#C95800', '#FFA040'][i % 5],
+          vx: Math.cos(ang) * speed,
+          vy: Math.sin(ang) * speed - 35,
+          verts,
+          rot: Math.random() * Math.PI * 2,
+          spin: (Math.random() - 0.5) * 10,
+          shade: Math.random(),
         });
       }
     }
-    const shardT = (t - 1.2) / 1.8;
-    const dist = shardT * Math.min(W, H) * 0.5;
-    const shardAlpha = Math.max(0, 1 - shardT * 1.2);
+    const shardT = t - 1.0;
+    const shardLife = 2.5;
     for (const sh of state.shards) {
-      const x = cx + Math.cos(sh.ang) * dist;
-      const y = cy + Math.sin(sh.ang) * dist;
+      const px = cx + sh.vx * shardT;
+      const py = cy + sh.vy * shardT + 0.5 * 220 * shardT * shardT;
+      const alpha = Math.max(0, 1 - shardT / shardLife);
+      if (alpha < 0.05) continue;
       ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(shardT * sh.spin);
-      ctx.globalAlpha = shardAlpha;
-      ctx.fillStyle = sh.color;
-      ctx.shadowColor = 'rgba(255, 165, 60, 0.7)';
-      ctx.shadowBlur = 10;
-      ctx.fillRect(-sh.size / 2, -sh.size / 2, sh.size, sh.size);
+      ctx.translate(px, py);
+      ctx.rotate(sh.rot + sh.spin * shardT);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = sh.shade < 0.33 ? '#FFC25A' : sh.shade < 0.66 ? '#FF8C1A' : '#C9500F';
+      ctx.beginPath();
+      ctx.moveTo(sh.verts[0].x, sh.verts[0].y);
+      for (let v = 1; v < sh.verts.length; v++) ctx.lineTo(sh.verts[v].x, sh.verts[v].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = `rgba(40,15,0,${alpha * 0.85})`;
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
       ctx.restore();
     }
   } else if (t < 1.0) {
@@ -3648,17 +3728,19 @@ function saveStratumPass(v)      { try { localStorage.setItem(LS_STRATUM_PASS, v
 // ── Carousel + Stratum rotation helpers (v1.7.17) ───────────────────────────
 const LS_CAROUSEL_ENABLED        = 'ss_carousel_enabled_v1';
 const LS_STRATUM_ROTATED         = 'ss_stratum_rotated_v1';   // '1' once we've moved Stratum to last
-const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'sluice' | 'glimmers' | 'ticker' | 'globe' | 'embers'
+const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'ticker' | 'globe'  (rev61: removed 'sluice', 'glimmers', 'embers')
 function loadCarouselEnabled() { try { const v = localStorage.getItem(LS_CAROUSEL_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveCarouselEnabled(v){ try { localStorage.setItem(LS_CAROUSEL_ENABLED, String(!!v)); } catch {} }
 function loadStratumRotated()  { try { return localStorage.getItem(LS_STRATUM_ROTATED) === '1'; } catch { return false; } }
 function saveStratumRotated()  { try { localStorage.setItem(LS_STRATUM_ROTATED, '1'); } catch {} }
 const PULSE_ANIM_OPTIONS = [
-  { id: 'sluice',   label: 'Sluice Box' },
-  { id: 'glimmers', label: 'Cave Glimmers' },
+  // rev61: removed 'sluice' (Sluice Box), 'glimmers' (Cave Glimmers),
+  // 'embers' (Forge Embers) — they didn't fit the BTC-mining aesthetic.
+  // Pulse is now a clean ambient/observational pair: ticker (network state)
+  // + globe (where miners are). The ticker stays in pulse rather than moving
+  // to hunt — hash-rate / mempool / halving are informational, not per-block.
   { id: 'ticker',   label: 'Hash Ticker' },
   { id: 'globe',    label: 'Solo Strike Map' },
-  { id: 'embers',   label: 'Forge Embers' },
 ];
 const PULSE_ANIM_DEFAULT = 'ticker';
 function loadPulseAnim() {
@@ -7204,10 +7286,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         return;
       }
       ctx.clearRect(0, 0, W, H);
-      if (pulseAnim === 'sluice') drawSluice(dt, W, H);
-      else if (pulseAnim === 'glimmers') drawGlimmers(dt, W, H);
-      else if (pulseAnim === 'globe') drawGlobe(dt, W, H);
-      else if (pulseAnim === 'embers') drawEmbers(dt, W, H);
+      // rev61: dispatch trimmed — sluice/glimmers/embers removed. Stale
+      // pulseAnim values from localStorage just fall through to the
+      // ticker default.
+      if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else drawTicker(dt, W, H); // default 'ticker'
       animationFrameRef.current = requestAnimationFrame(draw);
     };
