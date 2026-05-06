@@ -7356,8 +7356,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
   // Canvas refs for the EKG-style waveform
   const canvasRef = useRef(null);
-  const containerRef = useRef(null);
-  const animationFrameRef = useRef(null);
   const phaseRef = useRef(0);
   const spikesRef = useRef([]);
   const lastTickRef = useRef(performance.now());
@@ -7376,6 +7374,16 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // switching back and forth between modes).
   const constellationCanvasRef = useRef(null);
   const constellationRendererRef = useRef(null);
+  // rev70s: fresh-data refs so the draw loop's closure can read the LATEST
+  // ns.peers and lastShareAt every frame, not stale values captured when
+  // the effect last ran. Without this, peer.lastSeenAgoSec drops are
+  // missed because ns.peers isn't in the effect deps.
+  const nsRef = useRef(null);
+  const lastShareAtFreshRef = useRef(null);
+  // Sync these on every render so the draw loop's closure always reads the
+  // latest values without needing a useEffect re-mount.
+  nsRef.current = ns;
+  lastShareAtFreshRef.current = lastShareAt;
   // rev70k: track active pointers on the constellation canvas. Used to
   // distinguish drag (1 pointer) from pinch-zoom (2 pointers). Map from
   // pointerId -> { x, y } in CSS pixels.
@@ -8856,31 +8864,32 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else if (pulseAnim === 'constellation') {
         // 2D canvas already cleared above. Drive the cascade renderer.
-        // rev70r: per-pool worker counts + share-submission flash detection.
-        // Each non-filtered peer is one pool; peer.workers is its striker
-        // count. We watch lastShareAt (our pool) and peer.lastSeenAgoSec
-        // (peer broadcasts) — both are real network activity signals — and
-        // pass affected pool indices to the renderer to fire a cascade
-        // originating in those pools.
+        // rev70s: read ns and lastShareAt from refs (always fresh) instead
+        // of closure (stale unless deps change). This fixes the bug where
+        // peer.lastSeenAgoSec drops were missed if ns.peers updated without
+        // any other dep changing.
         if (constellationRendererRef.current) {
-          const peerList = Array.isArray(ns.peers)
-            ? ns.peers.filter(p => p && !p.filtered)
+          const nsLive = nsRef.current || ns;
+          const lastShareAtLive = lastShareAtFreshRef.current;
+          const peerList = Array.isArray(nsLive.peers)
+            ? nsLive.peers.filter(p => p && !p.filtered)
             : [];
           const poolWorkers = peerList.map(p => Math.max(0, p.workers | 0));
 
           // Detect activity → flashPoolIndices
           const flashPoolIndices = [];
           // 1) Our pool's share submission
-          if (lastShareAt && lastShareAt !== lastShareAtRef.current) {
+          if (lastShareAtLive && lastShareAtLive !== lastShareAtRef.current) {
             if (lastShareAtRef.current !== null) {
               const ourIdx = peerList.findIndex(p => p.isOwn);
               if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
             }
-            lastShareAtRef.current = lastShareAt;
+            lastShareAtRef.current = lastShareAtLive;
           }
           // 2) Peer broadcasts (lastSeenAgoSec drops = peer just sent
-          // fresh stats). Skip our own pool — its flash is driven by
-          // lastShareAt, not by our own broadcasts.
+          // fresh stats). rev70s: threshold lowered from 5 to 1 — any
+          // detected drop fires a cascade. Skip our own pool — its flash
+          // is driven by lastShareAt, not by our own broadcasts.
           const newSeen = new Map();
           for (let i = 0; i < peerList.length; i++) {
             const peer = peerList[i];
@@ -8888,7 +8897,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             newSeen.set(peer.pubkey, cur);
             if (peer.isOwn) continue;
             const prev = peerLastSeenRef.current.get(peer.pubkey);
-            if (prev != null && cur < prev - 5) {
+            if (prev != null && cur < prev - 1) {
               flashPoolIndices.push(i);
             }
           }
