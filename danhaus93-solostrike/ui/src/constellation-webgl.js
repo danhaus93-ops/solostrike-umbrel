@@ -36,9 +36,12 @@ void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c);
   if (d > 0.5) discard;
-  // Soft glow — exponential falloff from center
-  float a = exp(-d * 7.0);
-  gl_FragColor = vec4(vColor, a * 1.6);
+  // rev70m: sharper falloff (was -7) + lower alpha multiplier (was *1.6).
+  // The earlier values produced bright halo blobs that saturated the
+  // canvas to white when many points clustered (e.g. 8 strikers in one
+  // tight pool with low total pool count).
+  float a = exp(-d * 11.0);
+  gl_FragColor = vec4(vColor, a * 0.95);
 }
 `;
 
@@ -256,7 +259,9 @@ export function createConstellationWebGL(canvas, opts = {}) {
       for (let s = 0; s < w; s++) {
         const sa = rand() * Math.PI * 2;
         const sb = (rand() - 0.5) * Math.PI;
-        const sr = 0.18 + rand() * 0.22;
+        // rev70m: wider orbital spread so strikers don't crowd into a
+        // blob at the pool center. Range 0.20 → 0.55 (was 0.18 → 0.40).
+        const sr = 0.20 + rand() * 0.35;
         strikers.push({
           poolIdx: p,
           baseOx: Math.cos(sa) * Math.cos(sb) * sr,
@@ -273,19 +278,19 @@ export function createConstellationWebGL(canvas, opts = {}) {
     totalStrikers = strikers.length;
     totalPoints = totalPools + totalStrikers;
 
-    // Pre-fill colors and base sizes
-    // Pools: amber-bright #FFD68A (1.0, 0.84, 0.42)
-    // Strikers: blue-tint #88AACC (0.55, 0.72, 0.95)
-    // rev70j: when very few pools, scale up the pool size slightly so they
-    // don't look lonely. When many pools, scale down so they don't crowd.
-    const poolSizeBase = totalPools <= 3 ? 0.30
-                       : totalPools <= 8 ? 0.22
-                       : totalPools <= 20 ? 0.18
-                       : 0.14;
-    const strikerSizeBase = totalStrikers <= 20 ? 0.08
-                          : totalStrikers <= 80 ? 0.06
-                          : totalStrikers <= 200 ? 0.05
-                          : 0.04;
+    // Adaptive sizing — same logic as before, scales with totals.
+    // rev70m: tightened ranges. Old upper ends (0.30 pool, 0.08 striker)
+    // saturated the canvas with additive blending when only 2 pools
+    // were present. Production screenshot showed two blown-out white
+    // blobs. New ceiling matches the design preview values.
+    const poolSizeBase = totalPools <= 3 ? 0.20
+                       : totalPools <= 8 ? 0.17
+                       : totalPools <= 20 ? 0.15
+                       : 0.12;
+    const strikerSizeBase = totalStrikers <= 20 ? 0.055
+                          : totalStrikers <= 80 ? 0.045
+                          : totalStrikers <= 200 ? 0.04
+                          : 0.035;
 
     for (let i = 0; i < totalPools; i++) {
       pointColors[i * 3 + 0] = 1.0;
@@ -511,9 +516,10 @@ export function createConstellationWebGL(canvas, opts = {}) {
       gl.drawArrays(gl.LINES, 0, interLineCount * 2);
     }
 
-    // Intra-pool lines (amber-dim)
+    // Intra-pool lines (amber-dim) — rev70m: opacity 0.18 → 0.10 to ease
+    // the additive bloom that contributed to the white-blob saturation.
     if (totalStrikers > 0) {
-      gl.uniform1f(uLineOpacity, 0.18);
+      gl.uniform1f(uLineOpacity, 0.10);
       gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesPosBuf);
       gl.enableVertexAttribArray(aPosL);
       gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
