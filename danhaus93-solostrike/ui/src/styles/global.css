@@ -296,22 +296,22 @@ body * {
 }
 .ss-carousel > *::-webkit-scrollbar { width: 0; }
 
-/* Inside a carousel item, cards fill the slot vertically. min-height: 100%
-   means the card stretches to slot height when content is shorter (so no
-   empty black space between card content and the dots/footer); when content
-   is taller than the slot, the card grows naturally and slot's overflow-y:
-   auto handles inner scrolling. height: auto allows the natural-content path.
+/* Inside a carousel item, cards fill the slot vertically.
 
-   rev67: added `display: flex; flex-direction: column` so the inner styled
-   card div (the visible Forge Tile) can use flex:1 to fill the wrapper.
-   Previous attempt (rev66's `min-height: 100%` on the inline card style)
-   didn't work because percentage min-height resolves to auto when the
-   parent has `height: auto` (CSS spec). Flex sidesteps that rule entirely:
-   the wrapper grows with its content (or to slot height via min-height),
-   and the inner div absorbs whatever extra space exists. */
+   rev68 (THIS FIX): dropped `height: auto` from the rev67 attempt. The flex
+   algorithm needs a *definite* parent height to compute "free space" for
+   flex-grow children. With `height: auto; min-height: 100%`, browsers treat
+   the parent as size-to-content even though min-height is set, so the
+   inner card with `flex: 1 0 auto` saw zero free space and never grew.
+   `.ss-carousel > *` already sets `height: 100%`; keeping that as-is means
+   the wrapper is now a definite-height flex container, and the inner div's
+   flex-grow actually claims the available space. min-height: 100% is kept
+   as a defensive belt — if `height: 100%` ever fails to resolve (e.g., if
+   --carousel-h becomes invalid), we still get at least slot height.
+   When content is taller than slot, the .ss-card's own `overflow-y: auto`
+   (also from `.ss-carousel > *`) scrolls inside the slot. */
 .ss-carousel .ss-card {
   margin: 0;
-  height: auto;
   min-height: 100%;
   display: flex;
   flex-direction: column;
