@@ -491,7 +491,10 @@ export function createLightningWebGL(canvas, opts = {}) {
     state.flash = Math.max(0, state.flash - dt * 2.5);
 
     // ─── Render ───
-    gl.clearColor(0.031, 0.031, 0.039, 1.0); // matches rgba(8,8,10,1)
+    // ─── Render ───
+    // v1.8.5-rev70e: fully transparent clear so the card shows behind.
+    // Was: clearColor(0.031, 0.031, 0.039, 1.0) matching rgba(8,8,10,1).
+    gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
 

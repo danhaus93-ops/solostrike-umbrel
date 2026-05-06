@@ -2577,10 +2577,11 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     // Pickaxe icons appear at random spots across a dark field. Each strike
     // leaves a fading impact crater glow. Rare gold strike with shockwave.
     const drawPickaxe = (dt, W, H) => {
-      // rev61: Cool background tint specific to pickaxe mode (the brown handle
-      // reads better against #0e1218 than the common rgba(8,8,10) backdrop).
-      ctx.fillStyle = '#0e1218';
-      ctx.fillRect(0, 0, W, H);
+      // v1.8.5-rev70e: clear instead of fill so the card surface shows
+      // through. Was: fillStyle '#0e1218' + fillRect (cool tint specific to
+      // pickaxe). The brown handle now reads against the card's bg-raised
+      // gradient instead of a custom backdrop.
+      ctx.clearRect(0, 0, W, H);
 
       const ths = (hrRef.current || 0) / 1e12;
       if (!pickaxeRef.current.strikes) pickaxeRef.current.strikes = [];
@@ -2808,9 +2809,9 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       }
       const { w: W, h: H } = dimsRef.current;
 
-      // Common dark background
-      ctx.fillStyle = 'rgba(8, 8, 10, 1)';
-      ctx.fillRect(0, 0, W, H);
+      // v1.8.5-rev70e: clear to transparent so card shows through.
+      // Each animation draws full coverage so no ghosting.
+      ctx.clearRect(0, 0, W, H);
 
       const a = huntAnimRef.current;
 
@@ -2858,9 +2859,8 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
         // Fallback: continue into 2D drawNonceField path
       }
 
-      // Common dark background
-      ctx.fillStyle = 'rgba(8, 8, 10, 1)';
-      ctx.fillRect(0, 0, W, H);
+      // v1.8.5-rev70e: clear to transparent so card shows through.
+      ctx.clearRect(0, 0, W, H);
 
       if (a === 'sonar') drawSonar(dt, W, H);
       else if (a === 'lightning') drawLightning(dt, W, H);
@@ -2906,8 +2906,11 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       maxHeight: 280,
       position: 'relative',
       overflow: 'hidden',
-      background: 'rgba(8, 8, 10, 1)',
-      border: '1px solid var(--border)',
+      // v1.8.5-rev70e: bg transparent so Hunt animations composite onto
+      // the card surface. 2D canvas now uses clearRect, lightning-webgl
+      // clears with alpha 0, nonce-field shader outputs alpha=inBlock so
+      // gaps between blocks reveal the card behind.
+      background: 'transparent',
     }}>
       <canvas ref={canvasRef} style={{
         display: huntAnim === 'lightning' ? 'none' : 'block',
@@ -8743,11 +8746,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           style={{ cursor: onOpenStrikers ? 'pointer' : 'default' }}
           title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
         >
-        {/* Smaller waveform for embedded mode */}
+        {/* Smaller waveform for embedded mode.
+            v1.8.5-rev70e: bg transparent + no border so the globe sphere
+            (and other animations) sit directly on the card surface.
+            All canvases inside are alpha-transparent. */}
         <div ref={containerRef} style={{
           width:'100%', height:88,
-          background:'#000',
-          border:'1px solid var(--border)',
+          background:'transparent',
           marginBottom:'0.6rem',
           position:'relative', overflow:'hidden',
         }}>
@@ -8861,11 +8866,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         style={{ cursor: onOpenStrikers ? 'pointer' : 'default', flex:1, minHeight:0, display:'flex', flexDirection:'column' }}
         title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
       >
-      {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240, max 380 to prevent runaway growth in vertical-scroll mode) */}
+      {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240, max 380 to prevent runaway growth in vertical-scroll mode).
+          v1.8.5-rev70e: bg transparent + no border so the globe sphere
+          (and other animations) sit directly on the card surface. */}
       <div ref={containerRef} style={{
         width:'100%', flex:1, minHeight:240, maxHeight:380,
-        background:'#000',
-        border:'1px solid var(--border)',
+        background:'transparent',
         marginBottom:'0.7rem',
         position:'relative', overflow:'hidden',
       }}>

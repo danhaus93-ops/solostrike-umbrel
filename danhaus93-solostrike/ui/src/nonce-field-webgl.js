@@ -135,7 +135,9 @@ void main() {
 
   if (uShowVig > 0.5) col *= 1.0 - smoothstep(0.6, 1.05, length(p - 0.5) * 1.4) * 0.7;
 
-  gl_FragColor = vec4(col, 1.0);
+  // v1.8.5-rev70e: alpha=inBlock so block pixels are opaque and gap pixels
+  // are transparent (card shows through gaps in the nonce field).
+  gl_FragColor = vec4(col, inBlock);
 }
 `;
 
@@ -227,7 +229,9 @@ export function createNonceFieldWebGL(canvas, options) {
 
   const gl = canvas.getContext('webgl', {
     antialias: false,
-    alpha: false,
+    // v1.8.5-rev70e: alpha:true so card shows through gap pixels in
+    // hunt mode (fragment shader outputs alpha=inBlock; gaps = 0).
+    alpha: true,
     premultipliedAlpha: false,
     preserveDrawingBuffer: false,
     // BFM is short and visual-quality matters; hunt runs continuously so
