@@ -147,6 +147,7 @@ const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
+const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
 const DEFAULT_TICKER_SPEED = 30;
 const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'worker_health', 'accept_rate', 'next_block_prize', 'btc_price', 'time_since_block', 'halving', 'blocks_found_total'];
@@ -234,6 +235,334 @@ function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_M
 function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
 function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); const migrated = migrateCardIds(Array.isArray(p) ? p : []); return migrated.length ? migrated.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
 function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
+
+// Debug overlay settings (rev70). One persisted JSON object so we can ship a
+// "complete and thorough" debug system that survives across revs without
+// adding/removing diagnostic code each iteration. Sections can be toggled
+// individually from Settings → Debug. Defaults: enabled is OFF for fresh
+// installs (the overlay is for power users), but if a user is upgrading from
+// rev69 — where the overlay defaulted ON via the ss_debug_layout_hide flag —
+// we respect their prior choice: if they DIDN'T dismiss it, keep it on; if
+// they DID, keep it off. After this rev the localStorage flag is obsolete.
+const DEBUG_DEFAULTS = {
+  enabled:     false,  // master toggle
+  // Page-level inspection
+  layout:      true,   // carousel / slot / card dimensions
+  state:       true,   // mode flags, indices, body classes
+  network:     true,   // pool state, stratum ports, last update
+  build:       true,   // cache name, version, SW state + all registrations
+  // Diagnostic streams (continuously captured at module load)
+  performance: false,  // FPS, memory, long tasks, DOM nodes, page-load timing
+  errors:      false,  // window errors + unhandled promise rejections
+  consoleLog:  false,  // captured console.log/warn/error rolling buffer
+  api:         false,  // fetch() trace
+  transport:   false,  // NEW: WebSocket + EventSource state, message counts
+  resources:   false,  // NEW: slow/large resource loads via PerformanceObserver
+  // Environment & resources
+  device:      false,  // UA, DPR, online, connection, prefs, safe-area
+  visibility:  false,  // NEW: page visibility transitions + wake lock state
+  battery:     false,  // NEW: level, charging, time remaining
+  webgl:       false,  // NEW: canvas inventory, GPU renderer, context-loss count
+  caches:      false,  // Cache Storage entries + storage estimate
+  capabilities:false,  // NEW: feature support matrix (one-time probe)
+  theme:       false,  // NEW: every --ss-* CSS custom property at :root
+  pool:        false,  // worker/hashrate/share/block detail
+  interaction: false,  // last tap coords + idle time
+  storage:     false,  // localStorage browser
+};
+function loadDebugSettings() {
+  try {
+    const raw = localStorage.getItem(LS_DEBUG_SETTINGS);
+    if (raw) {
+      const p = JSON.parse(raw);
+      return { ...DEBUG_DEFAULTS, ...(p && typeof p === 'object' ? p : {}) };
+    }
+    // First-time migration from rev69: if user had the overlay open (didn't
+    // dismiss it via × button), default new debug settings to enabled. Else
+    // start disabled — they'll flip it on from Settings → Debug if needed.
+    const dismissed = localStorage.getItem('ss_debug_layout_hide') === '1';
+    return { ...DEBUG_DEFAULTS, enabled: !dismissed };
+  } catch { return { ...DEBUG_DEFAULTS }; }
+}
+function saveDebugSettings(s) {
+  try { localStorage.setItem(LS_DEBUG_SETTINGS, JSON.stringify(s || {})); } catch {}
+}
+
+// ── Module-level diagnostic store (rev70) ────────────────────────────────────
+// Hooks below install ONCE at module load and run continuously regardless of
+// whether the debug overlay is open. That way, when a user notices something
+// odd and flips the overlay on, they immediately see the recent history of
+// errors/console-logs/API calls — not just events that happened after they
+// enabled it. Buffer sizes are capped to bound memory.
+const _ssDebug = {
+  errors:        [],   // {ts, msg, src, lineno, colno, stack}
+  rejections:    [],   // {ts, reason}
+  consoleLog:    [],   // {ts, level, text}
+  apiCalls:      [],   // {ts, method, url, status, ms}
+  longTasks:     0,    // total long-task count since page load
+  fps:           60,   // current rolling-second FPS
+  fpsSamples:    [],   // last ~30s of per-second FPS samples
+  ctxLoss:       [],   // {ts, canvasIdx} WebGL context-lost events
+  lastTap:       { ts: 0, type: null, x: 0, y: 0 },
+  installedAt:   Date.now(),
+  // rev70 expansion:
+  wsInstances:   [],   // {ws, url, msgCount, lastMsgTs, openTs, closeCode, closeReason}
+  esInstances:   [],   // {es, url, msgCount, lastMsgTs, openTs}
+  resources:     [],   // {ts, name, dur, size, type}  — only slow/large
+  visibility:    { state: 'visible', transitions: 0, lastChangeTs: Date.now() },
+  battery:       null, // { level, charging, chargingTime, dischargingTime } when supported
+};
+function _ssTruncate(s, max = 200) {
+  s = String(s == null ? '' : s);
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+function _ssSerializeArg(arg) {
+  try {
+    if (arg == null) return String(arg);
+    if (typeof arg === 'string') return _ssTruncate(arg);
+    if (arg instanceof Error) return _ssTruncate(arg.stack || arg.message);
+    if (typeof arg === 'object') return _ssTruncate(JSON.stringify(arg));
+    return _ssTruncate(String(arg));
+  } catch { return '[unserializable]'; }
+}
+function _ssPushBounded(arr, item, cap) {
+  arr.push(item);
+  while (arr.length > cap) arr.shift();
+}
+// Install hooks exactly once per page (window guard survives hot reload).
+if (typeof window !== 'undefined' && !window._ssDebugHooksInstalled) {
+  window._ssDebugHooksInstalled = true;
+
+  // 1. window.onerror — uncaught JS errors. Useful when something silently
+  //    breaks the UI without showing a visible failure.
+  window.addEventListener('error', (e) => {
+    _ssPushBounded(_ssDebug.errors, {
+      ts: Date.now(),
+      msg: _ssTruncate(e?.message || 'unknown error'),
+      src: _ssTruncate(e?.filename || '', 80),
+      lineno: e?.lineno || 0,
+      colno: e?.colno || 0,
+      stack: e?.error?.stack ? _ssTruncate(e.error.stack, 300) : '',
+    }, 30);
+  }, { capture: true });
+
+  // 2. unhandledrejection — promise rejections nobody caught. Common cause
+  //    of "API call silently failed and UI shows stale data forever".
+  window.addEventListener('unhandledrejection', (e) => {
+    let reason = '';
+    try {
+      const r = e?.reason;
+      reason = r instanceof Error ? (r.stack || r.message) : (typeof r === 'string' ? r : JSON.stringify(r));
+    } catch { reason = '[unserializable rejection]'; }
+    _ssPushBounded(_ssDebug.rejections, {
+      ts: Date.now(),
+      reason: _ssTruncate(reason, 300),
+    }, 20);
+  });
+
+  // 3. console wrap — captures every log/info/warn/error/debug call with a
+  //    truncated string repr. Indispensable on iOS where reaching DevTools
+  //    over USB is non-trivial. Keeps original behavior; just adds a tap.
+  ['log', 'info', 'warn', 'error', 'debug'].forEach((level) => {
+    const orig = console[level];
+    if (typeof orig !== 'function') return;
+    console[level] = function patched(...args) {
+      try {
+        _ssPushBounded(_ssDebug.consoleLog, {
+          ts: Date.now(),
+          level,
+          text: args.map(_ssSerializeArg).join(' '),
+        }, 50);
+      } catch (_) {}
+      return orig.apply(console, args);
+    };
+  });
+
+  // 4. fetch wrap — every API call gets logged with timing + status. Skip
+  //    if fetch is missing (very old browsers, doesn't apply here but safe).
+  if (typeof window.fetch === 'function') {
+    const origFetch = window.fetch.bind(window);
+    window.fetch = function patchedFetch(input, init) {
+      let url = '';
+      try { url = typeof input === 'string' ? input : (input && input.url) || String(input); }
+      catch { url = '?'; }
+      const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      const t0 = (performance && performance.now) ? performance.now() : Date.now();
+      const finish = (status, err) => {
+        const ms = Math.round(((performance && performance.now) ? performance.now() : Date.now()) - t0);
+        _ssPushBounded(_ssDebug.apiCalls, {
+          ts: Date.now(),
+          method,
+          url: _ssTruncate(url, 80),
+          status,
+          ms,
+          err: err ? _ssTruncate(err, 60) : null,
+        }, 30);
+      };
+      try {
+        return origFetch(input, init).then(
+          (res) => { finish(res.status); return res; },
+          (err) => { finish('ERR', err && (err.message || String(err))); throw err; }
+        );
+      } catch (sync) {
+        finish('THROW', sync && (sync.message || String(sync)));
+        throw sync;
+      }
+    };
+  }
+
+  // 5. PerformanceObserver(longtask) — counts blocking JS tasks >50ms. High
+  //    counts correlate with jank in the WebGL bg or carousel scroll feel.
+  try {
+    if ('PerformanceObserver' in window) {
+      const po = new PerformanceObserver((list) => {
+        _ssDebug.longTasks += list.getEntries().length;
+      });
+      po.observe({ entryTypes: ['longtask'] });
+    }
+  } catch (_) { /* longtask not supported (Safari < 15ish) */ }
+
+  // 6. FPS via requestAnimationFrame. ~60 callbacks/sec is negligible cost
+  //    and gives historical samples even when the panel is closed.
+  let _fpsLast = (performance && performance.now) ? performance.now() : Date.now();
+  let _fpsFrames = 0;
+  function _fpsTick(now) {
+    _fpsFrames++;
+    const elapsed = now - _fpsLast;
+    if (elapsed >= 1000) {
+      _ssDebug.fps = Math.round((_fpsFrames * 1000) / elapsed);
+      _ssPushBounded(_ssDebug.fpsSamples, _ssDebug.fps, 30);
+      _fpsFrames = 0;
+      _fpsLast = now;
+    }
+    requestAnimationFrame(_fpsTick);
+  }
+  requestAnimationFrame(_fpsTick);
+
+  // 7. Last-interaction tracking — useful for "the swipe didn't register"
+  //    style debugging. Uses passive capture so we don't interfere with
+  //    real handlers.
+  const onTap = (e) => {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    _ssDebug.lastTap = {
+      ts: Date.now(),
+      type: e.type,
+      x: Math.round(t.clientX || 0),
+      y: Math.round(t.clientY || 0),
+    };
+  };
+  ['click', 'touchstart', 'touchend', 'pointerdown'].forEach((ev) => {
+    window.addEventListener(ev, onTap, { passive: true, capture: true });
+  });
+
+  // 8. WebSocket wrap — most live pool/Stratum data flows through WS, and
+  //    "data went stale" without a console error is almost always a closed
+  //    socket nobody noticed. Wrap the constructor; preserve prototype and
+  //    static constants so `instanceof` and ws.OPEN-style checks still work.
+  if (typeof window.WebSocket === 'function') {
+    const OrigWS = window.WebSocket;
+    function PatchedWS(url, protocols) {
+      const ws = protocols !== undefined ? new OrigWS(url, protocols) : new OrigWS(url);
+      const entry = {
+        ws,
+        url: _ssTruncate(String(url), 80),
+        msgCount: 0,
+        lastMsgTs: 0,
+        openTs: 0,
+        closeCode: null,
+        closeReason: null,
+      };
+      _ssPushBounded(_ssDebug.wsInstances, entry, 10);
+      ws.addEventListener('open',    () => { entry.openTs = Date.now(); });
+      ws.addEventListener('message', () => { entry.msgCount++; entry.lastMsgTs = Date.now(); });
+      ws.addEventListener('close',   (e) => { entry.closeCode = e.code; entry.closeReason = _ssTruncate(e.reason || '', 40); });
+      return ws;
+    }
+    PatchedWS.prototype = OrigWS.prototype;
+    PatchedWS.CONNECTING = OrigWS.CONNECTING;
+    PatchedWS.OPEN       = OrigWS.OPEN;
+    PatchedWS.CLOSING    = OrigWS.CLOSING;
+    PatchedWS.CLOSED     = OrigWS.CLOSED;
+    try { window.WebSocket = PatchedWS; } catch (_) { /* read-only env */ }
+  }
+
+  // 9. EventSource wrap — same idea for SSE-based feeds (less common but
+  //    some pool APIs use it). Same caveats; we just count messages.
+  if (typeof window.EventSource === 'function') {
+    const OrigES = window.EventSource;
+    function PatchedES(url, init) {
+      const es = init !== undefined ? new OrigES(url, init) : new OrigES(url);
+      const entry = { es, url: _ssTruncate(String(url), 80), msgCount: 0, lastMsgTs: 0, openTs: 0 };
+      _ssPushBounded(_ssDebug.esInstances, entry, 5);
+      es.addEventListener('open',    () => { entry.openTs = Date.now(); });
+      es.addEventListener('message', () => { entry.msgCount++; entry.lastMsgTs = Date.now(); });
+      return es;
+    }
+    PatchedES.prototype = OrigES.prototype;
+    PatchedES.CONNECTING = OrigES.CONNECTING;
+    PatchedES.OPEN       = OrigES.OPEN;
+    PatchedES.CLOSED     = OrigES.CLOSED;
+    try { window.EventSource = PatchedES; } catch (_) {}
+  }
+
+  // 10. PerformanceObserver(resource) — captures script/img/css/fetch entries
+  //     that were slow (>500ms) or large (>100KB). Diagnoses CDN issues,
+  //     unoptimized bundle splits, oversized images dragged in by mistake.
+  try {
+    if ('PerformanceObserver' in window) {
+      const ro2 = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const dur = Math.round(entry.duration || 0);
+          const size = entry.transferSize || 0;
+          if (dur > 500 || size > 102400) {
+            _ssPushBounded(_ssDebug.resources, {
+              ts: Date.now(),
+              name: _ssTruncate(entry.name || '', 80),
+              dur,
+              size,
+              type: entry.initiatorType || 'other',
+            }, 20);
+          }
+        }
+      });
+      ro2.observe({ entryTypes: ['resource'] });
+    }
+  } catch (_) {}
+
+  // 11. Page visibility — counts every transition between visible/hidden.
+  //     Spike in transitions correlates with iOS/Android suspend/resume,
+  //     which is the most common cause of "the data froze" reports.
+  try {
+    _ssDebug.visibility.state = document.visibilityState;
+    document.addEventListener('visibilitychange', () => {
+      _ssDebug.visibility.transitions++;
+      _ssDebug.visibility.lastChangeTs = Date.now();
+      _ssDebug.visibility.state = document.visibilityState;
+    }, { passive: true });
+  } catch (_) {}
+
+  // 12. Battery — async; subscribes to level/charging changes once and
+  //     refreshes the cached struct. iOS Safari doesn't expose this; we
+  //     just leave _ssDebug.battery null in that case.
+  try {
+    if (typeof navigator.getBattery === 'function') {
+      navigator.getBattery().then((bm) => {
+        const refresh = () => {
+          _ssDebug.battery = {
+            level: Math.round((bm.level || 0) * 100),
+            charging: !!bm.charging,
+            chargingTime: bm.chargingTime === Infinity ? '∞' : Math.round(bm.chargingTime / 60) + 'm',
+            dischargingTime: bm.dischargingTime === Infinity ? '∞' : Math.round(bm.dischargingTime / 60) + 'm',
+          };
+        };
+        refresh();
+        ['levelchange', 'chargingchange', 'chargingtimechange', 'dischargingtimechange'].forEach((ev) =>
+          bm.addEventListener(ev, refresh)
+        );
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
 
 function stripAddr(fullName) {
   if (!fullName || typeof fullName !== 'string') return fullName || '';
@@ -3967,56 +4296,221 @@ function CarouselDots({ count, activeIndex, onJump }) {
   );
 }
 
-// ── Layout Debug Overlay (rev68) ─────────────────────────────────────────────
-// URL-triggered diagnostic overlay for the carousel-not-filling bug. Shows
-// live measurements of the carousel, slot, and inner card dimensions side by
-// side with viewport / dvh / iframe state. Activate via URL hash:
+// ── Debug Overlay (rev70) ────────────────────────────────────────────────────
+// Persistent floating diagnostic panel. Toggle from Settings → Debug. Each
+// section can be enabled independently. The panel updates every 500ms plus on
+// every relevant event (scroll/resize/visualViewport). Latest snapshot is
+// also stashed at window._ssDebugSnapshot so the "Copy snapshot" button in
+// settings can dump it to clipboard for sharing.
 //
-//   100.80.164.13/#debug-layout
+// SECTIONS:
+//   layout   — viewport, header/footer, carousel/slot/inner card metrics
+//   state    — display mode, indices, splash flag, body classes
+//   network  — pool loaded, stratum ports, last-update timestamp
+//   build    — compose version, cache name, SW state, current path
+//   storage  — every ss_* localStorage key + value (verbose; off by default)
 //
-// Toggle off by removing the hash and reloading. The overlay is fixed
-// top-right with `pointer-events: none` so it never blocks UI underneath.
-// Updates every 500ms + on every scroll/resize so values reflect the
-// current carousel page and Safari address-bar state.
+// COLOR CODES:
+//   green   — normal value
+//   orange  — value flagged as anomalous (e.g., WASTED > 20px)
+//   gray    — label
 //
-// What to look for when reading the values:
-//  • slot.h vs inner.h — if slot is larger than inner, the empty-space bug
-//    is happening (inner card not filling slot). Their delta = visible gap.
-//  • carousel-h vs 100dvh — if carousel-h is much smaller than 100dvh - 246,
-//    the CSS fallback is computing wrong (viewport quirk).
-//  • slot.display should be 'flex' and slot.flex-dir 'column' for the rev67
-//    flex fix to be active. inner.flex should show '1 0 auto'.
-//  • iframe + body.classes confirm mode (carousel vs grid, in-iframe).
-function DebugLayoutOverlay() {
-  // rev69: default to ON (was URL-hash-triggered in rev68 which didn't reliably
-  // activate). Close button writes a localStorage flag to hide. Once we have
-  // diagnostic data and ship the fix, this defaults back to off in a later rev.
-  const [visible, setVisible] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      // Hidden if user explicitly closed it via the × button
-      if (window.localStorage.getItem('ss_debug_layout_hide') === '1') return false;
-    } catch (_) {}
-    // Force-show via URL hash, useful to re-enable after dismissing
-    if (window.location.hash.includes('debug-layout')) return true;
-    // Default: ON for diagnostic capture
-    return true;
-  });
+// HISTORY: replaces DebugLayoutOverlay from rev68/69 which was URL-hash- and
+// localStorage-flag-toggled. This version is driven by ss_debug_settings_v1.
+function DebugOverlay({ settings, onSettingsChange, appState }) {
   const [d, setD] = useState({});
+  const [cacheName, setCacheName] = useState('…');
+  const [cacheDetails, setCacheDetails] = useState([]); // [[name, count], ...]
+  const [storageEstimate, setStorageEstimate] = useState(null);
+  const [swRegs, setSwRegs] = useState([]);
+  const [gpuRenderer, setGpuRenderer] = useState('');
+  const [capabilities, setCapabilities] = useState(null);
+  const [themeVars, setThemeVars] = useState({});
 
+  // One-time GPU + capability probe. Done with a throwaway canvas so we
+  // don't disturb any of the four real WebGL canvases the app uses.
   useEffect(() => {
-    const onHash = () => {
-      if (window.location.hash.includes('debug-layout')) {
-        try { window.localStorage.removeItem('ss_debug_layout_hide'); } catch (_) {}
-        setVisible(true);
+    if (!settings.enabled) return;
+    // GPU renderer
+    try {
+      const probe = document.createElement('canvas');
+      const gl = probe.getContext('webgl2') || probe.getContext('webgl') || probe.getContext('experimental-webgl');
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) {
+          const r = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+          if (r) setGpuRenderer(String(r).slice(0, 60));
+        }
+        // Force context loss + cleanup so we don't leak
+        const lc = gl.getExtension('WEBGL_lose_context');
+        if (lc) lc.loseContext();
       }
+    } catch (_) {}
+
+    // Feature detection — synchronous, tiny.
+    setCapabilities({
+      WebGL:          !!window.WebGLRenderingContext,
+      WebGL2:         !!window.WebGL2RenderingContext,
+      WebAssembly:    typeof WebAssembly === 'object',
+      ServiceWorker:  'serviceWorker' in navigator,
+      CacheAPI:       'caches' in window,
+      IndexedDB:      !!window.indexedDB,
+      StorageManager: !!(navigator.storage && navigator.storage.estimate),
+      Persistent:     !!(navigator.storage && navigator.storage.persist),
+      WakeLock:       'wakeLock' in navigator,
+      BatteryAPI:     'getBattery' in navigator,
+      WebShare:       !!navigator.share,
+      Clipboard:      !!(navigator.clipboard && navigator.clipboard.writeText),
+      Notifications:  'Notification' in window,
+      PushManager:    'PushManager' in window,
+      VisualViewport: !!window.visualViewport,
+      MediaSession:   'mediaSession' in navigator,
+      'isSecure':     !!window.isSecureContext,
+      'crossOriginIsolated': !!window.crossOriginIsolated,
+    });
+  }, [settings.enabled]);
+
+  // CSS custom properties at :root — scans loaded stylesheets for any
+  // `:root` rule and reads each declared `--*` property's computed value.
+  // Refreshed only when the theme section is actually visible.
+  useEffect(() => {
+    if (!settings.enabled || !settings.theme) return;
+    const refresh = () => {
+      const out = {};
+      try {
+        const root = document.documentElement;
+        const cs = window.getComputedStyle(root);
+        const seen = new Set();
+        for (const sheet of (document.styleSheets || [])) {
+          let rules = null;
+          try { rules = sheet.cssRules; } catch (_) { continue; /* CORS */ }
+          if (!rules) continue;
+          for (const rule of rules) {
+            if (!rule || !rule.style) continue;
+            if (rule.selectorText && rule.selectorText.includes(':root')) {
+              for (let i = 0; i < rule.style.length; i++) {
+                const name = rule.style[i];
+                if (name && name.startsWith('--') && !seen.has(name)) {
+                  seen.add(name);
+                  out[name] = cs.getPropertyValue(name).trim();
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+      setThemeVars(out);
     };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+    refresh();
+    const id = setInterval(refresh, 3000);
+    return () => clearInterval(id);
+  }, [settings.enabled, settings.theme]);
+
+  // SW registrations — every controller, including waiting/installing
+  // workers (essential for catching "update available but page never
+  // reloaded" states).
+  useEffect(() => {
+    if (!settings.enabled || !settings.build) return;
+    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.getRegistrations) {
+      setSwRegs([]);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        if (cancelled) return;
+        setSwRegs(regs.map((r) => ({
+          scope: r.scope,
+          installing: r.installing && r.installing.state,
+          waiting:    r.waiting && r.waiting.state,
+          active:     r.active && r.active.state,
+          scriptURL:  (r.active && r.active.scriptURL) || (r.waiting && r.waiting.scriptURL) || '',
+        })));
+      } catch (_) {}
+    };
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [settings.enabled, settings.build]);
+
+  // Storage estimate — origin-wide quota + usage. Critical for diagnosing
+  // SW cache eviction (Safari can silently evict if the device is low).
+  useEffect(() => {
+    if (!settings.enabled || !settings.caches) return;
+    if (!navigator.storage || !navigator.storage.estimate) {
+      setStorageEstimate({ note: 'StorageManager API unavailable' });
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const est = await navigator.storage.estimate();
+        if (cancelled) return;
+        const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : null;
+        setStorageEstimate({
+          usage: est.usage != null ? (est.usage / 1048576).toFixed(1) + ' MB' : '?',
+          quota: est.quota != null ? (est.quota / 1048576).toFixed(0) + ' MB' : '?',
+          pct:   (est.usage && est.quota) ? ((est.usage / est.quota) * 100).toFixed(1) + '%' : '?',
+          persisted,
+        });
+      } catch (_) {}
+    };
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [settings.enabled, settings.caches]);
+
+  // Cache name is async (caches.keys() returns a Promise). Read it once when
+  // the build section becomes visible — it doesn't change without a SW
+  // update, so polling every 500ms would be wasteful.
+  useEffect(() => {
+    if (!settings.enabled || !settings.build) return;
+    if (typeof window === 'undefined' || !('caches' in window)) {
+      setCacheName('caches API unavailable');
+      return;
+    }
+    let cancelled = false;
+    window.caches.keys().then((keys) => {
+      if (cancelled) return;
+      const ssCaches = (keys || []).filter((k) => k && k.startsWith('solostrike-'));
+      setCacheName(ssCaches[ssCaches.length - 1] || '(none)');
+    }).catch(() => { if (!cancelled) setCacheName('error'); });
+    return () => { cancelled = true; };
+  }, [settings.enabled, settings.build]);
+
+  // Cache detail enumeration — opens each cache and counts entries. Heavier
+  // than name lookup so we only do it when the caches section is on, and
+  // refresh every few seconds rather than every tick.
+  useEffect(() => {
+    if (!settings.enabled || !settings.caches) return;
+    if (typeof window === 'undefined' || !('caches' in window)) {
+      setCacheDetails([['caches API', 'unavailable']]);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const names = await window.caches.keys();
+        const details = await Promise.all(
+          (names || []).map(async (name) => {
+            try {
+              const cache = await window.caches.open(name);
+              const reqs = await cache.keys();
+              return [name, reqs.length];
+            } catch { return [name, '?']; }
+          })
+        );
+        if (!cancelled) setCacheDetails(details);
+      } catch (_) { if (!cancelled) setCacheDetails([['error', 'enumeration failed']]); }
+    };
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [settings.enabled, settings.caches]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!settings.enabled) return;
 
     const update = () => {
       const cs = (el) => el ? window.getComputedStyle(el) : null;
@@ -4026,6 +4520,7 @@ function DebugLayoutOverlay() {
         return `${Math.round(r.width)}×${Math.round(r.height)}`;
       };
 
+      // ── Carousel / slot / inner card ────────────────────────────────
       const carousel = document.querySelector('.ss-carousel');
       const slots = carousel ? carousel.querySelectorAll(':scope > *') : [];
       const idx = carousel && carousel.clientWidth
@@ -4034,14 +4529,15 @@ function DebugLayoutOverlay() {
       const slot = slots[idx];
       const inner = slot ? slot.querySelector(':scope > div') : null;
 
-      // Measure actual header + footer heights so we can see if the
-      // CSS `calc(100dvh - 246px)` is overshooting/undershooting
       const headerEl = document.querySelector('.ss-app-header') || document.querySelector('header');
       const footerEl = document.querySelector('footer');
       const headerH = headerEl ? Math.round(headerEl.getBoundingClientRect().height) : 0;
       const footerH = footerEl ? Math.round(footerEl.getBoundingClientRect().height) : 0;
 
-      // Probe 100dvh by inserting a 100dvh-tall element and measuring it
+      // Probe 100dvh: the spec says it == innerHeight in modern Safari, but
+      // older WebKits diverge. Inserting an element sized to 100dvh and
+      // measuring it is the only way to know what the CSS engine actually
+      // resolves it to (relevant for the rev70 fix verification).
       let dvh = 'n/a';
       try {
         const probe = document.createElement('div');
@@ -4051,7 +4547,6 @@ function DebugLayoutOverlay() {
         document.body.removeChild(probe);
       } catch (_) {}
 
-      // Get computed --carousel-h CSS variable
       let carouselHVar = 'n/a';
       if (carousel) {
         const v = window.getComputedStyle(carousel).getPropertyValue('--carousel-h').trim();
@@ -4061,41 +4556,289 @@ function DebugLayoutOverlay() {
       const cInner = cs(inner);
       const cSlot = cs(slot);
 
-      setD({
+      // ── Display mode (PWA / browser / iframe) ───────────────────────
+      // PWA detection: matchMedia covers all modern browsers; navigator.standalone
+      // is the legacy iOS-Safari API. Either being true means we're in PWA mode.
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+      let isIframe = false;
+      try { isIframe = window.self !== window.top; } catch { isIframe = true; }
+      const mode = isIframe ? 'iframe' : (isStandalone ? 'PWA' : 'browser');
+
+      // ── Service Worker state ────────────────────────────────────────
+      let swState = 'n/a';
+      let swScope = 'n/a';
+      if ('serviceWorker' in navigator) {
+        const ctrl = navigator.serviceWorker.controller;
+        swState = ctrl ? ctrl.state : 'no controller';
+        try { swScope = ctrl ? new URL(ctrl.scriptURL).pathname : '—'; } catch { swScope = '—'; }
+      }
+
+      // ── Storage section (verbose; only collect if enabled) ──────────
+      let storageEntries = [];
+      let storageSize = 0;
+      if (settings.storage) {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k || !k.startsWith('ss_')) continue;
+            const v = localStorage.getItem(k);
+            storageSize += (k.length + (v ? v.length : 0));
+            const truncated = v && v.length > 60 ? v.slice(0, 60) + '…' : (v || '');
+            storageEntries.push([k, truncated]);
+          }
+          storageEntries.sort((a, b) => a[0].localeCompare(b[0]));
+        } catch (_) { storageEntries = [['error', 'localStorage blocked']]; }
+      }
+
+      // ── Performance ─────────────────────────────────────────────────
+      // FPS samples are accumulated by the module-level rAF tick. Memory
+      // is Chrome-only (Safari returns undefined for performance.memory).
+      const fpsAvg = _ssDebug.fpsSamples.length
+        ? Math.round(_ssDebug.fpsSamples.reduce((a, b) => a + b, 0) / _ssDebug.fpsSamples.length)
+        : _ssDebug.fps;
+      const mem = (performance && performance.memory) ? {
+        used: Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB',
+        total: Math.round(performance.memory.totalJSHeapSize / 1048576) + ' MB',
+        limit: Math.round(performance.memory.jsHeapSizeLimit / 1048576) + ' MB',
+      } : null;
+      const domNodes = document.getElementsByTagName('*').length;
+      // Page-load timing — captured once but only when navigation timing exists
+      let nav = null;
+      try {
+        const ne = performance.getEntriesByType('navigation')[0];
+        if (ne) {
+          nav = {
+            ttfb: Math.round(ne.responseStart - ne.requestStart) + 'ms',
+            dcl: Math.round(ne.domContentLoadedEventEnd) + 'ms',
+            load: Math.round(ne.loadEventEnd) + 'ms',
+            type: ne.type,
+          };
+        }
+      } catch (_) {}
+
+      // ── Device / environment ────────────────────────────────────────
+      // Probe safe-area-insets by inserting a probe styled with env(...) and
+      // measuring its dimensions (CSS env vars aren't exposed via JS otherwise).
+      const safeArea = (() => {
+        try {
+          const probe = document.createElement('div');
+          probe.style.cssText = 'position:fixed;top:-99999px;left:-99999px;padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);width:0;height:0;pointer-events:none';
+          document.body.appendChild(probe);
+          const cs2 = window.getComputedStyle(probe);
+          const sa = `${parseInt(cs2.paddingTop)||0}/${parseInt(cs2.paddingRight)||0}/${parseInt(cs2.paddingBottom)||0}/${parseInt(cs2.paddingLeft)||0}`;
+          document.body.removeChild(probe);
+          return sa;
+        } catch { return 'n/a'; }
+      })();
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      const orient = (() => {
+        try { return (window.screen && window.screen.orientation && window.screen.orientation.type) || (window.orientation != null ? `${window.orientation}°` : 'n/a'); }
+        catch { return 'n/a'; }
+      })();
+
+      // ── Pool / mining detail ────────────────────────────────────────
+      // Worker breakdown comes from appState.workers (passed as poolStateLoaded
+      // proxy below). For richer detail we'd need direct poolState access; here
+      // we lean on the appState the overlay was given.
+      const workers = appState?.workers || [];
+      const workerCounts = workers.reduce((acc, w) => {
+        const s = w?.status || (w?.connected === false ? 'offline' : 'online');
+        acc[s] = (acc[s] || 0) + 1;
+        return acc;
+      }, {});
+      const totalHr = appState?.totalHashrate;
+      const lastShareAge = (() => {
+        if (!workers.length) return null;
+        let mostRecent = 0;
+        for (const w of workers) if (w?.lastSeen && w.lastSeen > mostRecent) mostRecent = w.lastSeen;
+        if (!mostRecent) return null;
+        const sec = Math.round((Date.now() - mostRecent) / 1000);
+        return sec < 60 ? sec + 's' : Math.round(sec / 60) + 'm';
+      })();
+
+      // ── Interaction ─────────────────────────────────────────────────
+      const idleMs = _ssDebug.lastTap.ts ? (Date.now() - _ssDebug.lastTap.ts) : null;
+      const idleStr = idleMs == null ? '—'
+        : idleMs < 1000 ? idleMs + 'ms'
+        : idleMs < 60000 ? Math.round(idleMs / 1000) + 's'
+        : Math.round(idleMs / 60000) + 'm';
+
+      // ── Transport (WS / SSE) ────────────────────────────────────────
+      // Read live readyState by dereferencing the actual instance — the
+      // value flips between connecting/open/closing/closed without firing
+      // additional events, so the cached value would lag.
+      const wsState = ['CONNECTING','OPEN','CLOSING','CLOSED'];
+      const wsList = _ssDebug.wsInstances.map((e) => ({
+        url: e.url,
+        state: wsState[e.ws.readyState] || '?',
+        msgs: e.msgCount,
+        lastMsg: e.lastMsgTs ? Math.round((Date.now() - e.lastMsgTs) / 1000) + 's ago' : '—',
+        closeCode: e.closeCode,
+        closeReason: e.closeReason,
+      }));
+      const esState = ['CONNECTING','OPEN','CLOSED'];
+      const esList = _ssDebug.esInstances.map((e) => ({
+        url: e.url,
+        state: esState[e.es.readyState] || '?',
+        msgs: e.msgCount,
+        lastMsg: e.lastMsgTs ? Math.round((Date.now() - e.lastMsgTs) / 1000) + 's ago' : '—',
+      }));
+
+      // ── WebGL canvas inventory ──────────────────────────────────────
+      // Canvases live in the DOM; we just enumerate. We DO NOT call
+      // getContext on them — that would either return existing context
+      // (fine) or attach a new context type and break the existing one.
+      const canvases = Array.from(document.querySelectorAll('canvas')).map((c, i) => {
+        const r = c.getBoundingClientRect();
+        return {
+          i,
+          intrinsic: `${c.width}×${c.height}`,
+          rendered: `${Math.round(r.width)}×${Math.round(r.height)}`,
+          cls: _ssTruncate(c.className || '(no class)', 30),
+        };
+      });
+
+      // ── Visibility / wake lock ──────────────────────────────────────
+      const visTransitionAge = _ssDebug.visibility.lastChangeTs
+        ? Math.round((Date.now() - _ssDebug.visibility.lastChangeTs) / 1000)
+        : null;
+      // Wake lock state can't be queried directly but if the app held one,
+      // it's in a known global. We just report API availability here.
+      const wakeLockSupported = 'wakeLock' in navigator;
+
+      // ── Resource timing recap ───────────────────────────────────────
+      const resourceList = _ssDebug.resources.slice(-10).reverse();
+
+      // ── Time / locale ───────────────────────────────────────────────
+      let tz = 'n/a';
+      let locale = 'n/a';
+      try {
+        const opts = Intl.DateTimeFormat().resolvedOptions();
+        tz = opts.timeZone || 'n/a';
+        locale = opts.locale || 'n/a';
+      } catch (_) {}
+      const uptimeMs = Date.now() - _ssDebug.installedAt;
+      const uptime = uptimeMs < 60000 ? Math.round(uptimeMs / 1000) + 's'
+        : uptimeMs < 3600000 ? Math.round(uptimeMs / 60000) + 'm'
+        : (uptimeMs / 3600000).toFixed(1) + 'h';
+
+      const next = {
+        // viewport
         win: `${window.innerWidth}×${window.innerHeight}`,
         docEl: `${document.documentElement.clientWidth}×${document.documentElement.clientHeight}`,
-        dvh: dvh,
-        cssH: carousel ? cs(carousel).height : 'no carousel',
-        carouselHVar: carouselHVar,
-        carouselR: dims(carousel),
-        slotR: dims(slot),
-        innerR: dims(inner),
-        gap: (slot && inner)
-          ? Math.round(slot.getBoundingClientRect().height - inner.getBoundingClientRect().height) + 'px'
-          : 'n/a',
-        slotDisp: cSlot ? cSlot.display : 'none',
-        slotDir: cSlot ? cSlot.flexDirection : 'none',
-        slotH: cSlot ? cSlot.height : 'none',
-        slotMinH: cSlot ? cSlot.minHeight : 'none',
-        innerFlex: cInner ? cInner.flex : 'none',
-        innerH: cInner ? cInner.height : 'none',
-        iframe: (() => { try { return window.self !== window.top; } catch { return true; } })(),
-        cMatch: window.matchMedia('(max-width: 767px)').matches,
-        gMatch: window.matchMedia('(min-width: 768px)').matches,
-        body: document.body.className.split(' ').filter(c => c.startsWith('ss-')).join(' '),
-        slotIdx: idx,
-        slotCount: slots.length,
+        dvh,
         headerH: headerH + 'px',
         footerH: footerH + 'px',
-        // Theoretical max carousel height = innerHeight - header - footer - dot zone
-        // If carousel height is much less than this, we're losing space
+        // carousel
+        carouselHVar,
+        cssH: carousel ? cs(carousel).height : 'no carousel',
+        carouselR: dims(carousel),
+        // WASTED uses 30px reserve to match the DOTS_RESERVE constant in the
+        // carousel-h measurement effect — anything ≤30 here is "fine, the dots
+        // just fit there." Above that = real wasted space.
         wasted: (() => {
           if (!carousel) return 'n/a';
-          const target = window.innerHeight - headerH - footerH - 50; // 50px dot zone
+          const target = window.innerHeight - headerH - footerH - 30;
           const actual = Math.round(carousel.getBoundingClientRect().height);
           return Math.max(0, target - actual) + 'px';
         })(),
-      });
+        // slot
+        slotIdx: idx,
+        slotCount: slots.length,
+        slotR: dims(slot),
+        slotH: cSlot ? cSlot.height : 'none',
+        slotMinH: cSlot ? cSlot.minHeight : 'none',
+        slotDisp: cSlot ? cSlot.display : 'none',
+        slotDir: cSlot ? cSlot.flexDirection : 'none',
+        // inner
+        innerR: dims(inner),
+        innerFlex: cInner ? cInner.flex : 'none',
+        innerH: cInner ? cInner.height : 'none',
+        gap: (slot && inner)
+          ? Math.round(slot.getBoundingClientRect().height - inner.getBoundingClientRect().height) + 'px'
+          : 'n/a',
+        // mode / state
+        mode,
+        cMatch: window.matchMedia('(max-width: 767px)').matches,
+        gMatch: window.matchMedia('(min-width: 768px)').matches,
+        body: document.body.className.split(' ').filter((c) => c.startsWith('ss-')).join(' '),
+        // sw / build
+        swState,
+        swScope,
+        href: window.location.pathname + window.location.hash,
+        ts: new Date().toLocaleTimeString(),
+        // performance
+        fps: _ssDebug.fps,
+        fpsAvg,
+        longTasks: _ssDebug.longTasks,
+        mem,
+        domNodes,
+        nav,
+        // errors
+        errCount: _ssDebug.errors.length,
+        rejCount: _ssDebug.rejections.length,
+        recentErrors: _ssDebug.errors.slice(-3).reverse(),
+        recentRejections: _ssDebug.rejections.slice(-2).reverse(),
+        // console
+        consoleEntries: _ssDebug.consoleLog.slice(-15).reverse(),
+        // api
+        apiEntries: _ssDebug.apiCalls.slice(-12).reverse(),
+        // device
+        ua: navigator.userAgent,
+        dpr: window.devicePixelRatio,
+        online: navigator.onLine,
+        connType: conn ? (conn.effectiveType || 'unknown') : 'n/a',
+        connDownlink: conn && conn.downlink ? conn.downlink + ' Mbps' : 'n/a',
+        connSaveData: conn ? !!conn.saveData : 'n/a',
+        prefersReducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+        touchPoints: navigator.maxTouchPoints || 0,
+        orient,
+        safeArea,
+        vvOffset: window.visualViewport
+          ? `${Math.round(window.visualViewport.offsetTop)},${Math.round(window.visualViewport.offsetLeft)}`
+          : 'n/a',
+        vvScale: window.visualViewport ? window.visualViewport.scale.toFixed(2) : 'n/a',
+        vvSize: window.visualViewport
+          ? `${Math.round(window.visualViewport.width)}×${Math.round(window.visualViewport.height)}`
+          : 'n/a',
+        // pool detail
+        workerCounts,
+        totalWorkers: workers.length,
+        totalHr,
+        lastShareAge,
+        recentBlocks: appState?.recentBlocks,
+        // interaction
+        lastTap: _ssDebug.lastTap.ts ? `${_ssDebug.lastTap.type} @${_ssDebug.lastTap.x},${_ssDebug.lastTap.y}` : '—',
+        idle: idleStr,
+        // storage
+        storageEntries,
+        storageSizeKB: storageSize ? (storageSize / 1024).toFixed(1) + ' KB' : null,
+        // transport
+        wsList,
+        esList,
+        // webgl
+        canvases,
+        ctxLoss: _ssDebug.ctxLoss.length,
+        gpuRenderer,
+        // visibility
+        visState: _ssDebug.visibility.state,
+        visTransitions: _ssDebug.visibility.transitions,
+        visAge: visTransitionAge != null ? (visTransitionAge < 60 ? visTransitionAge + 's' : Math.round(visTransitionAge/60) + 'm') : '—',
+        wakeLockSupported,
+        // battery
+        battery: _ssDebug.battery,
+        // resources
+        resourceList,
+        // time / uptime
+        tz,
+        locale,
+        uptime,
+      };
+      setD(next);
+      // Stash latest for the Settings → "Copy snapshot" button to grab.
+      try { window._ssDebugSnapshot = next; } catch (_) {}
     };
 
     update();
@@ -4103,24 +4846,37 @@ function DebugLayoutOverlay() {
     const carousel = document.querySelector('.ss-carousel');
     if (carousel) carousel.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
+    const vv = window.visualViewport || null;
+    if (vv) vv.addEventListener('resize', update);
     return () => {
       clearInterval(interval);
       if (carousel) carousel.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
+      if (vv) vv.removeEventListener('resize', update);
     };
-  }, [visible]);
+  }, [settings.enabled, settings.storage]);
 
-  if (!visible) return null;
+  if (!settings.enabled) return null;
 
   const Row = ({ k, v, hi }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
       <span style={{ color: '#888' }}>{k}</span>
-      <span style={{ color: hi ? '#FF7A00' : '#39ff6a', fontWeight: hi ? 700 : 400 }}>{String(v)}</span>
+      <span style={{ color: hi ? '#FF7A00' : '#39ff6a', fontWeight: hi ? 700 : 400, textAlign: 'right', wordBreak: 'break-all' }}>{String(v ?? '')}</span>
+    </div>
+  );
+  const Section = ({ title }) => (
+    <div style={{ color: '#F5A623', fontWeight: 700, letterSpacing: '0.08em', marginTop: 6, marginBottom: 2, fontSize: 9 }}>
+      ── {title} ──
     </div>
   );
 
+  // GAP threshold: slot has padding 0.65rem 0.65rem 4px 0.65rem (~14.4px total
+  // top+bottom). The "gap" between slot and inner card IS that padding, not a
+  // real bug — flag only when materially larger than expected.
   const gapPx = parseInt(d.gap, 10);
-  const hasGap = !isNaN(gapPx) && gapPx > 5;
+  const hasGap = !isNaN(gapPx) && gapPx > 20;
+  const wastedPx = parseInt(d.wasted, 10);
+  const hasWasted = !isNaN(wastedPx) && wastedPx > 20;
 
   return (
     <div style={{
@@ -4136,17 +4892,16 @@ function DebugLayoutOverlay() {
       border: '1px solid #39ff6a',
       borderRadius: 4,
       lineHeight: 1.45,
-      maxWidth: 240,
+      maxWidth: 260,
+      maxHeight: 'calc(100dvh - 100px)',
+      overflowY: 'auto',
       pointerEvents: 'auto',
       boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ color: '#F5A623', fontWeight: 700, letterSpacing: '0.08em' }}>LAYOUT DEBUG</span>
+        <span style={{ color: '#F5A623', fontWeight: 700, letterSpacing: '0.08em' }}>DEBUG · {d.ts || '—'}</span>
         <button
-          onClick={() => {
-            try { window.localStorage.setItem('ss_debug_layout_hide', '1'); } catch (_) {}
-            setVisible(false);
-          }}
+          onClick={() => onSettingsChange({ ...settings, enabled: false })}
           style={{
             background: 'transparent',
             border: '1px solid #39ff6a',
@@ -4161,32 +4916,320 @@ function DebugLayoutOverlay() {
           aria-label="Close debug overlay"
         >×</button>
       </div>
-      <Row k="win" v={d.win}/>
-      <Row k="docEl" v={d.docEl}/>
-      <Row k="100dvh" v={d.dvh}/>
-      <Row k="header.h" v={d.headerH}/>
-      <Row k="footer.h" v={d.footerH}/>
-      <Row k="—carousel—" v=""/>
-      <Row k="--carousel-h" v={d.carouselHVar}/>
-      <Row k="cs.height" v={d.cssH}/>
-      <Row k="rect" v={d.carouselR}/>
-      <Row k="WASTED" v={d.wasted} hi={parseInt(d.wasted, 10) > 20}/>
-      <Row k={`—slot[${d.slotIdx}/${d.slotCount}]—`} v=""/>
-      <Row k="rect" v={d.slotR}/>
-      <Row k="cs.height" v={d.slotH}/>
-      <Row k="cs.min-h" v={d.slotMinH}/>
-      <Row k="cs.display" v={d.slotDisp} hi={d.slotDisp !== 'flex'}/>
-      <Row k="cs.flex-dir" v={d.slotDir} hi={d.slotDir !== 'column'}/>
-      <Row k="—inner card—" v=""/>
-      <Row k="rect" v={d.innerR}/>
-      <Row k="cs.flex" v={d.innerFlex}/>
-      <Row k="cs.height" v={d.innerH}/>
-      <Row k="GAP (slot-inner)" v={d.gap} hi={hasGap}/>
-      <Row k="—context—" v=""/>
-      <Row k="iframe" v={d.iframe}/>
-      <Row k="≤767px" v={d.cMatch}/>
-      <Row k="≥768px" v={d.gMatch}/>
-      <Row k="body" v={d.body}/>
+
+      {settings.layout && (
+        <>
+          <Section title="layout · viewport" />
+          <Row k="win" v={d.win}/>
+          <Row k="docEl" v={d.docEl}/>
+          <Row k="100dvh" v={d.dvh}/>
+          <Row k="header.h" v={d.headerH}/>
+          <Row k="footer.h" v={d.footerH}/>
+          <Section title="layout · carousel" />
+          <Row k="--carousel-h" v={d.carouselHVar}/>
+          <Row k="cs.height" v={d.cssH}/>
+          <Row k="rect" v={d.carouselR}/>
+          <Row k="WASTED" v={d.wasted} hi={hasWasted}/>
+          <Section title={`layout · slot[${d.slotIdx}/${d.slotCount}]`} />
+          <Row k="rect" v={d.slotR}/>
+          <Row k="cs.height" v={d.slotH}/>
+          <Row k="cs.min-h" v={d.slotMinH}/>
+          <Row k="cs.display" v={d.slotDisp} hi={d.slotDisp !== 'flex'}/>
+          <Row k="cs.flex-dir" v={d.slotDir} hi={d.slotDir !== 'column'}/>
+          <Section title="layout · inner card" />
+          <Row k="rect" v={d.innerR}/>
+          <Row k="cs.flex" v={d.innerFlex}/>
+          <Row k="cs.height" v={d.innerH}/>
+          <Row k="GAP (slot-inner)" v={d.gap} hi={hasGap}/>
+        </>
+      )}
+
+      {settings.state && (
+        <>
+          <Section title="state" />
+          <Row k="mode" v={d.mode}/>
+          <Row k="≤767px" v={d.cMatch}/>
+          <Row k="≥768px" v={d.gMatch}/>
+          <Row k="body" v={d.body}/>
+          <Row k="useCarousel" v={appState?.useCarousel}/>
+          <Row k="minimalMode" v={appState?.minimalMode}/>
+          <Row k="splash done" v={appState?.minSplashElapsed}/>
+          <Row k="carouselEnabled" v={appState?.carouselEnabled}/>
+          <Row k="uptime" v={d.uptime}/>
+          <Row k="timezone" v={d.tz}/>
+          <Row k="locale" v={d.locale}/>
+        </>
+      )}
+
+      {settings.network && (
+        <>
+          <Section title="network" />
+          <Row k="pool loaded" v={appState?.poolStateLoaded}/>
+          <Row k="last update" v={appState?.poolLastUpdate || '—'}/>
+          <Row k="connected" v={appState?.connected}/>
+          <Row k="status" v={appState?.poolStatus || '—'}/>
+          <Row k="ports" v={(() => {
+            const p = appState?.stratumHealth?.ports;
+            if (!p || typeof p !== 'object') return '—';
+            const entries = Object.entries(p);
+            if (!entries.length) return '—';
+            return entries.map(([k,v]) => `${k}:${v?.healthy ? '✓' : '✗'}`).join(' ');
+          })()}/>
+        </>
+      )}
+
+      {settings.build && (
+        <>
+          <Section title="build" />
+          <Row k="compose v" v={appState?.composeVersion || '—'}/>
+          <Row k="cache" v={cacheName}/>
+          <Row k="sw state" v={d.swState}/>
+          <Row k="sw scope" v={d.swScope}/>
+          <Row k="path" v={d.href}/>
+          {swRegs.length > 0 && (
+            <>
+              <Section title={`SW registrations (${swRegs.length})`} />
+              {swRegs.map((r, i) => (
+                <React.Fragment key={i}>
+                  <Row k={`#${i} scope`} v={r.scope}/>
+                  <Row k="  active" v={r.active || '—'}/>
+                  <Row k="  waiting" v={r.waiting || '—'} hi={!!r.waiting}/>
+                  <Row k="  installing" v={r.installing || '—'} hi={!!r.installing}/>
+                </React.Fragment>
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {settings.performance && (
+        <>
+          <Section title="performance" />
+          <Row k="fps" v={`${d.fps ?? '—'} (avg ${d.fpsAvg ?? '—'})`} hi={typeof d.fps === 'number' && d.fps < 30}/>
+          <Row k="long tasks" v={d.longTasks} hi={d.longTasks > 20}/>
+          <Row k="DOM nodes" v={d.domNodes}/>
+          {d.mem && <Row k="mem used" v={d.mem.used}/>}
+          {d.mem && <Row k="mem total" v={d.mem.total}/>}
+          {d.mem && <Row k="mem limit" v={d.mem.limit}/>}
+          {!d.mem && <Row k="mem" v="(Safari/FF — n/a)"/>}
+          {d.nav && <Row k="ttfb" v={d.nav.ttfb}/>}
+          {d.nav && <Row k="dcl" v={d.nav.dcl}/>}
+          {d.nav && <Row k="load" v={d.nav.load}/>}
+          {d.nav && <Row k="nav type" v={d.nav.type}/>}
+        </>
+      )}
+
+      {settings.errors && (
+        <>
+          <Section title={`errors (${d.errCount || 0} err · ${d.rejCount || 0} rej)`} />
+          {(!d.errCount && !d.rejCount) && <Row k="status" v="clean ✓"/>}
+          {(d.recentErrors || []).map((e, i) => (
+            <Row key={'e'+i} k={new Date(e.ts).toLocaleTimeString()} v={`${e.msg} @${e.src.split('/').pop()}:${e.lineno}`} hi/>
+          ))}
+          {(d.recentRejections || []).map((r, i) => (
+            <Row key={'r'+i} k={new Date(r.ts).toLocaleTimeString()} v={`reject: ${r.reason}`} hi/>
+          ))}
+        </>
+      )}
+
+      {settings.consoleLog && (
+        <>
+          <Section title={`console (${(d.consoleEntries || []).length})`} />
+          {!d.consoleEntries?.length && <Row k="—" v="(no logs captured)"/>}
+          {(d.consoleEntries || []).map((c, i) => (
+            <Row key={'c'+i}
+              k={new Date(c.ts).toLocaleTimeString().slice(0,8) + ' ' + c.level}
+              v={c.text}
+              hi={c.level === 'error' || c.level === 'warn'}/>
+          ))}
+        </>
+      )}
+
+      {settings.api && (
+        <>
+          <Section title={`api (${(d.apiEntries || []).length} recent)`} />
+          {!d.apiEntries?.length && <Row k="—" v="(no fetch calls)"/>}
+          {(d.apiEntries || []).map((a, i) => (
+            <Row key={'a'+i}
+              k={`${a.method} ${a.url.replace(/^https?:\/\/[^/]+/, '')}`}
+              v={`${a.status} · ${a.ms}ms`}
+              hi={typeof a.status === 'number' ? (a.status >= 400 || a.ms > 1000) : true}/>
+          ))}
+        </>
+      )}
+
+      {settings.device && (
+        <>
+          <Section title="device" />
+          <Row k="DPR" v={d.dpr}/>
+          <Row k="online" v={d.online} hi={d.online === false}/>
+          <Row k="connection" v={d.connType}/>
+          <Row k="downlink" v={d.connDownlink}/>
+          <Row k="save-data" v={d.connSaveData}/>
+          <Row k="touch pts" v={d.touchPoints}/>
+          <Row k="orientation" v={d.orient}/>
+          <Row k="prefers-dark" v={d.prefersDark}/>
+          <Row k="reduced-motion" v={d.prefersReducedMotion}/>
+          <Row k="safe-area t/r/b/l" v={d.safeArea}/>
+          <Row k="vv size" v={d.vvSize}/>
+          <Row k="vv offset" v={d.vvOffset}/>
+          <Row k="vv scale" v={d.vvScale}/>
+          <Row k="UA" v={d.ua}/>
+        </>
+      )}
+
+      {settings.caches && (
+        <>
+          <Section title={`cache storage (${cacheDetails.length})`} />
+          {!cacheDetails.length && <Row k="—" v="(none)"/>}
+          {cacheDetails.map(([name, count]) => (
+            <Row key={name} k={name} v={count + ' entries'}/>
+          ))}
+          <Section title="storage estimate" />
+          {storageEstimate ? (
+            <>
+              {storageEstimate.note && <Row k="note" v={storageEstimate.note}/>}
+              {!storageEstimate.note && <Row k="usage" v={storageEstimate.usage}/>}
+              {!storageEstimate.note && <Row k="quota" v={storageEstimate.quota}/>}
+              {!storageEstimate.note && <Row k="used %" v={storageEstimate.pct} hi={parseFloat(storageEstimate.pct) > 80}/>}
+              {!storageEstimate.note && <Row k="persisted" v={String(storageEstimate.persisted)}/>}
+            </>
+          ) : <Row k="…" v="loading"/>}
+        </>
+      )}
+
+      {settings.transport && (
+        <>
+          <Section title={`transport · WS (${d.wsList?.length || 0})`} />
+          {!d.wsList?.length && <Row k="—" v="(no WebSockets)"/>}
+          {(d.wsList || []).map((w, i) => (
+            <React.Fragment key={'ws'+i}>
+              <Row k={`#${i} url`} v={w.url}/>
+              <Row k="  state" v={w.state} hi={w.state !== 'OPEN'}/>
+              <Row k="  msgs" v={w.msgs}/>
+              <Row k="  last msg" v={w.lastMsg}/>
+              {w.closeCode != null && <Row k="  close code" v={w.closeCode} hi/>}
+              {w.closeReason && <Row k="  close reason" v={w.closeReason}/>}
+            </React.Fragment>
+          ))}
+          <Section title={`transport · SSE (${d.esList?.length || 0})`} />
+          {!d.esList?.length && <Row k="—" v="(no EventSources)"/>}
+          {(d.esList || []).map((e, i) => (
+            <React.Fragment key={'es'+i}>
+              <Row k={`#${i} url`} v={e.url}/>
+              <Row k="  state" v={e.state} hi={e.state !== 'OPEN'}/>
+              <Row k="  msgs" v={e.msgs}/>
+              <Row k="  last msg" v={e.lastMsg}/>
+            </React.Fragment>
+          ))}
+        </>
+      )}
+
+      {settings.resources && (
+        <>
+          <Section title={`resources (slow/large, ${d.resourceList?.length || 0})`} />
+          {!d.resourceList?.length && <Row k="—" v="(none flagged)"/>}
+          {(d.resourceList || []).map((r, i) => {
+            const path = r.name.replace(/^https?:\/\/[^/]+/, '');
+            const sizeKB = r.size ? (r.size / 1024).toFixed(0) + 'KB' : '?';
+            return (
+              <Row key={'r'+i}
+                k={`${r.type} ${path.split('/').pop() || path}`}
+                v={`${r.dur}ms · ${sizeKB}`}
+                hi={r.dur > 1000 || r.size > 524288}/>
+            );
+          })}
+        </>
+      )}
+
+      {settings.visibility && (
+        <>
+          <Section title="visibility" />
+          <Row k="state" v={d.visState} hi={d.visState !== 'visible'}/>
+          <Row k="transitions" v={d.visTransitions}/>
+          <Row k="last change" v={d.visAge}/>
+          <Row k="wakeLock API" v={d.wakeLockSupported}/>
+          <Row k="uptime" v={d.uptime}/>
+        </>
+      )}
+
+      {settings.battery && (
+        <>
+          <Section title="battery" />
+          {!d.battery && <Row k="—" v="(API unavailable on this browser)"/>}
+          {d.battery && <Row k="level" v={d.battery.level + '%'} hi={d.battery.level < 20}/>}
+          {d.battery && <Row k="charging" v={d.battery.charging}/>}
+          {d.battery && d.battery.charging && <Row k="time to full" v={d.battery.chargingTime}/>}
+          {d.battery && !d.battery.charging && <Row k="time remain" v={d.battery.dischargingTime}/>}
+        </>
+      )}
+
+      {settings.webgl && (
+        <>
+          <Section title={`webgl · canvases (${d.canvases?.length || 0})`} />
+          {!d.canvases?.length && <Row k="—" v="(no canvas elements)"/>}
+          {(d.canvases || []).map((c) => (
+            <React.Fragment key={c.i}>
+              <Row k={`#${c.i} cls`} v={c.cls}/>
+              <Row k="  intrinsic" v={c.intrinsic}/>
+              <Row k="  rendered" v={c.rendered}/>
+            </React.Fragment>
+          ))}
+          <Section title="webgl · gpu" />
+          <Row k="renderer" v={gpuRenderer || '(unmasked info unavailable)'}/>
+          <Row k="ctx loss" v={d.ctxLoss || 0} hi={d.ctxLoss > 0}/>
+        </>
+      )}
+
+      {settings.capabilities && (
+        <>
+          <Section title="capabilities" />
+          {!capabilities && <Row k="…" v="probing"/>}
+          {capabilities && Object.entries(capabilities).map(([k, v]) => (
+            <Row key={k} k={k} v={v ? '✓' : '✗'} hi={!v && (k === 'isSecure' || k === 'ServiceWorker')}/>
+          ))}
+        </>
+      )}
+
+      {settings.theme && (
+        <>
+          <Section title={`theme vars (${Object.keys(themeVars).length})`} />
+          {!Object.keys(themeVars).length && <Row k="—" v="(none found in :root rules)"/>}
+          {Object.entries(themeVars).map(([k, v]) => (
+            <Row key={k} k={k} v={v}/>
+          ))}
+        </>
+      )}
+
+      {settings.pool && (
+        <>
+          <Section title="pool detail" />
+          <Row k="workers" v={d.totalWorkers ?? '—'}/>
+          {d.workerCounts && Object.entries(d.workerCounts).map(([s, n]) => (
+            <Row key={s} k={`  ${s}`} v={n}/>
+          ))}
+          <Row k="hashrate" v={d.totalHr != null ? d.totalHr : '—'}/>
+          <Row k="last share" v={d.lastShareAge ?? '—'}/>
+          <Row k="recent blocks" v={d.recentBlocks ?? '—'}/>
+        </>
+      )}
+
+      {settings.interaction && (
+        <>
+          <Section title="interaction" />
+          <Row k="last tap" v={d.lastTap}/>
+          <Row k="idle" v={d.idle}/>
+        </>
+      )}
+
+      {settings.storage && (
+        <>
+          <Section title={`storage (${(d.storageEntries || []).length}${d.storageSizeKB ? ' · ' + d.storageSizeKB : ''})`} />
+          {(d.storageEntries || []).map(([k, v]) => (
+            <Row key={k} k={k.replace(/^ss_/, '')} v={v}/>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -5426,7 +6469,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
@@ -5463,6 +6506,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             ['hunt','Hunt'],
             ['aliases','Aliases'],
             ['webhooks','Webhooks'],
+            ['debug','Debug'],
           ].map(([id,label])=>(
             <button key={id} onClick={()=>setTab(id)} style={{
               padding:'8px 14px', background:tab===id?'var(--bg-raised)':'transparent',
@@ -5504,6 +6548,9 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         )}
         {tab==='webhooks' && (
           <WebhooksTab/>
+        )}
+        {tab==='debug' && (
+          <DebugTab settings={debugSettings} onSettingsChange={onDebugSettingsChange}/>
         )}
       </div>
     </div>
@@ -8824,6 +9871,190 @@ function WebhooksTab() {
   );
 }
 
+// ── Debug settings tab (rev70) ────────────────────────────────────────────────
+// Persistent toggle UI for the debug overlay. Settings save to localStorage
+// (LS_DEBUG_SETTINGS) the moment they change, so flipping a switch is instant
+// across reloads. The "Copy snapshot" button reads from window._ssDebugSnapshot
+// — populated by DebugOverlay on every update tick — and serializes it for
+// pasting into a chat or bug report.
+function DebugTab({ settings, onSettingsChange }) {
+  const [copied, setCopied] = useState(false);
+
+  const Toggle = ({ k, label, helper, disabled }) => (
+    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.7rem 0', borderBottom:'1px solid var(--border)', opacity: disabled ? 0.4 : 1}}>
+      <div style={{flex:1, paddingRight:'0.75rem'}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.72rem', color:'var(--text-1)', letterSpacing:'0.04em'}}>{label}</div>
+        {helper && <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginTop:3, lineHeight:1.4}}>{helper}</div>}
+      </div>
+      <button
+        disabled={disabled}
+        onClick={() => onSettingsChange({ ...settings, [k]: !settings[k] })}
+        style={{
+          width:40, height:22, borderRadius:11,
+          background: settings[k] ? 'var(--cyan)' : 'var(--bg-deep)',
+          border:'1px solid var(--border)',
+          position:'relative',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          flexShrink:0,
+        }}
+      >
+        <div style={{
+          position:'absolute', top:1,
+          left: settings[k] ? 20 : 2,
+          width:18, height:18, borderRadius:'50%',
+          background: settings[k] ? '#000' : 'var(--text-2)',
+          transition:'left 0.2s',
+        }}/>
+      </button>
+    </div>
+  );
+
+  const copySnapshot = async () => {
+    try {
+      const snap = (typeof window !== 'undefined' && window._ssDebugSnapshot) || {};
+      const lines = [
+        `# SoloStrike debug snapshot — ${new Date().toISOString()}`,
+        `# UA: ${navigator.userAgent}`,
+        `# href: ${window.location.href}`,
+        '',
+        JSON.stringify(snap, null, 2),
+      ].join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(lines);
+      } else {
+        // Fallback for older Safari without clipboard permissions
+        const ta = document.createElement('textarea');
+        ta.value = lines; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setCopied(true); setTimeout(() => setCopied(false), 1800);
+    } catch (e) {
+      alert('Copy failed: ' + e.message);
+    }
+  };
+
+  const resetDefaults = () => {
+    onSettingsChange({ ...DEBUG_DEFAULTS });
+  };
+
+  // Download every captured stream + the latest snapshot as a single JSON
+  // file. This is more useful than copySnapshot for sharing — error stack
+  // traces, console history, and API trace are usually too long to paste
+  // legibly into a chat message.
+  const downloadLogs = () => {
+    try {
+      const bundle = {
+        meta: {
+          ts: new Date().toISOString(),
+          ua: navigator.userAgent,
+          href: window.location.href,
+          appUptimeMs: Date.now() - (_ssDebug.installedAt || Date.now()),
+        },
+        snapshot: (typeof window !== 'undefined' && window._ssDebugSnapshot) || {},
+        streams: {
+          errors:      _ssDebug.errors,
+          rejections:  _ssDebug.rejections,
+          consoleLog:  _ssDebug.consoleLog,
+          apiCalls:    _ssDebug.apiCalls,
+          resources:   _ssDebug.resources,
+          fpsSamples:  _ssDebug.fpsSamples,
+          longTasks:   _ssDebug.longTasks,
+          // Strip the live ws/es objects — they contain non-serializable
+          // refs to the WebSocket itself.
+          wsInstances: _ssDebug.wsInstances.map(({ ws, ...rest }) => rest),
+          esInstances: _ssDebug.esInstances.map(({ es, ...rest }) => rest),
+          visibility:  _ssDebug.visibility,
+          battery:     _ssDebug.battery,
+          lastTap:     _ssDebug.lastTap,
+        },
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `solostrike-debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke after a tick so Safari has time to actually start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      alert('Download failed: ' + e.message);
+    }
+  };
+
+  const sectionsDisabled = !settings.enabled;
+
+  return (
+    <>
+      <div style={{padding:'0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:14, fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.5}}>
+        Floating diagnostic overlay. 13 toggleable sections covering layout, state, performance, errors, console, network, device, caches, and more. Diagnostic streams (errors, console, fetch) are captured continuously starting at page load — flipping a section ON instantly shows pre-existing history.
+      </div>
+
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:4}}>Master</div>
+      <Toggle k="enabled" label="Show debug overlay" helper="Top-right green panel that updates live."/>
+
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Page</div>
+      <Toggle k="layout"  label="Layout"   helper="Viewport, header/footer, carousel/slot/card metrics. WASTED >20px = under-fill bug." disabled={sectionsDisabled}/>
+      <Toggle k="state"   label="State"    helper="Display mode (PWA/browser/iframe), breakpoint, body classes, useCarousel." disabled={sectionsDisabled}/>
+      <Toggle k="network" label="Network"  helper="Pool loaded, last update, connection status, stratum port health." disabled={sectionsDisabled}/>
+      <Toggle k="build"   label="Build"    helper="Compose version, active SW cache name, SW state, current path." disabled={sectionsDisabled}/>
+
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Diagnostic streams</div>
+      <Toggle k="performance" label="Performance" helper="FPS (current + 30s avg), JS memory (Chrome only), long-task count, DOM nodes, page-load timing." disabled={sectionsDisabled}/>
+      <Toggle k="errors"      label="Errors"      helper="window.error count + last few, plus unhandled promise rejections." disabled={sectionsDisabled}/>
+      <Toggle k="consoleLog"  label="Console capture" helper="Last 15 console.log/warn/error messages with timestamps. Critical when iOS DevTools isn't an option." disabled={sectionsDisabled}/>
+      <Toggle k="api"         label="API trace"   helper="Every fetch() call: method, path, status, latency. Status ≥400 or >1s flagged." disabled={sectionsDisabled}/>
+      <Toggle k="transport"   label="Transport (WS/SSE)" helper="Every WebSocket and EventSource: URL, ready state, message count, time since last frame, close code/reason. Catches stale-data bugs from silently closed sockets." disabled={sectionsDisabled}/>
+      <Toggle k="resources"   label="Resource timing" helper="Last 10 slow (>500ms) or large (>100KB) resource loads. Diagnoses CDN issues and oversized assets." disabled={sectionsDisabled}/>
+
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Environment</div>
+      <Toggle k="device"       label="Device"      helper="UA, DPR, online, connection type/downlink, touch points, orientation, prefers-* settings, safe-area insets, visualViewport." disabled={sectionsDisabled}/>
+      <Toggle k="visibility"   label="Visibility"  helper="Page visible/hidden state, transition count, time since last change. Catches iOS PWA suspend/resume." disabled={sectionsDisabled}/>
+      <Toggle k="battery"      label="Battery"     helper="Level, charging state, time-to-full or time-remaining. Not exposed by iOS Safari." disabled={sectionsDisabled}/>
+      <Toggle k="webgl"        label="WebGL"       helper="Every <canvas> with intrinsic + rendered size, GPU renderer string, context-loss event count." disabled={sectionsDisabled}/>
+      <Toggle k="caches"       label="Cache storage" helper="Every Cache Storage cache + entry count, plus origin storage usage/quota/persisted-flag from StorageManager." disabled={sectionsDisabled}/>
+      <Toggle k="capabilities" label="Capabilities" helper="Feature support matrix: WebGL2, Wasm, ServiceWorker, Cache, IDB, WakeLock, Push, Clipboard, isSecureContext, etc." disabled={sectionsDisabled}/>
+      <Toggle k="theme"        label="Theme vars"  helper="Every --ss-* CSS custom property declared at :root, with computed values. Useful for skin/theme debugging." disabled={sectionsDisabled}/>
+      <Toggle k="pool"         label="Pool detail" helper="Worker count breakdown (online/stale/offline), hashrate, last share age, recent block count." disabled={sectionsDisabled}/>
+      <Toggle k="interaction"  label="Interaction" helper="Last tap coords + idle time. Useful for swipe/touch debugging." disabled={sectionsDisabled}/>
+      <Toggle k="storage"      label="LocalStorage" helper="Every ss_* localStorage key + value + total size. Verbose." disabled={sectionsDisabled}/>
+
+      <div style={{display:'flex', gap:8, marginTop:'1.2rem', flexWrap:'wrap'}}>
+        <button onClick={copySnapshot} style={{
+          flex:'1 1 130px', padding:'0.55rem', background: copied ? 'var(--green)' : 'var(--bg-raised)',
+          border:`1px solid ${copied ? 'var(--green)' : 'var(--border)'}`,
+          color: copied ? '#000' : 'var(--text-1)',
+          fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em',
+          textTransform:'uppercase', cursor:'pointer',
+        }}>
+          {copied ? '✓ Copied' : 'Copy snapshot'}
+        </button>
+        <button onClick={downloadLogs} style={{
+          flex:'1 1 130px', padding:'0.55rem', background:'var(--bg-raised)',
+          border:'1px solid var(--border)', color:'var(--text-1)',
+          fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em',
+          textTransform:'uppercase', cursor:'pointer',
+        }}>
+          Download logs
+        </button>
+        <button onClick={resetDefaults} style={{
+          padding:'0.55rem 0.9rem', background:'var(--bg-raised)',
+          border:'1px solid var(--border)', color:'var(--text-2)',
+          fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em',
+          textTransform:'uppercase', cursor:'pointer',
+        }}>
+          Reset
+        </button>
+      </div>
+
+      <div style={{marginTop:'1rem', fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', lineHeight:1.5}}>
+        Snapshot is the latest values from the overlay (regardless of which sections are on screen). Paste into a chat to share a complete diagnostic.
+      </div>
+    </>
+  );
+}
+
 // ── Worker detail modal ───────────────────────────────────────────────────────
 function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
@@ -9137,6 +10368,12 @@ export default function App() {
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
+  // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
+  const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
+  const onDebugSettingsChange = useCallback((next) => {
+    setDebugSettings(next);
+    saveDebugSettings(next);
+  }, []);
   const [stratumHealth, setStratumHealth] = useState({ ports: {} });
   // v1.8.3-rev29: minimum splash duration. Without this, on fast pool-load
   // the splash unmounts in <1s, often before the pickaxe completes a full
@@ -9768,6 +11005,7 @@ export default function App() {
             useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
             huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
+            debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
           />
         )}
       </>
@@ -9951,6 +11189,7 @@ export default function App() {
           huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
           onPreviewCelebration={onPreviewCelebration}
+          debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
         />
       )}
       {blockFoundCelebration && (
@@ -9962,7 +11201,32 @@ export default function App() {
           onDismiss={dismissBlockFound}
         />
       )}
-      <DebugLayoutOverlay/>
+      <DebugOverlay
+        settings={debugSettings}
+        onSettingsChange={onDebugSettingsChange}
+        appState={{
+          useCarousel,
+          minimalMode,
+          carouselEnabled,
+          minSplashElapsed,
+          poolStateLoaded: !!poolState?._loaded,
+          poolStatus: poolState?.status,
+          poolLastUpdate: poolState?.lastUpdate
+            ? new Date(poolState.lastUpdate).toLocaleTimeString()
+            : null,
+          connected,
+          stratumHealth,
+          composeVersion: BUILT_COMPOSE_VERSION,
+          // pool detail (for the 'pool' section)
+          workers,
+          totalHashrate: (() => {
+            const h = poolState?.hashrate?.current;
+            if (typeof h !== 'number' || !isFinite(h)) return null;
+            try { return fmtHr(h); } catch { return h.toFixed(0); }
+          })(),
+          recentBlocks: Array.isArray(poolState?.blocks) ? poolState.blocks.length : null,
+        }}
+      />
     </>
   );
 }
