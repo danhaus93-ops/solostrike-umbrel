@@ -1,635 +1,396 @@
-// SoloStrike WebGL constellation renderer — rev70i.
+// ============================================================================
+// constellation-webgl.js — Lightning Cascade renderer (rev70r)
 //
-// "Striker Constellation" pulse animation. Visualizes the dual-tier census:
-//   • Pools  = bright amber points (cluster centers)
-//   • Strikers = blue-white points (orbit each pool's center)
-// Plus dim amber lines from each striker to its pool center (intra-pool
-// edges) and very sparse gray lines between nearby pool centers
-// (inter-pool edges).
+// Despite the historical "webgl" filename, this is now a 2D canvas renderer
+// implementing the Lightning Cascade visualization. The exported API surface
+// matches the previous WebGL renderer so App.jsx wiring stays identical.
 //
-// Public API (matches globe-webgl pattern):
-//   const c = createConstellationWebGL(canvas)
-//   c.update({ dpr, width, height, pools, strikers, dt })   // each frame
-//   c.destroy()
-//   c.isReady()
+// What changed from rev70q:
+//   - 3D WebGL point sprites + Fibonacci sphere → 2D canvas with random scatter
+//   - Drag-rotate / pinch-zoom / ambient rotation → REMOVED (no-op stubs kept)
+//   - Two-zone star shader → 2D drawing primitives (gradients, paths)
+//   - Decorative striker pulses → driven by flashPoolIndices from real share data
+//
+// What stays the same:
+//   - Public function name `createConstellationWebGL`
+//   - update({ dpr, width, height, poolWorkers, dt, flashPoolIndices }) signature
+//   - Method names addRotation / multiplyZoom / setZoom / resetView /
+//     pingInteraction / destroy / isReady (all become no-ops if not relevant)
+//   - Per-pool striker counts pulled from poolWorkers array (1:1 with peer.workers)
+//   - flashPoolIndices array — when a pool's index appears, fire a cascade
+//     originating from a random striker in that pool, chaining 3 levels deep
+//     to 2-nearest-neighbor strikers
+// ============================================================================
 
-const VERT_POINTS = `
-precision mediump float;
-attribute vec3 aPos;
-attribute float aSize;
-attribute vec3 aColor;
-uniform mat4 uViewProj;
-uniform float uPxScale;
-varying vec3 vColor;
-void main() {
-  vec4 p = uViewProj * vec4(aPos, 1.0);
-  // rev70n: cap point size so zoom-in doesn't render points
-  // hundreds of pixels wide (which saturates the canvas to white).
-  // 36 backing px = ~12 CSS px on dpr=3 — comfortable upper bound.
-  gl_PointSize = min(36.0, aSize * uPxScale / max(0.1, -p.z));
-  gl_Position = p;
-  vColor = aColor;
-}
-`;
+const POOLS_MAX = 64;
+const STRIKERS_MAX = 800;
+const K_NEIGHBORS = 2;       // each striker → 2 nearest neighbors for cascade
+const FLASH_DUR = 1000;      // ms — striker white-flash duration (cubic ease)
+const CHAIN_DELAY = 120;     // ms between chain hops
+const CHAIN_DEPTH = 3;       // max recursion depth per cascade
+const BOLT_DURATION = 300;   // ms — single lightning bolt fade
+const RNG_SEED = 424242;
 
-const FRAG_POINTS = `
-precision mediump float;
-varying vec3 vColor;
-void main() {
-  vec2 c = gl_PointCoord - 0.5;
-  float d = length(c);
-  if (d > 0.5) discard;
-  // rev70o: with alpha blending (not additive), brightness is bounded
-  // — overlapping points don't compound to white. So we can run higher
-  // per-point alpha (0.55 → 0.85) and points appear vivid + crisp.
-  // Sharper falloff (-14d) keeps the dot looking like a dot instead
-  // of a halo.
-  float a = exp(-d * 14.0);
-  gl_FragColor = vec4(vColor, a * 0.85);
-}
-`;
-
-const VERT_LINES = `
-precision mediump float;
-attribute vec3 aPos;
-attribute vec3 aColor;
-uniform mat4 uViewProj;
-varying vec3 vColor;
-void main() {
-  gl_Position = uViewProj * vec4(aPos, 1.0);
-  vColor = aColor;
-}
-`;
-
-const FRAG_LINES = `
-precision mediump float;
-varying vec3 vColor;
-uniform float uOpacity;
-void main() {
-  gl_FragColor = vec4(vColor, uOpacity);
-}
-`;
-
-function compileShader(gl, src, type) {
-  const sh = gl.createShader(type);
-  gl.shaderSource(sh, src);
-  gl.compileShader(sh);
-  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    console.warn('constellation shader compile failed:', gl.getShaderInfoLog(sh));
-    gl.deleteShader(sh);
-    return null;
-  }
-  return sh;
+function rng(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-function linkProgram(gl, vs, fs) {
-  const prog = gl.createProgram();
-  gl.attachShader(prog, vs);
-  gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    console.warn('constellation program link failed:', gl.getProgramInfoLog(prog));
-    return null;
-  }
-  return prog;
-}
+export function createConstellationWebGL(canvas) {
+  if (!canvas) return null;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { failed: true };
 
-// Build a perspective * view matrix for our orbital camera.
-// fovYRad = field of view, aspect = w/h, near/far clipping planes.
-function buildViewProj(out, fovYRad, aspect, near, far, rotY, rotX, distance) {
-  // Perspective projection
-  const f = 1.0 / Math.tan(fovYRad / 2);
-  const nf = 1.0 / (near - far);
-  const persp = [
-    f / aspect, 0, 0, 0,
-    0, f, 0, 0,
-    0, 0, (far + near) * nf, -1,
-    0, 0, 2 * far * near * nf, 0,
-  ];
-  // View: rotate scene by -rotY around Y, -rotX around X, then translate -distance on Z.
-  const cy = Math.cos(rotY), sy = Math.sin(rotY);
-  const cx = Math.cos(rotX), sx = Math.sin(rotX);
-  // Combined rotation Y then X (column-major)
-  const view = [
-    cy,        sy * sx,  -sy * cx, 0,
-    0,         cx,        sx,      0,
-    sy,       -cy * sx,   cy * cx, 0,
-    0,         0,        -distance,1,
-  ];
-  // out = persp * view (column-major matrix multiply)
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 4; c++) {
-      let s = 0;
-      for (let k = 0; k < 4; k++) s += persp[k * 4 + r] * view[c * 4 + k];
-      out[c * 4 + r] = s;
-    }
-  }
-}
+  // ── State ────────────────────────────────────────────────────────────────
+  let W = 0, H = 0, dprCached = 1;
+  let pools = [];
+  let strikers = [];
+  let adj = new Map();
+  let bolts = [];
+  let lastSig = '';
+  let destroyed = false;
 
-export function createConstellationWebGL(canvas, opts = {}) {
-  const gl = canvas.getContext('webgl', {
-    alpha: true,
-    premultipliedAlpha: false,
-    antialias: true,
-    preserveDrawingBuffer: false,
-    powerPreference: 'low-power',
-  });
-  if (!gl) {
-    console.warn('constellation: WebGL not available');
-    return { failed: true };
-  }
-
-  // ─── Compile shaders ───
-  const vsP = compileShader(gl, VERT_POINTS, gl.VERTEX_SHADER);
-  const fsP = compileShader(gl, FRAG_POINTS, gl.FRAGMENT_SHADER);
-  const vsL = compileShader(gl, VERT_LINES, gl.VERTEX_SHADER);
-  const fsL = compileShader(gl, FRAG_LINES, gl.FRAGMENT_SHADER);
-  if (!vsP || !fsP || !vsL || !fsL) return { failed: true };
-
-  const progPoints = linkProgram(gl, vsP, fsP);
-  const progLines = linkProgram(gl, vsL, fsL);
-  if (!progPoints || !progLines) return { failed: true };
-
-  // Uniform / attribute locations
-  const aPosP = gl.getAttribLocation(progPoints, 'aPos');
-  const aSizeP = gl.getAttribLocation(progPoints, 'aSize');
-  const aColorP = gl.getAttribLocation(progPoints, 'aColor');
-  const uViewProjP = gl.getUniformLocation(progPoints, 'uViewProj');
-  const uPxScale = gl.getUniformLocation(progPoints, 'uPxScale');
-
-  const aPosL = gl.getAttribLocation(progLines, 'aPos');
-  const aColorL = gl.getAttribLocation(progLines, 'aColor');
-  const uViewProjL = gl.getUniformLocation(progLines, 'uViewProj');
-  const uLineOpacity = gl.getUniformLocation(progLines, 'uOpacity');
-
-  // ─── Buffers ───
-  const pointsPosBuf = gl.createBuffer();
-  const pointsSizeBuf = gl.createBuffer();
-  const pointsColorBuf = gl.createBuffer();
-
-  const intraLinesPosBuf = gl.createBuffer();
-  const intraLinesColorBuf = gl.createBuffer();
-
-  const interLinesPosBuf = gl.createBuffer();
-  const interLinesColorBuf = gl.createBuffer();
-
-  // ─── Scene state ───
-  let pools = []; // [{ cx, cy, cz }]
-  let strikers = []; // [{ poolIdx, ox, oy, oz, speed, offset, flashUntil }]
-  let interLineCount = 0;
-
-  // Persistent typed arrays — sized for max scene.
-  // rev70j: bumped from 16/192 to support strict 1:1 mapping with real
-  // pool/worker counts. Buffers are static-sized; counts above these
-  // caps are still drawn but scene rebuild caps at MAX_POOLS / MAX_STRIKERS
-  // and excess is silently dropped. Real SoloStrike network is unlikely
-  // to exceed these in the medium term.
-  const MAX_POOLS = 64;
-  const MAX_STRIKERS = 800;
-  const MAX_TOTAL_POINTS = MAX_POOLS + MAX_STRIKERS;
-
-  const pointPositions = new Float32Array(MAX_TOTAL_POINTS * 3);
-  const pointSizes = new Float32Array(MAX_TOTAL_POINTS);
-  const pointColors = new Float32Array(MAX_TOTAL_POINTS * 3);
-
-  const intraLinePositions = new Float32Array(MAX_STRIKERS * 6); // 2 verts/line × 3 floats
-  const intraLineColors = new Float32Array(MAX_STRIKERS * 6);
-
-  // Inter-pool lines: all pairs of pool centers within range. Cap total
-  // line count to keep render cost predictable at high pool counts.
-  const MAX_INTER_LINES = 400;
-  const interLinePositions = new Float32Array(MAX_INTER_LINES * 6);
-  const interLineColors = new Float32Array(MAX_INTER_LINES * 6);
-
-  let totalPoints = 0;
-  let totalStrikers = 0;
-  let totalPools = 0;
-
-  // RNG (deterministic so layout is stable across rebuilds with same seed)
-  let rngSeed = 12345;
-  function rand() {
-    rngSeed = (rngSeed * 1664525 + 1013904223) | 0;
-    return ((rngSeed >>> 0) / 4294967296);
-  }
-  function resetRng(seed) { rngSeed = (seed | 0) || 12345; }
-
-  function rebuildScene(poolWorkerCounts) {
-    resetRng(424242); // deterministic for stable rebuild
-
-    // rev70k: STRICT per-pool counts. Caller passes an array where each
-    // entry is the worker count of one specific pool. Pools[i] gets
-    // poolWorkerCounts[i] strikers. This matches the API model where
-    // each peer == one pool, and peer.workers is that pool's striker count.
-    const counts = Array.isArray(poolWorkerCounts) ? poolWorkerCounts : [];
-    const RAW_POOLS = counts.length;
-    const POOLS = Math.min(MAX_POOLS, RAW_POOLS);
-    const RAW_STRIKERS = counts.reduce((a, b) => a + (b | 0), 0);
-    if (RAW_POOLS > MAX_POOLS) {
-      console.warn(`constellation: ${RAW_POOLS} pools exceeds buffer cap ${MAX_POOLS}; capping.`);
-    }
-    if (RAW_STRIKERS > MAX_STRIKERS) {
-      console.warn(`constellation: ${RAW_STRIKERS} strikers exceeds buffer cap ${MAX_STRIKERS}; some pools will lose strikers.`);
-    }
-
+  // ── Scene rebuild ────────────────────────────────────────────────────────
+  function rebuildScene(poolCounts) {
     pools = [];
     strikers = [];
+    adj = new Map();
+    bolts = [];
 
-    // Empty network — just clear scene state and bail. Nothing to draw.
-    if (POOLS === 0) {
-      totalPools = 0;
-      totalStrikers = 0;
-      totalPoints = 0;
-      interLineCount = 0;
-      return;
+    const numPools = Math.min(POOLS_MAX, poolCounts.length);
+    if (numPools === 0 || W === 0 || H === 0) return;
+
+    const rand = rng(RNG_SEED);
+
+    // ── Place pool centers ────────────────────────────────────────────────
+    // Layout depends on count. 1 = center. 2 = left/right. 3+ = ring.
+    if (numPools === 1) {
+      pools.push({ x: W / 2, y: H / 2, idx: 0 });
+    } else if (numPools === 2) {
+      pools.push({ x: W * 0.30, y: H * 0.45, idx: 0 });
+      pools.push({ x: W * 0.70, y: H * 0.55, idx: 1 });
+    } else {
+      const cx = W / 2, cy = H / 2;
+      const r = Math.min(W, H) * 0.32;
+      for (let i = 0; i < numPools; i++) {
+        const ang = (i / numPools) * Math.PI * 2 + 0.4;
+        pools.push({ x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r * 0.8, idx: i });
+      }
     }
 
-    // Build pool cluster centers — distributed on a flattened spherical
-    // shell. With many pools they pack densely; that's accurate not a bug.
-    for (let p = 0; p < POOLS; p++) {
-      const theta = rand() * Math.PI * 2;
-      const phi = Math.acos(2 * rand() - 1);
-      const r = 1.4 + rand() * 1.6;
-      const cx = r * Math.sin(phi) * Math.cos(theta);
-      const cy = r * Math.sin(phi) * Math.sin(theta) * 0.6;
-      const cz = r * Math.cos(phi);
-      pools.push({ cx, cy, cz, flashUntil: 0, workers: counts[p] | 0 });
-    }
+    // ── Place strikers per pool — RANDOM SCATTER, count matches poolCounts ─
+    let id = 0;
+    let strikersUsed = 0;
+    // Adjust scatter radius based on density
+    const minR = numPools <= 2 ? 22 : 18;
+    const maxR = numPools <= 2 ? 78 : 55;
 
-    // Build strikers: pool i gets exactly counts[i] dots.
-    // rev70n: use Fibonacci-sphere (golden-angle) distribution within each
-    // pool's orbital shell. Random placement was producing unlucky tight
-    // clusters that saturated the canvas. Fibonacci guarantees roughly
-    // equal angular separation between any two strikers in a pool — no
-    // matter how few or many. A small per-striker jitter keeps it from
-    // looking too perfectly geometric.
-    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-    let strikersBudget = MAX_STRIKERS;
-    for (let p = 0; p < POOLS && strikersBudget > 0; p++) {
-      const w = Math.min(counts[p] | 0, strikersBudget);
-      strikersBudget -= w;
-      // Average orbital radius for this pool. Single-striker pools get
-      // a smaller radius so the lone dot doesn't drift too far.
-      const baseRadius = w === 1 ? 0.20 : 0.32;
-      for (let s = 0; s < w; s++) {
-        // y in [-1, 1] from -1 (south pole) to +1 (north pole).
-        // Single-striker pools place at equator (y=0).
-        const y = w === 1 ? 0 : 1 - (s / Math.max(1, w - 1)) * 2;
-        const ringR = Math.sqrt(Math.max(0, 1 - y * y));
-        const theta = GOLDEN_ANGLE * s;
-        // Slight per-striker random jitter so it looks organic.
-        const jitter = 0.12;
-        const jx = (rand() - 0.5) * jitter;
-        const jy = (rand() - 0.5) * jitter;
-        const jz = (rand() - 0.5) * jitter;
+    for (let p = 0; p < numPools; p++) {
+      const pool = pools[p];
+      const cnt = Math.min(poolCounts[p] | 0, STRIKERS_MAX - strikersUsed);
+      strikersUsed += cnt;
+      for (let i = 0; i < cnt; i++) {
+        // RANDOM angle + distance — organic scatter, NOT evenly spaced
+        const ang = rand() * Math.PI * 2;
+        const dist = minR + rand() * (maxR - minR);
         strikers.push({
+          id: id++,
           poolIdx: p,
-          baseOx: (Math.cos(theta) * ringR + jx) * baseRadius,
-          baseOy: (y + jy) * baseRadius,
-          baseOz: (Math.sin(theta) * ringR + jz) * baseRadius,
-          ox: 0, oy: 0, oz: 0,
-          speed: 0.4 + rand() * 0.8,
+          ax: pool.x + Math.cos(ang) * dist,
+          ay: pool.y + Math.sin(ang) * dist,
+          x: 0, y: 0,
+          speed: 0.2 + rand() * 0.3,
           offset: rand() * 1000,
+          flashUntil: 0,
         });
       }
     }
 
-    totalPools = POOLS;
-    totalStrikers = strikers.length;
-    totalPoints = totalPools + totalStrikers;
-
-    // Adaptive sizing — same logic as before, scales with totals.
-    // rev70m: tightened ranges. Old upper ends (0.30 pool, 0.08 striker)
-    // saturated the canvas with additive blending when only 2 pools
-    // were present. Production screenshot showed two blown-out white
-    // blobs. New ceiling matches the design preview values.
-    const poolSizeBase = totalPools <= 3 ? 0.20
-                       : totalPools <= 8 ? 0.17
-                       : totalPools <= 20 ? 0.15
-                       : 0.12;
-    const strikerSizeBase = totalStrikers <= 20 ? 0.055
-                          : totalStrikers <= 80 ? 0.045
-                          : totalStrikers <= 200 ? 0.04
-                          : 0.035;
-
-    for (let i = 0; i < totalPools; i++) {
-      pointColors[i * 3 + 0] = 1.0;
-      pointColors[i * 3 + 1] = 0.84;
-      pointColors[i * 3 + 2] = 0.42;
-      pointSizes[i] = poolSizeBase;
-    }
-    for (let i = 0; i < totalStrikers; i++) {
-      const k = totalPools + i;
-      pointColors[k * 3 + 0] = 0.55;
-      pointColors[k * 3 + 1] = 0.72;
-      pointColors[k * 3 + 2] = 0.95;
-      pointSizes[k] = strikerSizeBase;
-    }
-    // Stash for animation loop reference
-    pools.poolSizeBase = poolSizeBase;
-    strikers.strikerSizeBase = strikerSizeBase;
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointsColorBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, pointColors, gl.DYNAMIC_DRAW);
-
-    // Build inter-pool lines — pool centers within range. Capped to
-    // MAX_INTER_LINES total. Range tightened slightly when there are many
-    // pools so the network doesn't degenerate to a fully-connected mess.
-    const range = totalPools <= 8 ? 2.6
-                : totalPools <= 20 ? 2.0
-                : 1.4;
-    let liIdx = 0;
-    interLineCount = 0;
-    for (let i = 0; i < totalPools && interLineCount < MAX_INTER_LINES; i++) {
-      for (let j = i + 1; j < totalPools && interLineCount < MAX_INTER_LINES; j++) {
-        const dx = pools[i].cx - pools[j].cx;
-        const dy = pools[i].cy - pools[j].cy;
-        const dz = pools[i].cz - pools[j].cz;
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (d < range) {
-          interLinePositions[liIdx * 6 + 0] = pools[i].cx;
-          interLinePositions[liIdx * 6 + 1] = pools[i].cy;
-          interLinePositions[liIdx * 6 + 2] = pools[i].cz;
-          interLinePositions[liIdx * 6 + 3] = pools[j].cx;
-          interLinePositions[liIdx * 6 + 4] = pools[j].cy;
-          interLinePositions[liIdx * 6 + 5] = pools[j].cz;
-          for (let v = 0; v < 2; v++) {
-            interLineColors[liIdx * 6 + v * 3 + 0] = 0.28;
-            interLineColors[liIdx * 6 + v * 3 + 1] = 0.32;
-            interLineColors[liIdx * 6 + v * 3 + 2] = 0.38;
-          }
-          liIdx++;
-          interLineCount++;
-        }
+    // ── K-nearest adjacency (for cascade chain) ──────────────────────────
+    for (let i = 0; i < strikers.length; i++) adj.set(i, []);
+    for (let i = 0; i < strikers.length; i++) {
+      const dists = strikers.map((s, j) => ({
+        j,
+        d: i === j ? Infinity : Math.hypot(s.ax - strikers[i].ax, s.ay - strikers[i].ay),
+      }));
+      dists.sort((a, b) => a.d - b.d);
+      for (let k = 0; k < K_NEIGHBORS && k < dists.length; k++) {
+        const j = dists[k].j;
+        if (j < 0 || !isFinite(dists[k].d)) continue;
+        if (!adj.get(i).includes(j)) adj.get(i).push(j);
+        if (!adj.get(j).includes(i)) adj.get(j).push(i);
       }
     }
-    gl.bindBuffer(gl.ARRAY_BUFFER, interLinesPosBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, interLinePositions, gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, interLinesColorBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, interLineColors, gl.STATIC_DRAW);
+  }
 
-    // Pre-color intra-pool lines (amber-dim)
-    for (let i = 0; i < MAX_STRIKERS * 6; i += 3) {
-      intraLineColors[i + 0] = 0.96;
-      intraLineColors[i + 1] = 0.65;
-      intraLineColors[i + 2] = 0.14;
+  // ── Lightning path generator (mid-point displacement) ──────────────────
+  function makeJaggedPath(x1, y1, x2, y2, disp, depth) {
+    const segs = [];
+    function recurse(p1, p2, d, depthLeft) {
+      if (depthLeft === 0) { segs.push(p1, p2); return; }
+      const mx = (p1.x + p2.x) / 2 + (Math.random() - 0.5) * d;
+      const my = (p1.y + p2.y) / 2 + (Math.random() - 0.5) * d;
+      const m = { x: mx, y: my };
+      recurse(p1, m, d * 0.5, depthLeft - 1);
+      recurse(m, p2, d * 0.5, depthLeft - 1);
     }
-    gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesColorBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, intraLineColors, gl.STATIC_DRAW);
+    recurse({ x: x1, y: y1 }, { x: x2, y: y2 }, disp, depth);
+    return segs;
   }
 
-  // Build initial empty scene. update() rebuilds on first real data.
-  rebuildScene([]);
-
-  // Time accumulator
-  let tAccum = 0;
-
-  // Scene rotation. rev70k: split into two:
-  //   • idleRotY/X — automatic gentle drift when user is not interacting
-  //   • userRotY/X — user-controlled rotation from drag input
-  // Final rotation = idle + user. When user interacts, idle pauses for
-  // a few seconds before resuming.
-  let userRotY = 0;
-  let userRotX = 0;
-  let userZoom = 1.0; // multiplicative on base distance
-  let lastInteractionMs = 0;
-  const IDLE_RESUME_MS = 3500; // auto-rotate resumes this many ms after last input
-  const BASE_DISTANCE = 6.5;
-  const MIN_ZOOM = 0.45;
-  const MAX_ZOOM = 4.0;
-
-  // Cached signature of the last poolWorkers array. Used to detect changes
-  // cheaply without deep-comparing every frame. Format: "n|w0,w1,w2,..."
-  let lastSig = '';
-
-  let lastWidth = 0, lastHeight = 0, lastDpr = 0;
-
-  function resize(width, height, dpr) {
-    if (width === lastWidth && height === lastHeight && dpr === lastDpr) return;
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    lastWidth = width; lastHeight = height; lastDpr = dpr;
+  // ── Cascade triggers ───────────────────────────────────────────────────
+  function fireFromPool(poolIdx, t) {
+    if (poolIdx < 0 || poolIdx >= pools.length) return;
+    const candidates = [];
+    for (let i = 0; i < strikers.length; i++) {
+      if (strikers[i].poolIdx === poolIdx) candidates.push(i);
+    }
+    if (candidates.length === 0) return;
+    const targetIdx = candidates[Math.floor(Math.random() * candidates.length)];
+    strikers[targetIdx].flashUntil = t + FLASH_DUR;
+    bolts.push({
+      type: 'pool',
+      fromX: pools[poolIdx].x,
+      fromY: pools[poolIdx].y,
+      toIdx: targetIdx,
+      start: t,
+      duration: BOLT_DURATION,
+      nextIdx: targetIdx,
+      nextDepth: 1,
+      triggered: false,
+    });
   }
 
-  const viewProj = new Float32Array(16);
+  function chain(idx, t, depth) {
+    if (idx < 0 || idx >= strikers.length) return;
+    strikers[idx].flashUntil = t + FLASH_DUR * 0.6;
+    if (depth >= CHAIN_DEPTH) return;
+    const neighbors = adj.get(idx) || [];
+    for (const n of neighbors) {
+      bolts.push({
+        type: 'striker',
+        fromIdx: idx,
+        toIdx: n,
+        start: t + depth * CHAIN_DELAY,
+        duration: BOLT_DURATION,
+        nextIdx: n,
+        nextDepth: depth + 1,
+        triggered: false,
+      });
+    }
+  }
 
-  function update({ dpr, width, height, poolWorkers, dt }) {
+  // ── Update + render ────────────────────────────────────────────────────
+  function update(opts) {
+    if (destroyed || !opts) return;
+    const { dpr, width, height, poolWorkers, flashPoolIndices } = opts;
     if (!width || !height) return;
-    resize(width, height, dpr || 1);
 
-    // rev70k: per-pool worker counts. Caller passes poolWorkers (array).
+    const dprNew = dpr || 1;
+    if (W !== width || H !== height || dprCached !== dprNew) {
+      W = width; H = height; dprCached = dprNew;
+      canvas.width = Math.floor(W * dprNew);
+      canvas.height = Math.floor(H * dprNew);
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dprNew, 0, 0, dprNew, 0, 0);
+      lastSig = ''; // force scene rebuild for new dimensions
+    }
+
     const counts = Array.isArray(poolWorkers) ? poolWorkers : [];
-    // Cheap change detection
     const sig = counts.length + '|' + counts.join(',');
     if (sig !== lastSig) {
       lastSig = sig;
       rebuildScene(counts);
     }
 
-    // No data → just clear (canvas stays transparent, card surface shows)
-    if (totalPools === 0) {
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+    if (pools.length === 0) {
+      ctx.clearRect(0, 0, W, H);
       return;
     }
 
-    // Advance time
-    const stepDt = Math.min(0.05, Math.max(0, dt || 0.016));
-    tAccum += stepDt;
+    const t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-    // Idle auto-rotation resumes after IDLE_RESUME_MS of no interaction.
-    // While user is interacting, rotation is purely user-controlled.
-    const nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const idleRatio = Math.min(1, Math.max(0, (nowMs - lastInteractionMs - IDLE_RESUME_MS) / 1500));
-    const idleRotY = tAccum * 0.07 * idleRatio;
-    const idleRotX = Math.sin(tAccum * 0.1) * 0.15 * idleRatio;
-    // rev70k-fix: rotY/rotX are local frame variables, NOT module-level.
-    // Earlier rev70k draft assigned them without `let`, which throws
-    // ReferenceError under strict mode (ES modules default). Caught by
-    // production debug log: "Can't find variable: rotY".
-    const rotY = userRotY + idleRotY;
-    const rotX = userRotX + idleRotX;
-
-    // Animate striker positions (orbit around their pool center).
-    // Update vertex positions for points buffer.
-    // Pool centers are stable.
-    for (let i = 0; i < totalPools; i++) {
-      pointPositions[i * 3 + 0] = pools[i].cx;
-      pointPositions[i * 3 + 1] = pools[i].cy;
-      pointPositions[i * 3 + 2] = pools[i].cz;
-    }
-    // Strikers — base offset + small phase wobble
-    const strikerBase = strikers.strikerSizeBase || 0.06;
-    const flashSize = Math.max(0.18, strikerBase * 3.5);
-    for (let i = 0; i < totalStrikers; i++) {
-      const s = strikers[i];
-      const p = pools[s.poolIdx];
-      const phase = tAccum * s.speed + s.offset;
-      // Small jitter around base position so they look alive
-      s.ox = s.baseOx + Math.cos(phase) * 0.025;
-      s.oy = s.baseOy + Math.sin(phase * 1.3) * 0.025;
-      s.oz = s.baseOz + Math.cos(phase * 0.7) * 0.025;
-      const k = totalPools + i;
-      pointPositions[k * 3 + 0] = p.cx + s.ox;
-      pointPositions[k * 3 + 1] = p.cy + s.oy;
-      pointPositions[k * 3 + 2] = p.cz + s.oz;
-
-      // Sizes: pulse + occasional bright flash (random "share submitted")
-      const baseSize = strikerBase * (0.8 + 0.5 * Math.abs(Math.sin(phase)));
-      pointSizes[k] = (Math.random() < 0.0006) ? flashSize : baseSize;
-    }
-    // Pool sizes: gentle breathing, scaled to current poolSizeBase
-    const poolBase = pools.poolSizeBase || 0.20;
-    for (let i = 0; i < totalPools; i++) {
-      pointSizes[i] = poolBase * (0.92 + 0.10 * Math.sin(tAccum * 0.8 + i));
+    // Trigger cascades for each pool with detected activity
+    if (Array.isArray(flashPoolIndices) && flashPoolIndices.length > 0) {
+      for (const poolIdx of flashPoolIndices) {
+        fireFromPool(poolIdx, t);
+      }
     }
 
-    // Build intra-pool line positions (each striker → its pool)
-    for (let i = 0; i < totalStrikers; i++) {
-      const s = strikers[i];
-      const p = pools[s.poolIdx];
-      intraLinePositions[i * 6 + 0] = p.cx;
-      intraLinePositions[i * 6 + 1] = p.cy;
-      intraLinePositions[i * 6 + 2] = p.cz;
-      intraLinePositions[i * 6 + 3] = p.cx + s.ox;
-      intraLinePositions[i * 6 + 4] = p.cy + s.oy;
-      intraLinePositions[i * 6 + 5] = p.cz + s.oz;
+    // Striker subtle position wobble
+    for (const s of strikers) {
+      const phase = (t / 1000) * s.speed + s.offset;
+      s.x = s.ax + Math.cos(phase) * 2;
+      s.y = s.ay + Math.sin(phase * 1.3) * 2;
     }
 
-    // Upload buffers
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointsPosBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, pointPositions, gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointsSizeBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, pointSizes, gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesPosBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, intraLinePositions, gl.DYNAMIC_DRAW);
-
-    // ─── Render ───
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.disable(gl.DEPTH_TEST);
-
-    const aspect = width / height;
-    const distance = BASE_DISTANCE / userZoom;
-    buildViewProj(viewProj, Math.PI * 0.25, aspect, 0.1, 100, rotY, rotX, distance);
-
-    // Px scale: for gl_PointSize we need a scale that converts world-space
-    // to pixel-space. 380 is a tuned value from the preview.
-    const pxScale = 380 * (dpr || 1) * (height / 300); // matches preview when 300px tall
-
-    // rev70o: lines stay ADDITIVE (so dim opacity values still glow on
-    // dark bg), but points switch to standard ALPHA blending so overlaps
-    // don't compound brightness toward white. Earlier additive points
-    // saturated whenever 4+ strikers clustered together. With alpha
-    // blending the brightness is bounded — overlap stays the same color
-    // and same brightness as a single point.
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive (lines)
-
-    // Lines first (so they appear behind points)
-    gl.useProgram(progLines);
-    gl.uniformMatrix4fv(uViewProjL, false, viewProj);
-
-    // Inter-pool lines (dim gray)
-    if (interLineCount > 0) {
-      gl.uniform1f(uLineOpacity, 0.22);
-      gl.bindBuffer(gl.ARRAY_BUFFER, interLinesPosBuf);
-      gl.enableVertexAttribArray(aPosL);
-      gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, interLinesColorBuf);
-      gl.enableVertexAttribArray(aColorL);
-      gl.vertexAttribPointer(aColorL, 3, gl.FLOAT, false, 0, 0);
-      gl.drawArrays(gl.LINES, 0, interLineCount * 2);
+    // Process bolt queue: trigger next chain when bolt reaches halfway
+    for (let i = bolts.length - 1; i >= 0; i--) {
+      const b = bolts[i];
+      if (t < b.start) continue;
+      const age = (t - b.start) / b.duration;
+      if (age >= 0.5 && !b.triggered) {
+        b.triggered = true;
+        if (b.nextDepth !== undefined && b.nextDepth < CHAIN_DEPTH) {
+          chain(b.nextIdx, t, b.nextDepth);
+        }
+      }
+      if (age >= 1) bolts.splice(i, 1);
     }
 
-    // Intra-pool lines (amber-dim) — rev70m: opacity 0.18 → 0.10 to ease
-    // the additive bloom that contributed to the white-blob saturation.
-    if (totalStrikers > 0) {
-      gl.uniform1f(uLineOpacity, 0.10);
-      gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesPosBuf);
-      gl.enableVertexAttribArray(aPosL);
-      gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesColorBuf);
-      gl.enableVertexAttribArray(aColorL);
-      gl.vertexAttribPointer(aColorL, 3, gl.FLOAT, false, 0, 0);
-      gl.drawArrays(gl.LINES, 0, totalStrikers * 2);
+    // ── Draw frame ────────────────────────────────────────────────────────
+    // Background fade — semi-transparent fill creates subtle motion-blur trails
+    ctx.fillStyle = 'rgba(8,7,5,0.85)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Persistent dim mesh edges (shows striker connectivity)
+    const drawn = new Set();
+    for (let i = 0; i < strikers.length; i++) {
+      const list = adj.get(i) || [];
+      for (const j of list) {
+        const a = Math.min(i, j), b = Math.max(i, j);
+        const key = a + '_' + b;
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        ctx.strokeStyle = 'rgba(89,153,255,0.06)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(strikers[i].x, strikers[i].y);
+        ctx.lineTo(strikers[j].x, strikers[j].y);
+        ctx.stroke();
+      }
     }
 
-    // rev70o: switch to ALPHA blending for points. Saturation-proof.
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    // Active lightning bolts
+    for (const bolt of bolts) {
+      if (t < bolt.start) continue;
+      const age = (t - bolt.start) / bolt.duration;
+      if (age >= 1) continue;
+      const alpha = Math.min(1, (1 - age) * 1.4);
+      let fx, fy, tx, ty;
+      if (bolt.type === 'pool') {
+        fx = bolt.fromX; fy = bolt.fromY;
+        if (bolt.toIdx < 0 || bolt.toIdx >= strikers.length) continue;
+        tx = strikers[bolt.toIdx].x; ty = strikers[bolt.toIdx].y;
+      } else {
+        if (bolt.fromIdx < 0 || bolt.fromIdx >= strikers.length) continue;
+        if (bolt.toIdx < 0 || bolt.toIdx >= strikers.length) continue;
+        fx = strikers[bolt.fromIdx].x; fy = strikers[bolt.fromIdx].y;
+        tx = strikers[bolt.toIdx].x; ty = strikers[bolt.toIdx].y;
+      }
+      const segs = makeJaggedPath(fx, fy, tx, ty, 12, 3);
+      const thickness = bolt.type === 'pool' ? 2.2 : 1.6;
 
-    // Points on top
-    gl.useProgram(progPoints);
-    gl.uniformMatrix4fv(uViewProjP, false, viewProj);
-    gl.uniform1f(uPxScale, pxScale);
+      // Outer blue glow
+      ctx.strokeStyle = `rgba(170,200,255,${alpha * 0.85})`;
+      ctx.lineWidth = thickness;
+      ctx.beginPath();
+      for (let j = 0; j < segs.length; j += 2) {
+        if (j === 0) ctx.moveTo(segs[j].x, segs[j].y);
+        ctx.lineTo(segs[j + 1].x, segs[j + 1].y);
+      }
+      ctx.stroke();
+      // Inner white core
+      ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.95})`;
+      ctx.lineWidth = thickness * 0.4;
+      ctx.beginPath();
+      for (let j = 0; j < segs.length; j += 2) {
+        if (j === 0) ctx.moveTo(segs[j].x, segs[j].y);
+        ctx.lineTo(segs[j + 1].x, segs[j + 1].y);
+      }
+      ctx.stroke();
+    }
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointsPosBuf);
-    gl.enableVertexAttribArray(aPosP);
-    gl.vertexAttribPointer(aPosP, 3, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointsSizeBuf);
-    gl.enableVertexAttribArray(aSizeP);
-    gl.vertexAttribPointer(aSizeP, 1, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, pointsColorBuf);
-    gl.enableVertexAttribArray(aColorP);
-    gl.vertexAttribPointer(aColorP, 3, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.POINTS, 0, totalPoints);
+    // Strikers (with cubic ease-out white flash on chain hits)
+    for (const s of strikers) {
+      const flashing = t < s.flashUntil;
+      if (flashing) {
+        const fade = (s.flashUntil - t) / FLASH_DUR;
+        const ease = fade * fade * fade;
+        // Outer blue glow
+        const g1 = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 14 + ease * 16);
+        g1.addColorStop(0, `rgba(170,220,255,${ease * 0.6 + 0.2})`);
+        g1.addColorStop(1, 'rgba(170,220,255,0)');
+        ctx.fillStyle = g1;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 14 + ease * 16, 0, Math.PI * 2);
+        ctx.fill();
+        // White core
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 2 + ease * 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Normal blue dot with subtle halo
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 4);
+        g.addColorStop(0, 'rgba(89,153,255,0.5)');
+        g.addColorStop(1, 'rgba(89,153,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(89,153,255,0.85)';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Pool electrodes (amber + blue electric halo)
+    for (const p of pools) {
+      // Outer amber halo
+      const g1 = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 28);
+      g1.addColorStop(0, 'rgba(255,166,51,0.18)');
+      g1.addColorStop(1, 'rgba(255,166,51,0)');
+      ctx.fillStyle = g1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 28, 0, Math.PI * 2); ctx.fill();
+      // Inner blue electric halo
+      const g2 = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14);
+      g2.addColorStop(0, 'rgba(200,220,255,0.25)');
+      g2.addColorStop(1, 'rgba(200,220,255,0)');
+      ctx.fillStyle = g2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2); ctx.fill();
+      // Solid amber core
+      ctx.fillStyle = 'rgba(255,166,51,0.95)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,220,180,0.7)';
+      ctx.beginPath(); ctx.arc(p.x - 1.4, p.y - 1.4, 2.8, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
   }
 
   function destroy() {
-    try {
-      gl.deleteBuffer(pointsPosBuf);
-      gl.deleteBuffer(pointsSizeBuf);
-      gl.deleteBuffer(pointsColorBuf);
-      gl.deleteBuffer(intraLinesPosBuf);
-      gl.deleteBuffer(intraLinesColorBuf);
-      gl.deleteBuffer(interLinesPosBuf);
-      gl.deleteBuffer(interLinesColorBuf);
-      gl.deleteProgram(progPoints);
-      gl.deleteProgram(progLines);
-      gl.deleteShader(vsP);
-      gl.deleteShader(fsP);
-      gl.deleteShader(vsL);
-      gl.deleteShader(fsL);
-      const ext = gl.getExtension('WEBGL_lose_context');
-      if (ext) ext.loseContext();
-    } catch (e) {}
+    destroyed = true;
+    pools = [];
+    strikers = [];
+    bolts = [];
+    adj = new Map();
   }
 
+  // ── Public API ────────────────────────────────────────────────────────────
+  // The rotation/zoom/interaction methods are kept as no-ops so App.jsx's
+  // pointer handlers (which call into them when pulseAnim === 'constellation')
+  // continue to work harmlessly without crashing.
   return {
-    isReady() { return true; },
     update,
+    addRotation: () => {},
+    multiplyZoom: () => {},
+    setZoom: () => {},
+    resetView: () => {},
+    pingInteraction: () => {},
     destroy,
-    // ── rev70k interaction API ──────────────────────────────────────────
-    // All three methods bump lastInteractionMs so idle auto-rotate pauses.
-    /** Drag input. dx/dy are CSS pixels of pointer movement. */
-    addRotation(dxPx, dyPx) {
-      // Convert pixel deltas to radians. ~600px = π rotation.
-      userRotY += (dxPx || 0) * (Math.PI / 600);
-      const newRotX = userRotX + (dyPx || 0) * (Math.PI / 600);
-      // Clamp pitch so view doesn't flip upside-down
-      userRotX = Math.max(-1.2, Math.min(1.2, newRotX));
-      lastInteractionMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    },
-    /** Pinch / wheel zoom. factor > 1 zooms in, < 1 zooms out. */
-    multiplyZoom(factor) {
-      userZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, userZoom * (factor || 1)));
-      lastInteractionMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    },
-    /** Set zoom directly. */
-    setZoom(z) {
-      userZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z || 1));
-      lastInteractionMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    },
-    /** Reset to default view + clear interaction so auto-rotate resumes. */
-    resetView() {
-      userRotY = 0;
-      userRotX = 0;
-      userZoom = 1.0;
-      lastInteractionMs = 0;
-    },
-    /** Bump interaction timestamp without changing view (e.g. on pointer-down). */
-    pingInteraction() {
-      lastInteractionMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    },
+    isReady: () => !destroyed,
   };
 }

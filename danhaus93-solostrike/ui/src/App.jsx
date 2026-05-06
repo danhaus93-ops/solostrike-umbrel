@@ -7350,7 +7350,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -7381,6 +7381,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // pointerId -> { x, y } in CSS pixels.
   const constellationPointersRef = useRef(new Map());
   const constellationPinchPrevDistRef = useRef(0);
+  // rev70r: real share-flash detection. Track last-seen lastShareAt (our pool)
+  // and per-peer lastSeenAgoSec (peer broadcasts). When either changes, the
+  // dispatch builds a flashPoolIndices array passed to the cascade renderer.
+  const lastShareAtRef = useRef(null);
+  const peerLastSeenRef = useRef(new Map());
 
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
@@ -8850,21 +8855,51 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // canvas just stays cleared underneath.
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else if (pulseAnim === 'constellation') {
-        // 2D canvas already cleared above. Drive the WebGL renderer.
-        // rev70k: per-pool counts. Each non-filtered peer is one pool;
-        // peer.workers is its striker count. Pass the array so the
-        // renderer can give pool i exactly counts[i] strikers (no even
-        // distribution).
+        // 2D canvas already cleared above. Drive the cascade renderer.
+        // rev70r: per-pool worker counts + share-submission flash detection.
+        // Each non-filtered peer is one pool; peer.workers is its striker
+        // count. We watch lastShareAt (our pool) and peer.lastSeenAgoSec
+        // (peer broadcasts) — both are real network activity signals — and
+        // pass affected pool indices to the renderer to fire a cascade
+        // originating in those pools.
         if (constellationRendererRef.current) {
-          const peerList = Array.isArray(ns.peers) ? ns.peers : [];
-          const poolWorkers = peerList
-            .filter(p => p && !p.filtered)
-            .map(p => Math.max(0, p.workers | 0));
+          const peerList = Array.isArray(ns.peers)
+            ? ns.peers.filter(p => p && !p.filtered)
+            : [];
+          const poolWorkers = peerList.map(p => Math.max(0, p.workers | 0));
+
+          // Detect activity → flashPoolIndices
+          const flashPoolIndices = [];
+          // 1) Our pool's share submission
+          if (lastShareAt && lastShareAt !== lastShareAtRef.current) {
+            if (lastShareAtRef.current !== null) {
+              const ourIdx = peerList.findIndex(p => p.isOwn);
+              if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
+            }
+            lastShareAtRef.current = lastShareAt;
+          }
+          // 2) Peer broadcasts (lastSeenAgoSec drops = peer just sent
+          // fresh stats). Skip our own pool — its flash is driven by
+          // lastShareAt, not by our own broadcasts.
+          const newSeen = new Map();
+          for (let i = 0; i < peerList.length; i++) {
+            const peer = peerList[i];
+            const cur = peer.lastSeenAgoSec | 0;
+            newSeen.set(peer.pubkey, cur);
+            if (peer.isOwn) continue;
+            const prev = peerLastSeenRef.current.get(peer.pubkey);
+            if (prev != null && cur < prev - 5) {
+              flashPoolIndices.push(i);
+            }
+          }
+          peerLastSeenRef.current = newSeen;
+
           constellationRendererRef.current.update({
             dpr: dprRef.current || 1,
             width: W,
             height: H,
             poolWorkers,
+            flashPoolIndices,
             dt,
           });
         }
@@ -8877,7 +8912,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, pulseAnim, useBitcoinSymbols]);
+  }, [enabled, ns.hashrate, ns.pools, ns.workers, lastShareAt, pulseAnim, useBitcoinSymbols]);
 
 
 
@@ -11346,6 +11381,7 @@ export default function App() {
       useBitcoinSymbols={useBitcoinSymbols}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
+      lastShareAt={poolState?.shares?.lastShareAt}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
