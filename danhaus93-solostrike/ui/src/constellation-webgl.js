@@ -23,7 +23,10 @@ uniform float uPxScale;
 varying vec3 vColor;
 void main() {
   vec4 p = uViewProj * vec4(aPos, 1.0);
-  gl_PointSize = aSize * uPxScale / max(0.1, -p.z);
+  // rev70n: cap point size so zoom-in doesn't render points
+  // hundreds of pixels wide (which saturates the canvas to white).
+  // 36 backing px = ~12 CSS px on dpr=3 — comfortable upper bound.
+  gl_PointSize = min(36.0, aSize * uPxScale / max(0.1, -p.z));
   gl_Position = p;
   vColor = aColor;
 }
@@ -36,12 +39,13 @@ void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c);
   if (d > 0.5) discard;
-  // rev70m: sharper falloff (was -7) + lower alpha multiplier (was *1.6).
-  // The earlier values produced bright halo blobs that saturated the
-  // canvas to white when many points clustered (e.g. 8 strikers in one
-  // tight pool with low total pool count).
-  float a = exp(-d * 11.0);
-  gl_FragColor = vec4(vColor, a * 0.95);
+  // rev70o: with alpha blending (not additive), brightness is bounded
+  // — overlapping points don't compound to white. So we can run higher
+  // per-point alpha (0.55 → 0.85) and points appear vivid + crisp.
+  // Sharper falloff (-14d) keeps the dot looking like a dot instead
+  // of a halo.
+  float a = exp(-d * 14.0);
+  gl_FragColor = vec4(vColor, a * 0.85);
 }
 `;
 
@@ -252,21 +256,36 @@ export function createConstellationWebGL(canvas, opts = {}) {
     }
 
     // Build strikers: pool i gets exactly counts[i] dots.
+    // rev70n: use Fibonacci-sphere (golden-angle) distribution within each
+    // pool's orbital shell. Random placement was producing unlucky tight
+    // clusters that saturated the canvas. Fibonacci guarantees roughly
+    // equal angular separation between any two strikers in a pool — no
+    // matter how few or many. A small per-striker jitter keeps it from
+    // looking too perfectly geometric.
+    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
     let strikersBudget = MAX_STRIKERS;
     for (let p = 0; p < POOLS && strikersBudget > 0; p++) {
       const w = Math.min(counts[p] | 0, strikersBudget);
       strikersBudget -= w;
+      // Average orbital radius for this pool. Single-striker pools get
+      // a smaller radius so the lone dot doesn't drift too far.
+      const baseRadius = w === 1 ? 0.20 : 0.32;
       for (let s = 0; s < w; s++) {
-        const sa = rand() * Math.PI * 2;
-        const sb = (rand() - 0.5) * Math.PI;
-        // rev70m: wider orbital spread so strikers don't crowd into a
-        // blob at the pool center. Range 0.20 → 0.55 (was 0.18 → 0.40).
-        const sr = 0.20 + rand() * 0.35;
+        // y in [-1, 1] from -1 (south pole) to +1 (north pole).
+        // Single-striker pools place at equator (y=0).
+        const y = w === 1 ? 0 : 1 - (s / Math.max(1, w - 1)) * 2;
+        const ringR = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = GOLDEN_ANGLE * s;
+        // Slight per-striker random jitter so it looks organic.
+        const jitter = 0.12;
+        const jx = (rand() - 0.5) * jitter;
+        const jy = (rand() - 0.5) * jitter;
+        const jz = (rand() - 0.5) * jitter;
         strikers.push({
           poolIdx: p,
-          baseOx: Math.cos(sa) * Math.cos(sb) * sr,
-          baseOy: Math.sin(sb) * sr,
-          baseOz: Math.sin(sa) * Math.cos(sb) * sr,
+          baseOx: (Math.cos(theta) * ringR + jx) * baseRadius,
+          baseOy: (y + jy) * baseRadius,
+          baseOz: (Math.sin(theta) * ringR + jz) * baseRadius,
           ox: 0, oy: 0, oz: 0,
           speed: 0.4 + rand() * 0.8,
           offset: rand() * 1000,
@@ -489,7 +508,6 @@ export function createConstellationWebGL(canvas, opts = {}) {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive
     gl.disable(gl.DEPTH_TEST);
 
     const aspect = width / height;
@@ -500,7 +518,15 @@ export function createConstellationWebGL(canvas, opts = {}) {
     // to pixel-space. 380 is a tuned value from the preview.
     const pxScale = 380 * (dpr || 1) * (height / 300); // matches preview when 300px tall
 
-    // Lines first (so they appear behind glowing points)
+    // rev70o: lines stay ADDITIVE (so dim opacity values still glow on
+    // dark bg), but points switch to standard ALPHA blending so overlaps
+    // don't compound brightness toward white. Earlier additive points
+    // saturated whenever 4+ strikers clustered together. With alpha
+    // blending the brightness is bounded — overlap stays the same color
+    // and same brightness as a single point.
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive (lines)
+
+    // Lines first (so they appear behind points)
     gl.useProgram(progLines);
     gl.uniformMatrix4fv(uViewProjL, false, viewProj);
 
@@ -528,6 +554,9 @@ export function createConstellationWebGL(canvas, opts = {}) {
       gl.vertexAttribPointer(aColorL, 3, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.LINES, 0, totalStrikers * 2);
     }
+
+    // rev70o: switch to ALPHA blending for points. Saturation-proof.
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     // Points on top
     gl.useProgram(progPoints);
