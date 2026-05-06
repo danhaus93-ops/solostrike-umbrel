@@ -183,20 +183,36 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
    Already used inline in HashPulsePanel + JumpersPanel; this class makes
    it trivially applied anywhere. Use as <div className="ss-divider"/>. */
 .ss-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(245,166,35,0.25),transparent);margin:0.7rem 0;border:none}
-/* rev65: drag handle moved from 8px → 16px inset so it sits cleanly INSIDE
-   the card area rather than hugging the rounded-corner edge. With 16px
-   border-radius (rev63 Forge Tile), the handle at top:8/right:8 was
-   visually crowded against the curve. 16/16 puts it just past the
-   curvature on the flat top surface, next to the title row baseline. */
-.ss-drag-handle{position:absolute;top:16px;right:16px;font-size:14px;color:var(--text-3);cursor:grab;user-select:none;padding:2px 6px;z-index:2;touch-action:none}
+/* rev66: drag handle defaults restored to top:8/right:8 (was working pre-rev65
+   in grid mode on desktop). Carousel-mode handle styling moved out of the
+   viewport media query and into a body class selector below — that way it
+   applies on Umbrel desktop iframe in carousel mode too (where the iframe is
+   wide enough to NOT match `max-width: 639px` but still uses carousel layout
+   because isMobile = max-width: 767px). PWA values are unchanged because
+   .ss-mode-carousel applies to PWA too with identical 14/14 opacity:0.5. */
+.ss-drag-handle{position:absolute;top:8px;right:8px;font-size:14px;color:var(--text-3);cursor:grab;user-select:none;padding:2px 6px;z-index:2;touch-action:none}
 .ss-drag-handle:hover{color:var(--amber)}
 .ss-drag-handle:active{cursor:grabbing}
 
-/* Hide drag handle on small screens to reduce clutter; cards still tap/hold */
-/* rev65: keep the inward inset on mobile too (was inheriting top:8/right:8) */
-@media (max-width:639px){
-  .ss-drag-handle{font-size:12px;opacity:0.5;top:14px;right:14px}
+/* rev66: carousel-mode handle styling. Tucks the handle in slightly and
+   dims it whenever the layout is in carousel mode (PWA, narrow Safari
+   browser, or narrow Umbrel iframe). Pre-rev66 this was tied to
+   `@media (max-width: 639px)` which missed Umbrel iframes wider than 639px
+   that still use carousel layout (because isMobile = max-width: 767px).
+   PWA values unchanged: PWA was already getting top:14/right:14
+   font-size:12px opacity:0.5 from the old media query — same here. */
+.ss-mode-carousel .ss-drag-handle{
+  top:14px;
+  right:14px;
+  font-size:12px;
+  opacity:0.5;
 }
+
+/* Hide drag handle on small screens to reduce clutter; cards still tap/hold */
+/* rev66: handle styling now driven by .ss-mode-carousel body class above
+   (covers Umbrel iframes wider than 639px that still use carousel layout).
+   The previously-here @media (max-width:639px) block had only the handle
+   rule and is now empty, so it's been removed. */
 
 /* Touch target for mobile header controls */
 button{touch-action:manipulation}
@@ -257,6 +273,12 @@ body * {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  /* rev66: explicit touch-action declares "this element handles horizontal
+     panning" to iOS Safari. Without this, Safari may interpret swipes near
+     screen edges as edge-gesture (back/forward history) — especially on
+     iPhone Safari with the address bar visible. Slots inside override with
+     pan-y for their own vertical content scroll. */
+  touch-action: pan-x;
   /* Fill space between header (~210px) and footer (~36px), reserving ~50px
      for the floating dots zone above the footer. JS measurement effect will
      override this with a more accurate value once layout settles. */
@@ -272,6 +294,9 @@ body * {
   scroll-snap-align: center;
   scroll-snap-stop: always;
   height: 100%;
+  /* rev66: counterpart to .ss-carousel's touch-action: pan-x. Slots own
+     vertical panning for their own content scroll (overflow-y: auto). */
+  touch-action: pan-y;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
