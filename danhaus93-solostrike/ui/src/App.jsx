@@ -7350,12 +7350,14 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
   // Canvas refs for the EKG-style waveform
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const animationFrameRef = useRef(null);
   const phaseRef = useRef(0);
   const spikesRef = useRef([]);
   const lastTickRef = useRef(performance.now());
@@ -7374,26 +7376,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // switching back and forth between modes).
   const constellationCanvasRef = useRef(null);
   const constellationRendererRef = useRef(null);
-  // rev70s: fresh-data refs so the draw loop's closure can read the LATEST
-  // ns.peers and lastShareAt every frame, not stale values captured when
-  // the effect last ran. Without this, peer.lastSeenAgoSec drops are
-  // missed because ns.peers isn't in the effect deps.
-  const nsRef = useRef(null);
-  const lastShareAtFreshRef = useRef(null);
-  // Sync these on every render so the draw loop's closure always reads the
-  // latest values without needing a useEffect re-mount.
-  nsRef.current = ns;
-  lastShareAtFreshRef.current = lastShareAt;
   // rev70k: track active pointers on the constellation canvas. Used to
   // distinguish drag (1 pointer) from pinch-zoom (2 pointers). Map from
   // pointerId -> { x, y } in CSS pixels.
   const constellationPointersRef = useRef(new Map());
   const constellationPinchPrevDistRef = useRef(0);
-  // rev70r: real share-flash detection. Track last-seen lastShareAt (our pool)
-  // and per-peer lastSeenAgoSec (peer broadcasts). When either changes, the
-  // dispatch builds a flashPoolIndices array passed to the cascade renderer.
-  const lastShareAtRef = useRef(null);
-  const peerLastSeenRef = useRef(new Map());
 
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
@@ -8863,52 +8850,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // canvas just stays cleared underneath.
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else if (pulseAnim === 'constellation') {
-        // 2D canvas already cleared above. Drive the cascade renderer.
-        // rev70s: read ns and lastShareAt from refs (always fresh) instead
-        // of closure (stale unless deps change). This fixes the bug where
-        // peer.lastSeenAgoSec drops were missed if ns.peers updated without
-        // any other dep changing.
+        // 2D canvas already cleared above. Drive the WebGL renderer.
+        // rev70k: per-pool counts. Each non-filtered peer is one pool;
+        // peer.workers is its striker count. Pass the array so the
+        // renderer can give pool i exactly counts[i] strikers (no even
+        // distribution).
         if (constellationRendererRef.current) {
-          const nsLive = nsRef.current || ns;
-          const lastShareAtLive = lastShareAtFreshRef.current;
-          const peerList = Array.isArray(nsLive.peers)
-            ? nsLive.peers.filter(p => p && !p.filtered)
-            : [];
-          const poolWorkers = peerList.map(p => Math.max(0, p.workers | 0));
-
-          // Detect activity → flashPoolIndices
-          const flashPoolIndices = [];
-          // 1) Our pool's share submission
-          if (lastShareAtLive && lastShareAtLive !== lastShareAtRef.current) {
-            if (lastShareAtRef.current !== null) {
-              const ourIdx = peerList.findIndex(p => p.isOwn);
-              if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
-            }
-            lastShareAtRef.current = lastShareAtLive;
-          }
-          // 2) Peer broadcasts (lastSeenAgoSec drops = peer just sent
-          // fresh stats). rev70s: threshold lowered from 5 to 1 — any
-          // detected drop fires a cascade. Skip our own pool — its flash
-          // is driven by lastShareAt, not by our own broadcasts.
-          const newSeen = new Map();
-          for (let i = 0; i < peerList.length; i++) {
-            const peer = peerList[i];
-            const cur = peer.lastSeenAgoSec | 0;
-            newSeen.set(peer.pubkey, cur);
-            if (peer.isOwn) continue;
-            const prev = peerLastSeenRef.current.get(peer.pubkey);
-            if (prev != null && cur < prev - 1) {
-              flashPoolIndices.push(i);
-            }
-          }
-          peerLastSeenRef.current = newSeen;
-
+          const peerList = Array.isArray(ns.peers) ? ns.peers : [];
+          const poolWorkers = peerList
+            .filter(p => p && !p.filtered)
+            .map(p => Math.max(0, p.workers | 0));
           constellationRendererRef.current.update({
             dpr: dprRef.current || 1,
             width: W,
             height: H,
             poolWorkers,
-            flashPoolIndices,
             dt,
           });
         }
@@ -8921,7 +8877,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, lastShareAt, pulseAnim, useBitcoinSymbols]);
+  }, [enabled, ns.hashrate, ns.pools, ns.workers, pulseAnim, useBitcoinSymbols]);
 
 
 
@@ -11390,7 +11346,6 @@ export default function App() {
       useBitcoinSymbols={useBitcoinSymbols}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
-      lastShareAt={poolState?.shares?.lastShareAt}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
