@@ -273,12 +273,6 @@ body * {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  /* rev66: explicit touch-action declares "this element handles horizontal
-     panning" to iOS Safari. Without this, Safari may interpret swipes near
-     screen edges as edge-gesture (back/forward history) — especially on
-     iPhone Safari with the address bar visible. Slots inside override with
-     pan-y for their own vertical content scroll. */
-  touch-action: pan-x;
   /* Fill space between header (~210px) and footer (~36px), reserving ~50px
      for the floating dots zone above the footer. JS measurement effect will
      override this with a more accurate value once layout settles. */
@@ -294,9 +288,6 @@ body * {
   scroll-snap-align: center;
   scroll-snap-stop: always;
   height: 100%;
-  /* rev66: counterpart to .ss-carousel's touch-action: pan-x. Slots own
-     vertical panning for their own content scroll (overflow-y: auto). */
-  touch-action: pan-y;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -309,11 +300,31 @@ body * {
    means the card stretches to slot height when content is shorter (so no
    empty black space between card content and the dots/footer); when content
    is taller than the slot, the card grows naturally and slot's overflow-y:
-   auto handles inner scrolling. height: auto allows the natural-content path. */
+   auto handles inner scrolling. height: auto allows the natural-content path.
+
+   rev67: added `display: flex; flex-direction: column` so the inner styled
+   card div (the visible Forge Tile) can use flex:1 to fill the wrapper.
+   Previous attempt (rev66's `min-height: 100%` on the inline card style)
+   didn't work because percentage min-height resolves to auto when the
+   parent has `height: auto` (CSS spec). Flex sidesteps that rule entirely:
+   the wrapper grows with its content (or to slot height via min-height),
+   and the inner div absorbs whatever extra space exists. */
 .ss-carousel .ss-card {
   margin: 0;
   height: auto;
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+/* rev67: inner styled card div (the visible Forge Tile rendered by each
+   panel as `<div style={{...card}}>`) becomes a flex item that fills the
+   .ss-card wrapper. flex:1 0 auto = grow to fill, never shrink, base from
+   content. The drag-handle span is position:absolute so it sits outside
+   flex layout — only the card div participates. Without this, the inner
+   card stays at content-height and leaves visible empty space below it
+   (showing the body bg + animated WebGL canvas). */
+.ss-carousel .ss-card > div {
+  flex: 1 0 auto;
 }
 
 /* Position dots — tiny floating indicator at the bottom of the carousel.
