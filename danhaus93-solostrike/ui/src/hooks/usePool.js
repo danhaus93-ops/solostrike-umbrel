@@ -70,7 +70,29 @@ export function usePool() {
     ws.onerror = () => { try { ws.close(); } catch {} };
   }, []);
 
-  useEffect(() => { connect(); return () => { clearTimeout(retryRef.current); wsRef.current?.close(); }; }, [connect]);
+  useEffect(() => {
+    connect();
+    // rev70d: iOS PWA suspend kills the WebSocket (close code 1006 in logs
+    // captured during backgrounding). The exponential backoff in onclose
+    // means if the suspend happened after a few quick failures, the resume
+    // could land 24–30s into the wait. Jump the queue: when the page
+    // becomes visible, if the socket isn't open or connecting, drop any
+    // pending retry timer, reset the backoff, and reconnect now.
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      clearTimeout(retryRef.current);
+      retryCount.current = 0;
+      connect();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearTimeout(retryRef.current);
+      wsRef.current?.close();
+    };
+  }, [connect]);
 
   const saveConfig = useCallback(async (payload) => {
     const res = await fetch('/api/config', {
