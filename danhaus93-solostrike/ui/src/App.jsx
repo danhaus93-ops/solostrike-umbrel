@@ -9479,15 +9479,33 @@ export default function App() {
         document.body.style.paddingBottom = `${footerH}px`;
       }
       if (!carouselEl || !useCarousel) return;
-      // v1.8.1-rev14: REMOVED the JS-side override of --carousel-h. Pixel
-      // measurement of IMG_5158 vs IMG_5166 proved that JS computation was
-      // making cards 50px shorter than the CSS fallback was producing.
-      // Cause: documentElement.clientHeight returns 759 in this iframe but
-      // CSS `100dvh` resolves to ~841 (an 82px discrepancy in iOS PWA mode).
-      // The CSS fallback `calc(100dvh - 296px)` correctly produced the
-      // 545-logical-pixel slot the user is asking for. Removing the JS
-      // override makes that the only sizing source — what works, sticks.
-      // The body padding update for vertical mode (above) still happens.
+      // rev70: re-enabled JS measurement to fix Safari browser carousel under-fill.
+      //
+      // Diagnostic from rev69 debug overlay screenshots:
+      //   Safari browser: 100dvh=628, header=123, footer=30 → real chrome 153px
+      //   PWA          : 100dvh=812, header=210, footer=59 → real chrome 269px
+      // The CSS fallback `calc(100dvh - 296px)` was tuned for PWA's tall chrome.
+      // In Safari it over-deducted by ~143px, leaving 93px of empty space below
+      // cards (visible WASTED=93px in the overlay). Hard-coded constants can't
+      // satisfy both modes — actual measurement is the only reliable answer.
+      //
+      // rev14 historical note: an earlier JS measurement was removed because
+      // `documentElement.clientHeight` returned 759 in iOS PWA when 100dvh was
+      // 841 (an 82px discrepancy). That bug doesn't affect `window.innerHeight`,
+      // which the rev69 overlay confirms matches 100dvh exactly in both modes
+      // (win 812 == 100dvh 812 in PWA; win 628 == 100dvh 628 in Safari browser).
+      //
+      // DOTS_RESERVE=30: dots are position:fixed at bottom 40px+safeAreaInsetBottom
+      // and float over content anyway; we just need enough clearance that text in
+      // the bottom of the card doesn't sit directly behind them. PWA's effective
+      // reserve under the 296 fallback was 27px (812-210-59-516); 30 stays within
+      // 3px of the current PWA layout while recovering 113px in Safari browser.
+      const vh = window.innerHeight;
+      if (vh > 0) {
+        const DOTS_RESERVE = 30;
+        const target = Math.max(200, Math.round(vh - headerH - footerH - DOTS_RESERVE));
+        carouselEl.style.setProperty('--carousel-h', target + 'px');
+      }
     };
     // Run once now and again after layout settles
     update();
@@ -9503,6 +9521,12 @@ export default function App() {
     }
     window.addEventListener('resize', update);
     window.addEventListener('orientationchange', update);
+    // rev70: visualViewport tracks Safari browser's URL-bar collapse/expand
+    // during scroll. Without this, the height we measured at mount goes stale
+    // when the user scrolls and the toolbar shrinks (or vice versa) — cards
+    // would briefly under- or over-fill until a manual resize.
+    const vv = (typeof window !== 'undefined') ? window.visualViewport : null;
+    if (vv) vv.addEventListener('resize', update);
     return () => {
       if (ro) ro.disconnect();
       cancelAnimationFrame(raf1);
@@ -9510,6 +9534,7 @@ export default function App() {
       clearTimeout(t2);
       window.removeEventListener('resize', update);
       window.removeEventListener('orientationchange', update);
+      if (vv) vv.removeEventListener('resize', update);
     };
     // v1.8.1-rev12: added poolState._loaded — same dep-array bug we hit for
     // activeIndex tracking in rev1. Without this, the effect fires once on
