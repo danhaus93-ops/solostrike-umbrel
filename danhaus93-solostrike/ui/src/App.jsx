@@ -7313,7 +7313,7 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBi
                 </span>{' · '}snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.
               </>
             ) : (
-              <>Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to <span style={{ color: 'var(--text-1)' }}>Globe</span>, then tap "Pin My Pool" below the globe.</>
+              <>Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to <span style={{ color: 'var(--text-1)' }}>Globe</span>, then tap the 📍 in the bottom-right of the globe.</>
             )}
           </div>
           {poolPin && (
@@ -8778,36 +8778,32 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               cursor: placingPin ? 'crosshair' : 'grab',
             }}
           />
-        </div>
-        {/* v1.8.5-rev70f: pin button MOVED OUT of globe container so it
-            never overlaps the sphere edge. With rev70e transparency the
-            overlap was visible; black bg used to mask it. */}
-        {pulseAnim === 'globe' && onPoolPinChange && (
-          <div style={{
-            display:'flex', justifyContent:'flex-end',
-            marginTop:'-0.4rem', marginBottom:'0.4rem',
-            paddingRight:6,
-          }}>
+          {/* v1.8.5-rev70g: icon-only pin button INSIDE globe container so
+              the globe keeps its full size. Just the 📍 / ✕ / ↻ glyph,
+              bigger than the old text label, in bottom-right corner. */}
+          {pulseAnim === 'globe' && onPoolPinChange && (
             <button
               onClick={togglePlacingPin}
+              aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
+              title={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
               style={{
+                position:'absolute', bottom:6, right:8,
                 background: 'transparent',
                 border: 'none',
+                padding: '6px 8px',
+                cursor: 'pointer',
+                fontSize: '1.35rem',
+                lineHeight: 1,
                 color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                fontFamily:'var(--fd)', fontSize:'0.55rem',
-                letterSpacing:'0.14em', textTransform:'uppercase',
-                fontWeight: 700,
-                padding:'0.25rem 0.4rem',
-                cursor:'pointer',
-                textShadow: placingPin
-                  ? '0 0 8px rgba(225,80,80,0.6)'
-                  : '0 0 8px rgba(245,166,35,0.55)',
+                filter: placingPin
+                  ? 'drop-shadow(0 0 8px rgba(225,80,80,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.8))'
+                  : 'drop-shadow(0 0 8px rgba(245,166,35,0.6)) drop-shadow(0 0 2px rgba(0,0,0,0.8))',
               }}
             >
-              {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+              {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
@@ -8897,36 +8893,32 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             cursor: placingPin ? 'crosshair' : 'grab',
           }}
         />
-      </div>
-      {/* v1.8.5-rev70f: pin button MOVED OUT of globe container so it
-          never overlaps the sphere edge. With rev70e transparency the
-          overlap was visible; black bg used to mask it. */}
-      {pulseAnim === 'globe' && onPoolPinChange && (
-        <div style={{
-          display:'flex', justifyContent:'flex-end',
-          marginTop:'-0.5rem', marginBottom:'0.5rem',
-          paddingRight:10,
-        }}>
+        {/* v1.8.5-rev70g: icon-only pin button INSIDE globe container so
+            the globe keeps its full size. Just the 📍 / ✕ / ↻ glyph,
+            bigger than the old text label, in bottom-right corner. */}
+        {pulseAnim === 'globe' && onPoolPinChange && (
           <button
             onClick={togglePlacingPin}
+            aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
+            title={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
             style={{
+              position:'absolute', bottom:10, right:12,
               background: 'transparent',
               border: 'none',
+              padding: '8px 10px',
+              cursor: 'pointer',
+              fontSize: '1.6rem',
+              lineHeight: 1,
               color: placingPin ? '#ff8a8a' : 'var(--amber)',
-              fontFamily:'var(--fd)', fontSize:'0.62rem',
-              letterSpacing:'0.14em', textTransform:'uppercase',
-              fontWeight: 700,
-              padding:'0.35rem 0.5rem',
-              cursor:'pointer',
-              textShadow: placingPin
-                ? '0 0 8px rgba(225,80,80,0.6)'
-                : '0 0 8px rgba(245,166,35,0.55)',
+              filter: placingPin
+                ? 'drop-shadow(0 0 10px rgba(225,80,80,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.8))'
+                : 'drop-shadow(0 0 10px rgba(245,166,35,0.6)) drop-shadow(0 0 2px rgba(0,0,0,0.8))',
             }}
           >
-            {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+            {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
