@@ -8778,33 +8778,36 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               cursor: placingPin ? 'crosshair' : 'grab',
             }}
           />
-          {pulseAnim === 'globe' && onPoolPinChange && (
-            <div style={{
-              position:'absolute', bottom:4, right:6,
-              display:'flex', justifyContent:'flex-end', pointerEvents:'none',
-            }}>
-              <button
-                onClick={togglePlacingPin}
-                style={{
-                  pointerEvents:'auto',
-                  background: 'transparent',
-                  border: 'none',
-                  color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                  fontFamily:'var(--fd)', fontSize:'0.55rem',
-                  letterSpacing:'0.14em', textTransform:'uppercase',
-                  fontWeight: 700,
-                  padding:'0.25rem 0.4rem',
-                  cursor:'pointer',
-                  textShadow: placingPin
-                    ? '0 0 8px rgba(225,80,80,0.6)'
-                    : '0 0 8px rgba(245,166,35,0.55)',
-                }}
-              >
-                {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
-              </button>
-            </div>
-          )}
         </div>
+        {/* v1.8.5-rev70f: pin button MOVED OUT of globe container so it
+            never overlaps the sphere edge. With rev70e transparency the
+            overlap was visible; black bg used to mask it. */}
+        {pulseAnim === 'globe' && onPoolPinChange && (
+          <div style={{
+            display:'flex', justifyContent:'flex-end',
+            marginTop:'-0.4rem', marginBottom:'0.4rem',
+            paddingRight:6,
+          }}>
+            <button
+              onClick={togglePlacingPin}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: placingPin ? '#ff8a8a' : 'var(--amber)',
+                fontFamily:'var(--fd)', fontSize:'0.55rem',
+                letterSpacing:'0.14em', textTransform:'uppercase',
+                fontWeight: 700,
+                padding:'0.25rem 0.4rem',
+                cursor:'pointer',
+                textShadow: placingPin
+                  ? '0 0 8px rgba(225,80,80,0.6)'
+                  : '0 0 8px rgba(245,166,35,0.55)',
+              }}
+            >
+              {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+            </button>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
@@ -8894,33 +8897,36 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             cursor: placingPin ? 'crosshair' : 'grab',
           }}
         />
-        {pulseAnim === 'globe' && onPoolPinChange && (
-          <div style={{
-            position:'absolute', bottom:8, right:10,
-            display:'flex', justifyContent:'flex-end', pointerEvents:'none',
-          }}>
-            <button
-              onClick={togglePlacingPin}
-              style={{
-                pointerEvents:'auto',
-                background: 'transparent',
-                border: 'none',
-                color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                fontFamily:'var(--fd)', fontSize:'0.62rem',
-                letterSpacing:'0.14em', textTransform:'uppercase',
-                fontWeight: 700,
-                padding:'0.35rem 0.5rem',
-                cursor:'pointer',
-                textShadow: placingPin
-                  ? '0 0 8px rgba(225,80,80,0.6)'
-                  : '0 0 8px rgba(245,166,35,0.55)',
-              }}
-            >
-              {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
-            </button>
-          </div>
-        )}
       </div>
+      {/* v1.8.5-rev70f: pin button MOVED OUT of globe container so it
+          never overlaps the sphere edge. With rev70e transparency the
+          overlap was visible; black bg used to mask it. */}
+      {pulseAnim === 'globe' && onPoolPinChange && (
+        <div style={{
+          display:'flex', justifyContent:'flex-end',
+          marginTop:'-0.5rem', marginBottom:'0.5rem',
+          paddingRight:10,
+        }}>
+          <button
+            onClick={togglePlacingPin}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: placingPin ? '#ff8a8a' : 'var(--amber)',
+              fontFamily:'var(--fd)', fontSize:'0.62rem',
+              letterSpacing:'0.14em', textTransform:'uppercase',
+              fontWeight: 700,
+              padding:'0.35rem 0.5rem',
+              cursor:'pointer',
+              textShadow: placingPin
+                ? '0 0 8px rgba(225,80,80,0.6)'
+                : '0 0 8px rgba(245,166,35,0.55)',
+            }}
+          >
+            {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+          </button>
+        </div>
+      )}
 
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
