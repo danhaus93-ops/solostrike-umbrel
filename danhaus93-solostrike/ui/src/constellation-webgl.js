@@ -419,8 +419,12 @@ export function createConstellationWebGL(canvas, opts = {}) {
     const idleRatio = Math.min(1, Math.max(0, (nowMs - lastInteractionMs - IDLE_RESUME_MS) / 1500));
     const idleRotY = tAccum * 0.07 * idleRatio;
     const idleRotX = Math.sin(tAccum * 0.1) * 0.15 * idleRatio;
-    rotY = userRotY + idleRotY;
-    rotX = userRotX + idleRotX;
+    // rev70k-fix: rotY/rotX are local frame variables, NOT module-level.
+    // Earlier rev70k draft assigned them without `let`, which throws
+    // ReferenceError under strict mode (ES modules default). Caught by
+    // production debug log: "Can't find variable: rotY".
+    const rotY = userRotY + idleRotY;
+    const rotX = userRotX + idleRotX;
 
     // Animate striker positions (orbit around their pool center).
     // Update vertex positions for points buffer.
