@@ -8778,26 +8778,25 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               cursor: placingPin ? 'crosshair' : 'grab',
             }}
           />
-          {/* v1.8.5-rev70g: icon-only pin button INSIDE globe container so
-              the globe keeps its full size. Just the 📍 / ✕ / ↻ glyph,
-              bigger than the old text label, in bottom-right corner. */}
+          {/* v1.8.5-rev70h: pin button sized down + pushed further right
+              per user feedback. Was: 1.35rem at right:8. */}
           {pulseAnim === 'globe' && onPoolPinChange && (
             <button
               onClick={togglePlacingPin}
               aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
               title={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
               style={{
-                position:'absolute', bottom:6, right:8,
+                position:'absolute', bottom:4, right:3,
                 background: 'transparent',
                 border: 'none',
-                padding: '6px 8px',
+                padding: '4px 5px',
                 cursor: 'pointer',
-                fontSize: '1.35rem',
+                fontSize: '1rem',
                 lineHeight: 1,
                 color: placingPin ? '#ff8a8a' : 'var(--amber)',
                 filter: placingPin
-                  ? 'drop-shadow(0 0 8px rgba(225,80,80,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.8))'
-                  : 'drop-shadow(0 0 8px rgba(245,166,35,0.6)) drop-shadow(0 0 2px rgba(0,0,0,0.8))',
+                  ? 'drop-shadow(0 0 6px rgba(225,80,80,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.8))'
+                  : 'drop-shadow(0 0 6px rgba(245,166,35,0.6)) drop-shadow(0 0 2px rgba(0,0,0,0.8))',
               }}
             >
               {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
@@ -8893,26 +8892,25 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             cursor: placingPin ? 'crosshair' : 'grab',
           }}
         />
-        {/* v1.8.5-rev70g: icon-only pin button INSIDE globe container so
-            the globe keeps its full size. Just the 📍 / ✕ / ↻ glyph,
-            bigger than the old text label, in bottom-right corner. */}
+        {/* v1.8.5-rev70h: pin button sized down + pushed further right
+            per user feedback. Was: 1.6rem at right:12. */}
         {pulseAnim === 'globe' && onPoolPinChange && (
           <button
             onClick={togglePlacingPin}
             aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
             title={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
             style={{
-              position:'absolute', bottom:10, right:12,
+              position:'absolute', bottom:6, right:4,
               background: 'transparent',
               border: 'none',
-              padding: '8px 10px',
+              padding: '5px 6px',
               cursor: 'pointer',
-              fontSize: '1.6rem',
+              fontSize: '1.15rem',
               lineHeight: 1,
               color: placingPin ? '#ff8a8a' : 'var(--amber)',
               filter: placingPin
-                ? 'drop-shadow(0 0 10px rgba(225,80,80,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.8))'
-                : 'drop-shadow(0 0 10px rgba(245,166,35,0.6)) drop-shadow(0 0 2px rgba(0,0,0,0.8))',
+                ? 'drop-shadow(0 0 8px rgba(225,80,80,0.7)) drop-shadow(0 0 2px rgba(0,0,0,0.8))'
+                : 'drop-shadow(0 0 8px rgba(245,166,35,0.6)) drop-shadow(0 0 2px rgba(0,0,0,0.8))',
             }}
           >
             {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
