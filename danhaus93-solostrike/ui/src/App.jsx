@@ -104,6 +104,14 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 // glow fades to transparent within ~70% of its ellipse, well inside the
 // card so corner-bleed isn't visible. Cards that genuinely need
 // overflow:hidden (e.g., the StampSolo wrapper) set it inline locally.
+//
+// rev66: added `min-height: 100%` so the visible card stretches to fill
+// the .ss-card wrapper (which is already min-height:100% of slot via
+// global.css). Without this, when slot height > content height — common
+// in iOS Safari (browser chrome) where the dynamic viewport leaves slots
+// taller than the content — there was empty dark space below the card.
+// PWA wasn't affected because slot height ≈ content height there, so
+// this is a no-op for PWA and a fix for browser-mode rendering.
 const card = {
   background:
     /* Hot amber edge along the top (centered, fading out at the sides) */
@@ -120,6 +128,7 @@ const card = {
     'inset 0 0 0 1px rgba(0,0,0,0.4), '       /* dark inner ring (depth) */ +
     '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
     '0 0 32px rgba(245,166,35,0.06)',         /* faint amber halo */
+  minHeight:'100%',                           /* rev66: fill slot height */
 };
 const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.7rem' };
 const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
