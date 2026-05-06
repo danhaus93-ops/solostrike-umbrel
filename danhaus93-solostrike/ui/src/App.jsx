@@ -271,21 +271,29 @@ const DEBUG_DEFAULTS = {
   storage:     false,  // localStorage browser
 };
 function loadDebugSettings() {
+  // rev70c: master toggle is PER-SESSION — always defaults to false on each
+  // app load. Section preferences (which sub-toggles are on/off) DO persist,
+  // so once you flip master on you immediately see the sections you chose
+  // last time. This stops the overlay from auto-restoring on every PWA
+  // relaunch (it was surprising users who had enabled it once and now
+  // saw a debug panel every time they opened the app).
+  // The rev69→rev70 migration that auto-enabled based on the legacy
+  // `ss_debug_layout_hide` flag is removed — that flag is no longer used.
   try {
     const raw = localStorage.getItem(LS_DEBUG_SETTINGS);
-    if (raw) {
-      const p = JSON.parse(raw);
-      return { ...DEBUG_DEFAULTS, ...(p && typeof p === 'object' ? p : {}) };
-    }
-    // First-time migration from rev69: if user had the overlay open (didn't
-    // dismiss it via × button), default new debug settings to enabled. Else
-    // start disabled — they'll flip it on from Settings → Debug if needed.
-    const dismissed = localStorage.getItem('ss_debug_layout_hide') === '1';
-    return { ...DEBUG_DEFAULTS, enabled: !dismissed };
+    const p = raw ? JSON.parse(raw) : {};
+    return { ...DEBUG_DEFAULTS, ...(p && typeof p === 'object' ? p : {}), enabled: false };
   } catch { return { ...DEBUG_DEFAULTS }; }
 }
 function saveDebugSettings(s) {
-  try { localStorage.setItem(LS_DEBUG_SETTINGS, JSON.stringify(s || {})); } catch {}
+  // Persist everything EXCEPT `enabled` — see loadDebugSettings comment.
+  // Stripping it here keeps the master toggle ephemeral while letting users
+  // pre-configure their preferred section layout.
+  try {
+    if (!s || typeof s !== 'object') return;
+    const { enabled, ...rest } = s;
+    localStorage.setItem(LS_DEBUG_SETTINGS, JSON.stringify(rest));
+  } catch {}
 }
 
 // ── Module-level diagnostic store (rev70) ────────────────────────────────────
@@ -9880,21 +9888,36 @@ function WebhooksTab() {
 function DebugTab({ settings, onSettingsChange }) {
   const [copied, setCopied] = useState(false);
 
-  const Toggle = ({ k, label, helper, disabled }) => (
-    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.7rem 0', borderBottom:'1px solid var(--border)', opacity: disabled ? 0.4 : 1}}>
+  // rev70b: Toggle is always interactive. Two reasons:
+  //   1. The "disabled" state from rev70 was visually confusing — looked
+  //      like the toggles were broken rather than gated.
+  //   2. Users can now pre-configure section visibility while master is off.
+  // Bonus: tapping a section ON while master is OFF auto-enables master, so
+  // there's no "I tapped Performance and nothing showed up" confusion.
+  const Toggle = ({ k, label, helper }) => (
+    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.7rem 0', borderBottom:'1px solid var(--border)'}}>
       <div style={{flex:1, paddingRight:'0.75rem'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.72rem', color:'var(--text-1)', letterSpacing:'0.04em'}}>{label}</div>
         {helper && <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginTop:3, lineHeight:1.4}}>{helper}</div>}
       </div>
       <button
-        disabled={disabled}
-        onClick={() => onSettingsChange({ ...settings, [k]: !settings[k] })}
+        onClick={() => {
+          const newVal = !settings[k];
+          const updated = { ...settings, [k]: newVal };
+          // Tapping any section ON while the master is OFF flips the master
+          // automatically — otherwise the toggle would feel non-responsive
+          // (the overlay stays hidden until master is enabled).
+          if (k !== 'enabled' && newVal && !settings.enabled) {
+            updated.enabled = true;
+          }
+          onSettingsChange(updated);
+        }}
         style={{
           width:40, height:22, borderRadius:11,
           background: settings[k] ? 'var(--cyan)' : 'var(--bg-deep)',
           border:'1px solid var(--border)',
           position:'relative',
-          cursor: disabled ? 'not-allowed' : 'pointer',
+          cursor:'pointer',
           flexShrink:0,
         }}
       >
@@ -9983,8 +10006,6 @@ function DebugTab({ settings, onSettingsChange }) {
     }
   };
 
-  const sectionsDisabled = !settings.enabled;
-
   return (
     <>
       <div style={{padding:'0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:14, fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.5}}>
@@ -9995,30 +10016,30 @@ function DebugTab({ settings, onSettingsChange }) {
       <Toggle k="enabled" label="Show debug overlay" helper="Top-right green panel that updates live."/>
 
       <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Page</div>
-      <Toggle k="layout"  label="Layout"   helper="Viewport, header/footer, carousel/slot/card metrics. WASTED >20px = under-fill bug." disabled={sectionsDisabled}/>
-      <Toggle k="state"   label="State"    helper="Display mode (PWA/browser/iframe), breakpoint, body classes, useCarousel." disabled={sectionsDisabled}/>
-      <Toggle k="network" label="Network"  helper="Pool loaded, last update, connection status, stratum port health." disabled={sectionsDisabled}/>
-      <Toggle k="build"   label="Build"    helper="Compose version, active SW cache name, SW state, current path." disabled={sectionsDisabled}/>
+      <Toggle k="layout"  label="Layout"   helper="Viewport, header/footer, carousel/slot/card metrics. WASTED >20px = under-fill bug."/>
+      <Toggle k="state"   label="State"    helper="Display mode (PWA/browser/iframe), breakpoint, body classes, useCarousel."/>
+      <Toggle k="network" label="Network"  helper="Pool loaded, last update, connection status, stratum port health."/>
+      <Toggle k="build"   label="Build"    helper="Compose version, active SW cache name, SW state, current path."/>
 
       <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Diagnostic streams</div>
-      <Toggle k="performance" label="Performance" helper="FPS (current + 30s avg), JS memory (Chrome only), long-task count, DOM nodes, page-load timing." disabled={sectionsDisabled}/>
-      <Toggle k="errors"      label="Errors"      helper="window.error count + last few, plus unhandled promise rejections." disabled={sectionsDisabled}/>
-      <Toggle k="consoleLog"  label="Console capture" helper="Last 15 console.log/warn/error messages with timestamps. Critical when iOS DevTools isn't an option." disabled={sectionsDisabled}/>
-      <Toggle k="api"         label="API trace"   helper="Every fetch() call: method, path, status, latency. Status ≥400 or >1s flagged." disabled={sectionsDisabled}/>
-      <Toggle k="transport"   label="Transport (WS/SSE)" helper="Every WebSocket and EventSource: URL, ready state, message count, time since last frame, close code/reason. Catches stale-data bugs from silently closed sockets." disabled={sectionsDisabled}/>
-      <Toggle k="resources"   label="Resource timing" helper="Last 10 slow (>500ms) or large (>100KB) resource loads. Diagnoses CDN issues and oversized assets." disabled={sectionsDisabled}/>
+      <Toggle k="performance" label="Performance" helper="FPS (current + 30s avg), JS memory (Chrome only), long-task count, DOM nodes, page-load timing."/>
+      <Toggle k="errors"      label="Errors"      helper="window.error count + last few, plus unhandled promise rejections."/>
+      <Toggle k="consoleLog"  label="Console capture" helper="Last 15 console.log/warn/error messages with timestamps. Critical when iOS DevTools isn't an option."/>
+      <Toggle k="api"         label="API trace"   helper="Every fetch() call: method, path, status, latency. Status ≥400 or >1s flagged."/>
+      <Toggle k="transport"   label="Transport (WS/SSE)" helper="Every WebSocket and EventSource: URL, ready state, message count, time since last frame, close code/reason. Catches stale-data bugs from silently closed sockets."/>
+      <Toggle k="resources"   label="Resource timing" helper="Last 10 slow (>500ms) or large (>100KB) resource loads. Diagnoses CDN issues and oversized assets."/>
 
       <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Environment</div>
-      <Toggle k="device"       label="Device"      helper="UA, DPR, online, connection type/downlink, touch points, orientation, prefers-* settings, safe-area insets, visualViewport." disabled={sectionsDisabled}/>
-      <Toggle k="visibility"   label="Visibility"  helper="Page visible/hidden state, transition count, time since last change. Catches iOS PWA suspend/resume." disabled={sectionsDisabled}/>
-      <Toggle k="battery"      label="Battery"     helper="Level, charging state, time-to-full or time-remaining. Not exposed by iOS Safari." disabled={sectionsDisabled}/>
-      <Toggle k="webgl"        label="WebGL"       helper="Every <canvas> with intrinsic + rendered size, GPU renderer string, context-loss event count." disabled={sectionsDisabled}/>
-      <Toggle k="caches"       label="Cache storage" helper="Every Cache Storage cache + entry count, plus origin storage usage/quota/persisted-flag from StorageManager." disabled={sectionsDisabled}/>
-      <Toggle k="capabilities" label="Capabilities" helper="Feature support matrix: WebGL2, Wasm, ServiceWorker, Cache, IDB, WakeLock, Push, Clipboard, isSecureContext, etc." disabled={sectionsDisabled}/>
-      <Toggle k="theme"        label="Theme vars"  helper="Every --ss-* CSS custom property declared at :root, with computed values. Useful for skin/theme debugging." disabled={sectionsDisabled}/>
-      <Toggle k="pool"         label="Pool detail" helper="Worker count breakdown (online/stale/offline), hashrate, last share age, recent block count." disabled={sectionsDisabled}/>
-      <Toggle k="interaction"  label="Interaction" helper="Last tap coords + idle time. Useful for swipe/touch debugging." disabled={sectionsDisabled}/>
-      <Toggle k="storage"      label="LocalStorage" helper="Every ss_* localStorage key + value + total size. Verbose." disabled={sectionsDisabled}/>
+      <Toggle k="device"       label="Device"      helper="UA, DPR, online, connection type/downlink, touch points, orientation, prefers-* settings, safe-area insets, visualViewport."/>
+      <Toggle k="visibility"   label="Visibility"  helper="Page visible/hidden state, transition count, time since last change. Catches iOS PWA suspend/resume."/>
+      <Toggle k="battery"      label="Battery"     helper="Level, charging state, time-to-full or time-remaining. Not exposed by iOS Safari."/>
+      <Toggle k="webgl"        label="WebGL"       helper="Every <canvas> with intrinsic + rendered size, GPU renderer string, context-loss event count."/>
+      <Toggle k="caches"       label="Cache storage" helper="Every Cache Storage cache + entry count, plus origin storage usage/quota/persisted-flag from StorageManager."/>
+      <Toggle k="capabilities" label="Capabilities" helper="Feature support matrix: WebGL2, Wasm, ServiceWorker, Cache, IDB, WakeLock, Push, Clipboard, isSecureContext, etc."/>
+      <Toggle k="theme"        label="Theme vars"  helper="Every --ss-* CSS custom property declared at :root, with computed values. Useful for skin/theme debugging."/>
+      <Toggle k="pool"         label="Pool detail" helper="Worker count breakdown (online/stale/offline), hashrate, last share age, recent block count."/>
+      <Toggle k="interaction"  label="Interaction" helper="Last tap coords + idle time. Useful for swipe/touch debugging."/>
+      <Toggle k="storage"      label="LocalStorage" helper="Every ss_* localStorage key + value + total size. Verbose."/>
 
       <div style={{display:'flex', gap:8, marginTop:'1.2rem', flexWrap:'wrap'}}>
         <button onClick={copySnapshot} style={{
