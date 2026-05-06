@@ -3988,13 +3988,29 @@ function CarouselDots({ count, activeIndex, onJump }) {
 //    flex fix to be active. inner.flex should show '1 0 auto'.
 //  • iframe + body.classes confirm mode (carousel vs grid, in-iframe).
 function DebugLayoutOverlay() {
-  const [visible, setVisible] = useState(() =>
-    typeof window !== 'undefined' && window.location.hash.includes('debug-layout')
-  );
+  // rev69: default to ON (was URL-hash-triggered in rev68 which didn't reliably
+  // activate). Close button writes a localStorage flag to hide. Once we have
+  // diagnostic data and ship the fix, this defaults back to off in a later rev.
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      // Hidden if user explicitly closed it via the × button
+      if (window.localStorage.getItem('ss_debug_layout_hide') === '1') return false;
+    } catch (_) {}
+    // Force-show via URL hash, useful to re-enable after dismissing
+    if (window.location.hash.includes('debug-layout')) return true;
+    // Default: ON for diagnostic capture
+    return true;
+  });
   const [d, setD] = useState({});
 
   useEffect(() => {
-    const onHash = () => setVisible(window.location.hash.includes('debug-layout'));
+    const onHash = () => {
+      if (window.location.hash.includes('debug-layout')) {
+        try { window.localStorage.removeItem('ss_debug_layout_hide'); } catch (_) {}
+        setVisible(true);
+      }
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -4017,6 +4033,13 @@ function DebugLayoutOverlay() {
         : 0;
       const slot = slots[idx];
       const inner = slot ? slot.querySelector(':scope > div') : null;
+
+      // Measure actual header + footer heights so we can see if the
+      // CSS `calc(100dvh - 246px)` is overshooting/undershooting
+      const headerEl = document.querySelector('.ss-app-header') || document.querySelector('header');
+      const footerEl = document.querySelector('footer');
+      const headerH = headerEl ? Math.round(headerEl.getBoundingClientRect().height) : 0;
+      const footerH = footerEl ? Math.round(footerEl.getBoundingClientRect().height) : 0;
 
       // Probe 100dvh by inserting a 100dvh-tall element and measuring it
       let dvh = 'n/a';
@@ -4062,6 +4085,16 @@ function DebugLayoutOverlay() {
         body: document.body.className.split(' ').filter(c => c.startsWith('ss-')).join(' '),
         slotIdx: idx,
         slotCount: slots.length,
+        headerH: headerH + 'px',
+        footerH: footerH + 'px',
+        // Theoretical max carousel height = innerHeight - header - footer - dot zone
+        // If carousel height is much less than this, we're losing space
+        wasted: (() => {
+          if (!carousel) return 'n/a';
+          const target = window.innerHeight - headerH - footerH - 50; // 50px dot zone
+          const actual = Math.round(carousel.getBoundingClientRect().height);
+          return Math.max(0, target - actual) + 'px';
+        })(),
       });
     };
 
@@ -4104,19 +4137,40 @@ function DebugLayoutOverlay() {
       borderRadius: 4,
       lineHeight: 1.45,
       maxWidth: 240,
-      pointerEvents: 'none',
+      pointerEvents: 'auto',
       boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
     }}>
-      <div style={{ color: '#F5A623', fontWeight: 700, marginBottom: 4, letterSpacing: '0.08em' }}>
-        LAYOUT DEBUG
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ color: '#F5A623', fontWeight: 700, letterSpacing: '0.08em' }}>LAYOUT DEBUG</span>
+        <button
+          onClick={() => {
+            try { window.localStorage.setItem('ss_debug_layout_hide', '1'); } catch (_) {}
+            setVisible(false);
+          }}
+          style={{
+            background: 'transparent',
+            border: '1px solid #39ff6a',
+            color: '#39ff6a',
+            fontFamily: 'inherit',
+            fontSize: 11,
+            cursor: 'pointer',
+            padding: '0 6px',
+            borderRadius: 3,
+            lineHeight: 1,
+          }}
+          aria-label="Close debug overlay"
+        >×</button>
       </div>
       <Row k="win" v={d.win}/>
       <Row k="docEl" v={d.docEl}/>
       <Row k="100dvh" v={d.dvh}/>
+      <Row k="header.h" v={d.headerH}/>
+      <Row k="footer.h" v={d.footerH}/>
       <Row k="—carousel—" v=""/>
       <Row k="--carousel-h" v={d.carouselHVar}/>
       <Row k="cs.height" v={d.cssH}/>
       <Row k="rect" v={d.carouselR}/>
+      <Row k="WASTED" v={d.wasted} hi={parseInt(d.wasted, 10) > 20}/>
       <Row k={`—slot[${d.slotIdx}/${d.slotCount}]—`} v=""/>
       <Row k="rect" v={d.slotR}/>
       <Row k="cs.height" v={d.slotH}/>
