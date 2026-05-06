@@ -3967,6 +3967,176 @@ function CarouselDots({ count, activeIndex, onJump }) {
   );
 }
 
+// ── Layout Debug Overlay (rev68) ─────────────────────────────────────────────
+// URL-triggered diagnostic overlay for the carousel-not-filling bug. Shows
+// live measurements of the carousel, slot, and inner card dimensions side by
+// side with viewport / dvh / iframe state. Activate via URL hash:
+//
+//   100.80.164.13/#debug-layout
+//
+// Toggle off by removing the hash and reloading. The overlay is fixed
+// top-right with `pointer-events: none` so it never blocks UI underneath.
+// Updates every 500ms + on every scroll/resize so values reflect the
+// current carousel page and Safari address-bar state.
+//
+// What to look for when reading the values:
+//  • slot.h vs inner.h — if slot is larger than inner, the empty-space bug
+//    is happening (inner card not filling slot). Their delta = visible gap.
+//  • carousel-h vs 100dvh — if carousel-h is much smaller than 100dvh - 246,
+//    the CSS fallback is computing wrong (viewport quirk).
+//  • slot.display should be 'flex' and slot.flex-dir 'column' for the rev67
+//    flex fix to be active. inner.flex should show '1 0 auto'.
+//  • iframe + body.classes confirm mode (carousel vs grid, in-iframe).
+function DebugLayoutOverlay() {
+  const [visible, setVisible] = useState(() =>
+    typeof window !== 'undefined' && window.location.hash.includes('debug-layout')
+  );
+  const [d, setD] = useState({});
+
+  useEffect(() => {
+    const onHash = () => setVisible(window.location.hash.includes('debug-layout'));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const update = () => {
+      const cs = (el) => el ? window.getComputedStyle(el) : null;
+      const dims = (el) => {
+        if (!el) return 'none';
+        const r = el.getBoundingClientRect();
+        return `${Math.round(r.width)}×${Math.round(r.height)}`;
+      };
+
+      const carousel = document.querySelector('.ss-carousel');
+      const slots = carousel ? carousel.querySelectorAll(':scope > *') : [];
+      const idx = carousel && carousel.clientWidth
+        ? Math.round(carousel.scrollLeft / carousel.clientWidth)
+        : 0;
+      const slot = slots[idx];
+      const inner = slot ? slot.querySelector(':scope > div') : null;
+
+      // Probe 100dvh by inserting a 100dvh-tall element and measuring it
+      let dvh = 'n/a';
+      try {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;top:-99999px;left:0;height:100dvh;width:1px;pointer-events:none';
+        document.body.appendChild(probe);
+        dvh = Math.round(probe.getBoundingClientRect().height) + 'px';
+        document.body.removeChild(probe);
+      } catch (_) {}
+
+      // Get computed --carousel-h CSS variable
+      let carouselHVar = 'n/a';
+      if (carousel) {
+        const v = window.getComputedStyle(carousel).getPropertyValue('--carousel-h').trim();
+        carouselHVar = v || '(unset, using fallback)';
+      }
+
+      const cInner = cs(inner);
+      const cSlot = cs(slot);
+
+      setD({
+        win: `${window.innerWidth}×${window.innerHeight}`,
+        docEl: `${document.documentElement.clientWidth}×${document.documentElement.clientHeight}`,
+        dvh: dvh,
+        cssH: carousel ? cs(carousel).height : 'no carousel',
+        carouselHVar: carouselHVar,
+        carouselR: dims(carousel),
+        slotR: dims(slot),
+        innerR: dims(inner),
+        gap: (slot && inner)
+          ? Math.round(slot.getBoundingClientRect().height - inner.getBoundingClientRect().height) + 'px'
+          : 'n/a',
+        slotDisp: cSlot ? cSlot.display : 'none',
+        slotDir: cSlot ? cSlot.flexDirection : 'none',
+        slotH: cSlot ? cSlot.height : 'none',
+        slotMinH: cSlot ? cSlot.minHeight : 'none',
+        innerFlex: cInner ? cInner.flex : 'none',
+        innerH: cInner ? cInner.height : 'none',
+        iframe: (() => { try { return window.self !== window.top; } catch { return true; } })(),
+        cMatch: window.matchMedia('(max-width: 767px)').matches,
+        gMatch: window.matchMedia('(min-width: 768px)').matches,
+        body: document.body.className.split(' ').filter(c => c.startsWith('ss-')).join(' '),
+        slotIdx: idx,
+        slotCount: slots.length,
+      });
+    };
+
+    update();
+    const interval = setInterval(update, 500);
+    const carousel = document.querySelector('.ss-carousel');
+    if (carousel) carousel.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      clearInterval(interval);
+      if (carousel) carousel.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const Row = ({ k, v, hi }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+      <span style={{ color: '#888' }}>{k}</span>
+      <span style={{ color: hi ? '#FF7A00' : '#39ff6a', fontWeight: hi ? 700 : 400 }}>{String(v)}</span>
+    </div>
+  );
+
+  const gapPx = parseInt(d.gap, 10);
+  const hasGap = !isNaN(gapPx) && gapPx > 5;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 60,
+      right: 8,
+      zIndex: 9999,
+      background: 'rgba(0,0,0,0.92)',
+      color: '#39ff6a',
+      fontFamily: 'JetBrains Mono, monospace',
+      fontSize: 9.5,
+      padding: '8px 10px',
+      border: '1px solid #39ff6a',
+      borderRadius: 4,
+      lineHeight: 1.45,
+      maxWidth: 240,
+      pointerEvents: 'none',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+    }}>
+      <div style={{ color: '#F5A623', fontWeight: 700, marginBottom: 4, letterSpacing: '0.08em' }}>
+        LAYOUT DEBUG
+      </div>
+      <Row k="win" v={d.win}/>
+      <Row k="docEl" v={d.docEl}/>
+      <Row k="100dvh" v={d.dvh}/>
+      <Row k="—carousel—" v=""/>
+      <Row k="--carousel-h" v={d.carouselHVar}/>
+      <Row k="cs.height" v={d.cssH}/>
+      <Row k="rect" v={d.carouselR}/>
+      <Row k={`—slot[${d.slotIdx}/${d.slotCount}]—`} v=""/>
+      <Row k="rect" v={d.slotR}/>
+      <Row k="cs.height" v={d.slotH}/>
+      <Row k="cs.min-h" v={d.slotMinH}/>
+      <Row k="cs.display" v={d.slotDisp} hi={d.slotDisp !== 'flex'}/>
+      <Row k="cs.flex-dir" v={d.slotDir} hi={d.slotDir !== 'column'}/>
+      <Row k="—inner card—" v=""/>
+      <Row k="rect" v={d.innerR}/>
+      <Row k="cs.flex" v={d.innerFlex}/>
+      <Row k="cs.height" v={d.innerH}/>
+      <Row k="GAP (slot-inner)" v={d.gap} hi={hasGap}/>
+      <Row k="—context—" v=""/>
+      <Row k="iframe" v={d.iframe}/>
+      <Row k="≤767px" v={d.cMatch}/>
+      <Row k="≥768px" v={d.gMatch}/>
+      <Row k="body" v={d.body}/>
+    </div>
+  );
+}
+
 // ── Stratum Connection card (v1.7.16) ────────────────────────────────────────
 // Configurable connection details for any Stratum V1 miner. Three editable
 // fields with placeholder examples (tap any field to type, blur to save):
@@ -9713,6 +9883,7 @@ export default function App() {
           onDismiss={dismissBlockFound}
         />
       )}
+      <DebugLayoutOverlay/>
     </>
   );
 }
