@@ -27,6 +27,13 @@ export function createConstellation2D(canvas, opts = {}) {
   let pools = null;
   let strikers = null;
   let plasmaBolts = [];
+  // rev71L: energy packets — small glowing dots that travel from striker
+  // to pool when that striker submits a share. Each entry:
+  //   { strikerIdx, poolIdx, start } — endpoint positions resolved per
+  //   frame from current striker/pool positions (so packets follow
+  //   striker drift over their travel time). Duration: 700ms.
+  let energyPackets = [];
+  const PACKET_DURATION = 700;
   let lastSig = '';
   let tAccum = 0;
   let strikerFlashUntil = null; // Float32Array per striker
@@ -193,6 +200,8 @@ export function createConstellation2D(canvas, opts = {}) {
         if (!indices || strikerIdx < 0 || strikerIdx >= indices.length) continue;
         const realIdx = indices[strikerIdx];
         strikerFlashUntil[realIdx] = t + FLASH_DUR;
+        // rev71L: spawn an energy packet from this striker to its pool
+        energyPackets.push({ strikerIdx: realIdx, poolIdx, start: t });
         // Plasma bolt on each event (real network share)
         if (totalPools >= 2) {
           const toIdx = (poolIdx + 1) % totalPools;
@@ -213,6 +222,8 @@ export function createConstellation2D(canvas, opts = {}) {
         if (indices && indices.length > 0) {
           const picked = indices[Math.floor(Math.random() * indices.length)];
           strikerFlashUntil[picked] = t + FLASH_DUR;
+          // rev71L: energy packet from this random striker to its pool
+          energyPackets.push({ strikerIdx: picked, poolIdx, start: t });
         }
         // Auto-fire plasma bolt: from this pool to another (round-robin)
         if (totalPools >= 2) {
@@ -312,6 +323,42 @@ export function createConstellation2D(canvas, opts = {}) {
         ctx.lineTo(segs[j + 1].x, segs[j + 1].y);
       }
       ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── Energy packets (rev71L) ────────────────────────────────────────
+    // Glowing white-core dot with cyan halo travels striker → pool over
+    // 700ms. Endpoints resolve per-frame from current striker/pool
+    // positions so the packet tracks subtle striker wobble.
+    // Drawn AFTER plasma bolts and BEFORE strikers so the striker's
+    // arrival flash visually overlaps the packet hitting the pool.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = energyPackets.length - 1; i >= 0; i--) {
+      const p = energyPackets[i];
+      const age = (t - p.start) / PACKET_DURATION;
+      if (age >= 1) { energyPackets.splice(i, 1); continue; }
+      const s = strikers[p.strikerIdx];
+      const pool = pools[p.poolIdx];
+      if (!s || !pool) { energyPackets.splice(i, 1); continue; }
+      const fromX = s.x, fromY = s.y;
+      const toX = pool.x, toY = pool.y;
+      const x = fromX + (toX - fromX) * age;
+      const y = fromY + (toY - fromY) * age;
+      // Cyan halo (matches preview variant 6 exactly)
+      const haloR = 8;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, haloR);
+      g.addColorStop(0, 'rgba(0,255,209,0.55)');
+      g.addColorStop(1, 'rgba(0,255,209,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, haloR, 0, Math.PI * 2);
+      ctx.fill();
+      // White core
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
 
