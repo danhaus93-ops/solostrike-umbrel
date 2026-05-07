@@ -11477,6 +11477,27 @@ export default function App() {
             transformOrigin:'center',
             zIndex:2,
           }} />
+          {/* v1.8.53-splash: crack overlay — three crossing dark gradient
+              lines that flash for ~3% of cycle at impact, simulating cracks
+              appearing on the block surface just before it shatters. The
+              gradients use multiply blend so they darken the block surface.
+              Same position + dimensions as the block. */}
+          <div style={{
+            position:'absolute',
+            bottom:'0.3rem', left:'50%', marginLeft:'-2.35rem',
+            width:'4.7rem', height:'4.7rem',
+            background:
+              'linear-gradient(85deg, transparent 47%, rgba(0,0,0,0.7) 49%, transparent 51%),'
+              + 'linear-gradient(35deg, transparent 30%, rgba(0,0,0,0.5) 32%, transparent 34%),'
+              + 'linear-gradient(-25deg, transparent 60%, rgba(0,0,0,0.5) 62%, transparent 64%)',
+            borderRadius:'6px',
+            mixBlendMode:'multiply',
+            opacity:0,
+            animation:'crackFlash 1.4s ease-in-out infinite',
+            animationDelay:'-0.7s',
+            zIndex:3,
+            pointerEvents:'none',
+          }} />
           {/* v1.8.3-rev31i: 4 flying shard fragments. Same fly-out window
               as rev31h (cycle 95% → 12% of next cycle), but now using
               translate3d with a positive Z value so they fly TOWARD the
