@@ -398,45 +398,55 @@ export function createConstellation2D(canvas, opts = {}) {
       }
     }
 
-    // ── Pools (deep amber-orange, BIG with radial glow halo) ───────────
-    // rev71j: own pool gets a cyan accent ring at the outer halo edge.
-    // Cyan already lives in this palette (striker flash core), so it
-    // stays in-family without clashing.
+    // ── Pools (supernova steady pulse — 1.8.52) ────────────────────────
+    // All pools throb on a synchronized 1.5s sine cycle: ~40% size swing,
+    // ~80% brightness swing. Body color shifts toward the highlight at peak
+    // so the supernova feel reads even on identical-color peers.
+    // Your own pool renders pure white (N5); peers stay amber-orange.
+    // Cyan accent ring (rev71j) removed.
+    const pulsePhase = (t / 1500) % 1;
+    const pulseEase = 0.5 - 0.5 * Math.cos(pulsePhase * Math.PI * 2); // 0..1..0
+    const pulseSizeMult = 1 + pulseEase * 0.40;
+    const pulseBrightMult = 1 + pulseEase * 0.80;
+
+    // Color palettes — RGB triples for body and highlight
+    const AMBER_BODY = [255, 166, 51];
+    const AMBER_HI   = [255, 220, 150];
+    const WHITE_BODY = [255, 255, 255];
+    const WHITE_HI   = [255, 255, 255];
+
     for (let pi = 0; pi < pools.length; pi++) {
       const pool = pools[pi];
-      const breath = 0.92 + 0.10 * Math.sin(t / 1200 + pool.breathPhase);
-      const size = 6.5 * breath;
-      // Outer glow halo
+      const isOwn = (pi === ownPoolIdx);
+      const body = isOwn ? WHITE_BODY : AMBER_BODY;
+      const hi   = isOwn ? WHITE_HI   : AMBER_HI;
+      const size = 6.5 * pulseSizeMult;
+
+      // Outer glow halo — multi-stop, brightness-modulated
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const g = ctx.createRadialGradient(pool.x, pool.y, 0, pool.x, pool.y, size * 4);
-      g.addColorStop(0, 'rgba(255,166,51,0.30)');
-      g.addColorStop(1, 'rgba(255,166,51,0)');
+      const haloR = size * 5;
+      const g = ctx.createRadialGradient(pool.x, pool.y, 0, pool.x, pool.y, haloR);
+      g.addColorStop(0,   `rgba(${body[0]},${body[1]},${body[2]},${0.40 * pulseBrightMult})`);
+      g.addColorStop(0.5, `rgba(${body[0]},${body[1]},${body[2]},${0.20 * pulseBrightMult})`);
+      g.addColorStop(1,   `rgba(${body[0]},${body[1]},${body[2]},0)`);
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(pool.x, pool.y, size * 4, 0, Math.PI * 2);
+      ctx.arc(pool.x, pool.y, haloR, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      // rev71j: cyan accent ring marking the own pool
-      if (pi === ownPoolIdx) {
-        const ringR = size * 2.4;
-        const ringPulse = 0.8 + 0.2 * Math.sin(t / 600);
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = `rgba(0,255,209,${0.55 * ringPulse})`;
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.arc(pool.x, pool.y, ringR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
-      // Solid amber body
-      ctx.fillStyle = 'rgba(255,166,51,1)';
+
+      // Solid body — color shifts toward highlight at peak brightness
+      const bodyR = Math.min(255, body[0] + pulseEase * (hi[0] - body[0]) * 0.6);
+      const bodyG = Math.min(255, body[1] + pulseEase * (hi[1] - body[1]) * 0.6);
+      const bodyB = Math.min(255, body[2] + pulseEase * (hi[2] - body[2]) * 0.6);
+      ctx.fillStyle = `rgba(${Math.floor(bodyR)},${Math.floor(bodyG)},${Math.floor(bodyB)},1)`;
       ctx.beginPath();
       ctx.arc(pool.x, pool.y, size, 0, Math.PI * 2);
       ctx.fill();
+
       // Highlight
-      ctx.fillStyle = 'rgba(255,220,150,0.7)';
+      ctx.fillStyle = `rgba(${hi[0]},${hi[1]},${hi[2]},0.85)`;
       ctx.beginPath();
       ctx.arc(pool.x - 1.5, pool.y - 1.5, size * 0.45, 0, Math.PI * 2);
       ctx.fill();
