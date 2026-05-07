@@ -172,6 +172,10 @@ export function createConstellationWebGL(canvas, opts = {}) {
 
   const interLinesPosBuf = gl.createBuffer();
   const interLinesColorBuf = gl.createBuffer();
+  // rev70x: plasma bolt buffer — jagged line strip drawn between two pools
+  // when a flash fires. Uses the same line shader.
+  const plasmaBoltPosBuf = gl.createBuffer();
+  const plasmaBoltColorBuf = gl.createBuffer();
 
   // ─── Scene state ───
   let pools = []; // [{ cx, cy, cz }]
@@ -200,6 +204,19 @@ export function createConstellationWebGL(canvas, opts = {}) {
   const MAX_INTER_LINES = 400;
   const interLinePositions = new Float32Array(MAX_INTER_LINES * 6);
   const interLineColors = new Float32Array(MAX_INTER_LINES * 6);
+  // rev70x: plasma bolt — up to 32 segments per bolt × 2 pools-per-segment × 3 coords
+  const PLASMA_SEGS = 24;
+  const plasmaBoltPositions = new Float32Array(PLASMA_SEGS * 6);
+  const plasmaBoltColors = new Float32Array(PLASMA_SEGS * 6);
+  let plasmaBoltActive = false;
+  let plasmaBoltStart = 0;
+  const PLASMA_BOLT_DURATION = 500;
+  // Pre-fill plasma bolt colors (white-blue)
+  for (let i = 0; i < PLASMA_SEGS * 2; i++) {
+    plasmaBoltColors[i * 3 + 0] = 0.85;
+    plasmaBoltColors[i * 3 + 1] = 0.92;
+    plasmaBoltColors[i * 3 + 2] = 1.00;
+  }
 
   let totalPoints = 0;
   let totalStrikers = 0;
@@ -302,26 +319,29 @@ export function createConstellationWebGL(canvas, opts = {}) {
     // saturated the canvas with additive blending when only 2 pools
     // were present. Production screenshot showed two blown-out white
     // blobs. New ceiling matches the design preview values.
-    const poolSizeBase = totalPools <= 3 ? 0.20
-                       : totalPools <= 8 ? 0.17
-                       : totalPools <= 20 ? 0.15
-                       : 0.12;
+    // rev70x: pools bigger (was 0.20 → 0.32 for 2-pool case to match preview)
+    const poolSizeBase = totalPools <= 3 ? 0.32
+                       : totalPools <= 8 ? 0.24
+                       : totalPools <= 20 ? 0.18
+                       : 0.14;
     const strikerSizeBase = totalStrikers <= 20 ? 0.055
                           : totalStrikers <= 80 ? 0.045
                           : totalStrikers <= 200 ? 0.04
                           : 0.035;
 
     for (let i = 0; i < totalPools; i++) {
+      // rev70x: pools deep amber-orange (was 1.0, 0.84, 0.42 yellow)
       pointColors[i * 3 + 0] = 1.0;
-      pointColors[i * 3 + 1] = 0.84;
-      pointColors[i * 3 + 2] = 0.42;
+      pointColors[i * 3 + 1] = 0.65;
+      pointColors[i * 3 + 2] = 0.20;
       pointSizes[i] = poolSizeBase;
     }
     for (let i = 0; i < totalStrikers; i++) {
       const k = totalPools + i;
-      pointColors[k * 3 + 0] = 0.55;
-      pointColors[k * 3 + 1] = 0.72;
-      pointColors[k * 3 + 2] = 0.95;
+      // rev70x: strikers saturated blue (was 0.55, 0.72, 0.95 lavender)
+      pointColors[k * 3 + 0] = 0.30;
+      pointColors[k * 3 + 1] = 0.55;
+      pointColors[k * 3 + 2] = 1.00;
       pointSizes[k] = strikerSizeBase;
     }
     // Stash for animation loop reference
@@ -418,7 +438,6 @@ export function createConstellationWebGL(canvas, opts = {}) {
   // share-submission flashes instead of random decorative pulses.
   const FLASH_DUR_MS = 1000;
   let strikerFlashUntil = null; // Float32Array per-striker, lazily allocated
-  let interPoolFlashUntil = 0;  // Single timer for the inter-pool plasma bolt
 
   function update({ dpr, width, height, poolWorkers, dt, flashPoolIndices }) {
     if (!width || !height) return;
@@ -480,8 +499,55 @@ export function createConstellationWebGL(canvas, opts = {}) {
           }
         }
       }
-      // Plasma bolt: brighten the inter-pool line for half a second on any flash
-      interPoolFlashUntil = nowMs + 500;
+      // rev70x: plasma bolt — generate jagged path between first two pools
+      if (totalPools >= 2) {
+        const p0 = pools[0];
+        const p1 = pools[1];
+        // Generate jagged points along p0 → p1 with perpendicular offsets
+        const dx = p1.cx - p0.cx;
+        const dy = p1.cy - p0.cy;
+        const dz = p1.cz - p0.cz;
+        const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+        // Perpendicular direction (in xy plane primarily)
+        const px = -dy / len;
+        const py = dx / len;
+        // Build jagged waypoints — Float32Array stored as line segments
+        // Each segment = 2 points × 3 coords. PLASMA_SEGS segments.
+        const wpCount = PLASMA_SEGS + 1;
+        const waypoints = new Float32Array(wpCount * 3);
+        waypoints[0] = p0.cx; waypoints[1] = p0.cy; waypoints[2] = p0.cz;
+        for (let i = 1; i < wpCount - 1; i++) {
+          const t = i / (wpCount - 1);
+          const cx = p0.cx + dx * t;
+          const cy = p0.cy + dy * t;
+          const cz = p0.cz + dz * t;
+          // Random perpendicular offset, peaks in middle, zero at ends
+          const taper = Math.sin(t * Math.PI);
+          const offset = (Math.random() - 0.5) * len * 0.18 * taper;
+          const offset2 = (Math.random() - 0.5) * len * 0.10 * taper;
+          waypoints[i * 3 + 0] = cx + px * offset;
+          waypoints[i * 3 + 1] = cy + py * offset;
+          waypoints[i * 3 + 2] = cz + offset2;
+        }
+        waypoints[(wpCount-1)*3 + 0] = p1.cx;
+        waypoints[(wpCount-1)*3 + 1] = p1.cy;
+        waypoints[(wpCount-1)*3 + 2] = p1.cz;
+        // Convert waypoints to line segments
+        for (let i = 0; i < PLASMA_SEGS; i++) {
+          plasmaBoltPositions[i * 6 + 0] = waypoints[i * 3 + 0];
+          plasmaBoltPositions[i * 6 + 1] = waypoints[i * 3 + 1];
+          plasmaBoltPositions[i * 6 + 2] = waypoints[i * 3 + 2];
+          plasmaBoltPositions[i * 6 + 3] = waypoints[(i+1) * 3 + 0];
+          plasmaBoltPositions[i * 6 + 4] = waypoints[(i+1) * 3 + 1];
+          plasmaBoltPositions[i * 6 + 5] = waypoints[(i+1) * 3 + 2];
+        }
+        plasmaBoltActive = true;
+        plasmaBoltStart = nowMs;
+      }
+    }
+    // rev70x: deactivate plasma bolt after duration
+    if (plasmaBoltActive && nowMs - plasmaBoltStart > PLASMA_BOLT_DURATION) {
+      plasmaBoltActive = false;
     }
 
     // Strikers — base offset + small phase wobble
@@ -559,12 +625,9 @@ export function createConstellationWebGL(canvas, opts = {}) {
 
     // Inter-pool lines (dim gray)
     if (interLineCount > 0) {
-      // rev70u: plasma bolt — when interPoolFlashUntil > now, brighten the
-      // inter-pool line dramatically. Otherwise dim base.
-      const boltActive = nowMs < interPoolFlashUntil;
-      const boltAge = boltActive ? (interPoolFlashUntil - nowMs) / 500 : 0;
-      const lineOpacity = boltActive ? (0.22 + boltAge * 0.78) : 0.22;
-      gl.uniform1f(uLineOpacity, lineOpacity);
+      // rev70x: dim inter-pool line stays subtle. The plasma bolt is now
+      // a separate jagged WebGL draw below.
+      gl.uniform1f(uLineOpacity, 0.22);
       gl.bindBuffer(gl.ARRAY_BUFFER, interLinesPosBuf);
       gl.enableVertexAttribArray(aPosL);
       gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
@@ -585,6 +648,31 @@ export function createConstellationWebGL(canvas, opts = {}) {
       gl.enableVertexAttribArray(aColorL);
       gl.vertexAttribPointer(aColorL, 3, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.LINES, 0, totalStrikers * 2);
+    }
+
+    // rev70x: plasma bolt — bright jagged line strip between two pools when
+    // a flash fires. Uploads fresh jagged path on each fire (regenerated in
+    // the flashPoolIndices block above). Fades out over PLASMA_BOLT_DURATION.
+    if (plasmaBoltActive && totalPools >= 2) {
+      const age = (nowMs - plasmaBoltStart) / PLASMA_BOLT_DURATION;
+      const alpha = Math.max(0, Math.min(1, (1 - age) * 1.4));
+      // Two-pass draw: outer thick blue glow, then inner thin white core
+      gl.bindBuffer(gl.ARRAY_BUFFER, plasmaBoltPosBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, plasmaBoltPositions, gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(aPosL);
+      gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, plasmaBoltColorBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, plasmaBoltColors, gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(aColorL);
+      gl.vertexAttribPointer(aColorL, 3, gl.FLOAT, false, 0, 0);
+      // Outer glow pass
+      gl.uniform1f(uLineOpacity, alpha * 0.85);
+      gl.lineWidth(3);
+      gl.drawArrays(gl.LINES, 0, PLASMA_SEGS * 2);
+      // Inner core pass
+      gl.uniform1f(uLineOpacity, alpha * 0.95);
+      gl.lineWidth(1);
+      gl.drawArrays(gl.LINES, 0, PLASMA_SEGS * 2);
     }
 
     // rev70o: switch to ALPHA blending for points. Saturation-proof.

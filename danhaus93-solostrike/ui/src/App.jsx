@@ -7350,7 +7350,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0 }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -7386,6 +7386,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // - peerLastSeenRef tracks each peer's last observed lastSeenAgoSec value (broadcasts from other pools)
   const lastShareAtRef = useRef(null);
   const peerLastSeenRef = useRef(new Map());
+  // rev70w: secondary signal — acceptedCount increments per share, more
+  // reliable than lastShareAt timestamp comparison.
+  const acceptedCountRef = useRef(null);
 
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
@@ -8864,16 +8867,25 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
           // Build flashPoolIndices from real network signals.
           const flashPoolIndices = [];
-          // 1) Our pool's share submission — lastShareAt changed
-          if (lastShareAt && lastShareAt !== lastShareAtRef.current) {
-            // Skip the first observation (initial load) — only flash on
-            // genuine NEW shares after page load.
-            if (lastShareAtRef.current !== null) {
-              const ourIdx = peerList.findIndex(p => p.isOwn);
-              if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
+          // 1a) Our pool's share submission — acceptedCount went UP
+          //     (most reliable: server increments per share)
+          let ourPoolFlashed = false;
+          if (acceptedCountRef.current !== null && acceptedCount > acceptedCountRef.current) {
+            const ourIdx = peerList.findIndex(p => p.isOwn);
+            if (ourIdx >= 0) {
+              flashPoolIndices.push(ourIdx);
+              ourPoolFlashed = true;
             }
-            lastShareAtRef.current = lastShareAt;
           }
+          acceptedCountRef.current = acceptedCount;
+          // 1b) Fallback: lastShareAt timestamp changed (in case acceptedCount
+          //     isn't refreshed but lastShareAt is). NO initial-observation
+          //     skip — if it changed, fire.
+          if (!ourPoolFlashed && lastShareAt && lastShareAt !== lastShareAtRef.current && lastShareAtRef.current !== null) {
+            const ourIdx = peerList.findIndex(p => p.isOwn);
+            if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
+          }
+          if (lastShareAt) lastShareAtRef.current = lastShareAt;
           // 2) Peer broadcasts — lastSeenAgoSec drops (peer just sent fresh stats)
           const newSeen = new Map();
           for (let i = 0; i < peerList.length; i++) {
@@ -8906,7 +8918,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, lastShareAt, pulseAnim, useBitcoinSymbols]);
+  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, lastShareAt, acceptedCount, pulseAnim, useBitcoinSymbols]);
 
 
 
@@ -9069,17 +9081,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             <button
               onClick={togglePlacingPin}
               style={{
-                position:'absolute', bottom:4, right:3,
-                background:'rgba(8,7,5,0.55)',
-                border:'1px solid rgba(245,166,35,0.45)',
-                borderRadius:'50%',
-                width:24, height:24,
-                color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                fontSize:'0.85rem', lineHeight:1,
+                position:'absolute', bottom:4, right:6,
+                background:'transparent',
+                border:'none',
                 padding:0, cursor:'pointer',
+                color: placingPin ? '#ff8a8a' : 'var(--amber)',
+                fontSize:'1rem', lineHeight:1,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 zIndex:5,
-                boxShadow: placingPin ? '0 0 6px rgba(225,80,80,0.5)' : '0 0 6px rgba(245,166,35,0.35)',
+                textShadow: placingPin ? '0 0 6px rgba(225,80,80,0.7)' : '0 0 6px rgba(245,166,35,0.6)',
               }}
               aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
               title={placingPin ? 'Cancel' : (poolPin ? 'Move pin' : 'Pin my pool')}
@@ -9206,17 +9216,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           <button
             onClick={togglePlacingPin}
             style={{
-              position:'absolute', bottom:6, right:4,
-              background:'rgba(8,7,5,0.55)',
-              border:'1px solid rgba(245,166,35,0.45)',
-              borderRadius:'50%',
-              width:30, height:30,
-              color: placingPin ? '#ff8a8a' : 'var(--amber)',
-              fontSize:'1rem', lineHeight:1,
+              position:'absolute', bottom:6, right:8,
+              background:'transparent',
+              border:'none',
               padding:0, cursor:'pointer',
+              color: placingPin ? '#ff8a8a' : 'var(--amber)',
+              fontSize:'1.15rem', lineHeight:1,
               display:'flex', alignItems:'center', justifyContent:'center',
               zIndex:5,
-              boxShadow: placingPin ? '0 0 8px rgba(225,80,80,0.5)' : '0 0 8px rgba(245,166,35,0.35)',
+              textShadow: placingPin ? '0 0 8px rgba(225,80,80,0.7)' : '0 0 8px rgba(245,166,35,0.6)',
             }}
             aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
             title={placingPin ? 'Cancel' : (poolPin ? 'Move pin' : 'Pin my pool')}
@@ -11369,6 +11377,7 @@ export default function App() {
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
       lastShareAt={poolState?.shares?.lastShareAt}
+      acceptedCount={poolState?.shares?.acceptedCount}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
