@@ -11443,7 +11443,7 @@ export default function App() {
             width:'4.4rem', height:'4.4rem',
             display:'flex', alignItems:'center', justifyContent:'center',
             animation:'btcImpact 1.4s ease-in-out infinite',
-            animationDelay:'-0.7s',
+            animationDelay:'0s',
             zIndex:1,
           }}>
             <img
@@ -11473,7 +11473,7 @@ export default function App() {
             borderRadius:'6px',
             boxShadow:'0 0 22px rgba(255,140,0,0.75), inset 0 0 14px rgba(255,210,130,0.45)',
             animation:'blockBust 1.4s ease-in-out infinite',
-            animationDelay:'-0.7s',
+            animationDelay:'0s',
             transformOrigin:'center',
             zIndex:2,
           }} />
@@ -11494,7 +11494,7 @@ export default function App() {
             mixBlendMode:'multiply',
             opacity:0,
             animation:'crackFlash 1.4s ease-in-out infinite',
-            animationDelay:'-0.7s',
+            animationDelay:'0s',
             zIndex:3,
             pointerEvents:'none',
           }} />
@@ -11519,7 +11519,7 @@ export default function App() {
               animationDuration: '1.4s',
               animationTimingFunction: 'ease-in-out',
               animationIterationCount: 'infinite',
-              animationDelay: '-0.7s',
+              animationDelay: '0s',
               transformOrigin: 'center',
               zIndex: 2,
               pointerEvents: 'none',
@@ -11549,7 +11549,7 @@ export default function App() {
             width:'4.5rem', height:'4.5rem',
             transformOrigin:'bottom right',
             animation:'pickaxeStrike 1.4s ease-in-out infinite',
-            animationDelay:'-0.7s',
+            animationDelay:'0s',
             filter:'drop-shadow(0 0 14px rgba(245,166,35,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
             zIndex:3,
           }}>
