@@ -55,13 +55,27 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
    striking the ₿. Combined with the minimum-1500ms splash duration in App.jsx,
    the user always sees at least one full strike + impact hold before the
    dashboard fades in. */
+/* v1.8.53-splash: ROTATION REVERSED + retimed for actual visible strike.
+   Issue with previous keyframe: with the pickaxe asset (head TL, grip BR)
+   and pivot at bottom-right, rotate(-25deg) actually puts the head ON the
+   block, while rotate(+20deg) lifts the head up-and-right OFF the stage.
+   The labels were inverted — what was called "wound back" was geometrically
+   the impact pose, and "impact" was geometrically the lift-off.
+
+   New keyframe (V5 from preview):
+     0%   : +22°  (windup — head off-screen upper-right)
+     15%  : +22°  (held at windup)
+     30%  : -18°  (IMPACT — head clearly hovers above block top, y=1.20)
+     45%  : -16°  (tiny rebound)
+     65%  : -16°  (held at impact pose)
+     100% : +22°  (back to windup) */
 @keyframes pickaxeStrike{
-  0%   {transform:rotate(-25deg)}     /* start pulled back */
-  15%  {transform:rotate(-25deg)}     /* brief wind-up dwell */
-  30%  {transform:rotate(20deg)}      /* IMPACT — fast strike at 420ms */
-  45%  {transform:rotate(15deg)}      /* tiny bounce settle */
-  65%  {transform:rotate(15deg)}      /* HOLD on impact (visible landed strike) */
-  100% {transform:rotate(-25deg)}     /* slow recovery for next cycle */
+  0%   {transform:rotate(22deg)}      /* windup — head off-screen up-right */
+  15%  {transform:rotate(22deg)}      /* held at windup */
+  30%  {transform:rotate(-18deg)}     /* IMPACT — head hovers above block top */
+  45%  {transform:rotate(-16deg)}     /* tiny rebound */
+  65%  {transform:rotate(-16deg)}     /* held at impact pose */
+  100% {transform:rotate(22deg)}      /* back to windup */
 }
 /* v1.8.5-splash: ₿ glow swapped from text-shadow → filter:drop-shadow.
    The splash ₿ is now an inline SVG (no text content), so text-shadow
@@ -107,13 +121,41 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
      95%     : PEAK SQUASH — opacity 1, scale 0.82
      100%    : MID-EXPLOSION — opacity 0.3, scale 1.5 (matches 0%) */
 @keyframes blockBust{
-  0%      {opacity:0.3; transform:scale(1.5)}
-  5%      {opacity:0;   transform:scale(1.7)}
-  30%     {opacity:0;   transform:scale(0.4)}
-  50%     {opacity:1;   transform:scale(1)}
-  91%     {opacity:1;   transform:scale(1)}
-  95%     {opacity:1;   transform:scale(0.82)}
-  100%    {opacity:0.3; transform:scale(1.5)}
+  /* v1.8.53-splash: clean shatter (option B). Block STAYS at scale 1 at
+     impact (cycle 30%) so the BTC glyph stays fully covered until the
+     opacity fade actually begins. Previous version snapped to scale 1.45
+     at impact, which exposed top + bottom of ₿ during that frame because
+     the block became larger than the ₿ wrapper underneath.
+     New timing — synchronized with pickaxe impact at cycle 30%:
+       0%   : SOLID
+       29%  : SOLID
+       30%  : IMPACT — still scale 1 (no snap-out)
+       33%  : opacity 0.85, scale 1.05 (very subtle outward fade begins)
+       42%  : opacity 0.3, scale 1.2
+       50%  : opacity 0, scale 1.4 (gone — ₿ visible)
+       91%  : still gone (BTC visible the whole time)
+       95%  : opacity 0.5, scale 0.7 (re-forming)
+       100% : SOLID again (clean loop seam) */
+  0%      {opacity:1;    transform:scale(1)}
+  29%     {opacity:1;    transform:scale(1)}
+  30%     {opacity:1;    transform:scale(1)}
+  33%     {opacity:0.85; transform:scale(1.05)}
+  42%     {opacity:0.3;  transform:scale(1.2)}
+  50%     {opacity:0;    transform:scale(1.4)}
+  91%     {opacity:0;    transform:scale(1.4)}
+  95%     {opacity:0.5;  transform:scale(0.7)}
+  100%    {opacity:1;    transform:scale(1)}
+}
+
+/* v1.8.53-splash: brief crack overlay flashes at impact moment, fading
+   immediately as the block dissolves. Drawn via three crossing dark
+   gradients on a separate overlay layer so the cracks appear to be ON
+   the block surface. Active for ~3% of the cycle (~42ms at 1.4s loop). */
+@keyframes crackFlash{
+  0%, 28% {opacity:0}
+  30%     {opacity:0.9}
+  33%     {opacity:0}
+  100%    {opacity:0}
 }
 
 /* v1.8.3-rev31i: shards fly TOWARD the viewer in 3D using translate3d
@@ -125,33 +167,48 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
    container, like the shard flew past the camera. The shards are also
    bumped in size (0.8rem → 1.3rem) for a more substantial "fragment"
    feel. Per-shard rotation + scale variation give visual variety. */
+/* v1.8.53-splash: shards retimed to fire AT IMPACT (cycle 30%) instead
+   of at the cycle boundary (95% → 12% of next cycle). Previous timing
+   meant shards flew during pickaxe BACKSWING, not at the actual strike.
+   New timing for all 4 shards:
+     0–28%  : invisible, at rest position (no shards yet)
+     30%    : appear at block surface (opacity 1, near origin)
+     45%    : peak fly-out (opacity 0.85, far translate3d, rotated)
+     60%    : faded out (opacity 0, max distance)
+     61–100%: stay invisible (don't reset to visible at loop seam)
+   Translate3d Z values preserved from rev31i for the fly-toward-camera
+   3D effect. */
 @keyframes shardTL{
-  0%      {opacity:0.4; transform:translate3d(-20px,-20px,180px) rotate(-65deg) scale(0.7)}
-  12%     {opacity:0;   transform:translate3d(-35px,-35px,350px) rotate(-135deg) scale(0.55)}
-  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
-  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
-  100%    {opacity:0.4; transform:translate3d(-20px,-20px,180px) rotate(-65deg) scale(0.7)}
+  0%      {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  28%     {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  30%     {opacity:1;    transform:translate3d(-5px,-5px,30px)    rotate(-15deg)  scale(0.85)}
+  45%     {opacity:0.85; transform:translate3d(-30px,-30px,280px) rotate(-100deg) scale(0.7)}
+  60%     {opacity:0;    transform:translate3d(-50px,-45px,400px) rotate(-180deg) scale(0.5)}
+  100%    {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
 }
 @keyframes shardTR{
-  0%      {opacity:0.4; transform:translate3d(20px,-20px,180px)  rotate(65deg)   scale(0.7)}
-  12%     {opacity:0;   transform:translate3d(35px,-35px,350px)  rotate(135deg)  scale(0.55)}
-  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
-  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
-  100%    {opacity:0.4; transform:translate3d(20px,-20px,180px)  rotate(65deg)   scale(0.7)}
+  0%      {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  28%     {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  30%     {opacity:1;    transform:translate3d(5px,-5px,30px)    rotate(15deg)   scale(0.85)}
+  45%     {opacity:0.85; transform:translate3d(30px,-30px,280px) rotate(100deg)  scale(0.7)}
+  60%     {opacity:0;    transform:translate3d(50px,-45px,400px) rotate(180deg)  scale(0.5)}
+  100%    {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
 }
 @keyframes shardBL{
-  0%      {opacity:0.4; transform:translate3d(-18px,18px,170px)  rotate(50deg)   scale(0.7)}
-  12%     {opacity:0;   transform:translate3d(-32px,32px,330px)  rotate(120deg)  scale(0.55)}
-  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
-  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
-  100%    {opacity:0.4; transform:translate3d(-18px,18px,170px)  rotate(50deg)   scale(0.7)}
+  0%      {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  28%     {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  30%     {opacity:1;    transform:translate3d(-4px,4px,30px)    rotate(20deg)   scale(0.85)}
+  45%     {opacity:0.85; transform:translate3d(-25px,25px,260px) rotate(80deg)   scale(0.7)}
+  60%     {opacity:0;    transform:translate3d(-45px,40px,380px) rotate(160deg)  scale(0.5)}
+  100%    {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
 }
 @keyframes shardBR{
-  0%      {opacity:0.4; transform:translate3d(18px,18px,170px)   rotate(-50deg)  scale(0.7)}
-  12%     {opacity:0;   transform:translate3d(32px,32px,330px)   rotate(-120deg) scale(0.55)}
-  90%     {opacity:0;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.85)}
-  95%     {opacity:1;   transform:translate3d(0,0,0)             rotate(0deg)    scale(0.95)}
-  100%    {opacity:0.4; transform:translate3d(18px,18px,170px)   rotate(-50deg)  scale(0.7)}
+  0%      {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  28%     {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
+  30%     {opacity:1;    transform:translate3d(4px,4px,30px)     rotate(-20deg)  scale(0.85)}
+  45%     {opacity:0.85; transform:translate3d(25px,25px,260px)  rotate(-80deg)  scale(0.7)}
+  60%     {opacity:0;    transform:translate3d(45px,40px,380px)  rotate(-160deg) scale(0.5)}
+  100%    {opacity:0;    transform:translate3d(0,0,0) scale(0.4)}
 }
 .fade-in{animation:slideUp .35s ease both}
 
