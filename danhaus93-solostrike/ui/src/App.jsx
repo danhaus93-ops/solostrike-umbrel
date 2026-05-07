@@ -7350,7 +7350,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -7381,6 +7381,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // pointerId -> { x, y } in CSS pixels.
   const constellationPointersRef = useRef(new Map());
   const constellationPinchPrevDistRef = useRef(0);
+  // rev70u: real share-flash detection state.
+  // - lastShareAtRef tracks the last lastShareAt value we observed (our pool's share submissions)
+  // - peerLastSeenRef tracks each peer's last observed lastSeenAgoSec value (broadcasts from other pools)
+  const lastShareAtRef = useRef(null);
+  const peerLastSeenRef = useRef(new Map());
 
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
@@ -8850,21 +8855,45 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // canvas just stays cleared underneath.
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else if (pulseAnim === 'constellation') {
-        // 2D canvas already cleared above. Drive the WebGL renderer.
-        // rev70k: per-pool counts. Each non-filtered peer is one pool;
-        // peer.workers is its striker count. Pass the array so the
-        // renderer can give pool i exactly counts[i] strikers (no even
-        // distribution).
+        // rev70u: Drive WebGL renderer with real share-flash data.
         if (constellationRendererRef.current) {
-          const peerList = Array.isArray(ns.peers) ? ns.peers : [];
-          const poolWorkers = peerList
-            .filter(p => p && !p.filtered)
-            .map(p => Math.max(0, p.workers | 0));
+          const peerList = Array.isArray(ns.peers)
+            ? ns.peers.filter(p => p && !p.filtered)
+            : [];
+          const poolWorkers = peerList.map(p => Math.max(0, p.workers | 0));
+
+          // Build flashPoolIndices from real network signals.
+          const flashPoolIndices = [];
+          // 1) Our pool's share submission — lastShareAt changed
+          if (lastShareAt && lastShareAt !== lastShareAtRef.current) {
+            // Skip the first observation (initial load) — only flash on
+            // genuine NEW shares after page load.
+            if (lastShareAtRef.current !== null) {
+              const ourIdx = peerList.findIndex(p => p.isOwn);
+              if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
+            }
+            lastShareAtRef.current = lastShareAt;
+          }
+          // 2) Peer broadcasts — lastSeenAgoSec drops (peer just sent fresh stats)
+          const newSeen = new Map();
+          for (let i = 0; i < peerList.length; i++) {
+            const peer = peerList[i];
+            const cur = peer.lastSeenAgoSec | 0;
+            newSeen.set(peer.pubkey, cur);
+            if (peer.isOwn) continue; // our pool flashes via lastShareAt
+            const prev = peerLastSeenRef.current.get(peer.pubkey);
+            if (prev != null && cur < prev - 1) {
+              flashPoolIndices.push(i);
+            }
+          }
+          peerLastSeenRef.current = newSeen;
+
           constellationRendererRef.current.update({
             dpr: dprRef.current || 1,
             width: W,
             height: H,
             poolWorkers,
+            flashPoolIndices,
             dt,
           });
         }
@@ -8877,7 +8906,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, pulseAnim, useBitcoinSymbols]);
+  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, lastShareAt, pulseAnim, useBitcoinSymbols]);
 
 
 
@@ -9033,36 +9062,32 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               // (drag-rotate via addRotation, pinch-zoom via multiplyZoom).
             }}
           />
-        </div>
-        {/* v1.8.5-rev70f: pin button MOVED OUT of globe container so it
-            never overlaps the sphere edge. With rev70e transparency the
-            overlap was visible; black bg used to mask it. */}
-        {pulseAnim === 'globe' && onPoolPinChange && (
-          <div style={{
-            display:'flex', justifyContent:'flex-end',
-            marginTop:'-0.4rem', marginBottom:'0.4rem',
-            paddingRight:6,
-          }}>
+          {/* rev70u: pin button restored to icon-only overlay inside the
+              canvas wrap (top-right). The earlier text-below-canvas variant
+              ate vertical space, shrinking the globe. */}
+          {pulseAnim === 'globe' && onPoolPinChange && (
             <button
               onClick={togglePlacingPin}
               style={{
-                background: 'transparent',
-                border: 'none',
+                position:'absolute', bottom:4, right:3,
+                background:'rgba(8,7,5,0.55)',
+                border:'1px solid rgba(245,166,35,0.45)',
+                borderRadius:'50%',
+                width:24, height:24,
                 color: placingPin ? '#ff8a8a' : 'var(--amber)',
-                fontFamily:'var(--fd)', fontSize:'0.55rem',
-                letterSpacing:'0.14em', textTransform:'uppercase',
-                fontWeight: 700,
-                padding:'0.25rem 0.4rem',
-                cursor:'pointer',
-                textShadow: placingPin
-                  ? '0 0 8px rgba(225,80,80,0.6)'
-                  : '0 0 8px rgba(245,166,35,0.55)',
+                fontSize:'0.85rem', lineHeight:1,
+                padding:0, cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                zIndex:5,
+                boxShadow: placingPin ? '0 0 6px rgba(225,80,80,0.5)' : '0 0 6px rgba(245,166,35,0.35)',
               }}
+              aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
+              title={placingPin ? 'Cancel' : (poolPin ? 'Move pin' : 'Pin my pool')}
             >
-              {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+              {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
@@ -9174,36 +9199,33 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             // rev70k: see compact branch above — handlers route by mode.
           }}
         />
-      </div>
-      {/* v1.8.5-rev70f: pin button MOVED OUT of globe container so it
-          never overlaps the sphere edge. With rev70e transparency the
-          overlap was visible; black bg used to mask it. */}
-      {pulseAnim === 'globe' && onPoolPinChange && (
-        <div style={{
-          display:'flex', justifyContent:'flex-end',
-          marginTop:'-0.5rem', marginBottom:'0.5rem',
-          paddingRight:10,
-        }}>
+        {/* rev70u: pin button restored to icon-only overlay inside the
+            canvas wrap (top-right). Replaces the earlier text-below variant
+            that ate vertical space. */}
+        {pulseAnim === 'globe' && onPoolPinChange && (
           <button
             onClick={togglePlacingPin}
             style={{
-              background: 'transparent',
-              border: 'none',
+              position:'absolute', bottom:6, right:4,
+              background:'rgba(8,7,5,0.55)',
+              border:'1px solid rgba(245,166,35,0.45)',
+              borderRadius:'50%',
+              width:30, height:30,
               color: placingPin ? '#ff8a8a' : 'var(--amber)',
-              fontFamily:'var(--fd)', fontSize:'0.62rem',
-              letterSpacing:'0.14em', textTransform:'uppercase',
-              fontWeight: 700,
-              padding:'0.35rem 0.5rem',
-              cursor:'pointer',
-              textShadow: placingPin
-                ? '0 0 8px rgba(225,80,80,0.6)'
-                : '0 0 8px rgba(245,166,35,0.55)',
+              fontSize:'1rem', lineHeight:1,
+              padding:0, cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              zIndex:5,
+              boxShadow: placingPin ? '0 0 8px rgba(225,80,80,0.5)' : '0 0 8px rgba(245,166,35,0.35)',
             }}
+            aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
+            title={placingPin ? 'Cancel' : (poolPin ? 'Move pin' : 'Pin my pool')}
           >
-            {placingPin ? '✕ Cancel' : (poolPin ? '↻ Move Pin' : '📍 Pin My Pool')}
+            {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
           </button>
-        </div>
-      )}
+        )}
+      </div>
+      {/* rev70u: external pin button removed — now inside canvas wrap above. */}
 
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
@@ -11346,6 +11368,7 @@ export default function App() {
       useBitcoinSymbols={useBitcoinSymbols}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
+      lastShareAt={poolState?.shares?.lastShareAt}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,

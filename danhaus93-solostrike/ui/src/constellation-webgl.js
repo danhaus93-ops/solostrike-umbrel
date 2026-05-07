@@ -413,7 +413,14 @@ export function createConstellationWebGL(canvas, opts = {}) {
 
   const viewProj = new Float32Array(16);
 
-  function update({ dpr, width, height, poolWorkers, dt }) {
+  // rev70u: per-striker flash state. When flashPoolIndices includes a pool,
+  // its strikers get flashUntil = now + FLASH_DUR. Used to render bright
+  // share-submission flashes instead of random decorative pulses.
+  const FLASH_DUR_MS = 1000;
+  let strikerFlashUntil = null; // Float32Array per-striker, lazily allocated
+  let interPoolFlashUntil = 0;  // Single timer for the inter-pool plasma bolt
+
+  function update({ dpr, width, height, poolWorkers, dt, flashPoolIndices }) {
     if (!width || !height) return;
     resize(width, height, dpr || 1);
 
@@ -437,12 +444,12 @@ export function createConstellationWebGL(canvas, opts = {}) {
     const stepDt = Math.min(0.05, Math.max(0, dt || 0.016));
     tAccum += stepDt;
 
-    // Idle auto-rotation resumes after IDLE_RESUME_MS of no interaction.
-    // While user is interacting, rotation is purely user-controlled.
+    // rev70u: auto-rotation DISABLED. Constellation stays still unless the
+    // user actively drags. idleRatio forced to 0.
     const nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const idleRatio = Math.min(1, Math.max(0, (nowMs - lastInteractionMs - IDLE_RESUME_MS) / 1500));
-    const idleRotY = tAccum * 0.07 * idleRatio;
-    const idleRotX = Math.sin(tAccum * 0.1) * 0.15 * idleRatio;
+    const idleRatio = 0;
+    const idleRotY = 0;
+    const idleRotX = 0;
     // rev70k-fix: rotY/rotX are local frame variables, NOT module-level.
     // Earlier rev70k draft assigned them without `let`, which throws
     // ReferenceError under strict mode (ES modules default). Caught by
@@ -458,6 +465,25 @@ export function createConstellationWebGL(canvas, opts = {}) {
       pointPositions[i * 3 + 1] = pools[i].cy;
       pointPositions[i * 3 + 2] = pools[i].cz;
     }
+    // rev70u: process flashPoolIndices — when a pool's index appears, light
+    // up ALL its strikers and arm the inter-pool plasma bolt.
+    if (Array.isArray(flashPoolIndices) && flashPoolIndices.length > 0) {
+      // Lazy-allocate / resize the per-striker flash array
+      if (!strikerFlashUntil || strikerFlashUntil.length < totalStrikers) {
+        strikerFlashUntil = new Float32Array(totalStrikers);
+      }
+      for (const poolIdx of flashPoolIndices) {
+        if (poolIdx < 0 || poolIdx >= totalPools) continue;
+        for (let i = 0; i < totalStrikers; i++) {
+          if (strikers[i].poolIdx === poolIdx) {
+            strikerFlashUntil[i] = nowMs + FLASH_DUR_MS;
+          }
+        }
+      }
+      // Plasma bolt: brighten the inter-pool line for half a second on any flash
+      interPoolFlashUntil = nowMs + 500;
+    }
+
     // Strikers — base offset + small phase wobble
     const strikerBase = strikers.strikerSizeBase || 0.06;
     const flashSize = Math.max(0.18, strikerBase * 3.5);
@@ -474,9 +500,10 @@ export function createConstellationWebGL(canvas, opts = {}) {
       pointPositions[k * 3 + 1] = p.cy + s.oy;
       pointPositions[k * 3 + 2] = p.cz + s.oz;
 
-      // Sizes: pulse + occasional bright flash (random "share submitted")
+      // rev70u: real share-flash. NO MORE random decorative flashes.
+      const isFlashing = strikerFlashUntil && nowMs < strikerFlashUntil[i];
       const baseSize = strikerBase * (0.8 + 0.5 * Math.abs(Math.sin(phase)));
-      pointSizes[k] = (Math.random() < 0.0006) ? flashSize : baseSize;
+      pointSizes[k] = isFlashing ? flashSize : baseSize;
     }
     // Pool sizes: gentle breathing, scaled to current poolSizeBase
     const poolBase = pools.poolSizeBase || 0.20;
@@ -532,7 +559,12 @@ export function createConstellationWebGL(canvas, opts = {}) {
 
     // Inter-pool lines (dim gray)
     if (interLineCount > 0) {
-      gl.uniform1f(uLineOpacity, 0.22);
+      // rev70u: plasma bolt — when interPoolFlashUntil > now, brighten the
+      // inter-pool line dramatically. Otherwise dim base.
+      const boltActive = nowMs < interPoolFlashUntil;
+      const boltAge = boltActive ? (interPoolFlashUntil - nowMs) / 500 : 0;
+      const lineOpacity = boltActive ? (0.22 + boltAge * 0.78) : 0.22;
+      gl.uniform1f(uLineOpacity, lineOpacity);
       gl.bindBuffer(gl.ARRAY_BUFFER, interLinesPosBuf);
       gl.enableVertexAttribArray(aPosL);
       gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
