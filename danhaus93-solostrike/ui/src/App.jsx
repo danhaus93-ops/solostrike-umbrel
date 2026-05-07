@@ -8978,20 +8978,34 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // rev70y: dedicated detection effect. Watches share signals and queues
   // flashes via pendingFlashesRef. Decoupled from the draw effect so detection
   // re-runs even if the draw effect doesn't (e.g. ns.peers is the same ref).
+  // rev71d: server pushes WS state every 5000ms (server.js line 968). At
+  // high hashrate the user's acceptedCount jumps by N shares each push.
+  // We schedule N flashes spaced across most of the 5s window so the visual
+  // appears as continuous fire instead of a 1-second burst followed by 4s
+  // of silence.
   useEffect(() => {
     if (!enabled) return;
-    // First observation: just record state. Don't fire.
     if (acceptedCountRef.current === null) {
       acceptedCountRef.current = acceptedCount || 0;
       lastShareAtRef.current = lastShareAt;
       return;
     }
-    // Detect any signal of new share. Liberal — multiple paths.
-    let fire = false;
-    if ((acceptedCount || 0) > acceptedCountRef.current) fire = true;
-    if (lastShareAt && lastShareAt !== lastShareAtRef.current) fire = true;
-    if (fire) {
-      pendingFlashesRef.current.push('own');
+    let delta = (acceptedCount || 0) - acceptedCountRef.current;
+    if (delta <= 0 && lastShareAt && lastShareAt !== lastShareAtRef.current) {
+      // Fallback: lastShareAt changed but counter didn't refresh.
+      delta = 1;
+    }
+    if (delta > 0) {
+      const WINDOW_MS = 4500;     // slightly under WS push interval
+      const MIN_GAP_MS = 150;     // visual comfort floor (~6 flashes/sec)
+      const N = Math.min(delta, Math.floor(WINDOW_MS / MIN_GAP_MS));
+      const stagger = N > 1 ? WINDOW_MS / N : 0;
+      pendingFlashesRef.current.push('own'); // first one fires immediately
+      for (let i = 1; i < N; i++) {
+        setTimeout(() => {
+          pendingFlashesRef.current.push('own');
+        }, i * stagger);
+      }
     }
     acceptedCountRef.current = acceptedCount || 0;
     lastShareAtRef.current = lastShareAt;
@@ -8999,6 +9013,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
   // rev70y: peer broadcast detection — when any non-own peer's lastSeenAgoSec
   // drops, queue a flash for that peer.
+  // rev71c: relaxed threshold (was `cur < prev - 1`, now `cur < prev`) to
+  // catch every drop. NOTE: peers broadcast at most every 4 minutes
+  // (MIN_OWN_BROADCAST_INTERVAL_MS in network-stats.js), so peer flashes
+  // will be inherently rare regardless of detection sensitivity.
   useEffect(() => {
     if (!enabled) return;
     const peers = Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : [];
@@ -9008,7 +9026,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       newSeen.set(peer.pubkey, cur);
       if (peer.isOwn) continue;
       const prev = peerLastSeenRef.current.get(peer.pubkey);
-      if (prev != null && cur < prev - 1) {
+      if (prev != null && cur < prev) {
         pendingFlashesRef.current.push('peer:' + peer.pubkey);
       }
     }

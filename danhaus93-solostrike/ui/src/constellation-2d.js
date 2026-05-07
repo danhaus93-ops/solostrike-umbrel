@@ -31,6 +31,12 @@ export function createConstellation2D(canvas, opts = {}) {
   let tAccum = 0;
   let strikerFlashUntil = null; // Float32Array per striker
 
+  // rev71c: pan + zoom state for drag/pinch interaction. Rotation isn't
+  // meaningful for a 2D layout, so `addRotation` is reinterpreted as pan.
+  let panX = 0, panY = 0;
+  let zoom = 1.0;
+  const MIN_ZOOM = 0.5, MAX_ZOOM = 4.0;
+
   // Seeded RNG so striker layouts are stable across re-builds
   function rng(seed) {
     let s = seed | 0;
@@ -79,7 +85,8 @@ export function createConstellation2D(canvas, opts = {}) {
       const cnt = counts[p] | 0;
       // Fibonacci-sphere distribution per pool
       const golden = Math.PI * (3 - Math.sqrt(5));
-      const baseRadius = totalPools === 2 ? 70 : 60;
+      // rev71c: tighter pool→striker radius (was 70/60 → 50/42).
+      const baseRadius = totalPools === 2 ? 50 : 42;
       for (let i = 0; i < cnt; i++) {
         const y = 1 - (i / Math.max(1, cnt - 1)) * 2;
         const ringR = Math.sqrt(1 - y * y);
@@ -197,6 +204,16 @@ export function createConstellation2D(canvas, opts = {}) {
 
     // ── Background clear ────────────────────────────────────────────────
     ctx.clearRect(0, 0, W, H);
+
+    // rev71c: apply pan/zoom for the SCENE only. Clear stays in CSS pixel
+    // space so it always covers the full canvas. Zoom centers on canvas
+    // center; pan is in CSS pixels.
+    if (zoom !== 1.0 || panX !== 0 || panY !== 0) {
+      const cx = W / 2, cy = H / 2;
+      ctx.translate(cx + panX, cy + panY);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-cx, -cy);
+    }
 
     // ── Inter-pool dim lines (always visible, gray-blue, low alpha) ─────
     ctx.save();
@@ -329,11 +346,20 @@ export function createConstellation2D(canvas, opts = {}) {
     isReady() { return true; },
     update,
     destroy,
-    // Interaction stubs — 2D constellation is non-interactive. Drag-rotate
-    // and pinch-zoom would not change anything visible since this is a flat
-    // 2D layout, so the methods just no-op rather than throw.
-    addRotation() {},
-    multiplyZoom() {},
-    resetView() {},
+    // rev71c: real interaction handlers. App.jsx routes pointer/wheel
+    // events to these names (same names as the WebGL constellation API).
+    // For 2D, rotation is meaningless, so `addRotation(dx, dy)` is
+    // reinterpreted as pan in CSS pixels.
+    addRotation(dxPx, dyPx) {
+      panX += (dxPx || 0);
+      panY += (dyPx || 0);
+    },
+    multiplyZoom(factor) {
+      const f = factor || 1;
+      zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * f));
+    },
+    resetView() {
+      panX = 0; panY = 0; zoom = 1.0;
+    },
   };
 }
