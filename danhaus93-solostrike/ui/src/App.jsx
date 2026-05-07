@@ -7562,7 +7562,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     if (pulseAnimRef.current === 'constellation') {
       // Constellation: ping interaction so auto-rotate pauses. If two
       // pointers are now active, set up pinch-zoom baseline.
-      if (constellationRendererRef.current) {
+      // rev71e: 2D constellation renderer has no auto-rotate so it doesn't
+      // ship `pingInteraction`. Guard the call to avoid TypeError that was
+      // aborting the pointer handler before pan/zoom logic could run.
+      if (constellationRendererRef.current && constellationRendererRef.current.pingInteraction) {
         constellationRendererRef.current.pingInteraction();
       }
       if (pointersRef.current.size === 2) {

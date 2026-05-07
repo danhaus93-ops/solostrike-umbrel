@@ -361,5 +361,9 @@ export function createConstellation2D(canvas, opts = {}) {
     resetView() {
       panX = 0; panY = 0; zoom = 1.0;
     },
+    // rev71e: no-op stub. The WebGL constellation used pingInteraction to
+    // pause auto-rotation on user input. The 2D renderer has no auto-rotate,
+    // so this just exists to satisfy callers that expect the method.
+    pingInteraction() {},
   };
 }
