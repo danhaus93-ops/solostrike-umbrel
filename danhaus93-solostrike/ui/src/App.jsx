@@ -5,7 +5,7 @@ import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fm
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
-import { createConstellationWebGL } from './constellation-webgl.js';
+import { createConstellation2D } from './constellation-2d.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
 
@@ -7389,6 +7389,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // rev70w: secondary signal — acceptedCount increments per share, more
   // reliable than lastShareAt timestamp comparison.
   const acceptedCountRef = useRef(null);
+  // rev70y: queue of pending flashes - decoupled from draw loop. Detection
+  // effect pushes pool indices here; draw loop drains and dispatches.
+  const pendingFlashesRef = useRef([]);
+  // rev70x→A1: active plasma bolts. Each entry: { fromIdx, toIdx, start }.
+  // Drained by the 2D canvas draw step when in constellation mode.
+  const plasmaBoltsRef = useRef([]);
 
   // ─── Pin placement mode (globe only) ───────────────────────────────────
   // When `placingPin` is true, the globe stops rotating, an overlay prompts
@@ -7441,7 +7447,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // otherwise — context stays alive but no GPU work happens).
   useEffect(() => {
     if (!constellationCanvasRef.current) return;
-    const renderer = createConstellationWebGL(constellationCanvasRef.current);
+    const renderer = createConstellation2D(constellationCanvasRef.current);
     if (renderer && !renderer.failed) {
       constellationRendererRef.current = renderer;
     } else {
@@ -8865,40 +8871,39 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             : [];
           const poolWorkers = peerList.map(p => Math.max(0, p.workers | 0));
 
-          // Build flashPoolIndices from real network signals.
+          // rev70y: drain pendingFlashesRef. Detection effect (separate) has
+          // pushed pool index strings. Translate to indices here where peerList
+          // is available.
           const flashPoolIndices = [];
-          // 1a) Our pool's share submission — acceptedCount went UP
-          //     (most reliable: server increments per share)
-          let ourPoolFlashed = false;
-          if (acceptedCountRef.current !== null && acceptedCount > acceptedCountRef.current) {
-            const ourIdx = peerList.findIndex(p => p.isOwn);
-            if (ourIdx >= 0) {
-              flashPoolIndices.push(ourIdx);
-              ourPoolFlashed = true;
+          if (pendingFlashesRef.current.length > 0) {
+            for (const tag of pendingFlashesRef.current) {
+              if (tag === 'own') {
+                // Find our pool. Fallback to index 0 if isOwn not detectable.
+                let ourIdx = peerList.findIndex(p => p.isOwn);
+                if (ourIdx < 0 && peerList.length > 0) ourIdx = 0;
+                if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
+              } else if (typeof tag === 'string' && tag.startsWith('peer:')) {
+                const pubkey = tag.slice(5);
+                const idx = peerList.findIndex(p => p.pubkey === pubkey);
+                if (idx >= 0) flashPoolIndices.push(idx);
+              }
+            }
+            pendingFlashesRef.current = [];
+          }
+
+          // rev70x→A1: queue plasma bolts for any flash event. Each flash
+          // arcs a bolt between the flashing pool and the OTHER pool.
+          for (const idx of flashPoolIndices) {
+            const otherIdx = (idx === 0 ? 1 : 0);
+            if (otherIdx < peerList.length && otherIdx !== idx) {
+              plasmaBoltsRef.current.push({
+                fromIdx: idx,
+                toIdx: otherIdx,
+                start: performance.now(),
+                duration: 500,
+              });
             }
           }
-          acceptedCountRef.current = acceptedCount;
-          // 1b) Fallback: lastShareAt timestamp changed (in case acceptedCount
-          //     isn't refreshed but lastShareAt is). NO initial-observation
-          //     skip — if it changed, fire.
-          if (!ourPoolFlashed && lastShareAt && lastShareAt !== lastShareAtRef.current && lastShareAtRef.current !== null) {
-            const ourIdx = peerList.findIndex(p => p.isOwn);
-            if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
-          }
-          if (lastShareAt) lastShareAtRef.current = lastShareAt;
-          // 2) Peer broadcasts — lastSeenAgoSec drops (peer just sent fresh stats)
-          const newSeen = new Map();
-          for (let i = 0; i < peerList.length; i++) {
-            const peer = peerList[i];
-            const cur = peer.lastSeenAgoSec | 0;
-            newSeen.set(peer.pubkey, cur);
-            if (peer.isOwn) continue; // our pool flashes via lastShareAt
-            const prev = peerLastSeenRef.current.get(peer.pubkey);
-            if (prev != null && cur < prev - 1) {
-              flashPoolIndices.push(i);
-            }
-          }
-          peerLastSeenRef.current = newSeen;
 
           constellationRendererRef.current.update({
             dpr: dprRef.current || 1,
@@ -8908,6 +8913,56 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             flashPoolIndices,
             dt,
           });
+
+          // rev70x→A1: render plasma bolts on the 2D canvas overlay using
+          // the exact preview algorithm — recursive midpoint displacement,
+          // two-pass: outer thick blue glow + inner thin white core.
+          // WebGL gl.lineWidth doesn't support thick lines, hence 2D canvas.
+          if (plasmaBoltsRef.current.length > 0 && constellationRendererRef.current.getPoolScreenPositions) {
+            const screenPositions = constellationRendererRef.current.getPoolScreenPositions(W, H);
+            const tNow = performance.now();
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = plasmaBoltsRef.current.length - 1; i >= 0; i--) {
+              const b = plasmaBoltsRef.current[i];
+              const age = (tNow - b.start) / b.duration;
+              if (age >= 1) { plasmaBoltsRef.current.splice(i, 1); continue; }
+              const alpha = Math.min(1, (1 - age) * 1.4);
+              const fromPool = screenPositions[b.fromIdx];
+              const toPool = screenPositions[b.toIdx];
+              if (!fromPool || !toPool) continue;
+              // Recursive midpoint displacement (matches preview's makeJaggedPath)
+              const segs = [];
+              const recurse = (p1, p2, d, depthLeft) => {
+                if (depthLeft === 0) { segs.push(p1, p2); return; }
+                const mx = (p1.x + p2.x) / 2 + (Math.random() - 0.5) * d;
+                const my = (p1.y + p2.y) / 2 + (Math.random() - 0.5) * d;
+                const m = { x: mx, y: my };
+                recurse(p1, m, d * 0.5, depthLeft - 1);
+                recurse(m, p2, d * 0.5, depthLeft - 1);
+              };
+              recurse(fromPool, toPool, 18, 4);
+              // Outer blue glow
+              ctx.strokeStyle = 'rgba(170,200,255,' + (alpha * 0.85) + ')';
+              ctx.lineWidth = 3.0;
+              ctx.beginPath();
+              for (let j = 0; j < segs.length; j += 2) {
+                if (j === 0) ctx.moveTo(segs[j].x, segs[j].y);
+                ctx.lineTo(segs[j + 1].x, segs[j + 1].y);
+              }
+              ctx.stroke();
+              // Inner white core
+              ctx.strokeStyle = 'rgba(255,255,255,' + (alpha * 0.95) + ')';
+              ctx.lineWidth = 1.2;
+              ctx.beginPath();
+              for (let j = 0; j < segs.length; j += 2) {
+                if (j === 0) ctx.moveTo(segs[j].x, segs[j].y);
+                ctx.lineTo(segs[j + 1].x, segs[j + 1].y);
+              }
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
         }
       }
       else drawTicker(dt, W, H); // default 'ticker'
@@ -8918,7 +8973,47 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, lastShareAt, acceptedCount, pulseAnim, useBitcoinSymbols]);
+  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, pulseAnim, useBitcoinSymbols]);
+
+  // rev70y: dedicated detection effect. Watches share signals and queues
+  // flashes via pendingFlashesRef. Decoupled from the draw effect so detection
+  // re-runs even if the draw effect doesn't (e.g. ns.peers is the same ref).
+  useEffect(() => {
+    if (!enabled) return;
+    // First observation: just record state. Don't fire.
+    if (acceptedCountRef.current === null) {
+      acceptedCountRef.current = acceptedCount || 0;
+      lastShareAtRef.current = lastShareAt;
+      return;
+    }
+    // Detect any signal of new share. Liberal — multiple paths.
+    let fire = false;
+    if ((acceptedCount || 0) > acceptedCountRef.current) fire = true;
+    if (lastShareAt && lastShareAt !== lastShareAtRef.current) fire = true;
+    if (fire) {
+      pendingFlashesRef.current.push('own');
+    }
+    acceptedCountRef.current = acceptedCount || 0;
+    lastShareAtRef.current = lastShareAt;
+  }, [acceptedCount, lastShareAt, enabled]);
+
+  // rev70y: peer broadcast detection — when any non-own peer's lastSeenAgoSec
+  // drops, queue a flash for that peer.
+  useEffect(() => {
+    if (!enabled) return;
+    const peers = Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : [];
+    const newSeen = new Map();
+    for (const peer of peers) {
+      const cur = peer.lastSeenAgoSec | 0;
+      newSeen.set(peer.pubkey, cur);
+      if (peer.isOwn) continue;
+      const prev = peerLastSeenRef.current.get(peer.pubkey);
+      if (prev != null && cur < prev - 1) {
+        pendingFlashesRef.current.push('peer:' + peer.pubkey);
+      }
+    }
+    peerLastSeenRef.current = newSeen;
+  }, [ns.peers, enabled]);
 
 
 

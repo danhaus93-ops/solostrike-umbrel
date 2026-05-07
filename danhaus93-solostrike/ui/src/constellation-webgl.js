@@ -20,13 +20,13 @@ attribute float aSize;
 attribute vec3 aColor;
 uniform mat4 uViewProj;
 uniform float uPxScale;
+uniform float uSizeBoost;
 varying vec3 vColor;
 void main() {
   vec4 p = uViewProj * vec4(aPos, 1.0);
-  // rev70n: cap point size so zoom-in doesn't render points
-  // hundreds of pixels wide (which saturates the canvas to white).
-  // 36 backing px = ~12 CSS px on dpr=3 — comfortable upper bound.
-  gl_PointSize = min(36.0, aSize * uPxScale / max(0.1, -p.z));
+  // rev70z: cap raised to 200 backing px so pool halos can render large.
+  // The original 36 cap was too small to allow visible glow halos.
+  gl_PointSize = min(200.0, aSize * uPxScale * uSizeBoost / max(0.1, -p.z));
   gl_Position = p;
   vColor = aColor;
 }
@@ -35,17 +35,15 @@ void main() {
 const FRAG_POINTS = `
 precision mediump float;
 varying vec3 vColor;
+uniform float uFalloff;
+uniform float uAlpha;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c);
   if (d > 0.5) discard;
-  // rev70o: with alpha blending (not additive), brightness is bounded
-  // — overlapping points don't compound to white. So we can run higher
-  // per-point alpha (0.55 → 0.85) and points appear vivid + crisp.
-  // Sharper falloff (-14d) keeps the dot looking like a dot instead
-  // of a halo.
-  float a = exp(-d * 14.0);
-  gl_FragColor = vec4(vColor, a * 0.85);
+  // rev70z: configurable falloff. Sharp (14) for normal dots, soft (3) for halos.
+  float a = exp(-d * uFalloff);
+  gl_FragColor = vec4(vColor, a * uAlpha);
 }
 `;
 
@@ -156,6 +154,10 @@ export function createConstellationWebGL(canvas, opts = {}) {
   const aColorP = gl.getAttribLocation(progPoints, 'aColor');
   const uViewProjP = gl.getUniformLocation(progPoints, 'uViewProj');
   const uPxScale = gl.getUniformLocation(progPoints, 'uPxScale');
+  // rev70z: shader uniforms for halo pass
+  const uSizeBoost = gl.getUniformLocation(progPoints, 'uSizeBoost');
+  const uFalloff = gl.getUniformLocation(progPoints, 'uFalloff');
+  const uAlpha = gl.getUniformLocation(progPoints, 'uAlpha');
 
   const aPosL = gl.getAttribLocation(progLines, 'aPos');
   const aColorL = gl.getAttribLocation(progLines, 'aColor');
@@ -319,11 +321,12 @@ export function createConstellationWebGL(canvas, opts = {}) {
     // saturated the canvas with additive blending when only 2 pools
     // were present. Production screenshot showed two blown-out white
     // blobs. New ceiling matches the design preview values.
-    // rev70x: pools bigger (was 0.20 → 0.32 for 2-pool case to match preview)
-    const poolSizeBase = totalPools <= 3 ? 0.32
-                       : totalPools <= 8 ? 0.24
-                       : totalPools <= 20 ? 0.18
-                       : 0.14;
+    // rev70x/z: pools bigger + soft halo via two-pass render. Base size
+    // also raised so the sharp core is visible at a comfortable diameter.
+    const poolSizeBase = totalPools <= 3 ? 0.55
+                       : totalPools <= 8 ? 0.40
+                       : totalPools <= 20 ? 0.28
+                       : 0.20;
     const strikerSizeBase = totalStrikers <= 20 ? 0.055
                           : totalStrikers <= 80 ? 0.045
                           : totalStrikers <= 200 ? 0.04
@@ -485,9 +488,10 @@ export function createConstellationWebGL(canvas, opts = {}) {
       pointPositions[i * 3 + 2] = pools[i].cz;
     }
     // rev70u: process flashPoolIndices — when a pool's index appears, light
-    // up ALL its strikers and arm the inter-pool plasma bolt.
+    // up ALL its strikers. (Plasma bolt is now rendered on the 2D canvas
+    // overlay by App.jsx — WebGL gl.lineWidth doesn't work above 1.0 on
+    // most browsers, so a thick glowing jagged line isn't possible here.)
     if (Array.isArray(flashPoolIndices) && flashPoolIndices.length > 0) {
-      // Lazy-allocate / resize the per-striker flash array
       if (!strikerFlashUntil || strikerFlashUntil.length < totalStrikers) {
         strikerFlashUntil = new Float32Array(totalStrikers);
       }
@@ -499,55 +503,6 @@ export function createConstellationWebGL(canvas, opts = {}) {
           }
         }
       }
-      // rev70x: plasma bolt — generate jagged path between first two pools
-      if (totalPools >= 2) {
-        const p0 = pools[0];
-        const p1 = pools[1];
-        // Generate jagged points along p0 → p1 with perpendicular offsets
-        const dx = p1.cx - p0.cx;
-        const dy = p1.cy - p0.cy;
-        const dz = p1.cz - p0.cz;
-        const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
-        // Perpendicular direction (in xy plane primarily)
-        const px = -dy / len;
-        const py = dx / len;
-        // Build jagged waypoints — Float32Array stored as line segments
-        // Each segment = 2 points × 3 coords. PLASMA_SEGS segments.
-        const wpCount = PLASMA_SEGS + 1;
-        const waypoints = new Float32Array(wpCount * 3);
-        waypoints[0] = p0.cx; waypoints[1] = p0.cy; waypoints[2] = p0.cz;
-        for (let i = 1; i < wpCount - 1; i++) {
-          const t = i / (wpCount - 1);
-          const cx = p0.cx + dx * t;
-          const cy = p0.cy + dy * t;
-          const cz = p0.cz + dz * t;
-          // Random perpendicular offset, peaks in middle, zero at ends
-          const taper = Math.sin(t * Math.PI);
-          const offset = (Math.random() - 0.5) * len * 0.18 * taper;
-          const offset2 = (Math.random() - 0.5) * len * 0.10 * taper;
-          waypoints[i * 3 + 0] = cx + px * offset;
-          waypoints[i * 3 + 1] = cy + py * offset;
-          waypoints[i * 3 + 2] = cz + offset2;
-        }
-        waypoints[(wpCount-1)*3 + 0] = p1.cx;
-        waypoints[(wpCount-1)*3 + 1] = p1.cy;
-        waypoints[(wpCount-1)*3 + 2] = p1.cz;
-        // Convert waypoints to line segments
-        for (let i = 0; i < PLASMA_SEGS; i++) {
-          plasmaBoltPositions[i * 6 + 0] = waypoints[i * 3 + 0];
-          plasmaBoltPositions[i * 6 + 1] = waypoints[i * 3 + 1];
-          plasmaBoltPositions[i * 6 + 2] = waypoints[i * 3 + 2];
-          plasmaBoltPositions[i * 6 + 3] = waypoints[(i+1) * 3 + 0];
-          plasmaBoltPositions[i * 6 + 4] = waypoints[(i+1) * 3 + 1];
-          plasmaBoltPositions[i * 6 + 5] = waypoints[(i+1) * 3 + 2];
-        }
-        plasmaBoltActive = true;
-        plasmaBoltStart = nowMs;
-      }
-    }
-    // rev70x: deactivate plasma bolt after duration
-    if (plasmaBoltActive && nowMs - plasmaBoltStart > PLASMA_BOLT_DURATION) {
-      plasmaBoltActive = false;
     }
 
     // Strikers — base offset + small phase wobble
@@ -569,7 +524,20 @@ export function createConstellationWebGL(canvas, opts = {}) {
       // rev70u: real share-flash. NO MORE random decorative flashes.
       const isFlashing = strikerFlashUntil && nowMs < strikerFlashUntil[i];
       const baseSize = strikerBase * (0.8 + 0.5 * Math.abs(Math.sin(phase)));
-      pointSizes[k] = isFlashing ? flashSize : baseSize;
+      // rev70y: flash now changes BOTH size AND color (bright white) so it's
+      // impossible to miss. flashSize multiplied for extra drama.
+      pointSizes[k] = isFlashing ? flashSize * 1.5 : baseSize;
+      // Per-frame color override on flashing strikers
+      if (isFlashing) {
+        pointColors[k * 3 + 0] = 1.0;
+        pointColors[k * 3 + 1] = 1.0;
+        pointColors[k * 3 + 2] = 1.0;
+      } else {
+        // Restore base saturated blue (in case it was overwritten last frame)
+        pointColors[k * 3 + 0] = 0.30;
+        pointColors[k * 3 + 1] = 0.55;
+        pointColors[k * 3 + 2] = 1.00;
+      }
     }
     // Pool sizes: gentle breathing, scaled to current poolSizeBase
     const poolBase = pools.poolSizeBase || 0.20;
@@ -594,6 +562,10 @@ export function createConstellationWebGL(canvas, opts = {}) {
     gl.bufferData(gl.ARRAY_BUFFER, pointPositions, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, pointsSizeBuf);
     gl.bufferData(gl.ARRAY_BUFFER, pointSizes, gl.DYNAMIC_DRAW);
+    // rev70y: pointColors must also be uploaded per-frame so flash white-out
+    // is visible. Previously colors were only set on scene rebuild.
+    gl.bindBuffer(gl.ARRAY_BUFFER, pointsColorBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, pointColors, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesPosBuf);
     gl.bufferData(gl.ARRAY_BUFFER, intraLinePositions, gl.DYNAMIC_DRAW);
 
@@ -640,7 +612,9 @@ export function createConstellationWebGL(canvas, opts = {}) {
     // Intra-pool lines (amber-dim) — rev70m: opacity 0.18 → 0.10 to ease
     // the additive bloom that contributed to the white-blob saturation.
     if (totalStrikers > 0) {
-      gl.uniform1f(uLineOpacity, 0.10);
+      // rev70z: intra-pool lines brightened from 0.10 → 0.32 to match the
+      // visible amber rays in the preview.
+      gl.uniform1f(uLineOpacity, 0.32);
       gl.bindBuffer(gl.ARRAY_BUFFER, intraLinesPosBuf);
       gl.enableVertexAttribArray(aPosL);
       gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
@@ -650,35 +624,14 @@ export function createConstellationWebGL(canvas, opts = {}) {
       gl.drawArrays(gl.LINES, 0, totalStrikers * 2);
     }
 
-    // rev70x: plasma bolt — bright jagged line strip between two pools when
-    // a flash fires. Uploads fresh jagged path on each fire (regenerated in
-    // the flashPoolIndices block above). Fades out over PLASMA_BOLT_DURATION.
-    if (plasmaBoltActive && totalPools >= 2) {
-      const age = (nowMs - plasmaBoltStart) / PLASMA_BOLT_DURATION;
-      const alpha = Math.max(0, Math.min(1, (1 - age) * 1.4));
-      // Two-pass draw: outer thick blue glow, then inner thin white core
-      gl.bindBuffer(gl.ARRAY_BUFFER, plasmaBoltPosBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, plasmaBoltPositions, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(aPosL);
-      gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, plasmaBoltColorBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, plasmaBoltColors, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(aColorL);
-      gl.vertexAttribPointer(aColorL, 3, gl.FLOAT, false, 0, 0);
-      // Outer glow pass
-      gl.uniform1f(uLineOpacity, alpha * 0.85);
-      gl.lineWidth(3);
-      gl.drawArrays(gl.LINES, 0, PLASMA_SEGS * 2);
-      // Inner core pass
-      gl.uniform1f(uLineOpacity, alpha * 0.95);
-      gl.lineWidth(1);
-      gl.drawArrays(gl.LINES, 0, PLASMA_SEGS * 2);
-    }
+    // rev70x→A1: plasma bolt rendering moved to 2D canvas overlay (App.jsx)
+    // because gl.lineWidth above 1.0 is not supported on most WebGL impls,
+    // so a thick glowing jagged line is impossible here.
 
     // rev70o: switch to ALPHA blending for points. Saturation-proof.
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Points on top
+    // Points
     gl.useProgram(progPoints);
     gl.uniformMatrix4fv(uViewProjP, false, viewProj);
     gl.uniform1f(uPxScale, pxScale);
@@ -692,6 +645,23 @@ export function createConstellationWebGL(canvas, opts = {}) {
     gl.bindBuffer(gl.ARRAY_BUFFER, pointsColorBuf);
     gl.enableVertexAttribArray(aColorP);
     gl.vertexAttribPointer(aColorP, 3, gl.FLOAT, false, 0, 0);
+
+    // rev70z: PASS 1 — pool halos. Bigger size, soft falloff, low alpha.
+    // Switch to ADDITIVE blending for halos so they stack like a glow,
+    // then back to alpha for the sharp core pass.
+    if (totalPools > 0) {
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.uniform1f(uSizeBoost, 4.0);  // 4× bigger for halo
+      gl.uniform1f(uFalloff, 2.5);    // very soft falloff
+      gl.uniform1f(uAlpha, 0.35);     // low alpha so it stacks gently
+      gl.drawArrays(gl.POINTS, 0, totalPools);
+    }
+
+    // PASS 2 — all points (pools + strikers) sharp on top.
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1f(uSizeBoost, 1.0);   // normal size
+    gl.uniform1f(uFalloff, 14.0);    // sharp falloff
+    gl.uniform1f(uAlpha, 0.95);      // mostly opaque
     gl.drawArrays(gl.POINTS, 0, totalPoints);
   }
 
@@ -719,6 +689,33 @@ export function createConstellationWebGL(canvas, opts = {}) {
     isReady() { return true; },
     update,
     destroy,
+    /**
+     * rev70x→A1: Project current pool world positions to 2D CSS screen
+     * coordinates so the App.jsx draw loop can render plasma bolts on
+     * the 2D canvas overlay. Uses the most recent viewProj matrix built
+     * by update().
+     * @param {number} cssWidth  Canvas width in CSS pixels
+     * @param {number} cssHeight Canvas height in CSS pixels
+     * @returns {Array<{x:number, y:number}>}
+     */
+    getPoolScreenPositions(cssWidth, cssHeight) {
+      const out = [];
+      for (let i = 0; i < totalPools; i++) {
+        const wx = pools[i].cx, wy = pools[i].cy, wz = pools[i].cz;
+        // Apply viewProj manually (matrix is column-major float32array)
+        const m = viewProj;
+        const cx = m[0]*wx + m[4]*wy + m[8]*wz + m[12];
+        const cy = m[1]*wx + m[5]*wy + m[9]*wz + m[13];
+        const cw = m[3]*wx + m[7]*wy + m[11]*wz + m[15];
+        if (cw <= 0) { out.push({ x: -1, y: -1 }); continue; }
+        const ndcX = cx / cw, ndcY = cy / cw;
+        out.push({
+          x: (ndcX * 0.5 + 0.5) * cssWidth,
+          y: (1 - (ndcY * 0.5 + 0.5)) * cssHeight,
+        });
+      }
+      return out;
+    },
     // ── rev70k interaction API ──────────────────────────────────────────
     // All three methods bump lastInteractionMs so idle auto-rotate pauses.
     /** Drag input. dx/dy are CSS pixels of pointer movement. */
