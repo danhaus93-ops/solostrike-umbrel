@@ -9153,15 +9153,26 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     }
 
     peerLastSeenRef.current = newSeen;
+    // rev71k: NO cleanup function here. The previous version cleared all
+    // peer synth timers on every dep change (which fires every 5s when
+    // ns.peers gets a new reference from each WS push). That killed the
+    // self-rearming Poisson chain after the first broadcast — the schedule
+    // would only restart when a peer actually broadcast (every 4 min),
+    // which is exactly what we were trying to AVOID. Peer departure is
+    // already handled inline above. Component-unmount cleanup is in the
+    // separate effect below.
+  }, [ns.peers, enabled]);
 
+  // rev71k: dedicated unmount cleanup for peer synth timers. Empty deps so
+  // it runs once on mount and once on unmount, never on dep changes.
+  useEffect(() => {
     return () => {
-      // Cleanup on unmount or deps change: drop all timers
       for (const sched of peerSynthRef.current.values()) {
         clearTimeout(sched.timeoutId);
       }
       peerSynthRef.current.clear();
     };
-  }, [ns.peers, enabled]);
+  }, []);
 
 
 
