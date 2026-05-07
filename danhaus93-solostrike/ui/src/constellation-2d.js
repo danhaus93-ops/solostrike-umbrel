@@ -30,6 +30,9 @@ export function createConstellation2D(canvas, opts = {}) {
   let lastSig = '';
   let tAccum = 0;
   let strikerFlashUntil = null; // Float32Array per striker
+  // rev71h: per-pool striker-index buckets. Built in rebuildScene; used to
+  // pick a random striker on each flash event.
+  let poolStrikerIndices = [];
 
   // rev71c: pan + zoom state for drag/pinch interaction. Rotation isn't
   // meaningful for a 2D layout, so `addRotation` is reinterpreted as pan.
@@ -112,6 +115,14 @@ export function createConstellation2D(canvas, opts = {}) {
     if (!strikerFlashUntil || strikerFlashUntil.length < strikers.length) {
       strikerFlashUntil = new Float32Array(strikers.length);
     }
+    // rev71h: index of striker indices per pool. Used to pick ONE random
+    // striker per share-flash event so individual miners light up
+    // sequentially rather than the whole pool at once.
+    poolStrikerIndices = [];
+    for (let p = 0; p < pools.length; p++) poolStrikerIndices.push([]);
+    for (let i = 0; i < strikers.length; i++) {
+      poolStrikerIndices[strikers[i].poolIdx].push(i);
+    }
   }
 
   // Mid-point displacement jagged path (matches preview)
@@ -129,7 +140,7 @@ export function createConstellation2D(canvas, opts = {}) {
     return segs;
   }
 
-  function update({ dpr: dprIn, width, height, poolWorkers, dt, flashPoolIndices }) {
+  function update({ dpr: dprIn, width, height, poolWorkers, dt, flashPoolIndices, flashStrikerEvents, ownPoolIdx = -1 }) {
     dpr = dprIn || 1;
     const targetW = width || canvas.clientWidth;
     const targetH = height || canvas.clientHeight;
@@ -165,14 +176,43 @@ export function createConstellation2D(canvas, opts = {}) {
     const t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
     // ── Process flashPoolIndices (real share-flash) ─────────────────────
+    // rev71h: each share submission flashes ONE random striker (a single
+    // miner), not the whole pool. With multiple flashes queued per second
+    // (own pool burst, peer Poisson synthesis), strikers light up in a
+    // staggered swarm — much more "alive" than a unified pool blink.
+    // rev71i: flashStrikerEvents path is the 1:1 per-worker mapping for
+    // our own pool. flashPoolIndices stays for peer synthesis (which has
+    // no worker IDs in the broadcast, so random pick is the best we have).
+    if (Array.isArray(flashStrikerEvents) && flashStrikerEvents.length > 0) {
+      for (const evt of flashStrikerEvents) {
+        if (!evt) continue;
+        const poolIdx = evt.poolIdx | 0;
+        const strikerIdx = evt.strikerIdx | 0;
+        if (poolIdx < 0 || poolIdx >= totalPools) continue;
+        const indices = poolStrikerIndices[poolIdx];
+        if (!indices || strikerIdx < 0 || strikerIdx >= indices.length) continue;
+        const realIdx = indices[strikerIdx];
+        strikerFlashUntil[realIdx] = t + FLASH_DUR;
+        // Plasma bolt on each event (real network share)
+        if (totalPools >= 2) {
+          const toIdx = (poolIdx + 1) % totalPools;
+          plasmaBolts.push({
+            fromIdx: poolIdx,
+            toIdx,
+            start: t,
+            duration: BOLT_DURATION,
+          });
+        }
+      }
+    }
     if (Array.isArray(flashPoolIndices) && flashPoolIndices.length > 0) {
       for (const poolIdx of flashPoolIndices) {
         if (poolIdx < 0 || poolIdx >= totalPools) continue;
-        // Flash all strikers in this pool
-        for (let i = 0; i < strikers.length; i++) {
-          if (strikers[i].poolIdx === poolIdx) {
-            strikerFlashUntil[i] = t + FLASH_DUR;
-          }
+        // Pick one random striker in this pool (peer synthesis path)
+        const indices = poolStrikerIndices[poolIdx];
+        if (indices && indices.length > 0) {
+          const picked = indices[Math.floor(Math.random() * indices.length)];
+          strikerFlashUntil[picked] = t + FLASH_DUR;
         }
         // Auto-fire plasma bolt: from this pool to another (round-robin)
         if (totalPools >= 2) {
@@ -286,14 +326,18 @@ export function createConstellation2D(canvas, opts = {}) {
         const ease = fade * fade * fade;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 12 + ease * 14);
-        g.addColorStop(0, `rgba(170,220,255,${ease * 0.7 + 0.3})`);
+        // rev71f: halo toned down from earlier rev (radius 12+14 → 7+9,
+        // peak alpha 1.0 → 0.55) so flashing strikers don't dominate the
+        // panel. White core kept at full intensity — that's the focal hit.
+        const haloR = 7 + ease * 9;
+        ctx.beginPath();
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, haloR);
+        g.addColorStop(0, `rgba(170,220,255,${ease * 0.4 + 0.15})`);
         g.addColorStop(1, 'rgba(170,220,255,0)');
         ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, 12 + ease * 14, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y, haloR, 0, Math.PI * 2);
         ctx.fill();
-        // White core
+        // White core (unchanged — this is the actual visible "hit")
         ctx.fillStyle = 'rgba(255,255,255,0.95)';
         ctx.beginPath();
         ctx.arc(s.x, s.y, baseSize + ease * 2.5, 0, Math.PI * 2);
@@ -308,7 +352,11 @@ export function createConstellation2D(canvas, opts = {}) {
     }
 
     // ── Pools (deep amber-orange, BIG with radial glow halo) ───────────
-    for (const pool of pools) {
+    // rev71j: own pool gets a cyan accent ring at the outer halo edge.
+    // Cyan already lives in this palette (striker flash core), so it
+    // stays in-family without clashing.
+    for (let pi = 0; pi < pools.length; pi++) {
+      const pool = pools[pi];
       const breath = 0.92 + 0.10 * Math.sin(t / 1200 + pool.breathPhase);
       const size = 6.5 * breath;
       // Outer glow halo
@@ -322,6 +370,19 @@ export function createConstellation2D(canvas, opts = {}) {
       ctx.arc(pool.x, pool.y, size * 4, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+      // rev71j: cyan accent ring marking the own pool
+      if (pi === ownPoolIdx) {
+        const ringR = size * 2.4;
+        const ringPulse = 0.8 + 0.2 * Math.sin(t / 600);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(0,255,209,${0.55 * ringPulse})`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(pool.x, pool.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
       // Solid amber body
       ctx.fillStyle = 'rgba(255,166,51,1)';
       ctx.beginPath();
@@ -350,9 +411,12 @@ export function createConstellation2D(canvas, opts = {}) {
     // events to these names (same names as the WebGL constellation API).
     // For 2D, rotation is meaningless, so `addRotation(dx, dy)` is
     // reinterpreted as pan in CSS pixels.
+    // rev71g: camera-style pan. Drag right → camera looks right → scene
+    // appears to move LEFT (opposite of finger). Was grab-style (panX += dx)
+    // in rev71f which felt inverted. Sign flipped to subtract.
     addRotation(dxPx, dyPx) {
-      panX += (dxPx || 0);
-      panY += (dyPx || 0);
+      panX -= (dxPx || 0);
+      panY -= (dyPx || 0);
     },
     multiplyZoom(factor) {
       const f = factor || 1;

@@ -7350,7 +7350,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0 }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -7386,6 +7386,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // - peerLastSeenRef tracks each peer's last observed lastSeenAgoSec value (broadcasts from other pools)
   const lastShareAtRef = useRef(null);
   const peerLastSeenRef = useRef(new Map());
+  // rev71f: per-peer Poisson schedule for synthesized share flashes between
+  // broadcasts. Map<pubkey, { timeoutId, expiresAt }>. Cleared/rescheduled
+  // when a fresh broadcast arrives, drained on unmount.
+  const peerSynthRef = useRef(new Map());
+  // rev71i: per-worker accepted-share counter tracking. Map<workerName, count>.
+  // Each worker gets its own striker; when a worker's count increments we
+  // flash THEIR specific striker, not a random one in the pool.
+  const workerAcceptedRef = useRef(new Map());
   // rev70w: secondary signal — acceptedCount increments per share, more
   // reliable than lastShareAt timestamp comparison.
   const acceptedCountRef = useRef(null);
@@ -8874,14 +8882,19 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             : [];
           const poolWorkers = peerList.map(p => Math.max(0, p.workers | 0));
 
-          // rev70y: drain pendingFlashesRef. Detection effect (separate) has
-          // pushed pool index strings. Translate to indices here where peerList
-          // is available.
+          // rev70y: drain pendingFlashesRef. Detection effects pushed
+          // 'own' / 'peer:PUBKEY' / 'worker:NAME' tags. Translate to renderer
+          // params here where peerList + workers are in scope.
+          // rev71i: 'worker:NAME' becomes a specific {poolIdx, strikerIdx}
+          // event (1:1 mapping). Worker order in poolState.workers gives a
+          // stable index within their pool.
           const flashPoolIndices = [];
+          const flashStrikerEvents = [];
+          const workersList = Array.isArray(workers) ? workers : [];
           if (pendingFlashesRef.current.length > 0) {
             for (const tag of pendingFlashesRef.current) {
               if (tag === 'own') {
-                // Find our pool. Fallback to index 0 if isOwn not detectable.
+                // Legacy fallback (random striker in own pool)
                 let ourIdx = peerList.findIndex(p => p.isOwn);
                 if (ourIdx < 0 && peerList.length > 0) ourIdx = 0;
                 if (ourIdx >= 0) flashPoolIndices.push(ourIdx);
@@ -8889,6 +8902,22 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 const pubkey = tag.slice(5);
                 const idx = peerList.findIndex(p => p.pubkey === pubkey);
                 if (idx >= 0) flashPoolIndices.push(idx);
+              } else if (typeof tag === 'string' && tag.startsWith('worker:')) {
+                const workerName = tag.slice(7);
+                const workerIdx = workersList.findIndex(w => w && w.name === workerName);
+                if (workerIdx < 0) continue; // worker no longer in list
+                let ourIdx = peerList.findIndex(p => p.isOwn);
+                if (ourIdx < 0 && peerList.length > 0) ourIdx = 0;
+                if (ourIdx < 0) continue;
+                // Striker count for our pool. If worker index exceeds
+                // available strikers (count mismatch), clamp to a stable
+                // mapping rather than skipping silently.
+                const strikerCount = poolWorkers[ourIdx] | 0;
+                if (strikerCount <= 0) continue;
+                const strikerIdx = workerIdx < strikerCount
+                  ? workerIdx
+                  : (workerIdx % strikerCount);
+                flashStrikerEvents.push({ poolIdx: ourIdx, strikerIdx });
               }
             }
             pendingFlashesRef.current = [];
@@ -8896,6 +8925,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
           // rev70x→A1: queue plasma bolts for any flash event. Each flash
           // arcs a bolt between the flashing pool and the OTHER pool.
+          // rev71i: also fire bolt for worker-specific events.
           for (const idx of flashPoolIndices) {
             const otherIdx = (idx === 0 ? 1 : 0);
             if (otherIdx < peerList.length && otherIdx !== idx) {
@@ -8907,6 +8937,23 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               });
             }
           }
+          for (const evt of flashStrikerEvents) {
+            const idx = evt.poolIdx;
+            const otherIdx = (idx === 0 ? 1 : 0);
+            if (otherIdx < peerList.length && otherIdx !== idx) {
+              plasmaBoltsRef.current.push({
+                fromIdx: idx,
+                toIdx: otherIdx,
+                start: performance.now(),
+                duration: 500,
+              });
+            }
+          }
+
+          // rev71j: tell renderer which pool is "ours" so it can render
+          // the cyan accent ring marker.
+          let ownIdx = peerList.findIndex(p => p.isOwn);
+          if (ownIdx < 0 && peerList.length > 0) ownIdx = 0;
 
           constellationRendererRef.current.update({
             dpr: dprRef.current || 1,
@@ -8914,6 +8961,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             height: H,
             poolWorkers,
             flashPoolIndices,
+            flashStrikerEvents,
+            ownPoolIdx: ownIdx,
             dt,
           });
 
@@ -8976,64 +9025,142 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, pulseAnim, useBitcoinSymbols]);
+  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, workers, pulseAnim, useBitcoinSymbols]);
 
-  // rev70y: dedicated detection effect. Watches share signals and queues
-  // flashes via pendingFlashesRef. Decoupled from the draw effect so detection
-  // re-runs even if the draw effect doesn't (e.g. ns.peers is the same ref).
-  // rev71d: server pushes WS state every 5000ms (server.js line 968). At
-  // high hashrate the user's acceptedCount jumps by N shares each push.
-  // We schedule N flashes spaced across most of the 5s window so the visual
-  // appears as continuous fire instead of a 1-second burst followed by 4s
-  // of silence.
+  // rev71i: per-worker share detection. Each worker's shareEvents.accepted
+  // counter increments per accepted share. When it goes up by N, we schedule
+  // N flashes tagged with that worker's name. The dispatch translates
+  // 'worker:NAME' → a specific striker index so individual miners light up,
+  // 1:1 with their actual share submissions. Replaces the rev71d acceptedCount
+  // path which was pool-level (random striker pick).
   useEffect(() => {
     if (!enabled) return;
-    if (acceptedCountRef.current === null) {
-      acceptedCountRef.current = acceptedCount || 0;
-      lastShareAtRef.current = lastShareAt;
-      return;
-    }
-    let delta = (acceptedCount || 0) - acceptedCountRef.current;
-    if (delta <= 0 && lastShareAt && lastShareAt !== lastShareAtRef.current) {
-      // Fallback: lastShareAt changed but counter didn't refresh.
-      delta = 1;
-    }
-    if (delta > 0) {
-      const WINDOW_MS = 4500;     // slightly under WS push interval
-      const MIN_GAP_MS = 150;     // visual comfort floor (~6 flashes/sec)
-      const N = Math.min(delta, Math.floor(WINDOW_MS / MIN_GAP_MS));
-      const stagger = N > 1 ? WINDOW_MS / N : 0;
-      pendingFlashesRef.current.push('own'); // first one fires immediately
-      for (let i = 1; i < N; i++) {
-        setTimeout(() => {
-          pendingFlashesRef.current.push('own');
-        }, i * stagger);
-      }
-    }
-    acceptedCountRef.current = acceptedCount || 0;
-    lastShareAtRef.current = lastShareAt;
-  }, [acceptedCount, lastShareAt, enabled]);
+    const list = Array.isArray(workers) ? workers : [];
+    const seen = new Set();
 
-  // rev70y: peer broadcast detection — when any non-own peer's lastSeenAgoSec
-  // drops, queue a flash for that peer.
-  // rev71c: relaxed threshold (was `cur < prev - 1`, now `cur < prev`) to
-  // catch every drop. NOTE: peers broadcast at most every 4 minutes
-  // (MIN_OWN_BROADCAST_INTERVAL_MS in network-stats.js), so peer flashes
-  // will be inherently rare regardless of detection sensitivity.
+    for (const w of list) {
+      const name = w?.name;
+      if (!name) continue;
+      seen.add(name);
+      const accepted = (w.shareEvents && w.shareEvents.accepted) | 0;
+      const prev = workerAcceptedRef.current.get(name);
+      if (prev == null) {
+        // First observation — record without firing (these shares are historical)
+        workerAcceptedRef.current.set(name, accepted);
+        continue;
+      }
+      const delta = accepted - prev;
+      if (delta > 0) {
+        // Stagger this worker's flashes across most of the WS push window
+        // (5s) so a burst doesn't all land in one frame.
+        const WINDOW_MS = 4500;
+        const MIN_GAP_MS = 150;
+        const N = Math.min(delta, Math.floor(WINDOW_MS / MIN_GAP_MS));
+        const stagger = N > 1 ? WINDOW_MS / N : 0;
+        pendingFlashesRef.current.push('worker:' + name);
+        for (let k = 1; k < N; k++) {
+          setTimeout(() => {
+            pendingFlashesRef.current.push('worker:' + name);
+          }, k * stagger);
+        }
+      }
+      workerAcceptedRef.current.set(name, accepted);
+    }
+
+    // Drop workers that left
+    for (const name of Array.from(workerAcceptedRef.current.keys())) {
+      if (!seen.has(name)) workerAcceptedRef.current.delete(name);
+    }
+  }, [workers, enabled]);
+
+  // rev71f: peer synthesis. When a peer broadcast arrives (lastSeenAgoSec
+  // drops), we know their reported hashrate. Mining is a Poisson process,
+  // so we can schedule statistically-faithful flashes between broadcasts:
+  //   shares/sec = hashrate / (sharediff × 2^32)
+  // We use ckpool's typical sharediff = 16384 as the assumed denominator.
+  // This isn't per-event verification, but it IS a true statement: a peer
+  // claiming 200 TH/s must be submitting ~2.8 shares/sec to maintain it.
+  // The flashes are visually identical to observed-share flashes — Pulse
+  // is showing aggregate network reality, not an evidence log.
+  //
+  // Each peer gets a single self-rearming setTimeout (one timer in flight
+  // at a time, not pre-scheduled, so no timer-storm at high rates). When
+  // the same peer broadcasts again, the existing timer is cleared and a
+  // fresh schedule starts. Schedule expires after 4 min (relay broadcast
+  // ceiling) — if we don't get a fresh broadcast by then, we stop synth-
+  // esizing rather than guess at stale rates.
   useEffect(() => {
     if (!enabled) return;
     const peers = Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : [];
     const newSeen = new Map();
+
+    const ASSUMED_SHAREDIFF = 16384;
+    const TWO_32 = Math.pow(2, 32);
+    const VISUAL_RATE_CAP = 6;        // flashes/sec ceiling per peer
+    const VISUAL_RATE_FLOOR = 0.05;   // floor so very low hashrate peers still flash
+    const SCHEDULE_DURATION_MS = 4 * 60 * 1000; // align with broadcast ceiling
+
     for (const peer of peers) {
       const cur = peer.lastSeenAgoSec | 0;
       newSeen.set(peer.pubkey, cur);
-      if (peer.isOwn) continue;
+      if (peer.isOwn) continue; // own pool flashes via acceptedCount path
+
       const prev = peerLastSeenRef.current.get(peer.pubkey);
-      if (prev != null && cur < prev) {
-        pendingFlashesRef.current.push('peer:' + peer.pubkey);
+      const droppedJustNow = (prev != null && cur < prev);
+
+      // First time we see this peer (no prev), OR they just broadcast.
+      // Either way, (re)start their synthesis schedule.
+      const shouldSchedule = droppedJustNow || prev == null;
+      if (!shouldSchedule) continue;
+
+      // Cancel any existing schedule for this peer
+      const existing = peerSynthRef.current.get(peer.pubkey);
+      if (existing) clearTimeout(existing.timeoutId);
+
+      // Compute Poisson rate from reported hashrate
+      const hashrate = Math.max(0, peer.hashrate || 0);
+      const ratePerSec = hashrate / (ASSUMED_SHAREDIFF * TWO_32);
+      const visualRate = Math.max(VISUAL_RATE_FLOOR, Math.min(VISUAL_RATE_CAP, ratePerSec));
+      const meanIntervalMs = 1000 / visualRate;
+      const expiresAt = Date.now() + SCHEDULE_DURATION_MS;
+
+      // First flash: confirm the broadcast we just received.
+      pendingFlashesRef.current.push('peer:' + peer.pubkey);
+
+      const scheduleNext = () => {
+        if (Date.now() >= expiresAt) {
+          peerSynthRef.current.delete(peer.pubkey);
+          return;
+        }
+        // Exponential interval = -ln(U) * mean → Poisson process timing
+        const u = Math.max(1e-9, Math.random()); // avoid log(0)
+        const intervalMs = -Math.log(u) * meanIntervalMs;
+        const id = setTimeout(() => {
+          pendingFlashesRef.current.push('peer:' + peer.pubkey);
+          scheduleNext();
+        }, intervalMs);
+        peerSynthRef.current.set(peer.pubkey, { timeoutId: id, expiresAt });
+      };
+      scheduleNext();
+    }
+
+    // Drop schedules for peers no longer in the list (left the network)
+    for (const [pubkey, sched] of peerSynthRef.current) {
+      if (!newSeen.has(pubkey)) {
+        clearTimeout(sched.timeoutId);
+        peerSynthRef.current.delete(pubkey);
       }
     }
+
     peerLastSeenRef.current = newSeen;
+
+    return () => {
+      // Cleanup on unmount or deps change: drop all timers
+      for (const sched of peerSynthRef.current.values()) {
+        clearTimeout(sched.timeoutId);
+      }
+      peerSynthRef.current.clear();
+    };
   }, [ns.peers, enabled]);
 
 
@@ -11494,6 +11621,7 @@ export default function App() {
       onPoolPinChange={onPoolPinChange}
       lastShareAt={poolState?.shares?.lastShareAt}
       acceptedCount={poolState?.shares?.acceptedCount}
+      workers={poolState?.workers}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
