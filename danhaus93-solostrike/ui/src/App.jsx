@@ -128,7 +128,25 @@ const card = {
     '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
     '0 0 32px rgba(245,166,35,0.06)',         /* faint amber halo */
 };
-const cardTitle = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:'0.7rem' };
+// v1.10.0 Visual polish #6: gradient header underline. Replaces the previous
+// flat marginBottom-only style with a fading amber-to-transparent line drawn
+// at the bottom of every section title via background-image (since inline
+// React styles can't use ::after pseudo-elements). The 1px line at 100% sits
+// just above the title's marginBottom so the text isn't pushed.
+const cardTitle = {
+  fontFamily: 'var(--fd)',
+  fontSize: '0.7rem',
+  letterSpacing: '0.2em',
+  textTransform: 'uppercase',
+  color: 'var(--text-2)',
+  marginBottom: '0.7rem',
+  paddingBottom: '0.45rem',
+  backgroundImage:
+    'linear-gradient(90deg, rgba(245,166,35,0.55) 0%, rgba(245,166,35,0.45) 30%, rgba(245,166,35,0.12) 70%, rgba(245,166,35,0) 100%)',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: '100% 1px',
+  backgroundPosition: 'bottom left',
+};
 const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
@@ -139,7 +157,22 @@ const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--re
 // LiveStatsBlock (and any future modal sub-components) can reuse them
 // without duplication.
 const section  = { marginBottom:'1rem' };
-const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+// v1.10.0 #6: same gradient-underline treatment as cardTitle but compact
+// (smaller padding to fit narrower modal sections).
+const secTitle = {
+  fontFamily: 'var(--fd)',
+  fontSize: '0.55rem',
+  letterSpacing: '0.2em',
+  textTransform: 'uppercase',
+  color: 'var(--amber)',
+  marginBottom: '0.5rem',
+  paddingBottom: '0.35rem',
+  backgroundImage:
+    'linear-gradient(90deg, rgba(245,166,35,0.55) 0%, rgba(245,166,35,0.45) 30%, rgba(245,166,35,0.12) 70%, rgba(245,166,35,0) 100%)',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: '100% 1px',
+  backgroundPosition: 'bottom left',
+};
 const kvRow    = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
 const kvLabel  = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const kvVal    = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right' };
@@ -1819,7 +1852,7 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
   };
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom: '0.35rem'}}>
         <span>▸ Strike Velocity</span>
         {bars.length > 0 && (
@@ -1982,7 +2015,7 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
         <span>▸ Firepower — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize: compact ? '0.55rem' : '0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>PEAK {fmtHr(peak)}</span>}
       </div>
-      <div style={{ fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700, letterSpacing:'0.01em', lineHeight:1, marginBottom:numberMarginBottom, display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem', fontVariantNumeric:'tabular-nums' }}>
+      <div className="ss-hero-halo" style={{ fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700, letterSpacing:'0.01em', lineHeight:1, marginBottom:numberMarginBottom, display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem', fontVariantNumeric:'tabular-nums' }}>
         {/* rev62 premium pass — metallic gold gradient on hero hashrate
             number (the most-stared-at element in the app). Flat #F5A623
             amber → 3-stop gradient (#FFD27F → #F5A623 → #B27414) gives a
@@ -2039,7 +2072,7 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
   if (compact) return inner;
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       {inner}
       <div style={{flex:1,minHeight:0}}/>
     </div>
@@ -2084,7 +2117,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
   const online = sorted.filter(w=>w.status!=='offline').length;
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ The Crew</span>
         <span style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap'}}>{online}/{sorted.length} online</span>
@@ -2107,7 +2140,17 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
             return(
               <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.45rem',padding:'0.4rem 0.6rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s', minWidth:0}}
                 onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-raised)'}>
-                <div title={w.health||'unknown'} style={{width:7,height:7,borderRadius:'50%',flexShrink:0,background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 5px ${healthC}`:'none',animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+                {/* v1.10.0 #5: status dot uses .ss-dot for layered breath +
+                    ping animation. healthC determines the color tier:
+                    green (healthy) → breath + ping; amber (warm) → breath only;
+                    red/offline → static (true "dead" indicator). */}
+                <span title={w.health||'unknown'}
+                      className={
+                        !on ? 'ss-dot ss-dot-red'
+                        : healthC === 'var(--amber)' ? 'ss-dot ss-dot-amber'
+                        : healthC === 'var(--red)'   ? 'ss-dot ss-dot-red'
+                        : 'ss-dot ss-dot-green'
+                      }/>
                 <span title={w.minerType||'Unknown'} style={{fontSize:11,color:on?'var(--cyan)':'var(--text-3)',width:12,textAlign:'center',flexShrink:0}}>{icon}</span>
                 {/* Middle: name + miner type stacked, with thin progress bar below */}
                 <div style={{flex:1,minWidth:0}}>
@@ -2216,7 +2259,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
   const list = closestCalls || [];
   if (!list.length) {
     return (
-      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
         <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Near Strikes</div>
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>
           Building leaderboard…<br/>
@@ -2229,7 +2272,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
   const netDiff = networkDifficulty && networkDifficulty > 0 ? networkDifficulty : null;
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ Near Strikes</span>
         <span style={{color:'var(--amber)', fontFamily:'var(--fm)', fontSize:'0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>fleet-wide</span>
@@ -2293,7 +2336,7 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
   const blkWeight = lb.weight || lb.blockWeight || null;
   const blkTxs    = lb.txCount || lb.txs || lb.tx_count || null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, flexShrink:0}}>▸ Bitcoin Network</div>
       {[['Block Height', fmtNum(network?.height), 'var(--text-1)'],
         ['Difficulty', fmtDiff(network?.difficulty), 'var(--text-1)'],
@@ -2359,7 +2402,7 @@ function BitcoinNodePanel({ nodeInfo }) {
   const connected = ni.connected;
   const relayStr = ni.relayFee != null ? `${(ni.relayFee * 1e5).toFixed(2)} sat/vB` : '—';
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
         <span>▸ Bitcoin Node</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, color: connected?'var(--green)':'var(--red)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>
@@ -3148,7 +3191,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
   return (
     <div
       style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}}
-      className="fade-in"
+      className="fade-in ss-card-chrome"
       onClick={onOpen}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
@@ -5553,7 +5596,7 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
   };
 
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem', flexShrink:0}}>▸ Stratum Connection</div>
 
       {/* HOST — editable */}
@@ -5729,7 +5772,7 @@ function LuckGauge({ luck }) {
     else { luckColor = 'var(--red)'; luckLabel = `${luckPct.toFixed(0)}% lucky`; }
   }
   return (
-    <div style={{...card, display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Hot Streak</div>
       <div style={{position:'relative', height:22, background:'var(--bg-deep)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:8, flexShrink:0}}>
         <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg, var(--amber-glow, rgba(245,166,35,0.4)) 0%, var(--amber) 100%)', boxShadow:'0 0 8px rgba(245,166,35,0.4)', transition:'width 0.4s ease' }}/>
@@ -5766,7 +5809,7 @@ function RetargetPanel({ retarget }) {
     ? 'var(--text-2)'
     : prevDifficultyChange >= 0 ? 'var(--red)' : 'var(--green)';
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, flexShrink:0}}>▸ Difficulty Retarget</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
         <div style={{textAlign:'center',padding:'0.25rem 0'}}>
@@ -6038,7 +6081,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   const lifeTotal = lifeAccepted + lifeRejected + lifeStale;
   const rejectPct = lifeTotal > 0 ? (((lifeRejected + lifeStale) / lifeTotal) * 100) : null;
   return (
-    <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
         <span>▸ Share Stats</span>
         <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>
@@ -6095,7 +6138,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
 function BestShareLeaderboard({ workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Top Miners — Best Difficulties</div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem',display:'inline-flex',alignItems:'center',gap:4}}>Keep mining <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.85rem',height:'0.85rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
@@ -6160,7 +6203,7 @@ function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
   );
   if (compact) return inner;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       {inner}
       <div style={{flex:1,minHeight:0}}/>
     </div>
@@ -6196,7 +6239,7 @@ function BlockFeed({ blocks, blockAlert, compact = false }) {
   );
   if (compact) return inner;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       {inner}
       <div style={{flex:1,minHeight:0}}/>
     </div>
@@ -6208,7 +6251,7 @@ function RecentBlocksPanel({ netBlocks }) {
   const list = netBlocks || [];
   if (!list.length) return null;
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ The Ledger — Solo Winners ⚡</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
@@ -6359,7 +6402,7 @@ function HealthStatusCard({ onOpen }) {
 
   if (!health) {
     return (
-      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
         <div style={{...cardTitle, flexShrink:0}}>▸ System Health</div>
         <div style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.8rem', padding:'0.5rem 0'}}>
           Checking…
@@ -6403,7 +6446,7 @@ function HealthStatusCard({ onOpen }) {
         display:'flex', flexDirection:'column', height:'100%',
         cursor:'pointer',
       }}
-      className="fade-in"
+      className="fade-in ss-card-chrome"
     >
       <div style={{...cardTitle, flexShrink:0}}>▸ System Health</div>
       <div style={{
@@ -9409,7 +9452,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
   if (!enabled) {
     return (
-      <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+      <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
         <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
           <span>▸ SoloStrike Pulse</span>
           <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>OFF</span>
@@ -9582,7 +9625,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         <StampSolo/>
       </div>
     ) : (
-    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ SoloStrike Pulse</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
@@ -9733,7 +9776,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 // PulsePanel in compact mode renders its own 100% SOLO stamp internally.
 function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, onOpenStrikers, pulseAnim, onPulseAnimChange }) {
   return (
-    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in">
+    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in ss-card-chrome">
       {/* Firepower section */}
       <HashrateChart history={history} week={week} current={current} compact />
 
@@ -9755,7 +9798,7 @@ function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, 
 // smaller padding/font, internal scroll caps). Section names preserved.
 function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
   return (
-    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in">
+    <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       {/* Claim Jumpers section (top) */}
       <TopFindersPanel topFinders={topFinders} netBlocks={netBlocks} compact />
 
@@ -12173,7 +12216,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.8.5 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.10.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
