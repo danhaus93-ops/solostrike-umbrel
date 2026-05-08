@@ -133,6 +133,17 @@ const statRow = { display:'flex', justifyContent:'space-between', alignItems:'ce
 const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
+// ── Modal section styles (v1.9.0 hoist) ──────────────────────────────────────
+// These were originally local consts inside ShareStatsModal and
+// HealthDetailModal. Hoisted to module scope so PoolAlignmentBlock and
+// LiveStatsBlock (and any future modal sub-components) can reuse them
+// without duplication.
+const section  = { marginBottom:'1rem' };
+const secTitle = { fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' };
+const kvRow    = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.4rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:3 };
+const kvLabel  = { fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
+const kvVal    = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)', textAlign:'right' };
+
 // ── Pool alignment helpers (v1.9.0) ──────────────────────────────────────────
 // Convert miner-poller alignment status into UI elements.
 //
