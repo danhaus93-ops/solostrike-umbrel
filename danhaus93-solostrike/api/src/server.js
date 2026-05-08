@@ -6,7 +6,10 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 const { startStatusPoller }             = require('./status-poller');
-const { startUaTailer }                 = require('./ua-tailer');
+const { startUaTailer, getAllMeta }     = require('./ua-tailer');
+const { startMinerPoller, setEnabled: setMinerPollerEnabled,
+        isEnabled: isMinerPollerEnabled, getAllAlignments, getAllLive,
+        getAllRecords, pollOne: pollOneMiner } = require('./miner-poller');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress }             = require('./validators');
 const {
@@ -832,6 +835,43 @@ app.post('/api/webhooks', async (req, res) => {
   }
 });
 
+// ── Miner pool-alignment polling (v1.9.0) ───────────────────────────────────
+// Reads each authorised miner's local API to verify pool alignment + pull
+// live telemetry (temps, fans, hardware errors). Read-only — no write
+// commands ever sent. Default-on; disable with `"minerPolling": false` in
+// config.json. All endpoints require Umbrel session.
+app.get('/api/miners/alignments', (req, res) => {
+  res.json({
+    enabled:    isMinerPollerEnabled(),
+    alignments: getAllAlignments(),
+  });
+});
+
+app.get('/api/miners/live', (req, res) => {
+  res.json({
+    enabled: isMinerPollerEnabled(),
+    live:    getAllLive(),
+  });
+});
+
+// Combined endpoint — returns full per-worker records (alignment + live)
+app.get('/api/miners/records', (req, res) => {
+  res.json({
+    enabled: isMinerPollerEnabled(),
+    records: getAllRecords(),
+  });
+});
+
+app.post('/api/miners/poll/:workerName', async (req, res) => {
+  try {
+    const result = await pollOneMiner(req.params.workerName);
+    if (!result) return res.status(404).json({ error: 'worker not found or no IP' });
+    res.json({ ok: true, record: result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── SoloStrike Network ──────────────────────────────────────────────────────
 app.get('/api/network-stats', (req, res) => {
   res.json(state.networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {} });
@@ -1067,6 +1107,20 @@ async function main() {
   // Subsystems
   startZmq();
   startUaTailer({ configDir: CONFIG_DIR, logDir: CKPOOL_LOG_DIR });
+  // v1.9.0: Miner polling is default-on. Power-user escape hatch: set
+  // `"minerPolling": false` in config.json. The poller is fully read-only
+  // (only sends `pools|summary|stats` over local LAN) so default-on is
+  // safe — and most users would never find a Settings toggle anyway.
+  startMinerPoller({
+    configDir: CONFIG_DIR,
+    getMeta: getAllMeta,
+    getPayoutAddress: () => cfg.payoutAddress,
+    getWorkerVendor: (workerName) => {
+      const w = state.workers && state.workers[workerName];
+      return w ? (w.minerVendor || null) : null;
+    },
+    enabled: cfg.minerPolling !== false,
+  });
   startStatusPoller(state, broadcast, CKPOOL_LOG_DIR);
   startSnapshotScheduler();
   startStratumHealthPoller();

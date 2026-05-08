@@ -1,3 +1,10 @@
+// state-transform.js — formats internal state for the public API surface.
+// v1.9.0: enriches each worker with `poolAlignment` AND `live` from the
+// miner-poller cache. Both are null when polling is disabled or no result
+// yet exists.
+
+const { getAlignmentForWorker, getLiveForWorker } = require('./miner-poller');
+
 function computeOdds(state) {
   const poolHR = state.hashrate?.current || 0;
   const netHR  = state.network?.hashrate || 0;
@@ -89,7 +96,12 @@ function transformState(state) {
   }
   return {
     ...rest,
-    workers:              Object.values(workers || {}).map(w => ({ ...w, shareEvents: (shareCounters || {})[w.name] || null })),
+    workers:              Object.values(workers || {}).map(w => ({
+                            ...w,
+                            shareEvents:   (shareCounters || {})[w.name] || null,
+                            poolAlignment: getAlignmentForWorker(w.name),
+                            live:          getLiveForWorker(w.name),
+                          })),
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
     retarget:             state.retarget  || null,
