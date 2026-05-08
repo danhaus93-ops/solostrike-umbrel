@@ -229,11 +229,51 @@ async function pollMiner(workerName, ip) {
 }
 
 // ── cgminer-JSON adapter ─────────────────────────────────────────────────────
+//
+// v1.9.4 change: previously sent `pools|summary|stats` as a single multi-
+// command in one TCP connection. That works on LuxOS, BraiinsOS, Vnish, and
+// stock Bitmain — but the Avalon Nano 3S (and likely some other minimalist
+// firmwares) only honors the first command and drops the rest, so we got
+// pool data but no temps/fans. Now we issue three independent commands in
+// parallel TCP connections and merge the results. Slightly more network
+// chatter, but trivial at fleet scale and dramatically more compatible.
 
 function tryCgminer(ip) {
+  return new Promise(async (resolve) => {
+    const [poolsRes, summaryRes, statsRes] = await Promise.all([
+      cgminerCommand(ip, 'pools'),
+      cgminerCommand(ip, 'summary'),
+      cgminerCommand(ip, 'stats'),
+    ]);
+
+    // If ALL three failed, treat as unreachable/disabled. We surface the
+    // most informative error (prefer ECONNREFUSED → 'disabled', else
+    // 'unreachable').
+    if (!poolsRes.ok && !summaryRes.ok && !statsRes.ok) {
+      const allRefused = [poolsRes, summaryRes, statsRes].every(r => r.error === 'ECONNREFUSED');
+      const status = allRefused ? 'disabled' : 'unreachable';
+      const err    = poolsRes.error || summaryRes.error || statsRes.error || 'unknown';
+      resolve({ ok: false, alignmentStatus: status, error: err });
+      return;
+    }
+
+    // At least one command succeeded. Treat the connection as live cgminer.
+    // Merge whatever data we got — partial results are fine.
+    const pools   = poolsRes.ok   ? (poolsRes.data.POOLS   || poolsRes.data.pools   || []) : [];
+    const summary = summaryRes.ok ? (summaryRes.data.SUMMARY || summaryRes.data.summary || []) : [];
+    const stats   = statsRes.ok   ? (statsRes.data.STATS   || statsRes.data.stats   || []) : [];
+    const live    = extractCgminerLive(summary, stats);
+
+    resolve({ ok: true, adapter: 'cgminer', pools, live });
+  });
+}
+
+// Single cgminer-JSON command in its own short-lived TCP connection.
+// Returns { ok: true, data } on success or { ok: false, error } on failure.
+function cgminerCommand(ip, command) {
   return new Promise((resolve) => {
     let resolved = false;
-    let data = '';
+    let buf = '';
     const socket = new net.Socket();
     socket.setNoDelay(true);
 
@@ -245,51 +285,38 @@ function tryCgminer(ip) {
     };
 
     const timer = setTimeout(() => {
-      finish({ ok: false, alignmentStatus: 'unreachable', error: 'timeout' });
+      finish({ ok: false, error: 'timeout' });
     }, POLL_TIMEOUT_MS);
 
     socket.on('connect', () => {
       try {
-        socket.write(JSON.stringify({ command: 'pools|summary|stats' }) + '\n');
+        socket.write(JSON.stringify({ command }) + '\n');
       } catch (e) {
         clearTimeout(timer);
-        finish({ ok: false, alignmentStatus: 'unreachable', error: 'write_failed' });
+        finish({ ok: false, error: 'write_failed' });
       }
     });
-
-    socket.on('data', chunk => { data += chunk.toString('utf8'); });
-
+    socket.on('data', chunk => { buf += chunk.toString('utf8'); });
     socket.on('end', () => {
       clearTimeout(timer);
-      const cleaned = data.replace(/\x00/g, '').trim();
-      if (!cleaned) {
-        finish({ ok: false, alignmentStatus: 'disabled', error: 'empty_response' });
-        return;
-      }
+      const cleaned = buf.replace(/\x00/g, '').trim();
+      if (!cleaned) { finish({ ok: false, error: 'empty_response' }); return; }
       try {
         const parsed = JSON.parse(cleaned);
-        const pools   = parsed.POOLS   || parsed.pools   || [];
-        const summary = parsed.SUMMARY || parsed.summary || [];
-        const stats   = parsed.STATS   || parsed.stats   || [];
-        const live    = extractCgminerLive(summary, stats);
-        finish({ ok: true, adapter: 'cgminer', pools, live });
+        finish({ ok: true, data: parsed });
       } catch (e) {
-        finish({ ok: false, alignmentStatus: 'disabled', error: 'invalid_json' });
+        finish({ ok: false, error: 'invalid_json' });
       }
     });
-
     socket.on('error', (err) => {
       clearTimeout(timer);
-      const code = err.code || '';
-      const status = code === 'ECONNREFUSED' ? 'disabled' : 'unreachable';
-      finish({ ok: false, alignmentStatus: status, error: code || 'unknown' });
+      finish({ ok: false, error: err.code || 'unknown' });
     });
 
-    try {
-      socket.connect({ host: ip, port: CGMINER_PORT });
-    } catch (e) {
+    try { socket.connect({ host: ip, port: CGMINER_PORT }); }
+    catch (e) {
       clearTimeout(timer);
-      finish({ ok: false, alignmentStatus: 'unreachable', error: 'connect_threw' });
+      finish({ ok: false, error: 'connect_threw' });
     }
   });
 }
@@ -333,12 +360,17 @@ function extractCgminerLive(summary, stats) {
   if (Array.isArray(stats)) {
     for (const s of stats) {
       if (!s || typeof s !== 'object') continue;
+
+      // ── Direct numeric fields (most firmware) ──────────────────────────
       const tempCands = [
         s.Temp, s.Temperature, s.temp,
         s.temp1, s.temp2, s.temp3, s.temp4,
         s['Temp1'], s['Temp2'], s['Temp3'], s['Temp4'],
         s.chip_temp_max, s.chain_temp_max,
         s['Chip Temp Max'], s['Chain Temp Max'],
+        // Avalon-style direct fields:
+        s['Temp Max'], s['Temp Avg'], s['Temp Min'],
+        s.MTmax, s.MTavg, s.MTmin,
       ];
       for (const c of tempCands) {
         const t = numOr(c);
@@ -357,13 +389,14 @@ function extractCgminerLive(summary, stats) {
       }
 
       for (const k of ['Fan1','Fan2','Fan3','Fan4','fan1','fan2','fan3','fan4',
-                       'fanspeed_in','fanspeed_out','FanSpeedIn','FanSpeedOut']) {
+                       'fanspeed_in','fanspeed_out','FanSpeedIn','FanSpeedOut',
+                       'FanR1','FanR2','Fan Speed In','Fan Speed Out']) {
         const v = numOr(s[k]);
         if (v !== null && v > 0 && v < 20000) {
           if (maxFanRpm === null || v > maxFanRpm) maxFanRpm = v;
         }
       }
-      const pctCands = [s['Fan%'], s.fan_pct, s['Fan Pct'], s.fanspeed_pct];
+      const pctCands = [s['Fan%'], s.fan_pct, s['Fan Pct'], s.fanspeed_pct, s.FanPct];
       for (const c of pctCands) {
         const v = numOr(c);
         if (v !== null && v >= 0 && v <= 100) {
@@ -375,6 +408,47 @@ function extractCgminerLive(summary, stats) {
         live.firmwareVersion = s['Miner Version'] || s.MinerVersion
                             || s.Version || s.firmware_version || null;
       }
+
+      // ── Avalon "MM ID" string parsing ──────────────────────────────────
+      // Avalon firmware packs everything into one long string per module,
+      // formatted like:
+      //   "Ver[1.0.0] DNA[abc] ELAPSED[12345] MW[123 456] Temp[58]
+      //    TMax[62] TAvg[55] Fan[3200] Fan1[3200] Fan2[3100] FanR[100]
+      //    Vol[12500] GHSmm[6950.00] ..."
+      // We extract Temp/TMax/Fan/etc. from the string and merge into the
+      // unified live record. Without this, Avalons report ZERO useful
+      // telemetry to our parser even though the data is right there.
+      for (const key of Object.keys(s)) {
+        if (!/^MM (ID)?\d+$/i.test(key) && key !== 'MM ID' && key !== 'MM') continue;
+        const v = s[key];
+        if (typeof v !== 'string') continue;
+        const mmTemp = parseAvalonMmField(v, 'Temp', 'TMax', 'TAvg', 'Temperature');
+        const mmFan  = parseAvalonMmField(v, 'Fan', 'Fan1', 'Fan2', 'FanRPM');
+        const mmFanR = parseAvalonMmField(v, 'FanR');  // Avalon fan duty %
+        const mmGhs  = parseAvalonMmField(v, 'GHSmm', 'GHSavg', 'GHSspd');
+        const mmVer  = /Ver\[([^\]]+)\]/.exec(v);
+        const mmElapsed = parseAvalonMmField(v, 'ELAPSED', 'Elapsed');
+
+        if (mmTemp !== null && mmTemp > 0 && mmTemp < 200) {
+          if (maxTemp === null || mmTemp > maxTemp) maxTemp = mmTemp;
+          live.tempDetails.push({ id: String(key), tempC: mmTemp });
+        }
+        if (mmFan !== null && mmFan > 0 && mmFan < 20000) {
+          if (maxFanRpm === null || mmFan > maxFanRpm) maxFanRpm = mmFan;
+        }
+        if (mmFanR !== null && mmFanR >= 0 && mmFanR <= 100) {
+          if (maxFanPct === null || mmFanR > maxFanPct) maxFanPct = mmFanR;
+        }
+        if (mmGhs !== null && mmGhs > 0 && live.hashrateReported == null) {
+          live.hashrateReported = mmGhs * 1e9;  // GHS → H/s
+        }
+        if (mmVer && !live.firmwareVersion) {
+          live.firmwareVersion = mmVer[1];
+        }
+        if (mmElapsed !== null && mmElapsed > 0 && live.uptimeSec == null) {
+          live.uptimeSec = mmElapsed;
+        }
+      }
     }
   }
 
@@ -383,6 +457,21 @@ function extractCgminerLive(summary, stats) {
   if (maxFanPct !== null) live.fanPct = maxFanPct;
 
   return live;
+}
+
+// Avalon "MM ID" string sub-field extractor. Tries multiple key candidates
+// and returns the first valid numeric value, e.g.:
+//   parseAvalonMmField("... Temp[58] TMax[62] ...", 'Temp', 'TMax')  → 58
+function parseAvalonMmField(str, ...keys) {
+  for (const k of keys) {
+    const re = new RegExp(`\\b${k}\\[([0-9.\\-]+)`, 'i');
+    const m = re.exec(str);
+    if (m) {
+      const n = parseFloat(m[1]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
 }
 
 // ── ESP-Miner adapter ────────────────────────────────────────────────────────
