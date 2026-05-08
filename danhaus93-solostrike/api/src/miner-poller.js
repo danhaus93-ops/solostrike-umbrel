@@ -487,9 +487,36 @@ function computeAlignment(pools, payoutAddress) {
     return { url, user, priority, status, active };
   });
 
+  // v1.9.2: empty pools array — firmware responded but didn't list any
+  // pools. Could mean the miner truly has none, or the firmware doesn't
+  // expose pool config via this command. Don't accuse it of being misaligned.
+  if (configuredPools.length === 0) {
+    return { status: 'unknown', error: 'no_pools_data', configuredPools: [] };
+  }
+
+  // v1.9.2: some firmware (Avalon Nano 3S notably) returns pool entries
+  // without User credentials — they redact the username for security. We
+  // can't determine alignment from URL alone (URLs can be umbrel.local /
+  // LAN IP / DDNS, no canonical form). Mark as unknown rather than
+  // misaligned to avoid scaring the user about a working miner.
   const activePool = configuredPools.find(p => p.active) || null;
+  const anyUserData = configuredPools.some(p =>
+    typeof p.user === 'string' && p.user.trim().length > 0);
+  if (!anyUserData) {
+    return {
+      status: 'unverifiable',
+      error: 'no_user_data',
+      activePool: activePool ? activePool.url : null,
+      configuredPools,
+    };
+  }
+
+  // v1.9.2: case-insensitive match + trim whitespace. Bech32 addresses are
+  // canonically lowercase but some firmware uppercases them. Also handles
+  // any leading/trailing whitespace the firmware might add.
+  const lcAddr = String(payoutAddress).trim().toLowerCase();
   const ssPools = configuredPools.filter(p =>
-    typeof p.user === 'string' && p.user.startsWith(payoutAddress)
+    typeof p.user === 'string' && p.user.trim().toLowerCase().startsWith(lcAddr)
   );
 
   if (!ssPools.length) {
