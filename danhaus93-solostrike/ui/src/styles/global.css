@@ -498,3 +498,196 @@ body * {
 body.ss-in-iframe .ss-app-header {
   margin-top: 14px;
 }
+
+/* ─── v1.10.0 Visual polish pass ───────────────────────────────────────────
+   Four CSS-only additions, no JS dependencies. Each is opt-in via class:
+     #1 Card chrome refinement — extra subtle inner-bevel highlights
+        (additive on top of existing `card` const styling).
+     #4 Hero halo — pulsing radial amber glow behind primary stats.
+     #5 Living status dots — breathing inner + outward ping ring.
+     #6 Section header divider — gradient underline + glow-dot prefix.
+*/
+
+/* ── #1 Card chrome refinement ────────────────────────────────────────────
+   The existing `card` const (App.jsx:114) already has a strong base. This
+   adds one more accent: a subtle highlight along the bottom-edge of the
+   card hinting at a piece of physical hardware. Apply via .ss-card-chrome
+   on the card's outer div. */
+.ss-card-chrome {
+  position: relative;
+}
+.ss-card-chrome::before {
+  /* ambient amber glow behind the card — only visible on dark BG */
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 100%,
+    rgba(245, 166, 35, 0.06) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+.ss-card-chrome > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── #4 Hero halo — pulsing radial glow behind primary stat ───────────────
+   Wrap your hero stat node in a div with .ss-hero-halo and the ::before
+   pseudo paints a soft amber halo that breathes 3.5s. Use sparingly:
+   1-2 hero stats max. Otherwise the effect cheapens. */
+@keyframes ssHeroHalo {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50%      { opacity: 1;    transform: scale(1.08); }
+}
+.ss-hero-halo {
+  position: relative;
+  isolation: isolate;
+}
+.ss-hero-halo::before {
+  content: '';
+  position: absolute;
+  inset: -25%;
+  background: radial-gradient(
+    circle at center,
+    rgba(245, 166, 35, 0.18) 0%,
+    rgba(245, 166, 35, 0.05) 30%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: -1;
+  animation: ssHeroHalo 3.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-hero-halo::before { animation: none; opacity: 0.7; }
+}
+
+/* ── #5 Living status dots — breathing core + outward ping ring ───────────
+   Replace any 8px solid status dot with:
+     <span class="ss-dot ss-dot-{green|amber|red}"></span>
+   green = breath + ping; amber = breath only (slower); red = static (no animation,
+   conveys "down, no signal"). */
+@keyframes ssDotBreath {
+  0%, 100% { transform: scale(1);    opacity: 1;   }
+  50%      { transform: scale(0.92); opacity: 0.7; }
+}
+@keyframes ssDotPing {
+  0%   { transform: scale(1);    opacity: 0.55; }
+  100% { transform: scale(2.5);  opacity: 0;    }
+}
+.ss-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.ss-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 2;
+}
+.ss-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  z-index: 1;
+}
+.ss-dot-green {
+  color: var(--green);
+}
+.ss-dot-green::before {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: ssDotBreath 2.5s ease-in-out infinite;
+}
+.ss-dot-green::after {
+  animation: ssDotPing 2.5s ease-out infinite;
+}
+.ss-dot-amber {
+  color: var(--amber);
+}
+.ss-dot-amber::before {
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  animation: ssDotBreath 4s ease-in-out infinite;
+}
+.ss-dot-amber::after {
+  /* No ping for warning-state — just breath. Less alarming. */
+  display: none;
+}
+.ss-dot-red {
+  color: var(--red);
+}
+.ss-dot-red::before {
+  background: var(--red);
+  box-shadow: 0 0 5px var(--red);
+  /* No animation for offline — a "dead" dot reads as truly disconnected */
+}
+.ss-dot-red::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ss-dot-green::before,
+  .ss-dot-amber::before { animation: none; }
+  .ss-dot-green::after { display: none; }
+}
+
+/* ── #6 Gradient header dividers ──────────────────────────────────────────
+   Replace flat 1px borderBottom on section titles with:
+     <h?  class="ss-section-header">▸ The Crew</h?>
+   The ::before adds a small glowing amber dot prefix; ::after replaces the
+   border with a fading gradient line that goes amber → transparent. */
+.ss-section-header {
+  font-family: var(--fd);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber);
+  padding: 0 0 0.55rem 0;
+  margin-bottom: 0.65rem;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+}
+.ss-section-header::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: var(--amber);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(245, 166, 35, 0.7);
+  flex-shrink: 0;
+}
+.ss-section-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(245, 166, 35, 0.6) 0%,
+    rgba(245, 166, 35, 0.5) 30%,
+    rgba(245, 166, 35, 0.15) 70%,
+    transparent 100%
+  );
+}
+.ss-section-header > .ss-counter {
+  /* Optional right-aligned counter, e.g. "12/14 ONLINE" */
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  font-weight: 400;
+}
