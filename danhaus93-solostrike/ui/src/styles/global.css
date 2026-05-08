@@ -578,7 +578,7 @@ body.ss-in-iframe .ss-app-header {
   0%   { transform: scale(1);    opacity: 0.55; }
   100% { transform: scale(2.5);  opacity: 0;    }
 }
-.ss-dot {
+.ss-status-dot {
   position: relative;
   display: inline-block;
   width: 8px;
@@ -586,14 +586,14 @@ body.ss-in-iframe .ss-app-header {
   flex-shrink: 0;
   vertical-align: middle;
 }
-.ss-dot::before {
+.ss-status-dot::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 50%;
   z-index: 2;
 }
-.ss-dot::after {
+.ss-status-dot::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -601,42 +601,42 @@ body.ss-in-iframe .ss-app-header {
   border: 1px solid currentColor;
   z-index: 1;
 }
-.ss-dot-green {
+.ss-status-dot-green {
   color: var(--green);
 }
-.ss-dot-green::before {
+.ss-status-dot-green::before {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: ssDotBreath 2.5s ease-in-out infinite;
 }
-.ss-dot-green::after {
+.ss-status-dot-green::after {
   animation: ssDotPing 2.5s ease-out infinite;
 }
-.ss-dot-amber {
+.ss-status-dot-amber {
   color: var(--amber);
 }
-.ss-dot-amber::before {
+.ss-status-dot-amber::before {
   background: var(--amber);
   box-shadow: 0 0 6px var(--amber);
   animation: ssDotBreath 4s ease-in-out infinite;
 }
-.ss-dot-amber::after {
+.ss-status-dot-amber::after {
   /* No ping for warning-state — just breath. Less alarming. */
   display: none;
 }
-.ss-dot-red {
+.ss-status-dot-red {
   color: var(--red);
 }
-.ss-dot-red::before {
+.ss-status-dot-red::before {
   background: var(--red);
   box-shadow: 0 0 5px var(--red);
   /* No animation for offline — a "dead" dot reads as truly disconnected */
 }
-.ss-dot-red::after { display: none; }
+.ss-status-dot-red::after { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .ss-dot-green::before,
-  .ss-dot-amber::before { animation: none; }
-  .ss-dot-green::after { display: none; }
+  .ss-status-dot-green::before,
+  .ss-status-dot-amber::before { animation: none; }
+  .ss-status-dot-green::after { display: none; }
 }
 
 /* ── #6 Gradient header dividers ──────────────────────────────────────────
