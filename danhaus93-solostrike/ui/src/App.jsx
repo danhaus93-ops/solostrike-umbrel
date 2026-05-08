@@ -2149,38 +2149,35 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                     <UptimeSparkline history={w.statusHistory}/>
                   </div>
                 </div>
-                {/* Right: hashrate (big amber) + temp + best-share stacked */}
+                {/* Right: hashrate (top) + best-share (middle) + temp (bottom) */}
                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:0,flexShrink:0,minWidth:48}}>
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:on?'var(--amber)':'var(--text-2)',whiteSpace:'nowrap',lineHeight:1.1}}>
                     {on?fmtHr(w.hashrate):'offline'}
                   </span>
+                  {w.bestshare>0 && (
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--amber)',whiteSpace:'nowrap',opacity:0.8,lineHeight:1.2}}>
+                      ★ {fmtDiff(w.bestshare)}
+                    </span>
+                  )}
                   {(() => {
-                    // v1.9.6: temp + best-share on second line of right column.
-                    // Temp is color-coded by tier; best-share is amber star as before.
-                    // If both present: "65° · ★ 9.71 G"
-                    // If only temp:    "65°"
-                    // If only star:    "★ 9.71 G"
+                    // v1.9.7: temp on its own third line below best-share.
+                    // Color tiers:
+                    //   < 70°C  → green   (cool, normal)
+                    //   70-75°C → cyan    (mild warm)
+                    //   75-80°C → amber   (warm)
+                    //   ≥ 80°C  → red 🔥  (hot)
+                    // Hides when no live data — row stays compact for miners
+                    // that aren't reachable (NO API).
                     const t = w.live?.tempC;
-                    const tValid = (t != null && Number.isFinite(t) && t > 0);
-                    const bsValid = w.bestshare > 0;
-                    if (!tValid && !bsValid) return null;
-                    const tColor = !tValid ? null
-                                 : t >= TEMP_RED_C   ? 'var(--red)'
+                    if (t == null || !Number.isFinite(t) || t <= 0) return null;
+                    const tColor = t >= TEMP_RED_C   ? 'var(--red)'
                                  : t >= TEMP_AMBER_C ? 'var(--amber)'
                                  : t >= 70           ? 'var(--cyan)'
                                                      : 'var(--green)';
                     return (
-                      <div style={{display:'flex',alignItems:'center',gap:4,fontFamily:'var(--fm)',fontSize:'0.6rem',whiteSpace:'nowrap',lineHeight:1.2,opacity:0.9}}>
-                        {tValid && (
-                          <span style={{color:tColor,fontWeight:600}}>
-                            {t >= TEMP_RED_C ? '🔥' : ''}{Math.round(t)}°
-                          </span>
-                        )}
-                        {tValid && bsValid && <span style={{color:'var(--text-3)'}}>·</span>}
-                        {bsValid && (
-                          <span style={{color:'var(--amber)',opacity:0.8}}>★ {fmtDiff(w.bestshare)}</span>
-                        )}
-                      </div>
+                      <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',fontWeight:600,color:tColor,whiteSpace:'nowrap',lineHeight:1.2,marginTop:1}}>
+                        {t >= TEMP_RED_C ? '🔥 ' : ''}{Math.round(t)}°C
+                      </span>
                     );
                   })()}
                 </div>
