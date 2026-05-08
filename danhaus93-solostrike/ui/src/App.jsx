@@ -2015,7 +2015,7 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
         <span>▸ Firepower — Live</span>
         {peak > 0 && <span style={{color:'var(--amber-dim, #b37a1a)', fontFamily:'var(--fm)', fontSize: compact ? '0.55rem' : '0.6rem', letterSpacing:'0.08em', marginRight:'14px', whiteSpace:'nowrap'}}>PEAK {fmtHr(peak)}</span>}
       </div>
-      <div className="ss-hero-halo" style={{ fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700, letterSpacing:'0.01em', lineHeight:1, marginBottom:numberMarginBottom, display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem', fontVariantNumeric:'tabular-nums' }}>
+      <div style={{ fontFamily:'var(--fd)', fontSize:numberSize, fontWeight:700, letterSpacing:'0.01em', lineHeight:1, marginBottom:numberMarginBottom, display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'0.4rem', fontVariantNumeric:'tabular-nums' }}>
         {/* rev62 premium pass — metallic gold gradient on hero hashrate
             number (the most-stared-at element in the app). Flat #F5A623
             amber → 3-stop gradient (#FFD27F → #F5A623 → #B27414) gives a
@@ -2140,16 +2140,18 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
             return(
               <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.45rem',padding:'0.4rem 0.6rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s', minWidth:0}}
                 onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-raised)'}>
-                {/* v1.10.0 #5: status dot uses .ss-dot for layered breath +
+                {/* v1.10.0 #5: status dot uses .ss-status-dot for layered breath +
                     ping animation. healthC determines the color tier:
                     green (healthy) → breath + ping; amber (warm) → breath only;
-                    red/offline → static (true "dead" indicator). */}
+                    red/offline → static (true "dead" indicator). Renamed from
+                    .ss-dot to avoid collision with the carousel page-indicator
+                    dots which also use .ss-dot. */}
                 <span title={w.health||'unknown'}
                       className={
-                        !on ? 'ss-dot ss-dot-red'
-                        : healthC === 'var(--amber)' ? 'ss-dot ss-dot-amber'
-                        : healthC === 'var(--red)'   ? 'ss-dot ss-dot-red'
-                        : 'ss-dot ss-dot-green'
+                        !on ? 'ss-status-dot ss-status-dot-red'
+                        : healthC === 'var(--amber)' ? 'ss-status-dot ss-status-dot-amber'
+                        : healthC === 'var(--red)'   ? 'ss-status-dot ss-status-dot-red'
+                        : 'ss-status-dot ss-status-dot-green'
                       }/>
                 <span title={w.minerType||'Unknown'} style={{fontSize:11,color:on?'var(--cyan)':'var(--text-3)',width:12,textAlign:'center',flexShrink:0}}>{icon}</span>
                 {/* Middle: name + miner type stacked, with thin progress bar below */}
