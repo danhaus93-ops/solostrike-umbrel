@@ -155,11 +155,18 @@ const kvVal    = { fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text
 //   unknown       → null      "No data yet (don't render a badge)"
 //   esp-no-pools  → null      "ESP-Miner doesn't expose pools — silently skip"
 const POOL_ALIGN_META = {
-  aligned:     { color:'var(--green)', glyph:'✓',  label:'Pool aligned',         shortLabel:'OK' },
-  backup:      { color:'var(--amber)', glyph:'⚠',  label:'SoloStrike is backup', shortLabel:'BACKUP' },
-  misaligned:  { color:'var(--red)',   glyph:'✗',  label:'Wrong pool',           shortLabel:'WRONG' },
+  // v1.9.3: labels explicitly name SoloStrike so the GOOD case reads as a
+  // clear "yes this miner is on SoloStrike" message, not just an abstract
+  // "OK". shortLabels stay terse for the tiny inline worker-row badges.
+  aligned:     { color:'var(--green)', glyph:'✓',  label:'Aligned with SoloStrike', shortLabel:'OK' },
+  backup:      { color:'var(--amber)', glyph:'⚠',  label:'SoloStrike is backup',    shortLabel:'BACKUP' },
+  misaligned:  { color:'var(--red)',   glyph:'✗',  label:'Not on SoloStrike',       shortLabel:'WRONG' },
   unreachable: { color:'var(--text-3)',glyph:'⊘',  label:'Can\u2019t reach miner',shortLabel:'NO API' },
   disabled:    { color:'var(--text-3)',glyph:'⊘',  label:'Miner API disabled',   shortLabel:'NO API' },
+  // v1.9.2: 'unverifiable' = firmware responded but didn't include User
+  // credentials in the pools list (Avalon Nano 3S, some Goldshell etc).
+  // We can't determine alignment from URL alone, so don't accuse it.
+  unverifiable:{ color:'var(--text-3)',glyph:'?',  label:'Can\u2019t verify pool',shortLabel:'?' },
   // 'unknown' and 'esp-no-pools' intentionally have no entry — no badge rendered.
 };
 function poolAlignMeta(status) { return POOL_ALIGN_META[status] || null; }
@@ -10815,22 +10822,30 @@ function DebugTab({ settings, onSettingsChange }) {
 }
 
 // ── Worker detail modal ───────────────────────────────────────────────────────
-// ── Pool alignment block (v1.9.0) ────────────────────────────────────────────
-// Renders inside WorkerDetailModal when miner-poller is enabled. Shows the
-// alignment status, the active pool URL, the configured pools list, and a
-// "Recheck" button that triggers an immediate re-poll on the server.
-//
-// Status pills mirror the small badge in the worker row but with full text.
-// When the miner is unreachable / API disabled, we show a brief help line so
-// the user knows the issue isn't on SoloStrike's side.
+// ── Pool alignment block (v1.9.3) ────────────────────────────────────────────
+// Verifies the miner is pointed at SoloStrike by reading its configured pool
+// list via the local cgminer-JSON API. The section TITLE is the status — so
+// the GOOD case reads as "✓ ALIGNED WITH SOLOSTRIKE" in green, immediately
+// visible without parsing a small pill. The whole section hides when there's
+// nothing meaningful to show (ESP-Miner family devices that don't expose pool
+// config, or first-poll-pending state).
 function PoolAlignmentBlock({ worker }) {
   const [busy, setBusy]   = React.useState(false);
   const [error, setError] = React.useState('');
   const [override, setOverride] = React.useState(null); // optimistic recheck result
 
-  const pa  = override || worker.poolAlignment;
+  const pa   = override || worker.poolAlignment;
   const meta = pa && pa.status ? poolAlignMeta(pa.status) : null;
-  const pollingDisabledHint = !pa; // truthy ⇒ no record at all (feature off or first-poll pending)
+
+  // Hide the entire section when there's nothing meaningful to show:
+  //   - no record at all (polling off / first poll pending)
+  //   - 'unknown' (no data yet)
+  //   - 'esp-no-pools' (ESP-Miner devices like BitAxe/NerdQaxe don't expose
+  //      pool config — no need to render a section that says "we can't tell")
+  if (!pa || !pa.status || pa.status === 'unknown' || pa.status === 'esp-no-pools') {
+    return null;
+  }
+  if (!meta) return null;
 
   const recheck = async () => {
     setBusy(true); setError('');
@@ -10838,7 +10853,9 @@ function PoolAlignmentBlock({ worker }) {
       const r = await fetch(`/api/miners/poll/${encodeURIComponent(worker.name)}`, { method:'POST' });
       const data = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || 'Recheck failed');
-      setOverride(data.alignment);
+      // v1.9.0 sent {alignment}; v1.9.1+ sends {record} — tolerate both.
+      const next = data.record ? (data.record.alignment || null) : (data.alignment || null);
+      if (next) setOverride({ ...next, lastCheckedAt: Date.now() });
     } catch (e) {
       setError(e.message || 'Recheck failed');
     } finally {
@@ -10846,105 +10863,104 @@ function PoolAlignmentBlock({ worker }) {
     }
   };
 
-  const checkedAt = pa && pa.lastCheckedAt
-    ? `Last checked ${fmtAgoShort(pa.lastCheckedAt)}`
-    : null;
+  const checkedAt = pa.lastCheckedAt ? `Last checked ${fmtAgoShort(pa.lastCheckedAt)}` : null;
 
   return (
     <div style={section}>
-      <div style={{...secTitle, display:'flex',alignItems:'center',justifyContent:'space-between',gap:'0.5rem'}}>
-        <span>▸ Pool alignment</span>
+      {/* Section title IS the status — color-coded, with glyph. The user
+          shouldn't need to read further to see whether this miner is OK. */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'0.5rem',marginBottom:'0.5rem'}}>
+        <div style={{
+          fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.15em',
+          textTransform:'uppercase', color: meta.color, fontWeight:600,
+          display:'flex', alignItems:'center', gap:'0.4rem',
+        }}>
+          <span style={{fontSize:'0.85rem'}}>{meta.glyph}</span>
+          <span>{meta.label}</span>
+        </div>
         <button onClick={recheck} disabled={busy}
                 style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',
                         background:'transparent',border:'1px solid var(--border)',
                         color:busy?'var(--text-3)':'var(--cyan)',padding:'2px 8px',
                         cursor:busy?'wait':'pointer',borderRadius:2}}>
-          {busy ? 'CHECKING…' : 'RECHECK'}
+          {busy ? 'CHECKING\u2026' : 'RECHECK'}
         </button>
       </div>
 
-      {pollingDisabledHint && (
-        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
-          Miner polling is off, or no result yet. Enable it in Settings →
-          Miner integrations to verify each miner is actually pointed at
-          SoloStrike via its local API on TCP 4028.
+      {checkedAt && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginBottom:'0.5rem'}}>{checkedAt}</div>
+      )}
+
+      {(pa.status === 'aligned' || pa.status === 'backup' || pa.status === 'misaligned' || pa.status === 'unverifiable') && pa.activePool && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Active pool</span>
+          <span style={{...kvVal,fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--cyan)',overflow:'hidden',textOverflow:'ellipsis'}}>
+            {pa.activePool}
+          </span>
         </div>
       )}
 
-      {pa && meta && (
-        <>
-          <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0'}}>
-            <span style={{display:'inline-block',padding:'2px 8px',
-                          fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.08em',
-                          color:meta.color,border:`1px solid ${meta.color}`,borderRadius:2}}>
-              {meta.glyph} {meta.label.toUpperCase()}
-            </span>
-            {checkedAt && <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)'}}>{checkedAt}</span>}
-          </div>
+      {pa.status === 'misaligned' && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--red)',padding:'0.4rem 0',lineHeight:1.5}}>
+          This miner is not configured to point at SoloStrike. Open the
+          miner web UI and add SoloStrike as a pool to bring it home.
+        </div>
+      )}
 
-          {(pa.status === 'aligned' || pa.status === 'backup' || pa.status === 'misaligned') && pa.activePool && (
-            <div style={kvRow}>
-              <span style={kvLabel}>Active pool</span>
-              <span style={{...kvVal,fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--cyan)',overflow:'hidden',textOverflow:'ellipsis'}}>
-                {pa.activePool}
-              </span>
-            </div>
-          )}
+      {pa.status === 'backup' && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--amber)',padding:'0.4rem 0',lineHeight:1.5}}>
+          SoloStrike is configured but a different pool is currently
+          active. The miner will switch to SoloStrike if its primary
+          fails \u2014 or you can promote it to primary in the miner UI.
+        </div>
+      )}
 
-          {pa.status === 'misaligned' && (
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--red)',padding:'0.4rem 0',lineHeight:1.5}}>
-              This miner is not configured to point at SoloStrike. Open the
-              miner web UI and add SoloStrike as a pool to bring it home.
-            </div>
-          )}
+      {pa.status === 'unverifiable' && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
+          This miner&rsquo;s firmware reports its configured pool URLs but
+          redacts the username, so we can&rsquo;t prove which one is
+          SoloStrike. If shares are landing in your dashboard, the miner
+          is fine \u2014 just not auto-verifiable.
+        </div>
+      )}
 
-          {pa.status === 'backup' && (
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--amber)',padding:'0.4rem 0',lineHeight:1.5}}>
-              SoloStrike is configured but a different pool is currently
-              active. The miner will switch to SoloStrike if its primary
-              fails — or you can promote it to primary in the miner UI.
-            </div>
-          )}
+      {(pa.status === 'unreachable' || pa.status === 'disabled') && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
+          {pa.status === 'unreachable'
+            ? 'Couldn\u2019t reach the miner on TCP 4028. Check the miner is online and on the same LAN.'
+            : 'The miner\u2019s local API responded but didn\u2019t speak the cgminer JSON protocol. Some firmware ships the API disabled by default \u2014 enable it in the miner\u2019s settings.'}
+        </div>
+      )}
 
-          {(pa.status === 'unreachable' || pa.status === 'disabled') && (
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
-              {pa.status === 'unreachable'
-                ? 'Couldn\u2019t reach the miner on TCP 4028. Check the miner is online and on the same LAN.'
-                : 'The miner\u2019s local API responded but didn\u2019t speak the cgminer JSON protocol. Some firmware (stock Bitmain on newer releases) ships the API disabled by default — enable it in the miner\u2019s settings.'}
-            </div>
-          )}
-
-          {Array.isArray(pa.configuredPools) && pa.configuredPools.length > 0 && (
-            <details style={{marginTop:'0.4rem'}}>
-              <summary style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--text-2)',cursor:'pointer',padding:'0.3rem 0'}}>
-                Configured pools ({pa.configuredPools.length})
-              </summary>
-              <div style={{padding:'0.3rem 0'}}>
-                {pa.configuredPools.map((p, i) => (
-                  <div key={i} style={{padding:'0.3rem 0',borderTop:i>0?'1px solid var(--border)':'none'}}>
-                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
-                      <span style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.05em',
-                                    color:p.active?'var(--green)':'var(--text-3)',
-                                    border:`1px solid ${p.active?'var(--green)':'var(--text-3)'}`,
-                                    padding:'1px 5px',borderRadius:2}}>
-                        {p.active ? 'ACTIVE' : `PRIO ${p.priority ?? '?'}`}
-                      </span>
-                      <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)'}}>{p.status || ''}</span>
-                    </div>
-                    <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',wordBreak:'break-all'}}>{p.url || '—'}</div>
-                    {p.user && <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',wordBreak:'break-all',marginTop:1}}>user: {p.user}</div>}
-                  </div>
-                ))}
+      {Array.isArray(pa.configuredPools) && pa.configuredPools.length > 0 && (
+        <details style={{marginTop:'0.4rem'}}>
+          <summary style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--text-2)',cursor:'pointer',padding:'0.3rem 0'}}>
+            Configured pools ({pa.configuredPools.length})
+          </summary>
+          <div style={{padding:'0.3rem 0'}}>
+            {pa.configuredPools.map((p, i) => (
+              <div key={i} style={{padding:'0.3rem 0',borderTop:i>0?'1px solid var(--border)':'none'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+                  <span style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.05em',
+                                color:p.active?'var(--green)':'var(--text-3)',
+                                border:`1px solid ${p.active?'var(--green)':'var(--text-3)'}`,
+                                padding:'1px 5px',borderRadius:2}}>
+                    {p.active ? 'ACTIVE' : `PRIO ${p.priority ?? '?'}`}
+                  </span>
+                  <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)'}}>{p.status || ''}</span>
+                </div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',wordBreak:'break-all'}}>{p.url || '\u2014'}</div>
+                {p.user && <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',wordBreak:'break-all',marginTop:1}}>user: {p.user}</div>}
               </div>
-            </details>
-          )}
+            ))}
+          </div>
+        </details>
+      )}
 
-          {pa.error && pa.status !== 'aligned' && (
-            <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:'0.3rem'}}>
-              Code: {pa.error}
-            </div>
-          )}
-        </>
+      {pa.error && pa.status !== 'aligned' && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:'0.3rem'}}>
+          Code: {pa.error}
+        </div>
       )}
 
       {error && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',marginTop:'0.3rem'}}>{error}</div>}
@@ -10952,15 +10968,6 @@ function PoolAlignmentBlock({ worker }) {
   );
 }
 
-// ── Live stats block (v1.9.0) ────────────────────────────────────────────────
-// Renders temps, fans, miner-reported hashrate, and hardware errors using the
-// data harvested by miner-poller from each miner's local API. Two protocol
-// adapters cover the bulk of fleet hardware:
-//   * cgminer-JSON (LuxOS, BraiinsOS, Vnish, Whatsminer, Avalon, Innosilicon,
-//     Goldshell, iPollo, stock Bitmain with API enabled)
-//   * ESP-Miner HTTP (BitAxe, NerdQaxe, NerdQaxe++, NerdMiner, etc.)
-// When no live data exists yet (poller disabled, first poll pending, or the
-// miner's API is unreachable) the section quietly hides — no noise.
 function LiveStatsBlock({ worker }) {
   const live = worker.live;
   if (!live) return null;
