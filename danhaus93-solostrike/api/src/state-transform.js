@@ -78,7 +78,19 @@ function computeBlockReward(state) {
 }
 
 function transformState(state) {
-  const { _avgState, _workerLastStatus, workers, shareCounters, ...rest } = state;
+  // v1.10.1 SECURITY: explicitly strip sensitive fields before returning. The
+  // /api/state endpoint is on Umbrel's app_proxy auth whitelist (no session
+  // required), so anything we return here is reachable by anyone who can
+  // reach the Umbrel host (LAN, Tailscale, exposed reverse proxy). The
+  // payout address is PII and the webhooks list contains URLs that may
+  // include bearer tokens. Both belong on the authenticated /api/config
+  // endpoint instead.
+  const {
+    _avgState, _workerLastStatus, workers, shareCounters,
+    payoutAddress,    // PII — exposed via /api/config (auth required) instead
+    webhooks,         // URLs may contain Discord/Slack/ntfy webhook tokens
+    ...rest
+  } = state;
   // netBlocks fallback (v1.5.7+) — when mempool.space is unreachable or privateMode,
   // synthesize netBlocks[0] from the locally-fetched latestBlock (from Bitcoin Core RPC)
   let netBlocks = Array.isArray(state.netBlocks) ? state.netBlocks : [];
@@ -96,6 +108,12 @@ function transformState(state) {
   }
   return {
     ...rest,
+    // v1.10.1 SECURITY: expose only `hasAddress: boolean` (not the address
+    // itself). UI's onboarding-detection check (`if (!poolState.payoutAddress)`)
+    // is updated to use this boolean. Components needing the actual address
+    // (StratumPanel for the copy-username feature) read it from /api/config
+    // instead.
+    hasAddress: !!payoutAddress,
     workers:              Object.values(workers || {}).map(w => ({
                             ...w,
                             shareEvents:   (shareCounters || {})[w.name] || null,

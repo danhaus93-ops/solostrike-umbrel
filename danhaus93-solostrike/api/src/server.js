@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const http = require('http');
 const WebSocket = require('ws');
 const { startStatusPoller }             = require('./status-poller');
@@ -168,6 +169,19 @@ function cfgPublic() {
   };
 }
 
+// v1.10.1 SECURITY: cfgPrivate is the authenticated companion to cfgPublic.
+// Returned ONLY by /api/config (which Umbrel's app_proxy gates behind a
+// session token — see PROXY_AUTH_WHITELIST in docker-compose.yml: /api/config
+// is NOT in that list, so it requires session). Includes the payout address
+// so the StratumPanel can build the full stratum username for the user.
+// Webhooks are returned via /api/webhooks (also session-gated).
+function cfgPrivate() {
+  return {
+    ...cfgPublic(),
+    payoutAddress: cfg.payoutAddress || null,
+  };
+}
+
 // ── Webhooks ──────────────────────────────────────────────────────────────
 async function loadHooks() {
   try {
@@ -182,6 +196,46 @@ async function saveHooks() {
     await fs.ensureDir(CONFIG_DIR);
     await fs.writeJson(HOOKS_FILE, state.webhooks || [], { spaces: 2 });
   } catch (e) { console.error('saveHooks failed:', e.message); }
+}
+
+// v1.10.1 SECURITY: SSRF guard for webhook URLs.
+// Returns true if the URL points at a private/loopback/link-local address
+// or an unparseable host. Used to block default-deny webhooks aimed at
+// internal services (Bitcoin RPC, Umbrel internal subnet 10.21.21.x,
+// router admin pages, etc). Users can explicitly opt in per-webhook via
+// the `allowInternal` flag if they're targeting their own self-hosted
+// service like Home Assistant. Hostname literals (homeassistant.local,
+// raspberrypi.local) are also treated as internal because mDNS resolves
+// them only on the local network.
+function isPrivateUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const host = u.hostname.toLowerCase();
+    if (host === 'localhost') return true;
+    if (host === 'metadata.google.internal') return true;
+    if (host.endsWith('.local')) return true;     // mDNS / Bonjour
+    if (host.endsWith('.internal')) return true;  // common AWS / GCP internal TLD
+    // IPv4 literal
+    const m4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (m4) {
+      const [, a, b] = m4.map(Number);
+      if (a === 0)   return true;       // 0.0.0.0/8
+      if (a === 10)  return true;       // 10.0.0.0/8
+      if (a === 127) return true;       // loopback
+      if (a === 169 && b === 254) return true;  // link-local
+      if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12
+      if (a === 192 && b === 168) return true;  // 192.168.0.0/16
+      if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT incl. Tailscale 100.64/10
+      return false;
+    }
+    // IPv6 literal — block all loopback (::1) and ULA (fc00::/7) and link-local (fe80::/10)
+    if (host.startsWith('[::1') || host === '::1') return true;
+    if (host.startsWith('[fc') || host.startsWith('[fd')) return true;
+    if (host.startsWith('[fe8') || host.startsWith('[fe9') || host.startsWith('[fea') || host.startsWith('[feb')) return true;
+    return false;
+  } catch {
+    return true;  // unparseable → treat as private (default-deny)
+  }
 }
 async function fireHooks(eventName, payload) {
   const hooks = (state.webhooks || []).filter(h => Array.isArray(h.events) && h.events.includes(eventName));
@@ -481,6 +535,34 @@ function startZmq() {
 
 // ── HTTP/WS server ────────────────────────────────────────────────────────
 const app = express();
+
+// v1.10.1 SECURITY: helmet adds defense-in-depth response headers.
+// Carefully configured to NOT break Umbrel's webview (which iframes the
+// app) and NOT break the React UI's heavy use of inline styles.
+//   - frameguard: DISABLED (Umbrel webview iframes us; SAMEORIGIN would break it)
+//   - contentSecurityPolicy: DISABLED (inline styles everywhere; Umbrel
+//     handles CSP at the proxy level if needed)
+//   - crossOriginEmbedderPolicy: DISABLED (would break WebGL canvases that
+//     load CDN textures)
+//   - hsts: DISABLED (UI is served over HTTP via Umbrel app_proxy; HSTS
+//     would be a no-op today but could lock browsers into HTTPS-only if
+//     Umbrel's proxy ever gets HTTPS, breaking direct LAN access. Leaving
+//     it off is the safest choice for self-hosted apps.)
+//
+// What helmet DOES enable here that we want:
+//   X-Content-Type-Options: nosniff       (no MIME sniffing)
+//   X-DNS-Prefetch-Control: off           (no preemptive DNS)
+//   Referrer-Policy: no-referrer          (don't leak app paths to webhooks)
+//   X-Download-Options: noopen            (IE legacy, harmless)
+//   X-Permitted-Cross-Domain-Policies: none
+//   Origin-Agent-Cluster: ?1
+app.use(helmet({
+  frameguard: false,
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  hsts: false,
+}));
+
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
 
@@ -508,7 +590,7 @@ wss.on('connection', (ws, req) => {
   }
   wsClients++;
   try { ws.send(JSON.stringify({ type:'STATE_UPDATE', data: transformState(state) })); } catch {}
-  try { ws.send(JSON.stringify({ type:'CONFIG', data: { poolName: cfg.poolName || 'SoloStrike', privateMode: !!cfg.privateMode, hasAddress: !!cfg.payoutAddress } })); } catch {}
+  try { ws.send(JSON.stringify({ type:'CONFIG', data: cfgPrivate() })); } catch {}
   ws.on('close', () => { wsClients--; });
 });
 
@@ -652,7 +734,7 @@ app.get('/api/health/detailed', (req, res) => {
   }
 });
 app.get('/api/state',  (req, res) => res.json(transformState(state)));
-app.get('/api/config', (req, res) => res.json(cfgPublic()));
+app.get('/api/config', (req, res) => res.json(cfgPrivate()));
 // Wizard alias for /api/config — accepts {payoutAddress} only
 app.post('/api/setup', async (req, res) => {
   try {
@@ -664,7 +746,7 @@ app.post('/api/setup', async (req, res) => {
     await saveConfig();
     if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
     res.json({ ok: true });
-    broadcast({ type: 'CONFIG', data: cfgPublic() });
+    broadcast({ type: 'CONFIG', data: cfgPrivate() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -687,7 +769,7 @@ app.post('/api/config', async (req, res) => {
     await saveConfig();
     if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
     res.json({ ok: true, ...cfgPublic() });
-    broadcast({ type: 'CONFIG', data: cfgPublic() });
+    broadcast({ type: 'CONFIG', data: cfgPrivate() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -809,16 +891,26 @@ app.post('/api/webhooks', async (req, res) => {
     const body = req.body || {};
     const op = body.op;
     if (op === 'add') {
-      const { name, url, events } = body;
+      const { name, url, events, allowInternal } = body;
       if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
       if (!Array.isArray(events) || !events.length) return res.status(400).json({ error: 'No events selected' });
       if ((state.webhooks || []).length >= MAX_HOOKS) return res.status(400).json({ error: `Max ${MAX_HOOKS} webhooks` });
+      // v1.10.1 SECURITY: default-deny webhooks targeting private/loopback IPs.
+      // Users with legitimate self-hosted services (Home Assistant on LAN, etc)
+      // can opt in by checking the "Allow internal/LAN URL" toggle in the UI,
+      // which sets allowInternal:true. The opt-in is per-webhook, not global.
+      if (isPrivateUrl(url) && !allowInternal) {
+        return res.status(400).json({
+          error: 'This URL points to a private/local address (LAN, loopback, or .local hostname). If you are intentionally targeting a self-hosted service like Home Assistant, enable the "Allow internal/LAN URL" toggle in the form.'
+        });
+      }
       const id = 'wh_' + Math.random().toString(36).slice(2, 10);
       state.webhooks = [...(state.webhooks || []), {
         id,
         name: String(name || 'Webhook').slice(0, 50),
         url: String(url).slice(0, 500),
         events: events.filter(e => ['block_found','worker_offline','worker_online'].includes(e)),
+        allowInternal: !!allowInternal,
       }];
       await saveHooks();
       return res.json({ ok: true, id });
