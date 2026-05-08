@@ -10590,6 +10590,11 @@ function WebhooksTab() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [events, setEvents] = useState({block_found:true, worker_offline:true, worker_online:false});
+  // v1.10.1 SECURITY: opt-in toggle for sending webhooks to private/LAN URLs.
+  // Default OFF — server rejects private-IP URLs unless this flag is set.
+  // Users targeting Home Assistant on 192.168.x.y or self-hosted ntfy.sh on
+  // their local network must enable this explicitly.
+  const [allowInternal, setAllowInternal] = useState(false);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -10611,11 +10616,11 @@ function WebhooksTab() {
     try {
       const r = await fetch('/api/webhooks', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({op:'add', name: name||'Webhook', url, events: evList}),
+        body: JSON.stringify({op:'add', name: name||'Webhook', url, events: evList, allowInternal}),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Failed');
-      setName(''); setUrl(''); load();
+      setName(''); setUrl(''); setAllowInternal(false); load();
     } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
@@ -10660,6 +10665,27 @@ function WebhooksTab() {
         ))}
       </div>
       {err && <div style={{padding:'0.5rem', background:'rgba(255,59,59,0.1)', border:'1px solid var(--red)', fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--red)', marginBottom:10}}>⚠ {err}</div>}
+      {/* v1.10.1 SECURITY: opt-in toggle for sending to private/LAN URLs.
+          Default OFF protects against SSRF (server-side request forgery)
+          attacks where a webhook would otherwise be used to probe internal
+          services. Users targeting their own self-hosted services on the
+          LAN can enable it explicitly. */}
+      <div style={{padding:'0.55rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:14, borderRadius:0}}>
+        <label style={{display:'flex', alignItems:'flex-start', gap:8, cursor:'pointer'}}>
+          <input type="checkbox" checked={allowInternal} onChange={e=>setAllowInternal(e.target.checked)} style={{accentColor:'var(--amber)', marginTop:2, flexShrink:0}}/>
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600, marginBottom:2}}>
+              Allow internal/LAN URL
+            </div>
+            <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-2)', lineHeight:1.5}}>
+              Required for self-hosted services on your local network — Home Assistant on 192.168.x.x, self-hosted ntfy on a Pi, etc. Leave OFF for public services like Discord, Slack, or hosted ntfy.sh.
+              <span style={{color:'var(--amber)', display:'block', marginTop:3}}>
+                ⚠ Only enable if you trust the URL. Internal URLs can be abused to probe services on your home network.
+              </span>
+            </div>
+          </div>
+        </label>
+      </div>
       <button onClick={add} disabled={loading} style={{width:'100%',padding:'0.6rem',background:'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',marginBottom:14}}>
         {loading ? 'Adding…' : '+ Add Webhook'}
       </button>
@@ -12218,7 +12244,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.10.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.10.1 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
