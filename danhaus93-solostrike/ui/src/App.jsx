@@ -2132,20 +2132,10 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                       );
                     })()}
                     {(() => {
-                      // v1.9.0: hot-temp badge — only renders when miner is
-                      // warm (≥75°C amber) or hot (≥80°C red). Normal temps
-                      // produce no badge so the row stays clean.
-                      const t = w.live?.tempC;
-                      const tm = tempBadgeMeta(t);
-                      if (!tm) return null;
-                      return (
-                        <span title={`${tm.label} — ${Math.round(t)}°C`}
-                              style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.04em',color:tm.color,
-                                      border:`1px solid ${tm.color}`,borderRadius:2,padding:'0 4px',
-                                      whiteSpace:'nowrap',flexShrink:0,opacity:0.9}}>
-                          {tm.glyph}{tm.glyph?' ':''}{Math.round(t)}°
-                        </span>
-                      );
+                      // v1.9.6: temp display moved to right column (alongside
+                      // hashrate + best share). Title row now keeps just the
+                      // alignment badge to avoid double-displaying temp.
+                      return null;
                     })()}
                   </div>
                   <div style={{display:'flex',gap:5,alignItems:'center',marginTop:2,minWidth:0}}>
@@ -2159,12 +2149,40 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                     <UptimeSparkline history={w.statusHistory}/>
                   </div>
                 </div>
-                {/* Right: hashrate (big amber) + best-share underneath */}
+                {/* Right: hashrate (big amber) + temp + best-share stacked */}
                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:0,flexShrink:0,minWidth:48}}>
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:on?'var(--amber)':'var(--text-2)',whiteSpace:'nowrap',lineHeight:1.1}}>
                     {on?fmtHr(w.hashrate):'offline'}
                   </span>
-                  {w.bestshare>0 && <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--amber)',whiteSpace:'nowrap',opacity:0.8}}>★ {fmtDiff(w.bestshare)}</span>}
+                  {(() => {
+                    // v1.9.6: temp + best-share on second line of right column.
+                    // Temp is color-coded by tier; best-share is amber star as before.
+                    // If both present: "65° · ★ 9.71 G"
+                    // If only temp:    "65°"
+                    // If only star:    "★ 9.71 G"
+                    const t = w.live?.tempC;
+                    const tValid = (t != null && Number.isFinite(t) && t > 0);
+                    const bsValid = w.bestshare > 0;
+                    if (!tValid && !bsValid) return null;
+                    const tColor = !tValid ? null
+                                 : t >= TEMP_RED_C   ? 'var(--red)'
+                                 : t >= TEMP_AMBER_C ? 'var(--amber)'
+                                 : t >= 70           ? 'var(--cyan)'
+                                                     : 'var(--green)';
+                    return (
+                      <div style={{display:'flex',alignItems:'center',gap:4,fontFamily:'var(--fm)',fontSize:'0.6rem',whiteSpace:'nowrap',lineHeight:1.2,opacity:0.9}}>
+                        {tValid && (
+                          <span style={{color:tColor,fontWeight:600}}>
+                            {t >= TEMP_RED_C ? '🔥' : ''}{Math.round(t)}°
+                          </span>
+                        )}
+                        {tValid && bsValid && <span style={{color:'var(--text-3)'}}>·</span>}
+                        {bsValid && (
+                          <span style={{color:'var(--amber)',opacity:0.8}}>★ {fmtDiff(w.bestshare)}</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
