@@ -28,10 +28,26 @@ export function usePool() {
   const retryCount  = useRef(0);
 
   useEffect(() => {
-    fetch('/api/state')
-      .then(r => r.json())
-      .then(d => setState(p => ({ ...p, ...d, _loaded: true })))
-      .catch(() => setState(p => ({ ...p, _loaded: true })));
+    // v1.10.1 SECURITY: payoutAddress no longer comes from /api/state (which
+    // is on Umbrel's auth whitelist for read-only access). It now comes from
+    // /api/config which requires an Umbrel session. Both fetches happen in
+    // parallel; their results are merged into state. The webhooks tab and
+    // settings flow still use /api/config for cfg.payoutAddress, /api/state
+    // for everything else.
+    Promise.all([
+      fetch('/api/state').then(r => r.json()).catch(() => ({})),
+      fetch('/api/config').then(r => r.json()).catch(() => ({})),
+    ]).then(([stateData, configData]) => {
+      setState(p => ({
+        ...p,
+        ...stateData,
+        // Merge payoutAddress from /api/config (auth-gated). If session
+        // failed (configData empty), payoutAddress stays null and the
+        // UI will treat it as not-yet-set, which is the correct fallback.
+        payoutAddress: configData.payoutAddress || null,
+        _loaded: true,
+      }));
+    });
   }, []);
 
   const connect = useCallback(() => {
@@ -52,11 +68,15 @@ export function usePool() {
           setTimeout(() => setBlockAlert(null), 8000);
         }
         else if (msg.type === 'CONFIG') {
-          // Merge privateMode to top-level so header badge + cards read it consistently
+          // Merge privateMode to top-level so header badge + cards read it consistently.
+          // v1.10.1 SECURITY: payoutAddress now arrives via auth-gated CONFIG message
+          // (ws path is not on the auth whitelist). Merge to top-level so the
+          // StratumPanel and onboarding flow keep working unchanged.
           setState(p => ({
             ...p,
             config: { ...p.config, ...msg.data },
             privateMode: msg.data.privateMode === true,
+            payoutAddress: msg.data.payoutAddress != null ? msg.data.payoutAddress : p.payoutAddress,
           }));
         }
       } catch {}
