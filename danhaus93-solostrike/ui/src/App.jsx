@@ -133,6 +133,37 @@ const statRow = { display:'flex', justifyContent:'space-between', alignItems:'ce
 const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
+// ── Pool alignment helpers (v1.9.0) ──────────────────────────────────────────
+// Convert miner-poller alignment status into UI elements.
+//
+//   aligned       → green ✓   "Pointed at SoloStrike, currently active"
+//   backup        → amber ⚠   "Configured but a different pool is active"
+//   misaligned    → red ✗     "NOT pointed at SoloStrike — check miner config"
+//   unreachable   → gray ⊘    "Couldn't reach miner on port 4028"
+//   disabled      → gray ⊘    "Miner's API is locked or disabled"
+//   unknown       → null      "No data yet (don't render a badge)"
+//   esp-no-pools  → null      "ESP-Miner doesn't expose pools — silently skip"
+const POOL_ALIGN_META = {
+  aligned:     { color:'var(--green)', glyph:'✓',  label:'Pool aligned',         shortLabel:'OK' },
+  backup:      { color:'var(--amber)', glyph:'⚠',  label:'SoloStrike is backup', shortLabel:'BACKUP' },
+  misaligned:  { color:'var(--red)',   glyph:'✗',  label:'Wrong pool',           shortLabel:'WRONG' },
+  unreachable: { color:'var(--text-3)',glyph:'⊘',  label:'Can\u2019t reach miner',shortLabel:'NO API' },
+  disabled:    { color:'var(--text-3)',glyph:'⊘',  label:'Miner API disabled',   shortLabel:'NO API' },
+  // 'unknown' and 'esp-no-pools' intentionally have no entry — no badge rendered.
+};
+function poolAlignMeta(status) { return POOL_ALIGN_META[status] || null; }
+
+// ── Temperature thresholds (v1.9.0) ──────────────────────────────────────────
+// Configurable later if anyone asks; hardcoded for v1.
+const TEMP_AMBER_C = 75;
+const TEMP_RED_C   = 80;
+function tempBadgeMeta(tempC) {
+  if (tempC == null || !Number.isFinite(tempC) || tempC <= 0) return null;
+  if (tempC >= TEMP_RED_C)   return { color:'var(--red)',   glyph:'🔥', label:'Running hot' };
+  if (tempC >= TEMP_AMBER_C) return { color:'var(--amber)', glyph:'',   label:'Warm' };
+  return null;  // normal — no badge
+}
+
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LS_CARD_ORDER      = 'ss_card_order_v1';
 const LS_CURRENCY        = 'ss_currency_v1';
@@ -1251,6 +1282,96 @@ function SyncWarningBanner({ sync }) {
   );
 }
 
+// ── Hot-miner banner (v1.9.0) ────────────────────────────────────────────────
+// Shows a single dismissible banner at the top of the screen when one or more
+// workers report tempC ≥ TEMP_RED_C. The banner collapses multiple hot miners
+// into one entry with a count + tap-to-expand. Mirrors the style/behavior of
+// OfflineToasts so the two banners coexist visually. Dismissal is per-session
+// (in component state) — re-mounts on next page reload.
+function HotMinerBanner({ workers, aliases }) {
+  const [dismissed, setDismissed] = useState(new Set());
+  const [expanded, setExpanded]   = useState(false);
+
+  const hot = (workers || []).filter(w => {
+    if (!w || !w.live) return false;
+    const t = w.live.tempC;
+    return Number.isFinite(t) && t >= TEMP_RED_C;
+  });
+  const visible = hot.filter(w => !dismissed.has(w.name));
+  if (visible.length === 0) return null;
+
+  const dismiss = (name) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.add(name);
+      return next;
+    });
+  };
+
+  const dismissAll = () => {
+    setDismissed(new Set(visible.map(w => w.name)));
+  };
+
+  return (
+    <div style={{
+      position:'fixed', top:'calc(env(safe-area-inset-top) + 0.5rem)',
+      left:'0.75rem', right:'0.75rem',
+      zIndex:240,
+      pointerEvents:'auto',
+    }}>
+      <div style={{
+        background:'rgba(40,15,15,0.95)',
+        border:'1px solid var(--red)',
+        boxShadow:'0 0 16px rgba(255,77,77,0.35)',
+        borderRadius:6,
+        padding:'0.6rem 0.8rem',
+        backdropFilter:'blur(6px)',
+        WebkitBackdropFilter:'blur(6px)',
+      }}>
+        <div style={{display:'flex',alignItems:'center',gap:'0.6rem'}}>
+          <span style={{fontSize:18}}>🔥</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.1em',color:'var(--red)',textTransform:'uppercase'}}>
+              {visible.length === 1
+                ? `Hot miner: ${displayName(visible[0].name, aliases)} at ${Math.round(visible[0].live.tempC)}°C`
+                : `${visible.length} miners running hot (≥${TEMP_RED_C}°C)`}
+            </div>
+            {visible.length > 1 && (
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',marginTop:2,cursor:'pointer'}}
+                   onClick={()=>setExpanded(v=>!v)}>
+                {expanded ? '▾ Tap to collapse' : '▸ Tap to expand'}
+              </div>
+            )}
+          </div>
+          <button onClick={dismissAll}
+                  style={{background:'transparent',border:'none',color:'var(--text-2)',cursor:'pointer',
+                          fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',padding:'2px 6px'}}>
+            DISMISS
+          </button>
+        </div>
+        {visible.length > 1 && expanded && (
+          <div style={{marginTop:'0.5rem',paddingTop:'0.5rem',borderTop:'1px solid rgba(255,77,77,0.2)'}}>
+            {visible.map(w => (
+              <div key={w.name} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.25rem 0'}}>
+                <span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-1)',flex:1}}>
+                  {displayName(w.name, aliases)}
+                </span>
+                <span style={{fontFamily:'var(--fd)',fontSize:'0.7rem',color:'var(--red)',fontWeight:700}}>
+                  {Math.round(w.live.tempC)}°C
+                </span>
+                <button onClick={()=>dismiss(w.name)}
+                        style={{background:'transparent',border:'none',color:'var(--text-3)',cursor:'pointer',fontSize:14,padding:'0 4px'}}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Offline toast ─────────────────────────────────────────────────────────────
 function OfflineToasts({ workers, aliases }) {
   // ── Persistent worker-offline banners (v1.7.12) ────────────────────────
@@ -1975,6 +2096,39 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                   <div style={{display:'flex',alignItems:'baseline',gap:6,minWidth:0}}>
                     <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500,minWidth:0}} title={w.name}>{disp}</span>
                     {w.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{w.minerType}</span>}
+                    {(() => {
+                      // v1.9.0: tiny pool-alignment badge — only renders when
+                      // miner-poller has produced a result. Tap the row to see
+                      // full details + recheck.
+                      const pa = w.poolAlignment;
+                      if (!pa || !pa.status) return null;
+                      const m = poolAlignMeta(pa.status);
+                      if (!m) return null;
+                      return (
+                        <span title={m.label}
+                              style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.06em',color:m.color,
+                                      border:`1px solid ${m.color}`,borderRadius:2,padding:'0 4px',
+                                      whiteSpace:'nowrap',flexShrink:0,opacity:0.85}}>
+                          {m.glyph} {m.shortLabel}
+                        </span>
+                      );
+                    })()}
+                    {(() => {
+                      // v1.9.0: hot-temp badge — only renders when miner is
+                      // warm (≥75°C amber) or hot (≥80°C red). Normal temps
+                      // produce no badge so the row stays clean.
+                      const t = w.live?.tempC;
+                      const tm = tempBadgeMeta(t);
+                      if (!tm) return null;
+                      return (
+                        <span title={`${tm.label} — ${Math.round(t)}°C`}
+                              style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.04em',color:tm.color,
+                                      border:`1px solid ${tm.color}`,borderRadius:2,padding:'0 4px',
+                                      whiteSpace:'nowrap',flexShrink:0,opacity:0.9}}>
+                          {tm.glyph}{tm.glyph?' ':''}{Math.round(t)}°
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div style={{display:'flex',gap:5,alignItems:'center',marginTop:2,minWidth:0}}>
                     <div style={{flex:1,height:1.5,background:'var(--bg-deep)',borderRadius:1,overflow:'hidden',minWidth:0}}>
@@ -9738,7 +9892,7 @@ function StrikersModal({ networkStats, onClose }) {
           }}>
             Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
             <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool — just a heartbeat. Identities rotate every 90 days.
+              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate every 90 days.
             </div>
           </div>
 
@@ -10650,6 +10804,239 @@ function DebugTab({ settings, onSettingsChange }) {
 }
 
 // ── Worker detail modal ───────────────────────────────────────────────────────
+// ── Pool alignment block (v1.9.0) ────────────────────────────────────────────
+// Renders inside WorkerDetailModal when miner-poller is enabled. Shows the
+// alignment status, the active pool URL, the configured pools list, and a
+// "Recheck" button that triggers an immediate re-poll on the server.
+//
+// Status pills mirror the small badge in the worker row but with full text.
+// When the miner is unreachable / API disabled, we show a brief help line so
+// the user knows the issue isn't on SoloStrike's side.
+function PoolAlignmentBlock({ worker }) {
+  const [busy, setBusy]   = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [override, setOverride] = React.useState(null); // optimistic recheck result
+
+  const pa  = override || worker.poolAlignment;
+  const meta = pa && pa.status ? poolAlignMeta(pa.status) : null;
+  const pollingDisabledHint = !pa; // truthy ⇒ no record at all (feature off or first-poll pending)
+
+  const recheck = async () => {
+    setBusy(true); setError('');
+    try {
+      const r = await fetch(`/api/miners/poll/${encodeURIComponent(worker.name)}`, { method:'POST' });
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || 'Recheck failed');
+      setOverride(data.alignment);
+    } catch (e) {
+      setError(e.message || 'Recheck failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const checkedAt = pa && pa.lastCheckedAt
+    ? `Last checked ${fmtAgoShort(pa.lastCheckedAt)}`
+    : null;
+
+  return (
+    <div style={section}>
+      <div style={{...secTitle, display:'flex',alignItems:'center',justifyContent:'space-between',gap:'0.5rem'}}>
+        <span>▸ Pool alignment</span>
+        <button onClick={recheck} disabled={busy}
+                style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',
+                        background:'transparent',border:'1px solid var(--border)',
+                        color:busy?'var(--text-3)':'var(--cyan)',padding:'2px 8px',
+                        cursor:busy?'wait':'pointer',borderRadius:2}}>
+          {busy ? 'CHECKING…' : 'RECHECK'}
+        </button>
+      </div>
+
+      {pollingDisabledHint && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
+          Miner polling is off, or no result yet. Enable it in Settings →
+          Miner integrations to verify each miner is actually pointed at
+          SoloStrike via its local API on TCP 4028.
+        </div>
+      )}
+
+      {pa && meta && (
+        <>
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0'}}>
+            <span style={{display:'inline-block',padding:'2px 8px',
+                          fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.08em',
+                          color:meta.color,border:`1px solid ${meta.color}`,borderRadius:2}}>
+              {meta.glyph} {meta.label.toUpperCase()}
+            </span>
+            {checkedAt && <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)'}}>{checkedAt}</span>}
+          </div>
+
+          {(pa.status === 'aligned' || pa.status === 'backup' || pa.status === 'misaligned') && pa.activePool && (
+            <div style={kvRow}>
+              <span style={kvLabel}>Active pool</span>
+              <span style={{...kvVal,fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--cyan)',overflow:'hidden',textOverflow:'ellipsis'}}>
+                {pa.activePool}
+              </span>
+            </div>
+          )}
+
+          {pa.status === 'misaligned' && (
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--red)',padding:'0.4rem 0',lineHeight:1.5}}>
+              This miner is not configured to point at SoloStrike. Open the
+              miner web UI and add SoloStrike as a pool to bring it home.
+            </div>
+          )}
+
+          {pa.status === 'backup' && (
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--amber)',padding:'0.4rem 0',lineHeight:1.5}}>
+              SoloStrike is configured but a different pool is currently
+              active. The miner will switch to SoloStrike if its primary
+              fails — or you can promote it to primary in the miner UI.
+            </div>
+          )}
+
+          {(pa.status === 'unreachable' || pa.status === 'disabled') && (
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
+              {pa.status === 'unreachable'
+                ? 'Couldn\u2019t reach the miner on TCP 4028. Check the miner is online and on the same LAN.'
+                : 'The miner\u2019s local API responded but didn\u2019t speak the cgminer JSON protocol. Some firmware (stock Bitmain on newer releases) ships the API disabled by default — enable it in the miner\u2019s settings.'}
+            </div>
+          )}
+
+          {Array.isArray(pa.configuredPools) && pa.configuredPools.length > 0 && (
+            <details style={{marginTop:'0.4rem'}}>
+              <summary style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--text-2)',cursor:'pointer',padding:'0.3rem 0'}}>
+                Configured pools ({pa.configuredPools.length})
+              </summary>
+              <div style={{padding:'0.3rem 0'}}>
+                {pa.configuredPools.map((p, i) => (
+                  <div key={i} style={{padding:'0.3rem 0',borderTop:i>0?'1px solid var(--border)':'none'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+                      <span style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.05em',
+                                    color:p.active?'var(--green)':'var(--text-3)',
+                                    border:`1px solid ${p.active?'var(--green)':'var(--text-3)'}`,
+                                    padding:'1px 5px',borderRadius:2}}>
+                        {p.active ? 'ACTIVE' : `PRIO ${p.priority ?? '?'}`}
+                      </span>
+                      <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)'}}>{p.status || ''}</span>
+                    </div>
+                    <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',wordBreak:'break-all'}}>{p.url || '—'}</div>
+                    {p.user && <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',wordBreak:'break-all',marginTop:1}}>user: {p.user}</div>}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {pa.error && pa.status !== 'aligned' && (
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:'0.3rem'}}>
+              Code: {pa.error}
+            </div>
+          )}
+        </>
+      )}
+
+      {error && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',marginTop:'0.3rem'}}>{error}</div>}
+    </div>
+  );
+}
+
+// ── Live stats block (v1.9.0) ────────────────────────────────────────────────
+// Renders temps, fans, miner-reported hashrate, and hardware errors using the
+// data harvested by miner-poller from each miner's local API. Two protocol
+// adapters cover the bulk of fleet hardware:
+//   * cgminer-JSON (LuxOS, BraiinsOS, Vnish, Whatsminer, Avalon, Innosilicon,
+//     Goldshell, iPollo, stock Bitmain with API enabled)
+//   * ESP-Miner HTTP (BitAxe, NerdQaxe, NerdQaxe++, NerdMiner, etc.)
+// When no live data exists yet (poller disabled, first poll pending, or the
+// miner's API is unreachable) the section quietly hides — no noise.
+function LiveStatsBlock({ worker }) {
+  const live = worker.live;
+  if (!live) return null;
+  // Hide if there's truly nothing to show (all fields null)
+  const hasAny = (live.tempC != null) || (live.fanRpm != null) || (live.fanPct != null)
+              || (live.hashrateReported != null) || (live.hwErrors != null)
+              || (live.uptimeSec != null) || (live.firmwareVersion != null)
+              || (Array.isArray(live.tempDetails) && live.tempDetails.length > 0);
+  if (!hasAny) return null;
+
+  const t   = live.tempC;
+  const tColor = t == null ? 'var(--text-2)'
+              : t >= TEMP_RED_C   ? 'var(--red)'
+              : t >= TEMP_AMBER_C ? 'var(--amber)'
+              : 'var(--green)';
+  const fanLine = (() => {
+    if (live.fanRpm != null && live.fanPct != null) return `${live.fanPct}% · ${fmtNum(live.fanRpm)} rpm`;
+    if (live.fanRpm != null) return `${fmtNum(live.fanRpm)} rpm`;
+    if (live.fanPct != null) return `${live.fanPct}%`;
+    return null;
+  })();
+
+  // Format reported hashrate at appropriate scale
+  const hrReported = live.hashrateReported;
+  const hrLine = hrReported != null ? fmtHr(hrReported) : null;
+
+  // Uptime → human-friendly
+  const uptimeLine = (() => {
+    if (live.uptimeSec == null) return null;
+    const s = live.uptimeSec;
+    if (s < 60) return `${Math.floor(s)}s`;
+    if (s < 3600) return `${Math.floor(s/60)}m`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+    return `${Math.floor(s/86400)}d ${Math.floor((s%86400)/3600)}h`;
+  })();
+
+  return (
+    <div style={section}>
+      <div style={secTitle}>▸ Live telemetry</div>
+
+      {t != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Temperature</span>
+          <span style={{...kvVal, color: tColor, fontWeight:600}}>{Math.round(t)}°C</span>
+        </div>
+      )}
+      {Array.isArray(live.tempDetails) && live.tempDetails.length > 1 && (
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',padding:'0.2rem 0',lineHeight:1.5}}>
+          {live.tempDetails.map(td => `${td.id}: ${Math.round(td.tempC)}°`).join('  ·  ')}
+        </div>
+      )}
+      {fanLine && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Fan</span>
+          <span style={kvVal}>{fanLine}</span>
+        </div>
+      )}
+      {hrLine && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Reported Hashrate</span>
+          <span style={{...kvVal, color: 'var(--cyan)'}}>{hrLine}</span>
+        </div>
+      )}
+      {live.hwErrors != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Hardware Errors</span>
+          <span style={{...kvVal, color: live.hwErrors > 0 ? 'var(--amber)' : 'var(--text-2)'}}>
+            {fmtNum(live.hwErrors)}
+          </span>
+        </div>
+      )}
+      {uptimeLine && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Miner Uptime</span>
+          <span style={kvVal}>{uptimeLine}</span>
+        </div>
+      )}
+      {live.firmwareVersion && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Firmware</span>
+          <span style={{...kvVal, fontFamily:'var(--fm)', fontSize:'0.65rem'}}>{live.firmwareVersion}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
@@ -10784,6 +11171,11 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
             <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
             <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
+
+          {/* v1.9.0: Pool alignment — verify miner is pointed at SoloStrike via TCP 4028 */}
+          <PoolAlignmentBlock worker={w}/>
+          {/* v1.9.0: Live telemetry — temps, fans, hardware errors from the miner's local API */}
+          <LiveStatsBlock worker={w}/>
 
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
@@ -11759,6 +12151,7 @@ export default function App() {
 
       <BlockAlert show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
       <OfflineToasts workers={workers} aliases={aliases}/>
+      <HotMinerBanner workers={workers} aliases={aliases}/>
       {selectedWorker && (
         <WorkerDetailModal worker={selectedWorker} onClose={()=>setSelectedWorker(null)}
           aliases={aliases} onAliasesChange={onAliasesChange}
