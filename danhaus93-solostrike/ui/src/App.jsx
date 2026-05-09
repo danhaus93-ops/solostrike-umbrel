@@ -5,7 +5,6 @@ import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fm
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
-import { createConstellation2D } from './constellation-2d.js';
 import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
@@ -4370,7 +4369,7 @@ function saveStratumPass(v)      { try { localStorage.setItem(LS_STRATUM_PASS, v
 // ── Carousel + Stratum rotation helpers (v1.7.17) ───────────────────────────
 const LS_CAROUSEL_ENABLED        = 'ss_carousel_enabled_v1';
 const LS_STRATUM_ROTATED         = 'ss_stratum_rotated_v1';   // '1' once we've moved Stratum to last
-const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'ticker' | 'globe' | 'constellation' | 'block'
+const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'ticker' | 'globe' | 'block'
 function loadCarouselEnabled() { try { const v = localStorage.getItem(LS_CAROUSEL_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveCarouselEnabled(v){ try { localStorage.setItem(LS_CAROUSEL_ENABLED, String(!!v)); } catch {} }
 function loadStratumRotated()  { try { return localStorage.getItem(LS_STRATUM_ROTATED) === '1'; } catch { return false; } }
@@ -4381,21 +4380,27 @@ const PULSE_ANIM_OPTIONS = [
   // Pulse is now a clean ambient/observational pair: ticker (network state)
   // + globe (where miners are). The ticker stays in pulse rather than moving
   // to hunt — hash-rate / mempool / halving are informational, not per-block.
-  // rev70i: added 'constellation' — visualizes pools as bright amber centers
-  // surrounded by blue striker points. Two-tier census visualization.
-  // v1.11.0: added 'block' — peers progressively form a 3D Bitcoin block as
-  // Pulse grows. Same event flow as 'constellation' but renders as small
-  // gold/amber cubes that arrange themselves into corners → edges → faces
-  // → volume of a cube. Tap a cube to fly the camera to it.
-  { id: 'ticker',        label: 'Hash Ticker' },
-  { id: 'globe',         label: 'Solo Strike Map' },
-  { id: 'constellation', label: 'Striker Constellation' },
-  { id: 'block',         label: 'Block Constellation' },
+  // v1.11.0: added 'block' (Block Constellation) — peers progressively form
+  // a 3D Bitcoin block as Pulse grows. Gold/amber cubes that arrange
+  // themselves into corners → edges → faces → volume of a cube. Tap a cube
+  // to fly the camera to it.
+  // v1.11.1: removed earlier 'constellation' (Striker Constellation) option
+  // since 'block' supersedes it on the same canvas + event-flow surface.
+  // Cleanup complete: constellation-2d.js deleted, all dual-mode checks
+  // collapsed to single-mode. Existing users with stored 'constellation'
+  // setting still get auto-migrated to 'block' below.
+  { id: 'ticker', label: 'Hash Ticker' },
+  { id: 'globe',  label: 'Solo Strike Map' },
+  { id: 'block',  label: 'Block Constellation' },
 ];
 const PULSE_ANIM_DEFAULT = 'ticker';
 function loadPulseAnim() {
   try {
     const v = localStorage.getItem(LS_PULSE_ANIM);
+    // v1.11.1: 'constellation' was removed in favor of 'block'. Auto-migrate
+    // existing users so their setting maps to the closest equivalent rather
+    // than resetting them to 'ticker'.
+    if (v === 'constellation') return 'block';
     return PULSE_ANIM_OPTIONS.some(o => o.id === v) ? v : PULSE_ANIM_DEFAULT;
   } catch { return PULSE_ANIM_DEFAULT; }
 }
@@ -7694,18 +7699,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     };
   }, []);
 
-  // v1.8.5-rev70i: Constellation WebGL init. Mount-once like globe.
-  // Renders only when pulseAnim === 'constellation' (canvas display:none
-  // otherwise — context stays alive but no GPU work happens).
-  // v1.11.0: also handles pulseAnim === 'block' which uses the cube
-  // renderer (constellation-cube.js). Both share the same canvas, pointer
-  // handlers, and event-driving code in App.jsx — only the renderer
-  // factory differs. We re-mount when the user switches between these
-  // modes (rare event, full re-init is cheap).
+  // v1.11.0: Block Constellation init. Mount-once on canvas ref ready,
+  // re-mounts only if pulseAnim changes to/from 'block'. Renders only
+  // when pulseAnim === 'block' (canvas display:none otherwise — context
+  // stays alive but no draw calls happen).
   useEffect(() => {
     if (!constellationCanvasRef.current) return;
-    if (pulseAnim !== 'constellation' && pulseAnim !== 'block') return;
-    const factory = pulseAnim === 'block' ? createConstellationCube : createConstellation2D;
+    if (pulseAnim !== 'block') return;
+    const factory = createConstellationCube;
     const renderer = factory(constellationCanvasRef.current);
     if (renderer && !renderer.failed) {
       constellationRendererRef.current = renderer;
@@ -7818,7 +7819,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // uses it for now, but cheap to keep state).
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if ((pulseAnimRef.current === 'constellation' || pulseAnimRef.current === 'block')) {
+    if (pulseAnimRef.current === 'block') {
       // Constellation: ping interaction so auto-rotate pauses. If two
       // pointers are now active, set up pinch-zoom baseline.
       // rev71e: 2D constellation renderer has no auto-rotate so it doesn't
@@ -7858,7 +7859,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // rev70k: pinch-zoom path — applies only in constellation mode when
     // 2 pointers are down. Computes distance delta and feeds to renderer.
-    if ((pulseAnimRef.current === 'constellation' || pulseAnimRef.current === 'block') && pinchRef.current.active
+    if (pulseAnimRef.current === 'block' && pinchRef.current.active
         && pointersRef.current.size === 2) {
       const pts = Array.from(pointersRef.current.values());
       const dx = pts[0].x - pts[1].x;
@@ -7885,7 +7886,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // rev70k: in constellation mode, drag rotates the WebGL camera via the
     // renderer's interaction API instead of the globe rot refs.
-    if ((pulseAnimRef.current === 'constellation' || pulseAnimRef.current === 'block')) {
+    if (pulseAnimRef.current === 'block') {
       if (constellationRendererRef.current) {
         // Negate dx so dragging right rotates scene right (direct manip).
         constellationRendererRef.current.addRotation(-dx, -dy);
@@ -7959,7 +7960,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // 2-finger scroll on a Magic Mouse / trackpad (via deltaY). Keeps the
   // zoom feel consistent with pinch-to-zoom on touch.
   const handleWheel = useCallback((e) => {
-    if ((pulseAnimRef.current !== 'constellation' && pulseAnimRef.current !== 'block')) return;
+    if (pulseAnimRef.current !== 'block') return;
     if (!constellationRendererRef.current) return;
     e.preventDefault();
     // deltaY > 0 = scroll down = zoom out.
@@ -9160,7 +9161,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // rev70i: 'constellation' drives a separate WebGL renderer; the 2D
       // canvas just stays cleared underneath.
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
-      else if (pulseAnim === 'constellation' || pulseAnim === 'block') {
+      else if (pulseAnim === 'block') {
         // rev70u: Drive WebGL renderer with real share-flash data.
         if (constellationRendererRef.current) {
           const peerList = Array.isArray(ns.peers)
@@ -9541,21 +9542,24 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   return (
     compact ? (
       <div style={{position:'relative'}}>
-        <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom:'0.4rem'}}>
+        {/* v1.11.1: title bar is the dedicated tap-to-open-strikers target,
+            NOT the canvas. See full-branch comment below for rationale. */}
+        <div
+          onClick={onOpenStrikers}
+          role={onOpenStrikers ? 'button' : undefined}
+          tabIndex={onOpenStrikers ? 0 : undefined}
+          onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
+          style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom:'0.4rem', cursor: onOpenStrikers ? 'pointer' : 'default'}}
+          title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
+        >
           <span>▸ SoloStrike Pulse</span>
           <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
             <span style={{width:5, height:5, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite'}}/>
             LIVE
           </span>
         </div>
-        <div
-          onClick={onOpenStrikers}
-          role={onOpenStrikers ? 'button' : undefined}
-          tabIndex={onOpenStrikers ? 0 : undefined}
-          onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
-          style={{ cursor: onOpenStrikers ? 'pointer' : 'default' }}
-          title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
-        >
+        {/* Canvas region — NOT clickable (handled by canvas itself). */}
+        <div>
         {/* Smaller waveform for embedded mode.
             v1.8.5-rev70e: bg transparent + no border so the globe sphere
             (and other animations) sit directly on the card surface.
@@ -9590,10 +9594,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             onDoubleClick={handleConstellationDoubleClick}
             style={{
               position:'absolute', inset:0, width:'100%', height:'100%',
-              pointerEvents: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'auto' : 'none',
+              pointerEvents: pulseAnim === 'block' ? 'auto' : 'none',
               touchAction: 'none', // disable browser default pinch/scroll
-              cursor: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'grab' : 'default',
-              display: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'block' : 'none',
+              cursor: pulseAnim === 'block' ? 'grab' : 'default',
+              display: pulseAnim === 'block' ? 'block' : 'none',
             }}
           />
           <canvas
@@ -9641,7 +9645,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           {pulseAnim === 'block' && (
             <>
               <div
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   const r = constellationRendererRef.current;
                   if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
                 }}
@@ -9656,7 +9661,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 aria-label="Find my pool"
               >◎ Find Me</div>
               <div
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   const r = constellationRendererRef.current;
                   if (r && typeof r.resetView === 'function') r.resetView();
                 }}
@@ -9692,12 +9698,22 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         {/* Footer tagline — single line in compact, leave room for stamp on right.
             v1.8.8-globe-rev7: when 'Solo Strike Map' is the active animation we
             swap in a privacy disclaimer (locations are approximate, miners stay
-            private). Other animations keep the existing 100% SOLO tagline. */}
-        <div style={{
+            private). Other animations keep the existing 100% SOLO tagline.
+            v1.11.1: footer is the second tap-target for opening strikers
+            (the first being the title bar). Canvas region between is reserved
+            for direct interaction. */}
+        <div
+          onClick={onOpenStrikers}
+          role={onOpenStrikers ? 'button' : undefined}
+          tabIndex={onOpenStrikers ? 0 : undefined}
+          onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
+          title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
+          style={{
           borderTop:'1px dashed rgba(245,166,35,0.18)',
           paddingTop:'0.4rem',
           fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
           lineHeight:1.4, paddingRight:'4rem',
+          cursor: onOpenStrikers ? 'pointer' : 'default',
         }}>
           {pulseAnim === 'globe' ? (
             <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
@@ -9717,7 +9733,22 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       </div>
     ) : (
     <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
+      {/* v1.11.1: title bar is now the dedicated tap-to-open-strikers
+          target, NOT the canvas region. Previously the entire body of
+          the card was wrapped in onClick={onOpenStrikers}, which made
+          the Block Constellation overlays (◎ Find Me / ⟲ Reset) bubble
+          up and accidentally open the panel on tap. By moving the
+          onClick to the title bar + below-canvas caption only, the
+          canvas itself is reserved for direct interaction (drag, pinch,
+          tap-to-focus on a peer cube). */}
+      <div
+        onClick={onOpenStrikers}
+        role={onOpenStrikers ? 'button' : undefined}
+        tabIndex={onOpenStrikers ? 0 : undefined}
+        onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
+        style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0, cursor: onOpenStrikers ? 'pointer' : 'default'}}
+        title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
+      >
         <span>▸ SoloStrike Pulse</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
           <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite'}}/>
@@ -9725,14 +9756,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         </span>
       </div>
 
-      {/* Clickable region — whole body opens Strikers modal */}
+      {/* Canvas region — NOT wrapped in onClick. Tap events on the canvas
+          are handled by the renderer (focus-on-tap for Block mode); taps
+          on the Find Me/Reset overlays trigger their own handlers without
+          opening the strikers panel. */}
       <div
-        onClick={onOpenStrikers}
-        role={onOpenStrikers ? 'button' : undefined}
-        tabIndex={onOpenStrikers ? 0 : undefined}
-        onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
-        style={{ cursor: onOpenStrikers ? 'pointer' : 'default', flex:1, minHeight:0, display:'flex', flexDirection:'column' }}
-        title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
+        style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' }}
       >
       {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240, max 380 to prevent runaway growth in vertical-scroll mode).
           v1.8.5-rev70e: bg transparent + no border so the globe sphere
@@ -9763,10 +9792,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           onDoubleClick={handleConstellationDoubleClick}
           style={{
             position:'absolute', inset:0, width:'100%', height:'100%',
-            pointerEvents: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'auto' : 'none',
+            pointerEvents: pulseAnim === 'block' ? 'auto' : 'none',
             touchAction: 'none',
-            cursor: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'grab' : 'default',
-            display: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'block' : 'none',
+            cursor: pulseAnim === 'block' ? 'grab' : 'default',
+            display: pulseAnim === 'block' ? 'block' : 'none',
           }}
         />
         <canvas
@@ -9815,7 +9844,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         {pulseAnim === 'block' && (
           <>
             <div
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 const r = constellationRendererRef.current;
                 if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
               }}
@@ -9830,7 +9860,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               aria-label="Find my pool"
             >◎ Find Me</div>
             <div
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 const r = constellationRendererRef.current;
                 if (r && typeof r.resetView === 'function') r.resetView();
               }}
@@ -9867,12 +9898,22 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
       {/* Footer tagline.
           v1.8.8-globe-rev7: privacy caption replaces the 'census' tagline when
-          'Solo Strike Map' is the active animation. Other animations unchanged. */}
-      <div style={{
+          'Solo Strike Map' is the active animation. Other animations unchanged.
+          v1.11.1: this footer tagline is now the second tap-target for
+          opening the Strikers modal (the first being the title bar). The
+          canvas region between them is reserved for direct interaction. */}
+      <div
+        onClick={onOpenStrikers}
+        role={onOpenStrikers ? 'button' : undefined}
+        tabIndex={onOpenStrikers ? 0 : undefined}
+        onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
+        title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
+        style={{
         borderTop:'1px dashed rgba(245,166,35,0.18)',
         paddingTop:'0.5rem',
         fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)',
         lineHeight:1.5, paddingRight:'4rem' /* leave room for the rotated stamp */,
+        cursor: onOpenStrikers ? 'pointer' : 'default',
       }}>
         {pulseAnim === 'globe' ? (
           <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>

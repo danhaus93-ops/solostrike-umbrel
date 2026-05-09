@@ -345,12 +345,24 @@ export function createConstellationCube(canvas, opts = {}) {
 
     // Worker fan-out scales down as peer count grows so they don't
     // overlap their neighbors. Capped at sensible counts past 50 peers.
+    // v1.11.1: bumped low-peer-count radii (was 0.18 / 0.10 / 0.07) so
+    // energy packets have a longer striker→peer travel arc and the
+    // share-flash visuals are more readable. Keeps overlap-prevention
+    // ratios intact at higher peer counts.
+    // v1.11.2: re-tuned to match the old Striker Constellation (rev70y)
+    // which used baseRadius=50 absolute at 2 pools, 42 at 3+. The cube
+    // renderer uses normalized world coords scaled by `min(W,H) × 0.30 ×
+    // perspective`, so to produce the same screen distance:
+    //   2 peers: 50 / (min(W,H) × 0.30) ≈ 0.35 on a typical phone
+    //   3-4:     42 / (min(W,H) × 0.30) ≈ 0.29
+    //   5-10:    a hair tighter (~0.20) since cube depth foreshortens
+    //   >50:     fall to 0.05 — overlap-avoidance dominates at scale
     const baseR = n > 1000 ? 0.020
                 : n > 200  ? 0.030
-                : n > 50   ? 0.045
-                : n > 10   ? 0.07
-                : n > 4    ? 0.10
-                            : 0.18;
+                : n > 50   ? 0.050
+                : n > 10   ? 0.20
+                : n > 4    ? 0.29
+                            : 0.35;
     const maxWorkersShown = n > 1000 ? 1
                           : n > 200  ? 2
                           : n > 50   ? 3
@@ -579,9 +591,12 @@ export function createConstellationCube(canvas, opts = {}) {
     }
     if (!peers || peers.length === 0) return;
 
-    // Auto-rotate continuously around Y. Slow down when zoomed in for
-    // stable detail viewing.
-    autoRotY += dt * (0.20 / Math.max(1, zoom * 0.5));
+    // v1.11.1: auto-rotation disabled by user request — block is stationary
+    // and the user drags to rotate. Previous behavior spun on the Y axis at
+    // 0.20 rad/s slowed by zoom. The auto-spin made it feel "alive" but
+    // also made it harder to find/track a specific peer cube. With manual
+    // drag the user can park the cube at any angle and it stays put.
+    // autoRotY += dt * (0.20 / Math.max(1, zoom * 0.5));
     updateCamera();
 
     const t = performance.now();
@@ -744,11 +759,19 @@ export function createConstellationCube(canvas, opts = {}) {
       } else {
         const wkr = item.wkr;
         const flashing = item.idx < strikerFlashUntil.length && t < strikerFlashUntil[item.idx];
-        const cubeSize = strikerCubeBase * Math.sqrt(item.scale || 1);
+        // Workers render as lit spheres (style C) instead of cubes. Peer
+        // cubes still render as cubes — only the workers changed. The
+        // sphere is drawn with a radial gradient (highlight upper-left,
+        // shadow lower-right) for a 3D pearl look without the visual
+        // weight of a rotating cube primitive. Sphere radius matches the
+        // old Striker Constellation dot (≈1.6px at base scale × 1.4 to
+        // give it a touch more presence vs the flat dot).
+        const dotSize = (strikerCubeBase * 1.4) * Math.sqrt(item.scale || 1);
 
         if (flashing) {
           const fade = (strikerFlashUntil[item.idx] - t) / FLASH_DUR;
           const ease = fade * fade * fade;
+          // Hot halo (white-amber decay)
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
           const haloR = 7 + ease * 9;
@@ -760,11 +783,36 @@ export function createConstellationCube(canvas, opts = {}) {
           ctx.arc(item.x, item.y, haloR, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
-          drawCube(item.x, item.y, cubeSize * (1 + ease * 0.5), autoRotY + userRotY,
-                   {top: HOT_TOP, left: HOT_LEFT, right: HOT_RIGHT, deep: HOT_DEEP});
+          // Hot lit-sphere body (white core → hot-amber → deep-amber edge)
+          const r = dotSize * (1 + ease * 0.5);
+          const sg = ctx.createRadialGradient(
+            item.x - r * 0.4, item.y - r * 0.4, 0,
+            item.x, item.y, r * 1.2
+          );
+          sg.addColorStop(0,   'rgba(255,255,255,1)');
+          sg.addColorStop(0.4, 'rgba(255,235,170,1)');
+          sg.addColorStop(1,   'rgba(200,120, 30,1)');
+          ctx.fillStyle = sg;
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, r, 0, Math.PI * 2);
+          ctx.fill();
         } else {
-          drawCube(item.x, item.y, cubeSize, autoRotY + userRotY,
-                   {top: STRIKER_TOP, left: STRIKER_LEFT, right: STRIKER_RIGHT, deep: STRIKER_DEEP});
+          // Idle blue lit-sphere (highlight upper-left → striker-blue
+          // mid → deep-navy edge). No rotation — light always falls from
+          // upper-left so all sphere shading reads consistent regardless
+          // of cube rotation.
+          const r = dotSize;
+          const sg = ctx.createRadialGradient(
+            item.x - r * 0.4, item.y - r * 0.4, 0,
+            item.x, item.y, r * 1.2
+          );
+          sg.addColorStop(0,   'rgba(180,210,255,1)');
+          sg.addColorStop(0.4, 'rgba( 76,140,255,1)');
+          sg.addColorStop(1,   'rgba( 20, 50,130,1)');
+          ctx.fillStyle = sg;
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, r, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
     }
