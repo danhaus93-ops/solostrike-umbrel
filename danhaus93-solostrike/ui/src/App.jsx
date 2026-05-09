@@ -6,6 +6,7 @@ import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createConstellation2D } from './constellation-2d.js';
+import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
 
@@ -4369,7 +4370,7 @@ function saveStratumPass(v)      { try { localStorage.setItem(LS_STRATUM_PASS, v
 // ── Carousel + Stratum rotation helpers (v1.7.17) ───────────────────────────
 const LS_CAROUSEL_ENABLED        = 'ss_carousel_enabled_v1';
 const LS_STRATUM_ROTATED         = 'ss_stratum_rotated_v1';   // '1' once we've moved Stratum to last
-const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'ticker' | 'globe' | 'constellation'
+const LS_PULSE_ANIM              = 'ss_pulse_anim_v1';         // 'ticker' | 'globe' | 'constellation' | 'block'
 function loadCarouselEnabled() { try { const v = localStorage.getItem(LS_CAROUSEL_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveCarouselEnabled(v){ try { localStorage.setItem(LS_CAROUSEL_ENABLED, String(!!v)); } catch {} }
 function loadStratumRotated()  { try { return localStorage.getItem(LS_STRATUM_ROTATED) === '1'; } catch { return false; } }
@@ -4382,9 +4383,14 @@ const PULSE_ANIM_OPTIONS = [
   // to hunt — hash-rate / mempool / halving are informational, not per-block.
   // rev70i: added 'constellation' — visualizes pools as bright amber centers
   // surrounded by blue striker points. Two-tier census visualization.
+  // v1.11.0: added 'block' — peers progressively form a 3D Bitcoin block as
+  // Pulse grows. Same event flow as 'constellation' but renders as small
+  // gold/amber cubes that arrange themselves into corners → edges → faces
+  // → volume of a cube. Tap a cube to fly the camera to it.
   { id: 'ticker',        label: 'Hash Ticker' },
   { id: 'globe',         label: 'Solo Strike Map' },
   { id: 'constellation', label: 'Striker Constellation' },
+  { id: 'block',         label: 'Block Constellation' },
 ];
 const PULSE_ANIM_DEFAULT = 'ticker';
 function loadPulseAnim() {
@@ -7613,6 +7619,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // pointerId -> { x, y } in CSS pixels.
   const constellationPointersRef = useRef(new Map());
   const constellationPinchPrevDistRef = useRef(0);
+  // v1.11.0: tap detection for Block Constellation focus-on-tap.
+  // Set on pointerDown; cleared on pointerUp; updated as didDrag=true
+  // when pointerMove travels > 5px from the start. If pointerUp finds
+  // didDrag=false, the gesture was a tap and we fly camera to the
+  // nearest peer (handled by handleConstellationPointerUp).
+  const constellationTapStartRef = useRef(null);
   // rev70u: real share-flash detection state.
   // - lastShareAtRef tracks the last lastShareAt value we observed (our pool's share submissions)
   // - peerLastSeenRef tracks each peer's last observed lastSeenAgoSec value (broadcasts from other pools)
@@ -7685,14 +7697,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // v1.8.5-rev70i: Constellation WebGL init. Mount-once like globe.
   // Renders only when pulseAnim === 'constellation' (canvas display:none
   // otherwise — context stays alive but no GPU work happens).
+  // v1.11.0: also handles pulseAnim === 'block' which uses the cube
+  // renderer (constellation-cube.js). Both share the same canvas, pointer
+  // handlers, and event-driving code in App.jsx — only the renderer
+  // factory differs. We re-mount when the user switches between these
+  // modes (rare event, full re-init is cheap).
   useEffect(() => {
     if (!constellationCanvasRef.current) return;
-    const renderer = createConstellation2D(constellationCanvasRef.current);
+    if (pulseAnim !== 'constellation' && pulseAnim !== 'block') return;
+    const factory = pulseAnim === 'block' ? createConstellationCube : createConstellation2D;
+    const renderer = factory(constellationCanvasRef.current);
     if (renderer && !renderer.failed) {
       constellationRendererRef.current = renderer;
     } else {
       constellationRendererRef.current = null;
-      console.warn('Constellation WebGL init failed');
+      console.warn('Constellation renderer init failed (' + pulseAnim + ')');
     }
     return () => {
       if (constellationRendererRef.current) {
@@ -7700,7 +7719,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         constellationRendererRef.current = null;
       }
     };
-  }, []);
+  }, [pulseAnim]);
 
   // Inverse orthographic projection — converts a tap on the canvas to
   // lat/lon (in degrees), un-rotated against the current globe rotation,
@@ -7799,7 +7818,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // uses it for now, but cheap to keep state).
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if (pulseAnimRef.current === 'constellation') {
+    if ((pulseAnimRef.current === 'constellation' || pulseAnimRef.current === 'block')) {
       // Constellation: ping interaction so auto-rotate pauses. If two
       // pointers are now active, set up pinch-zoom baseline.
       // rev71e: 2D constellation renderer has no auto-rotate so it doesn't
@@ -7839,7 +7858,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // rev70k: pinch-zoom path — applies only in constellation mode when
     // 2 pointers are down. Computes distance delta and feeds to renderer.
-    if (pulseAnimRef.current === 'constellation' && pinchRef.current.active
+    if ((pulseAnimRef.current === 'constellation' || pulseAnimRef.current === 'block') && pinchRef.current.active
         && pointersRef.current.size === 2) {
       const pts = Array.from(pointersRef.current.values());
       const dx = pts[0].x - pts[1].x;
@@ -7866,7 +7885,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // rev70k: in constellation mode, drag rotates the WebGL camera via the
     // renderer's interaction API instead of the globe rot refs.
-    if (pulseAnimRef.current === 'constellation') {
+    if ((pulseAnimRef.current === 'constellation' || pulseAnimRef.current === 'block')) {
       if (constellationRendererRef.current) {
         // Negate dx so dragging right rotates scene right (direct manip).
         constellationRendererRef.current.addRotation(-dx, -dy);
@@ -7940,7 +7959,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // 2-finger scroll on a Magic Mouse / trackpad (via deltaY). Keeps the
   // zoom feel consistent with pinch-to-zoom on touch.
   const handleWheel = useCallback((e) => {
-    if (pulseAnimRef.current !== 'constellation') return;
+    if ((pulseAnimRef.current !== 'constellation' && pulseAnimRef.current !== 'block')) return;
     if (!constellationRendererRef.current) return;
     e.preventDefault();
     // deltaY > 0 = scroll down = zoom out.
@@ -7959,6 +7978,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     if (!constellationRendererRef.current) return;
     e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
     constellationPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // v1.11.0: track start position so pointerUp can detect a tap
+    // (movement < 5px from start) vs a drag. Used by Block Constellation
+    // mode to fly the camera to the tapped peer.
+    constellationTapStartRef.current = {
+      x: e.clientX, y: e.clientY,
+      didDrag: false,
+      pointerId: e.pointerId,
+    };
     if (constellationPointersRef.current.size === 2) {
       const pts = Array.from(constellationPointersRef.current.values());
       const dx = pts[0].x - pts[1].x;
@@ -7975,6 +8002,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const prev = pts.get(e.pointerId);
     if (!prev) return;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // v1.11.0: track movement to disambiguate tap vs drag in pointerUp.
+    const tapStart = constellationTapStartRef.current;
+    if (tapStart && tapStart.pointerId === e.pointerId && !tapStart.didDrag) {
+      const tdx = e.clientX - tapStart.x;
+      const tdy = e.clientY - tapStart.y;
+      if (tdx * tdx + tdy * tdy > 25) tapStart.didDrag = true; // > 5px
+    }
 
     const renderer = constellationRendererRef.current;
     if (!renderer) return;
@@ -8006,6 +8041,25 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     if (constellationPointersRef.current.size < 2) {
       constellationPinchPrevDistRef.current = 0;
     }
+    // v1.11.0: tap-to-focus for Block Constellation mode. If the user
+    // tapped without dragging (< 5px movement) and the renderer supports
+    // hit-testing, find the nearest peer cube and fly the camera to it.
+    const tapStart = constellationTapStartRef.current;
+    if (tapStart && tapStart.pointerId === e.pointerId && !tapStart.didDrag) {
+      const renderer = constellationRendererRef.current;
+      if (renderer && typeof renderer.hitTestPeer === 'function' &&
+          typeof renderer.focusPeer === 'function') {
+        const rect = e.currentTarget && e.currentTarget.getBoundingClientRect
+          ? e.currentTarget.getBoundingClientRect() : null;
+        if (rect) {
+          const tapX = e.clientX - rect.left;
+          const tapY = e.clientY - rect.top;
+          const peerIdx = renderer.hitTestPeer(tapX, tapY, 30);
+          if (peerIdx >= 0) renderer.focusPeer(peerIdx, 4.0);
+        }
+      }
+    }
+    constellationTapStartRef.current = null;
   }, []);
 
   const handleConstellationWheel = useCallback((e) => {
@@ -9106,7 +9160,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       // rev70i: 'constellation' drives a separate WebGL renderer; the 2D
       // canvas just stays cleared underneath.
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
-      else if (pulseAnim === 'constellation') {
+      else if (pulseAnim === 'constellation' || pulseAnim === 'block') {
         // rev70u: Drive WebGL renderer with real share-flash data.
         if (constellationRendererRef.current) {
           const peerList = Array.isArray(ns.peers)
@@ -9536,10 +9590,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             onDoubleClick={handleConstellationDoubleClick}
             style={{
               position:'absolute', inset:0, width:'100%', height:'100%',
-              pointerEvents: pulseAnim === 'constellation' ? 'auto' : 'none',
+              pointerEvents: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'auto' : 'none',
               touchAction: 'none', // disable browser default pinch/scroll
-              cursor: pulseAnim === 'constellation' ? 'grab' : 'default',
-              display: pulseAnim === 'constellation' ? 'block' : 'none',
+              cursor: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'grab' : 'default',
+              display: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'block' : 'none',
             }}
           />
           <canvas
@@ -9582,6 +9636,41 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             >
               {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
             </button>
+          )}
+          {/* v1.11.0: Block Constellation overlays for the compact card. */}
+          {pulseAnim === 'block' && (
+            <>
+              <div
+                onClick={() => {
+                  const r = constellationRendererRef.current;
+                  if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
+                }}
+                style={{
+                  position: 'absolute', bottom: 8, right: 10,
+                  color: '#ffe07a', fontSize: '0.55rem',
+                  letterSpacing: '0.16em', cursor: 'pointer',
+                  userSelect: 'none', fontWeight: 600, zIndex: 5,
+                  textShadow: '0 0 8px rgba(212,164,55,0.7)',
+                }}
+                role="button"
+                aria-label="Find my pool"
+              >◎ Find Me</div>
+              <div
+                onClick={() => {
+                  const r = constellationRendererRef.current;
+                  if (r && typeof r.resetView === 'function') r.resetView();
+                }}
+                style={{
+                  position: 'absolute', bottom: 8, left: 10,
+                  color: 'var(--text-2)', fontSize: '0.55rem',
+                  letterSpacing: '0.16em', cursor: 'pointer',
+                  userSelect: 'none', fontWeight: 600, zIndex: 5,
+                  textShadow: '0 0 6px rgba(0,0,0,0.9)',
+                }}
+                role="button"
+                aria-label="Reset view"
+              >⟲ Reset</div>
+            </>
           )}
         </div>
 
@@ -9674,10 +9763,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           onDoubleClick={handleConstellationDoubleClick}
           style={{
             position:'absolute', inset:0, width:'100%', height:'100%',
-            pointerEvents: pulseAnim === 'constellation' ? 'auto' : 'none',
+            pointerEvents: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'auto' : 'none',
             touchAction: 'none',
-            cursor: pulseAnim === 'constellation' ? 'grab' : 'default',
-            display: pulseAnim === 'constellation' ? 'block' : 'none',
+            cursor: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'grab' : 'default',
+            display: (pulseAnim === 'constellation' || pulseAnim === 'block') ? 'block' : 'none',
           }}
         />
         <canvas
@@ -9717,6 +9806,45 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           >
             {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
           </button>
+        )}
+        {/* v1.11.0: Block Constellation overlays. ◎ Find Me snaps the
+            camera to your gold cube (peer 0); ⟲ Reset returns to the
+            overview. Naked text styling (no box) — gold glow on Find Me,
+            dim grey on Reset to indicate hierarchy. Only render when
+            block mode is active so they don't clash with the globe pin. */}
+        {pulseAnim === 'block' && (
+          <>
+            <div
+              onClick={() => {
+                const r = constellationRendererRef.current;
+                if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
+              }}
+              style={{
+                position: 'absolute', bottom: 10, right: 12,
+                color: '#ffe07a', fontSize: '0.6rem',
+                letterSpacing: '0.18em', cursor: 'pointer',
+                userSelect: 'none', fontWeight: 600, zIndex: 5,
+                textShadow: '0 0 8px rgba(212,164,55,0.7)',
+              }}
+              role="button"
+              aria-label="Find my pool"
+            >◎ Find Me</div>
+            <div
+              onClick={() => {
+                const r = constellationRendererRef.current;
+                if (r && typeof r.resetView === 'function') r.resetView();
+              }}
+              style={{
+                position: 'absolute', bottom: 10, left: 12,
+                color: 'var(--text-2)', fontSize: '0.6rem',
+                letterSpacing: '0.18em', cursor: 'pointer',
+                userSelect: 'none', fontWeight: 600, zIndex: 5,
+                textShadow: '0 0 6px rgba(0,0,0,0.9)',
+              }}
+              role="button"
+              aria-label="Reset view"
+            >⟲ Reset</div>
+          </>
         )}
       </div>
       {/* rev70u: external pin button removed — now inside canvas wrap above. */}
@@ -12244,7 +12372,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.10.1 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
