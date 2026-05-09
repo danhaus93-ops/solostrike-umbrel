@@ -88,145 +88,98 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.8.4 — System Health card.
+  v1.10.1 — Security hardening + visual polish.
 
 
-  NEW: SYSTEM HEALTH CARD
+  SECURITY (1.10.1)
 
 
-  Glanceable operational status surfaced directly in the dashboard. Six
-  indicator rows (CONTAINERS, API, PERSISTENCE, CKPOOL, ZMQ, DISK) with
-  green/amber/red dots, plus an aggregate headline state — ALL SYSTEMS GO,
-  MINOR ISSUES, or DEGRADED. No more SSH'ing in to run health scripts to
-  see if anything's wrong.
+  • Closed an unauthenticated information leak: the public /api/state
+    endpoint no longer returns the payout BTC address or webhook URLs.
+    Both fields now travel only over the authenticated /api/config
+    endpoint and the auth-gated WebSocket. UI behavior is unchanged
+    — the StratumPanel still shows your full mining username — but
+    the data path is now correctly gated.
 
 
-  Tap the card to open a detailed diagnostic modal with: recent error log
-  (last 10 errors with path + age), API memory usage, persist file age,
-  WebSocket client count, and a manual Refresh button.
+  • Added SSRF protection to webhooks. Webhooks targeting
+    private/loopback IPs (10.x, 192.168.x, 127.x, .local hostnames)
+    are now blocked by default. Users with self-hosted services on
+    their LAN — Home Assistant, internal ntfy.sh, etc. — can opt in
+    per webhook via a new "Allow internal/LAN URL" toggle in the
+    webhook form. Existing webhooks are unaffected.
 
 
-  Polling is calibrated to be light on battery: 120s while the dashboard
-  is visible, 480s when hidden, instant refresh on tab focus. The 120s
-  cadence is tuned to the ckpool 2-10 minute amber zone — fast enough to
-  catch a stuck pool, slow enough to not drain your phone.
+  • Added Helmet response headers (X-Content-Type-Options,
+    Referrer-Policy, X-Permitted-Cross-Domain-Policies, etc.).
+    Configured carefully to NOT break Umbrel's webview iframe and
+    to NOT interfere with the React UI's inline styles or the
+    WebGL canvases.
 
 
-  UNDER THE HOOD
+  VISUAL POLISH (1.10.0)
 
 
-  • New /api/health/detailed endpoint returning structured per-check
-    status. Six checks: container liveness inferred from API+ckpool state,
-    API error count over rolling hour, spsHistory persistence depth,
-    ckpool last-share recency, ZMQ block-heard freshness, and disk space
-    on the data volume.
+  • Card chrome refinement — every card now sits in a faint ambient
+    amber glow at its bottom edge, reading as physical hardware
+    on a soft light source rather than a flat outline.
 
 
-  • Pre-existing /api/health ping endpoint kept for back-compat with
-    external monitoring.
+  • Living status dots — worker row health indicators now layer a
+    breathing inner core with an outward-pinging ring (green =
+    healthy/full animation, amber = warm/breath only, red =
+    offline/static dead-dot).
 
 
-  • Error-tracking middleware records the last 10 unhandled errors with
-    timestamp + request path for the diagnostic modal.
+  • Gradient section headers — every "▸ The Crew", "▸ Firepower",
+    etc. now has a fading amber underline that runs full-strength
+    on the left and trails to nothing on the right, replacing the
+    flat 1px gray default border.
 
 
-  • New state.shares.lastShareAt timestamp for reliable ckpool liveness —
-    updates on every accepted share, the single most useful health signal.
+  POOL ALIGNMENT + LIVE TELEMETRY (1.9.x)
 
 
-  ---
+  • Real pool-alignment verification — SoloStrike now connects to
+    each miner's local API (cgminer-JSON for LuxOS / BraiinsOS /
+    Vnish / Whatsminer / Avalon, and ESP-Miner HTTP for BitAxe /
+    NerdQaxe family) every 60 seconds and reads the active pool
+    config. Worker rows show "✓ ALIGNED WITH SOLOSTRIKE" or
+    "✗ NOT ON SOLOSTRIKE" with a clear diagnostic. Defaults on,
+    read-only (never sends write commands), no UI toggle needed
+    — disable with "minerPolling": false in config.json.
 
 
-  v1.8.0 — The Hunt release.
+  • Live telemetry pulled from the same poll cycle: per-worker
+    chip temperature (color-coded green/cyan/amber/red by tier),
+    fan speeds, voltage, and hardware error counter.
 
 
-  RENAMED & REDESIGNED
+  • Hot-miner banner appears at the top of the dashboard when any
+    miner crosses 80°C, with a one-tap link to the offending
+    worker's detail modal.
 
 
-  • The Vein → "The Hunt" — Bitcoin-native rebrand with a brand-new
-    NONCE FIELD visualization replacing the gold-quartz SVG. A 32x6 grid
-    of dim points represents the 2^32 nonce space your fleet is
-    searching; cells flicker amber as you hash, a vertical scan line
-    sweeps L-R representing nonce iteration, and bright strike flashes
-    mark "winner" cells.
+  • Avalon Nano 3S support — handles their unusual "MM ID" string
+    format and three-parallel-TCP connection requirement (their
+    firmware drops everything after the first cgminer command).
 
 
-  • The Goldfields → "The Ledger"
+  STABILITY (1.8.5 → 1.9.7)
 
 
-  • Gold Strikes → "Solo Strikes"
+  • Fixed a blank-modal crash when opening worker details (React 18
+    silent unmount on render error — style consts now hoisted to
+    module scope).
 
 
-  • Block-found alert: "STRIKE!" → "BLOCK STRUCK!"
+  • Fixed a false-positive "WRONG POOL" warning on Avalon firmware
+    that redacts the user field (now reads as "unverifiable" rather
+    than misaligned).
 
 
-  NEW CARDS & VISUALIZATIONS
-
-
-  • STRIKE VELOCITY — share submission rate as a vertical-bar histogram.
-    Each bar = 1 minute; color-coded green (normal), amber (anomalous),
-    red (zero — full downtime). 1H / 6H / 24H range buttons.
-
-
-  • HASHRATE AVERAGES strip below the Firepower chart — seven rolling
-    windows (1M / 5M / 15M / 1H / 6H / 24H / 7D) shown as horizontal
-    bars. Each label is also a chart-range button.
-
-
-  REAL DATA REPLACING ESTIMATES
-
-
-  • Real shares-per-minute on Share Stats from ckpool's sps1m field.
-
-  • Reject Rate top-line tile + Lifetime Shares counter on Share Stats.
-
-  • Block weight + transaction count on the latest block.
-
-  • Bitcoin Core subversion string on the Bitcoin Node card.
-
-  • Pool Uptime + Started date tiles on the Stratum card.
-
-  • Last epoch comparison on the Difficulty Retarget card.
-
-  • Per-block odds now display as "1 in 10.4M" instead of "7.7e-6%".
-
-
-  DIAGNOSTICS MODAL — 4 NEW LINES
-
-
-  • Avg Share Difficulty (acceptedDiff / count)
-
-  • Last Share (pool-level), color-coded by recency
-
-  • Implied Hashrate from share submissions, with ✓/⚠ vs live hashrate
-
-  • Session Started timestamp + duration
-
-
-  POLISH
-
-
-  • Stratum card padding tightened — now fits one screen on iPhone.
-
-  • Worker filter search bar removed from The Crew (overkill for solo).
-
-  • 100% SOLO stamp no longer clipped at card bottom.
-
-  • Pulse canvas fills its full 160px container.
-
-
-  BUG FIXES
-
-
-  • The Hunt "Fees" no longer always shows +0.0000.
-
-  • Worker rejected counter properly decreases when ckpool reports 0.
-
-  • parseHashrate is case-insensitive now (defensive).
-
-  • CSV exports use proper RFC-4180 quoting.
-
-  • state.blockReward init shape aligned with writer.
+  • Section titles now read as their own status (e.g. the section
+    is literally titled "✓ ALIGNED WITH SOLOSTRIKE" in green).
 
 
   Full version history available at:
