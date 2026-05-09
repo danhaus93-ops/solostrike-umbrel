@@ -570,20 +570,30 @@ See `.github/workflows/build.yml` for the exact CI pipeline.
 - ✅ Strike Velocity histogram
 - ✅ Hashrate Averages strip (7 rolling windows)
 - ✅ Bitcoin-native vocabulary throughout
-- ✅ Real shares-per-minute from ckpool’s `sps1m` field
+- ✅ Real shares-per-minute from ckpool's `sps1m` field
 - ✅ Reject Rate + Lifetime Shares tiles
 
-**v1.9.x — Smart alerts**
+**v1.9.x — Pool alignment + live telemetry** ✅ shipped
 
-- Worker offline → push notification (via webhook bridge)
-- Hashrate threshold alerts (drop below X TH/s)
-- Pool acceptance-rate alerts
+- ✅ Per-worker pool-alignment verification via direct miner API polling
+- ✅ Live telemetry (chip temperature, fan speeds, hardware errors)
+- ✅ Two protocol adapters: cgminer-JSON (LuxOS, BraiinsOS, Whatsminer, Avalon) and ESP-Miner HTTP (BitAxe, NerdQaxe family)
+- ✅ Hot-miner banner (≥80°C) with one-tap drill-in
+- ✅ Color-coded temperature display per worker row (green/cyan/amber/red tiers)
 
-**v1.10.x — Telemetry & integration**
+**v1.10.x — Visual polish + security hardening** ✅ shipped
 
-- AxeOS temperature integration (per-worker temp on the dashboard)
-- Enhanced block celebration with audio + persistent banner
-- Direct ntfy.sh / Pushover preset webhook templates
+- ✅ Card chrome + section header refinements
+- ✅ Living status dots (breathing core + ping ring)
+- ✅ Closed unauthenticated payout-address leak via /api/state
+- ✅ Webhook SSRF protection with opt-in toggle for LAN URLs
+- ✅ Helmet security headers (Umbrel-safe configuration)
+
+**v1.11.x — Galaxy topology** (deferred until Pulse adoption grows)
+
+- Galactic-spiral visualization for the Pulse peer network
+- Tap-to-zoom on individual peers
+- Clean up at scale (10s of peers and beyond)
 
 **v2.0.0 — App Store submission**
 

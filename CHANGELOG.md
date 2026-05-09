@@ -11,13 +11,185 @@ tracked and is omitted here intentionally. The full commit history is
 available at
 [github.com/danhaus93-ops/solostrike-umbrel/commits/main](https://github.com/danhaus93-ops/solostrike-umbrel/commits/main).
 
-## [Unreleased](https://github.com/danhaus93-ops/solostrike-umbrel/compare/v1.5.2...HEAD)
+## [Unreleased](https://github.com/danhaus93-ops/solostrike-umbrel/compare/v1.10.1...HEAD)
 
 ### Planned
 
-- **v1.9.x** — Smart alerts (worker-offline push notifications)
-- **v1.10.x** — AxeOS temperature integration
+- **v1.11.x** — Galaxy topology visualization for Pulse network (when peer count grows)
 - **v2.0.0** — DATUM protocol, Stratum V2 translator, official Umbrel App Store submission
+
+-----
+
+## [1.10.1](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.10.1) — 2026-05-08
+
+Security release. Closes a data-leak in the public state endpoint, adds
+SSRF protection on webhooks, and adds defense-in-depth response headers.
+No user-visible UI changes; existing webhooks continue working unchanged.
+
+### Security
+
+- **Payout address no longer leaks via `/api/state`**. The public state
+  endpoint (whitelisted in Umbrel's app_proxy for unauthenticated read
+  access) was returning the user's Bitcoin payout address through a
+  rest-spread in `transformState`. Now explicitly stripped. The address
+  travels only over the authenticated `/api/config` endpoint and the
+  auth-gated WebSocket. UI fetches both on mount; behavior unchanged.
+
+- **Webhooks gain SSRF protection**. The webhook add handler now blocks
+  URLs targeting private/loopback/link-local IP ranges and `.local`
+  hostnames by default. Users with self-hosted services on their LAN
+  (Home Assistant, internal ntfy.sh) can opt in per-webhook via a new
+  "Allow internal/LAN URL" toggle in the form. Existing webhooks in
+  `webhooks.json` continue firing unchanged.
+
+- **Helmet middleware added** with Umbrel-safe configuration. Adds
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+  `X-Permitted-Cross-Domain-Policies: none`, and others. Explicitly
+  disables `frameguard` (Umbrel iframes the app), `contentSecurityPolicy`
+  (inline styles everywhere), `crossOriginEmbedderPolicy` (WebGL CDN
+  textures), and `hsts` (UI is HTTP-only via app_proxy; HSTS would lock
+  browsers into HTTPS-only if Umbrel ever flips on TLS).
+
+-----
+
+## [1.10.0](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.10.0) — 2026-05-08
+
+Visual polish pass. Three CSS-only refinements + one component change.
+~150 lines of CSS, zero new JS dependencies, zero functional changes.
+
+### Added
+
+- **Card chrome refinement** — every card now has a faint ambient amber
+  glow at its bottom edge via `.ss-card-chrome` class. Reads as physical
+  hardware sitting on a soft light source.
+
+- **Living status dots** — `.ss-status-dot-{green|amber|red}` replaces
+  the static health dots in worker rows. Green: layered breathing core
+  (1 → 0.92 → 1 over 2.5s) + outward-pinging ring. Amber: breath only,
+  no ping (less alarming). Red: static dead-dot (truly disconnected).
+
+- **Gradient section headers** — every `cardTitle` and `secTitle` now
+  has a fading amber-to-transparent underline drawn via background-image
+  instead of a flat 1px gray border. Auto-applies to ~20 section titles
+  site-wide.
+
+### Fixed
+
+- **CSS class collision with carousel page-indicator dots**. The new
+  `.ss-dot` was originally renamed to `.ss-status-dot` mid-iteration
+  to avoid clashing with the existing carousel `.ss-dot` (used for the
+  page-position indicators below the card stack). Carousel dots remain
+  amber as designed.
+
+-----
+
+## [1.9.7](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.9.7) — 2026-05-08
+
+Worker row layout refinement. Temperature now displays as its own third
+line in the right column of each worker row (below hashrate and best
+share), color-coded by tier:
+
+- **<70°C** green
+- **70–75°C** cyan
+- **75–80°C** amber
+- **≥80°C** red 🔥
+
+Hides cleanly when no live polling data is available for that worker.
+
+-----
+
+## [1.9.4](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.9.4) — 2026-05-08
+
+Avalon Nano 3S firmware compatibility. The Nano 3S firmware drops
+everything after the first cgminer command on a single TCP connection,
+which was causing pool/summary/stats to come back partial. Switched to
+three parallel TCP connections (one per command) and added a parser for
+their unusual "MM ID" string format (extracts Temp, TMax, Fan, FanR,
+GHSmm, Ver, ELAPSED).
+
+-----
+
+## [1.9.3](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.9.3) — 2026-05-08
+
+Pool Alignment section title now reads as the status itself:
+
+- **✓ ALIGNED WITH SOLOSTRIKE** (green)
+- **✗ NOT ON SOLOSTRIKE** (red)
+- **? CAN'T VERIFY POOL** (amber, for firmware that redacts user field)
+
+Removes the redundant small status pill that previously sat next to a
+generic "Pool Alignment" heading.
+
+-----
+
+## [1.9.2](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.9.2) — 2026-05-07
+
+Avalon Nano 3S false-positive fix. Some Avalon firmware redacts the user
+field in the cgminer pools response. Previously this was rendering as
+"WRONG POOL" (red). Now correctly shown as "unverifiable" (amber) with
+case-insensitive comparison and trimmed whitespace. Empty pools array
+on a miner is treated as "unknown" rather than misaligned.
+
+-----
+
+## [1.9.1](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.9.1) — 2026-05-07
+
+Hotfix for blank worker-detail modal. The new `LiveStatsBlock` and
+`PoolAlignmentBlock` referenced style consts (`section`, `secTitle`,
+`kvRow`, `kvLabel`, `kvVal`) that lived inside `ShareStatsModal`'s
+function scope. When React 18 tried to render the new modal sub-components
+they threw `ReferenceError`, and React 18 silently unmounts the entire
+tree on render errors (no `window.onerror`, no console output, just a
+blank screen). Style consts now hoisted to module scope where any
+sub-component can reach them.
+
+-----
+
+## [1.9.0](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.9.0) — 2026-05-07
+
+Pool alignment + live telemetry. SoloStrike now connects to each miner's
+local API every 60s to verify pool config and pull live data.
+
+### Added
+
+- **Pool alignment verification** for every worker. Two adapters cover
+  the practical fleet: cgminer-JSON (TCP 4028) for LuxOS, BraiinsOS,
+  Vnish, Whatsminer, Avalon Nano 3S, Avalon Q, Innosilicon, Goldshell,
+  iPollo, and Bitmain stock; ESP-Miner HTTP (port 80) for BitAxe,
+  NerdQaxe, NerdQaxe++, NerdMiner, Lucky, and PiAxe. Default-on,
+  read-only (never sends write commands), no UI toggle. Power users
+  can disable with `"minerPolling": false` in `config.json`.
+
+- **Live telemetry** pulled from the same poll cycle: chip temperature,
+  fan speeds, voltage, hardware error counter. Cached per-worker with
+  5s timeout, persisted to `miner-records.json`.
+
+- **`PoolAlignmentBlock`** + **`LiveStatsBlock`** in worker detail modal.
+
+- **Pool alignment badges** in worker rows on main view.
+
+- **`HotMinerBanner`** at the top of the dashboard when any worker
+  exceeds 80°C, with a one-tap link to that worker's detail modal.
+
+### Changed
+
+- Worker rows show alignment status next to worker name with green
+  check, red X, or amber question mark.
+
+-----
+
+## [1.8.x] — 2026-04-29 to 2026-05-06
+
+Minor patch series between 1.8.0 (The Hunt) and 1.9.0. Highlights:
+
+- WebGL background canvas refinements (rev55–rev70+): metallic-gold
+  hashrate gradient, animated-bg layer behind `#root`, splash sequence
+  retiming so the pickaxe-impact pose is visible before unmount.
+- Carousel page-indicator dots gain proper hit-targets (~35×32 effective
+  even though visually 7×7) and a fade-out-on-idle behavior.
+- iframe-only top-of-app spacing fix for Umbrel webview.
+- Footer-version cosmetic, persist file write hardening, minor copy
+  changes throughout the dashboard.
 
 -----
 
