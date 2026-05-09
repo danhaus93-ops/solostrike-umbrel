@@ -191,9 +191,9 @@ Most miners need a raw IP, not `umbrel.local`.
 Example for a BitAxe (AxeOS):
 
 ```
-Stratum URL:  192.168.50.228
+Stratum URL:  192.168.1.42
 Stratum Port: 3334
-Stratum User: bc1q6k0j7w77xftasgwx7v5nra06rs3v5txk60wgsk.bitaxe1
+Stratum User: bc1qexampleyouraddressherereplacewithyourown.bitaxe1
 Password:     x
 ```
 
@@ -629,14 +629,6 @@ SoloStrike provides the infrastructure. The lottery ticket is yours.
 -----
 
 <div align="center">
-
-## ⚡ Support Development
-
-If SoloStrike helps you solo mine, a tip keeps the dev caffeine flowing:
-
-**`bc1q6k0j7w77xftasgwx7v5nra06rs3v5txk60wgsk`**
-
-*Lightning address coming soon ⚡*
 
 **<img src="danhaus93-solostrike/ui/public/pickaxe-icon.png" width="20" alt="⛏" align="middle"> Solo mine responsibly. Keep your keys. Stack your sats. 💎**
 
