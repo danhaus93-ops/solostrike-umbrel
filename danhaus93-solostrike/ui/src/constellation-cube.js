@@ -766,18 +766,23 @@ export function createConstellationCube(canvas, opts = {}) {
         // weight of a rotating cube primitive. Sphere radius matches the
         // old Striker Constellation dot (≈1.6px at base scale × 1.4 to
         // give it a touch more presence vs the flat dot).
+        // v1.11.0-final: idle sphere palette switched from cool blue
+        // (180,210,255 → 76,140,255 → 20,50,130) to BRIGHT AMBER
+        // (255,220,140 → 240,175,60 → 120,75,15) so the warm color story
+        // is unified end-to-end. The flash white-hot still pops because
+        // amber → near-white is a strong luminance jump.
         const dotSize = (strikerCubeBase * 1.4) * Math.sqrt(item.scale || 1);
 
         if (flashing) {
           const fade = (strikerFlashUntil[item.idx] - t) / FLASH_DUR;
           const ease = fade * fade * fade;
-          // Hot halo (white-amber decay)
+          // Hot warm-amber halo (replaces earlier white-amber)
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
           const haloR = 7 + ease * 9;
           const g = ctx.createRadialGradient(item.x, item.y, 0, item.x, item.y, haloR);
-          g.addColorStop(0, `rgba(255,240,180,${ease * 0.5 + 0.2})`);
-          g.addColorStop(1, 'rgba(255,240,180,0)');
+          g.addColorStop(0, `rgba(255,200,120,${ease * 0.55 + 0.2})`);
+          g.addColorStop(1, 'rgba(255,200,120,0)');
           ctx.fillStyle = g;
           ctx.beginPath();
           ctx.arc(item.x, item.y, haloR, 0, Math.PI * 2);
@@ -789,7 +794,7 @@ export function createConstellationCube(canvas, opts = {}) {
             item.x - r * 0.4, item.y - r * 0.4, 0,
             item.x, item.y, r * 1.2
           );
-          sg.addColorStop(0,   'rgba(255,255,255,1)');
+          sg.addColorStop(0,   'rgba(255,255,240,1)');
           sg.addColorStop(0.4, 'rgba(255,235,170,1)');
           sg.addColorStop(1,   'rgba(200,120, 30,1)');
           ctx.fillStyle = sg;
@@ -797,18 +802,20 @@ export function createConstellationCube(canvas, opts = {}) {
           ctx.arc(item.x, item.y, r, 0, Math.PI * 2);
           ctx.fill();
         } else {
-          // Idle blue lit-sphere (highlight upper-left → striker-blue
-          // mid → deep-navy edge). No rotation — light always falls from
-          // upper-left so all sphere shading reads consistent regardless
-          // of cube rotation.
+          // Idle bright-amber lit-sphere. Highlight upper-left
+          // (255,220,140) → bright amber mid (240,175,60) → deep amber
+          // edge (120,75,15). Light direction is fixed (upper-left) which
+          // is fine — the sphere is small enough that the directional
+          // shading reads as "lit pearl" rather than competing with the
+          // cube's rotation.
           const r = dotSize;
           const sg = ctx.createRadialGradient(
             item.x - r * 0.4, item.y - r * 0.4, 0,
             item.x, item.y, r * 1.2
           );
-          sg.addColorStop(0,   'rgba(180,210,255,1)');
-          sg.addColorStop(0.4, 'rgba( 76,140,255,1)');
-          sg.addColorStop(1,   'rgba( 20, 50,130,1)');
+          sg.addColorStop(0,   'rgba(255,220,140,1)');
+          sg.addColorStop(0.4, 'rgba(240,175, 60,1)');
+          sg.addColorStop(1,   'rgba(120, 75, 15,1)');
           ctx.fillStyle = sg;
           ctx.beginPath();
           ctx.arc(item.x, item.y, r, 0, Math.PI * 2);
@@ -849,7 +856,12 @@ export function createConstellationCube(canvas, opts = {}) {
     }
     ctx.restore();
 
-    // ─── Energy packets (cyan striker → peer travelers) ────────────────
+    // ─── Energy packets (white-hot warm striker → peer travelers) ──────
+    // v1.11.0-final: was cyan (#00ffd1), now matches the share-flash colors
+    // for a unified warm palette. Core is near-white (#FFFFF0), halo is
+    // warm amber (#FFC878). Reads as "the hot energy from the flash is
+    // physically traveling back to the peer" rather than a separate cyan
+    // signal. Whole color story is now warm — no cool accents remain.
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i = energyPackets.length - 1; i >= 0; i--) {
@@ -861,17 +873,17 @@ export function createConstellationCube(canvas, opts = {}) {
       if (!wkr || !peerProj) { energyPackets.splice(i, 1); continue; }
       const x = wkr.x + (peerProj.x - wkr.x) * age;
       const y = wkr.y + (peerProj.y - wkr.y) * age;
-      const haloR = 7;
+      const haloR = 8;
       const g = ctx.createRadialGradient(x, y, 0, x, y, haloR);
-      g.addColorStop(0, 'rgba(0,255,209,0.65)');
-      g.addColorStop(1, 'rgba(0,255,209,0)');
+      g.addColorStop(0, 'rgba(255,200,120,0.65)');
+      g.addColorStop(1, 'rgba(255,200,120,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(x, y, haloR, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillStyle = 'rgba(255,255,240,0.98)';
       ctx.beginPath();
-      ctx.arc(x, y, 2.0, 0, Math.PI * 2);
+      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -896,15 +908,21 @@ export function createConstellationCube(canvas, opts = {}) {
 
     // When zoomed out, drag rotates the cube; when zoomed in (>1.5×),
     // drag pans the camera so user can navigate the dense block.
+    // v1.11.0-final: camera-style sign convention to match the old
+    // Striker Constellation (constellation-2d.js rev71g). Drag right →
+    // camera looks right → scene appears to swing LEFT (opposite of
+    // finger). Earlier grab-style (panX += dx, userRotY += dx) felt
+    // inverted because it conflicted with the rest of the app's gesture
+    // language. All four signs flipped to subtraction.
     addRotation(dxPx, dyPx) {
       const dx = dxPx || 0;
       const dy = dyPx || 0;
       if (zoom > 1.5) {
-        panX += dx;
-        panY += dy;
+        panX -= dx;
+        panY -= dy;
       } else {
-        userRotY += dx * 0.01;
-        userRotX += dy * 0.01;
+        userRotY -= dx * 0.01;
+        userRotX -= dy * 0.01;
       }
     },
     multiplyZoom(factor) {
