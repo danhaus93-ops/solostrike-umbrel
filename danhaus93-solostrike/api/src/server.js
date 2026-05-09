@@ -92,7 +92,7 @@ const state = {
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
   // open Umbrel for the update.
-  composeVersion: '1.8.4',
+  composeVersion: '1.11.0',
   // Update urgency — drives banner styling. 'normal' (amber), 'recommended' (cyan),
   // 'critical' (red). Set per release.
   urgency: 'normal',
