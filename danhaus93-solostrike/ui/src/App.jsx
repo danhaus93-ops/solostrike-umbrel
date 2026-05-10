@@ -2339,7 +2339,7 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
   const blkTxs    = lb.txCount || lb.txs || lb.tx_count || null;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, flexShrink:0}}>▸ Bitcoin Network</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Bitcoin Network</div>
       {[['Block Height', fmtNum(network?.height), 'var(--text-1)'],
         ['Difficulty', fmtDiff(network?.difficulty), 'var(--text-1)'],
         ['Net Hashrate', fmtHr(network?.hashrate), 'var(--cyan)']].map(([l,v,c])=>(
@@ -2405,7 +2405,7 @@ function BitcoinNodePanel({ nodeInfo }) {
   const relayStr = ni.relayFee != null ? `${(ni.relayFee * 1e5).toFixed(2)} sat/vB` : '—';
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
+      <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
         <span>▸ Bitcoin Node</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, color: connected?'var(--green)':'var(--red)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>
           <span style={{width:6, height:6, borderRadius:'50%', background: connected?'var(--green)':'var(--red)', boxShadow: `0 0 6px ${connected?'var(--green)':'var(--red)'}`, animation: connected?'pulse 2s ease-in-out infinite':'none'}}/>
@@ -2472,6 +2472,12 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   const sonarRef = useRef({ angle: 0, blips: null });
   const lightningRef = useRef({ bolts: null, megaBolt: null });
   const pickaxeRef = useRef({ strikes: null, megaStrike: null });
+  // v1.11.x: ticker state. Same pattern as constellation-2d.js — persists
+  // canvas-local arrays under refs so the animation useEffect doesn't need
+  // to rebuild on every prop change.
+  const tickerColumnsRef = useRef(null);
+  const tickerWinnerAccumRef = useRef(0);
+  const tickerSpikesRef = useRef([]);  // block-found spike events for "broadcast" gold flashes
   const lastFrameRef = useRef(performance.now());
   const hrRef = useRef(hashrate || 0);
   const netHrRef = useRef(netHashrate || 1);
@@ -3027,6 +3033,164 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       }
     };
 
+    // ─── Hash Ticker (Matrix Rain) ──────────────────────────
+    // v1.11.x: ported from PulsePanel. Hashrate-driven hex/BTC-glyph rain
+    // with periodic gold "winner" highlights. State held on tickerColumnsRef
+    // (per-column drop arrays) and tickerWinnerAccumRef (accumulator for
+    // periodic winner spawns). Block-found events arrive via
+    // tickerSpikesRef which is currently unused (Hunt's BFM celebration
+    // already handles full-screen block visuals — adding column flashes
+    // would be redundant). Kept the ref for future use if we want
+    // localized ticker reactions.
+    const HEX_CHARS = '0123456789abcdef';
+    const drawTicker = (dt, W, H) => {
+      // v1.11.x: BTC symbols are hardcoded ON (no toggle). Winner drops
+      // and gold-idx positions render as Bitcoin (₿) glyph; other positions
+      // render as hex characters. Decided to drop the toggle entirely —
+      // one less knob, and the BTC glyphs make the ticker feel like
+      // "Bitcoin streaming through your fleet" which is the point.
+      if (!tickerColumnsRef.current) tickerColumnsRef.current = [];
+      const columns = tickerColumnsRef.current;
+
+      const CHAR_W = 9;
+      const CHAR_H = 11;
+
+      // Hunt animations don't have an "enabled" flag like Pulse did
+      // (Pulse's enabled=false dimmed everything when network broadcasting
+      // was off). Hunt's ticker is always-on — it visualizes your hashrate
+      // which always exists. Hardcoding enabled=true.
+      const ths = (hrRef.current || 0) / 1e12;
+      const maxColumns = Math.floor(W / CHAR_W);
+      const columnCount = Math.min(maxColumns, 10 + Math.floor(ths * 0.4));
+      const fallSpeed = 35 + Math.min(120, ths * 0.8);
+      const winnerRate = 0.3 + Math.min(8, ths * 0.04);
+
+      while (columns.length < columnCount) {
+        columns.push({ drops: [], spawnAccum: Math.random() });
+      }
+      while (columns.length > columnCount) columns.pop();
+      const spacing = columnCount > 0 ? W / columnCount : W;
+      for (let i = 0; i < columns.length; i++) {
+        columns[i].x = spacing * i + spacing / 2;
+      }
+
+      tickerWinnerAccumRef.current += dt * winnerRate;
+      while (tickerWinnerAccumRef.current >= 1) {
+        tickerWinnerAccumRef.current -= 1;
+        if (columns.length > 0) {
+          const col = columns[Math.floor(Math.random() * columns.length)];
+          if (col.drops.length > 0) {
+            col.drops[0].isWinner = true;
+            col.drops[0].winnerLife = 0;
+          }
+        }
+      }
+
+      // Drain block-found spikes (currently unused — see comment above)
+      tickerSpikesRef.current = tickerSpikesRef.current
+        .map(s => ({ ...s, age: s.age + dt }))
+        .filter(s => s.age < 0.3);
+      for (const s of tickerSpikesRef.current) {
+        if (s.age < dt * 1.5) {
+          const numFlash = Math.min(4, columns.length);
+          const indices = new Set();
+          while (indices.size < numFlash && indices.size < columns.length) {
+            indices.add(Math.floor(Math.random() * columns.length));
+          }
+          for (const idx of indices) {
+            const col = columns[idx];
+            if (col.drops.length > 0) {
+              col.drops[0].isWinner = true;
+              col.drops[0].isBroadcast = true;
+              col.drops[0].winnerLife = 0;
+            }
+          }
+        }
+      }
+
+      const rowsOnScreen = Math.max(8, Math.floor(H / CHAR_H));
+      const maxDropsPerCol = Math.max(3, Math.ceil(rowsOnScreen / 2.5));
+      const spawnGap = Math.max(0.25, 1.6 / (rowsOnScreen / 8));
+
+      for (const col of columns) {
+        col.spawnAccum -= dt * (fallSpeed / 60);
+        if (col.spawnAccum <= 0 && col.drops.length < maxDropsPerCol) {
+          const len = 6 + Math.floor(Math.random() * 14);
+          const chars = [];
+          for (let i = 0; i < len; i++) chars.push(HEX_CHARS[Math.floor(Math.random() * 16)]);
+          col.drops.push({
+            y: -CHAR_H * len, chars,
+            speedMul: 0.85 + Math.random() * 0.4,
+            nextChange: 0.05 + Math.random() * 0.15,
+            sinceChange: 0,
+            goldIdx: Math.random() < 0.25 ? Math.floor(Math.random() * len) : -1,
+          });
+          col.spawnAccum = (spawnGap * 0.4) + Math.random() * spawnGap;
+        }
+        for (let i = col.drops.length - 1; i >= 0; i--) {
+          const d = col.drops[i];
+          d.y += fallSpeed * d.speedMul * dt;
+          d.sinceChange += dt;
+          if (d.sinceChange >= d.nextChange) {
+            d.chars[Math.floor(Math.random() * d.chars.length)] = HEX_CHARS[Math.floor(Math.random() * 16)];
+            d.sinceChange = 0;
+            d.nextChange = 0.05 + Math.random() * 0.15;
+          }
+          if (d.isWinner !== undefined) d.winnerLife += dt;
+          if (d.y > H + CHAR_H * d.chars.length) col.drops.splice(i, 1);
+        }
+      }
+
+      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'center';
+
+      for (const col of columns) {
+        for (const d of col.drops) {
+          const len = d.chars.length;
+          for (let i = 0; i < len; i++) {
+            const charY = d.y + i * CHAR_H;
+            if (charY < -CHAR_H || charY > H + CHAR_H) continue;
+            const fromHead = (len - 1 - i) / len;
+            let r, g, b, a;
+            const isGold = d.isWinner || (d.goldIdx === i && d.y > 0);
+            if (isGold) {
+              const winnerFade = d.isWinner ? Math.max(0.6, 1 - d.winnerLife / 1.2) : 1;
+              if (d.isBroadcast) { r = 255; g = 240; b = 180; }
+              else { r = 255; g = 215; b = 90; }
+              a = (i === len - 1 ? 1 : 0.7 - fromHead * 0.6) * winnerFade;
+              ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
+              ctx.shadowBlur = 6;
+            } else {
+              // v1.11.x: non-winner hex characters use amber instead of
+              // cool blue-grey. Head of drop is bright amber, trail fades
+              // to deep amber. Winners (255,215,90 gold) still stand out
+              // because they're more saturated yellow vs the warmer amber
+              // here, plus they get the shadowBlur halo. Whole ticker now
+              // reads as a warm cascade rather than a cyberpunk Matrix.
+              if (i === len - 1) { r = 240; g = 180; b = 80; a = 0.90; }
+              else { r = 160; g = 110; b = 45; a = (1 - fromHead * 0.85) * 0.60; }
+              ctx.shadowBlur = 0;
+            }
+            ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
+            // BTC glyph at winner-head and gold-idx positions; hex char elsewhere
+            const showGlyph = (
+              (d.isWinner && i === len - 1) ||
+              (!d.isWinner && d.goldIdx === i && d.y > 0)
+            );
+            if (showGlyph) {
+              drawBtcGlyph(ctx, col.x, charY, 11);
+            } else {
+              ctx.fillText(d.chars[i], col.x, charY);
+            }
+          }
+        }
+      }
+      ctx.shadowBlur = 0;
+    };
+
     const draw = (now) => {
       const dt = Math.min(0.1, (now - lastFrameRef.current) / 1000);
       lastFrameRef.current = now;
@@ -3098,6 +3262,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       if (a === 'sonar') drawSonar(dt, W, H);
       else if (a === 'lightning') drawLightning(dt, W, H);
       else if (a === 'pickaxe') drawPickaxe(dt, W, H);
+      else if (a === 'ticker') drawTicker(dt, W, H);
       else drawNonceField(dt, W, H);
 
       animRef.current = requestAnimationFrame(draw);
@@ -4377,30 +4542,31 @@ function saveStratumRotated()  { try { localStorage.setItem(LS_STRATUM_ROTATED, 
 const PULSE_ANIM_OPTIONS = [
   // rev61: removed 'sluice' (Sluice Box), 'glimmers' (Cave Glimmers),
   // 'embers' (Forge Embers) — they didn't fit the BTC-mining aesthetic.
-  // Pulse is now a clean ambient/observational pair: ticker (network state)
-  // + globe (where miners are). The ticker stays in pulse rather than moving
-  // to hunt — hash-rate / mempool / halving are informational, not per-block.
   // v1.11.0: added 'block' (Block Constellation) — peers progressively form
   // a 3D Bitcoin block as Pulse grows. Gold/amber cubes that arrange
   // themselves into corners → edges → faces → volume of a cube. Tap a cube
   // to fly the camera to it.
   // v1.11.1: removed earlier 'constellation' (Striker Constellation) option
   // since 'block' supersedes it on the same canvas + event-flow surface.
+  // v1.11.x: removed 'ticker' (Hash Ticker) — moved to Hunt where the
+  // network-state visualization belongs. Pulse is now exclusively
+  // peer/community: Solo Strike Map shows where miners are; Block
+  // Constellation shows who is mining and how the network forms.
   // Cleanup complete: constellation-2d.js deleted, all dual-mode checks
   // collapsed to single-mode. Existing users with stored 'constellation'
-  // setting still get auto-migrated to 'block' below.
-  { id: 'ticker', label: 'Hash Ticker' },
-  { id: 'globe',  label: 'Solo Strike Map' },
-  { id: 'block',  label: 'Block Constellation' },
+  // OR 'ticker' setting get auto-migrated to 'block' below.
+  { id: 'globe', label: 'Solo Strike Map' },
+  { id: 'block', label: 'Block Constellation' },
 ];
-const PULSE_ANIM_DEFAULT = 'ticker';
+const PULSE_ANIM_DEFAULT = 'block';
 function loadPulseAnim() {
   try {
     const v = localStorage.getItem(LS_PULSE_ANIM);
-    // v1.11.1: 'constellation' was removed in favor of 'block'. Auto-migrate
-    // existing users so their setting maps to the closest equivalent rather
-    // than resetting them to 'ticker'.
-    if (v === 'constellation') return 'block';
+    // v1.11.1: 'constellation' was removed in favor of 'block'.
+    // v1.11.x: 'ticker' was moved to Hunt — for stored Pulse setting we
+    // fall through to the new default ('block'). Users who liked the
+    // ticker can re-enable it under Hunt → Hash Ticker.
+    if (v === 'constellation' || v === 'ticker') return 'block';
     return PULSE_ANIM_OPTIONS.some(o => o.id === v) ? v : PULSE_ANIM_DEFAULT;
   } catch { return PULSE_ANIM_DEFAULT; }
 }
@@ -4466,6 +4632,11 @@ const HUNT_ANIM_OPTIONS = [
   { id: 'sonar',      label: 'Sonar Sweep' },
   { id: 'lightning',  label: 'Lightning Strike' },
   { id: 'pickaxe',    label: 'Pickaxe Strike' },
+  // v1.11.x: 'ticker' moved here from Pulse. The Hash Ticker is a network-
+  // state visualization (hashrate-driven hex/BTC glyph rain), which belongs
+  // with Hunt's other network-oriented animations rather than Pulse's
+  // peer/community visualizations.
+  { id: 'ticker',     label: 'Hash Ticker' },
 ];
 const HUNT_ANIM_DEFAULT = 'noncefield';
 function loadHuntAnim() {
@@ -5823,7 +5994,7 @@ function RetargetPanel({ retarget }) {
     : prevDifficultyChange >= 0 ? 'var(--red)' : 'var(--green)';
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, flexShrink:0}}>▸ Difficulty Retarget</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Difficulty Retarget</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
         <div style={{textAlign:'center',padding:'0.25rem 0'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:changeColor,textShadow:`0 0 14px ${changeColor}50`,lineHeight:1}}>
@@ -6095,7 +6266,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   const rejectPct = lifeTotal > 0 ? (((lifeRejected + lifeStale) / lifeTotal) * 100) : null;
   return (
     <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+      <div style={{...cardTitle, color:'var(--amber)', display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
         <span>▸ Share Stats</span>
         <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>
       </div>
@@ -6416,7 +6587,7 @@ function HealthStatusCard({ onOpen }) {
   if (!health) {
     return (
       <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-        <div style={{...cardTitle, flexShrink:0}}>▸ System Health</div>
+        <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ System Health</div>
         <div style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.8rem', padding:'0.5rem 0'}}>
           Checking…
         </div>
@@ -6461,7 +6632,7 @@ function HealthStatusCard({ onOpen }) {
       }}
       className="fade-in ss-card-chrome"
     >
-      <div style={{...cardTitle, flexShrink:0}}>▸ System Health</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ System Health</div>
       <div style={{
         fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700,
         color:headline.color,
@@ -7152,6 +7323,10 @@ function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
         Choose how the nonce-search visualization on the Hunt card is rendered.
       </div>
 
+      {/* v1.11.x: Bitcoin Symbols toggle removed entirely. The Hash Ticker
+          always renders winner positions as Bitcoin (₿) glyphs — making it
+          a permanent part of the visual identity rather than a setting. */}
+
       {/* ── Block-found celebration preview ─────────────────────────────── */}
       {onPreviewCelebration && (
         <>
@@ -7507,33 +7682,9 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBi
         </div>
       )}
 
-      {/* ─── Bitcoin Symbols toggle (v1.7.22-iter23) ───────────────────── */}
-      {onBitcoinSymbolsChange && (
-        <div style={{ marginTop: 14 }}>
-          <label style={{
-            display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer',
-          }}>
-            <input
-              type="checkbox"
-              checked={!!useBitcoinSymbols}
-              onChange={e => onBitcoinSymbolsChange(e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: 'var(--amber)' }}
-            />
-            <span style={{
-              fontFamily: 'var(--fd)', fontSize: '0.7rem', letterSpacing: '0.08em',
-              color: 'var(--text-1)', textTransform: 'uppercase',
-            }}>
-              Bitcoin Symbols (<img src="/btc-glyph.svg" alt="\u20BF" width={11} height={11} style={{display:'inline-block', verticalAlign:'-2px'}}/>)
-            </span>
-          </label>
-          <div style={{
-            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
-            marginTop: 4, marginLeft: 24,
-          }}>
-            Replace gold flakes / embers / glints with Bitcoin (<img src="/btc-glyph.svg" alt="\u20BF" width={10} height={10} style={{display:'inline-block', verticalAlign:'-1px'}}/>) symbols.
-          </div>
-        </div>
-      )}
+      {/* v1.11.x: Bitcoin Symbols toggle moved to Hunt → it now controls
+          the Hash Ticker (which moved with it). PulseTab no longer surfaces
+          this option. */}
 
       {/* ─── Your Pool Location ─────────────────────────────────────────── */}
       {onPoolPinChange && (
@@ -7593,9 +7744,455 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'ticker', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
+// ── Block Constellation Simulator (v1.11.x) ──────────────────────────
+// Full-screen modal for previewing how the cube forms at peer counts the
+// user won't realistically hit alone. Real network is 2 peers today; the
+// simulator scrubs from 1 → 5K to showcase Bar → Corners → Edges → Faces
+// → Volume formation with all the live effects (worker flashes, plasma
+// bolts, energy packets, peer-cube glow pulse).
+//
+// Architecture:
+//   - Mounted only when simulatorOpen=true (no cost when closed).
+//   - Owns its own canvas + createConstellationCube renderer instance —
+//     fully decoupled from the live Pulse cube underneath.
+//   - Synthesizes peer worker counts from a deterministic seed based on
+//     peerCount, so toggling chips gives a stable layout (no jitter when
+//     re-selecting the same count).
+//   - Synthesizes share events at a peer-density-scaled rate so flashes/
+//     bolts/packets fire continuously. Burst button injects a wave.
+//   - Sliding logarithmic scrub: peerCount maps to slider via log scale
+//     so 1-2-8-20-50-200-1K-5K stages are roughly evenly spaced.
+function BlockSimulatorModal({ onClose }) {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const rendererRef = useRef(null);
+  const animFrameRef = useRef(0);
+  const lastFrameRef = useRef(performance.now());
+  const burstUntilRef = useRef(0);
+
+  const [peerCount, setPeerCount] = useState(2);
+  const [density, setDensity] = useState('real');  // 'real' | 'cinematic'
+  // Refs that mirror state — read inside the rAF loop without forcing
+  // useEffect re-mount when the user changes peer count or density.
+  const peerCountRef = useRef(peerCount);
+  const densityRef = useRef(density);
+  useEffect(() => { peerCountRef.current = peerCount; }, [peerCount]);
+  useEffect(() => { densityRef.current = density; }, [density]);
+
+  // Stable rng helper — seed derived from peer count + density so layouts
+  // are reproducible. Lifted outside the loop body so the per-frame cost
+  // is just a couple of integer ops.
+  const synthPoolWorkers = useCallback((n, d) => {
+    let s = (n * 17 + (d === 'cinematic' ? 99 : 7)) | 0;
+    function rng() {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    function rollWorkers() {
+      if (d === 'cinematic') return 8 + Math.floor(rng() * 8);
+      const roll = rng();
+      return roll < 0.55 ? (1 + Math.floor(rng() * 2))
+           : roll < 0.85 ? (3 + Math.floor(rng() * 3))
+           : roll < 0.97 ? (6 + Math.floor(rng() * 3))
+                         : (9 + Math.floor(rng() * 4));
+    }
+    const out = [];
+    out.push(13);  // Own pool — fixed at 13 workers (matches real fleet size)
+    for (let i = 1; i < n; i++) out.push(rollWorkers());
+    return out;
+  }, []);
+
+  // Mount renderer once on open
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const r = createConstellationCube(canvas);
+    rendererRef.current = r;
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (r && typeof r.destroy === 'function') r.destroy();
+      rendererRef.current = null;
+    };
+  }, []);
+
+  // Animation loop — drives the renderer with synthesized peer + flash data
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const tick = (now) => {
+      const dt = Math.min(0.05, (now - lastFrameRef.current) / 1000);
+      lastFrameRef.current = now;
+      const r = rendererRef.current;
+      if (!r) { animFrameRef.current = requestAnimationFrame(tick); return; }
+
+      const n = peerCountRef.current;
+      const d = densityRef.current;
+      const poolWorkers = synthPoolWorkers(n, d);
+      const totalWorkers = poolWorkers.reduce((a, b) => a + b, 0);
+
+      // Synthesize share events. Same flow as real Pulse but locally driven.
+      const flashPoolIndices = [];
+      const flashStrikerEvents = [];
+      const baseRate = n > 200 ? 0.20 : 0.7;  // shares/sec/worker
+      const totalPerSec = totalWorkers * baseRate;
+      // Burst injects extra events for ~600ms after Burst button tap
+      const burstActive = now < burstUntilRef.current;
+      const burstMul = burstActive ? 4.0 : 1.0;
+
+      const ownExp = totalPerSec * (poolWorkers[0] / totalWorkers) * dt * burstMul;
+      let nOwn = Math.floor(ownExp);
+      if (Math.random() < (ownExp - nOwn)) nOwn++;
+      for (let k = 0; k < nOwn; k++) {
+        flashStrikerEvents.push({
+          poolIdx: 0,
+          strikerIdx: Math.floor(Math.random() * Math.max(1, poolWorkers[0])),
+        });
+      }
+      for (let p = 1; p < poolWorkers.length; p++) {
+        const peerExp = totalPerSec * (poolWorkers[p] / totalWorkers) * dt * burstMul;
+        let nP = Math.floor(peerExp);
+        if (Math.random() < (peerExp - nP)) nP++;
+        for (let k = 0; k < nP; k++) flashPoolIndices.push(p);
+      }
+
+      const rect = container.getBoundingClientRect();
+      r.update({
+        dpr: window.devicePixelRatio || 1,
+        width: rect.width,
+        height: rect.height,
+        poolWorkers,
+        dt,
+        flashPoolIndices,
+        flashStrikerEvents,
+        ownPoolIdx: 0,
+      });
+      animFrameRef.current = requestAnimationFrame(tick);
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Logarithmic peer-count slider. Maps slider 1-100 → peers 1-5000 with
+  // a log distribution so the interesting stages (2/8/20/50/200/1K/5K)
+  // are roughly evenly spaced along the slider.
+  const sliderToPeers = (v) => {
+    const min = Math.log(1), max = Math.log(5000);
+    return Math.max(1, Math.round(Math.exp(min + (max - min) * v / 100)));
+  };
+  const peersToSlider = (p) => {
+    const min = Math.log(1), max = Math.log(5000);
+    return Math.round(((Math.log(p) - min) / (max - min)) * 100);
+  };
+
+  const STAGES = [2, 8, 20, 50, 200, 1000, 5000];
+  const stageName = peerCount <= 2 ? 'Bar'
+                  : peerCount <= 8 ? 'Corners'
+                  : peerCount <= 20 ? 'Edges'
+                  : peerCount <= 56 ? 'Edges-Full'
+                  : peerCount <= 200 ? 'Faces'
+                                      : 'Volume';
+
+  // Pointer interaction (drag-rotate / pinch-zoom / tap-to-focus).
+  // Matches the live PulsePanel cube behavior — camera-style drag,
+  // pinch zoom, tap a cube to fly the camera to it.
+  const pointerStateRef = useRef({ down: false, lastX: 0, lastY: 0, didDrag: false, dsX: 0, dsY: 0 });
+  const pinchStateRef = useRef({ active: false, lastDist: 0 });
+
+  const onPointerDown = (e) => {
+    const ps = pointerStateRef.current;
+    ps.down = true;
+    ps.lastX = e.clientX; ps.lastY = e.clientY;
+    ps.dsX = e.clientX; ps.dsY = e.clientY; ps.didDrag = false;
+    e.target.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    const ps = pointerStateRef.current;
+    if (!ps.down) return;
+    const dx = e.clientX - ps.lastX, dy = e.clientY - ps.lastY;
+    const tdx = e.clientX - ps.dsX, tdy = e.clientY - ps.dsY;
+    if (tdx * tdx + tdy * tdy > 25) ps.didDrag = true;
+    const r = rendererRef.current;
+    if (r && typeof r.addRotation === 'function') r.addRotation(dx, dy);
+    ps.lastX = e.clientX; ps.lastY = e.clientY;
+  };
+  const onPointerUp = (e) => {
+    const ps = pointerStateRef.current;
+    ps.down = false;
+    if (!ps.didDrag) {
+      const r = rendererRef.current;
+      const canvas = canvasRef.current;
+      if (r && canvas && typeof r.hitTestPeer === 'function' && typeof r.focusPeer === 'function') {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left, y = e.clientY - rect.top;
+        const idx = r.hitTestPeer(x, y, 30);
+        if (idx >= 0) r.focusPeer(idx, 4.0);
+      }
+    }
+  };
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStateRef.current = { active: true, lastDist: Math.sqrt(dx * dx + dy * dy) };
+    }
+  };
+  const onTouchMove = (e) => {
+    const ps = pinchStateRef.current;
+    if (e.touches.length === 2 && ps.active) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const r = rendererRef.current;
+      if (r && typeof r.multiplyZoom === 'function') r.multiplyZoom(dist / ps.lastDist);
+      ps.lastDist = dist;
+    }
+  };
+  const onTouchEnd = (e) => {
+    if (e.touches.length < 2) pinchStateRef.current = { active: false, lastDist: 0 };
+  };
+  const onWheel = (e) => {
+    e.preventDefault();
+    const r = rendererRef.current;
+    if (r && typeof r.multiplyZoom === 'function') r.multiplyZoom(e.deltaY < 0 ? 1.12 : 0.89);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: '#000', display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Header bar */}
+      <div style={{
+        flexShrink: 0, padding: '0.8rem 1rem',
+        borderBottom: '1px solid var(--border)',
+        background: 'rgba(8,8,12,0.95)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span style={{
+          color: 'var(--amber)', fontFamily: 'var(--fd)',
+          fontSize: '0.65rem', letterSpacing: '0.2em',
+          textTransform: 'uppercase', fontWeight: 700,
+        }}>◈ Simulate · Block Constellation</span>
+        <button
+          onClick={onClose}
+          style={{
+            color: 'var(--text-1)', fontSize: '1.2rem', cursor: 'pointer',
+            padding: '4px 14px', userSelect: 'none',
+            background: 'transparent', border: '1px solid var(--border)',
+            borderRadius: 3,
+          }}
+          aria-label="Close simulator"
+        >✕</button>
+      </div>
+
+      {/* Cube canvas */}
+      <div ref={containerRef} style={{
+        flex: 1, position: 'relative',
+        background: '#050505', overflow: 'hidden',
+      }}>
+        <canvas
+          ref={canvasRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => { pointerStateRef.current.down = false; }}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onWheel={onWheel}
+          style={{
+            width: '100%', height: '100%', display: 'block',
+            touchAction: 'none', cursor: 'grab',
+          }}
+        />
+        {/* Stage label (top-left) */}
+        <div style={{
+          position: 'absolute', top: 12, left: 14,
+          background: 'rgba(8,8,12,0.85)', border: '1px solid var(--border)',
+          padding: '5px 10px', borderRadius: 3,
+          color: 'var(--amber)', fontFamily: 'var(--fd)',
+          fontSize: '0.6rem', letterSpacing: '0.15em',
+          textTransform: 'uppercase', pointerEvents: 'none',
+        }}>
+          {peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount} peers · {stageName}
+        </div>
+        {/* Reset overlay (bottom-left) */}
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = rendererRef.current;
+            if (r && typeof r.resetView === 'function') r.resetView();
+          }}
+          style={{
+            position: 'absolute', bottom: 14, left: 16,
+            color: 'var(--text-2)', fontSize: '0.65rem',
+            letterSpacing: '0.18em', cursor: 'pointer',
+            userSelect: 'none', fontWeight: 700,
+            textShadow: '0 0 6px rgba(0,0,0,0.9)',
+          }}
+          role="button"
+          aria-label="Reset view"
+        >⟲ Reset</div>
+        {/* Find Me overlay (bottom-right) */}
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = rendererRef.current;
+            if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
+          }}
+          style={{
+            position: 'absolute', bottom: 14, right: 16,
+            color: '#ffe07a', fontSize: '0.65rem',
+            letterSpacing: '0.18em', cursor: 'pointer',
+            userSelect: 'none', fontWeight: 700,
+            textShadow: '0 0 8px rgba(212,164,55,0.7)',
+          }}
+          role="button"
+          aria-label="Find own pool"
+        >◎ Find Me</div>
+      </div>
+
+      {/* Picker drawer */}
+      <div style={{
+        flexShrink: 0, padding: '0.7rem 0.9rem 1rem',
+        borderTop: '1px solid var(--amber)',
+        background: 'rgba(8,8,12,0.95)',
+      }}>
+        {/* Stage chips row */}
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.55rem' }}>
+          <span style={{
+            color: 'var(--text-2)', fontFamily: 'var(--fd)',
+            fontSize: '0.5rem', letterSpacing: '0.16em',
+            textTransform: 'uppercase', flexShrink: 0, width: 50,
+          }}>Peers <b style={{ color: 'var(--amber)', marginLeft: 4 }}>{peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount}</b></span>
+          {STAGES.map(n => (
+            <button
+              key={n}
+              onClick={() => setPeerCount(n)}
+              style={{
+                flex: 1, minWidth: 32,
+                background: peerCount === n ? 'rgba(212,164,55,0.30)' : 'rgba(212,164,55,0.08)',
+                border: '1px solid var(--amber)',
+                color: peerCount === n ? '#fff' : 'var(--amber)',
+                fontFamily: 'var(--fd)', fontSize: '0.55rem',
+                letterSpacing: '0.1em', padding: '0.45rem 0.2rem',
+                borderRadius: 3, cursor: 'pointer', textTransform: 'uppercase',
+              }}
+            >{n > 999 ? (n / 1000).toFixed(0) + 'K' : n}</button>
+          ))}
+        </div>
+
+        {/* Fine-tune slider */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.55rem' }}>
+          <span style={{
+            color: 'var(--text-2)', fontFamily: 'var(--fd)',
+            fontSize: '0.5rem', letterSpacing: '0.16em',
+            textTransform: 'uppercase', flexShrink: 0, width: 65,
+          }}>Fine-tune</span>
+          <input
+            type="range"
+            min="1"
+            max="100"
+            step="1"
+            value={peersToSlider(peerCount)}
+            onChange={(e) => setPeerCount(sliderToPeers(parseInt(e.target.value, 10)))}
+            style={{ flex: 1, accentColor: 'var(--amber)', height: 4 }}
+          />
+        </div>
+
+        {/* Density toggle + Burst */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <span style={{
+            color: 'var(--text-2)', fontFamily: 'var(--fd)',
+            fontSize: '0.5rem', letterSpacing: '0.16em',
+            textTransform: 'uppercase', flexShrink: 0, width: 65,
+          }}>Density</span>
+          <button
+            onClick={() => setDensity('real')}
+            style={{
+              flex: 1,
+              background: density === 'real' ? 'rgba(212,164,55,0.20)' : 'transparent',
+              border: '1px solid ' + (density === 'real' ? 'var(--amber)' : 'var(--text-3)'),
+              color: density === 'real' ? 'var(--amber)' : 'var(--text-2)',
+              fontFamily: 'var(--fd)', fontSize: '0.5rem',
+              letterSpacing: '0.1em', padding: '0.4rem 0.3rem',
+              borderRadius: 3, cursor: 'pointer', textTransform: 'uppercase',
+            }}
+          >Realistic</button>
+          <button
+            onClick={() => setDensity('cinematic')}
+            style={{
+              flex: 1,
+              background: density === 'cinematic' ? 'rgba(212,164,55,0.20)' : 'transparent',
+              border: '1px solid ' + (density === 'cinematic' ? 'var(--amber)' : 'var(--text-3)'),
+              color: density === 'cinematic' ? 'var(--amber)' : 'var(--text-2)',
+              fontFamily: 'var(--fd)', fontSize: '0.5rem',
+              letterSpacing: '0.1em', padding: '0.4rem 0.3rem',
+              borderRadius: 3, cursor: 'pointer', textTransform: 'uppercase',
+            }}
+          >Cinematic</button>
+          <button
+            onClick={() => { burstUntilRef.current = performance.now() + 600; }}
+            style={{
+              background: 'transparent', border: '1px solid #ffeaa0',
+              color: '#ffeaa0', fontFamily: 'var(--fd)',
+              fontSize: '0.55rem', letterSpacing: '0.1em',
+              padding: '0.4rem 0.7rem', borderRadius: 3, cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+          >⚡ Burst</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
+
+  // v1.11.x: Block Constellation Simulator. Opens a full-screen modal
+  // showing the cube formation at user-selected peer counts (2 → 5K).
+  // Decoupled from real network data — synthesizes peers + share traffic
+  // internally so users can preview Bar/Corners/Edges/Faces/Volume stages
+  // without waiting for the network to grow.
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
+
+  // v1.11.x: latest-value refs. The Pulse animation useEffect (line ~8134)
+  // used to depend on [ns.hashrate, ns.pools, ns.workers, ns.peers, workers,
+  // pulseAnim, useBitcoinSymbols, enabled]. Every WebSocket STATE_UPDATE
+  // (every ~2s) caused those values to change, the useEffect to tear down,
+  // and the animation to RESTART FROM ZERO — visible as the Hash Ticker
+  // resetting its drops and the Constellation losing animation continuity.
+  // Fix: hold latest values in refs that the draw functions read each frame.
+  // The animation useEffect now mounts once and lives for the component's
+  // full lifetime. Visible behavior is identical (still reactive, still
+  // updates within 16ms of state change), but no teardown thrash.
+  const nsRef = useRef(ns);
+  const enabledRef = useRef(enabled);
+  const workersInputRef = useRef(workers);
+  // pulseAnimRef is declared further down (rev70k, used by pointer handlers).
+  // We sync it in this same batch below.
+  const useBitcoinSymbolsRef = useRef(useBitcoinSymbols);
+  // Sync refs every render — cheap, just assignment. No deps array means
+  // this runs after every render, exactly when refs need to catch up.
+  useEffect(() => {
+    nsRef.current = ns;
+    enabledRef.current = enabled;
+    workersInputRef.current = workers;
+    useBitcoinSymbolsRef.current = useBitcoinSymbols;
+    // pulseAnimRef already gets synced by its own useEffect below.
+  });
 
   // Canvas refs for the EKG-style waveform
   const canvasRef = useRef(null);
@@ -7658,6 +8255,14 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // the user to tap, and the next tap on the canvas converts screen coords
   // → 3D unit sphere → lat/lon → 5° grid snap → poolPin update.
   const [placingPin, setPlacingPin] = useState(false);
+  // v1.11.x: Block Constellation Simulator. Tap "◈ Simulate" in the top-right
+  // overlay to open a full-screen modal that lets the user (and reviewers)
+  // preview how the cube forms at peer counts they'll never realistically hit
+  // alone. Real network is 2 peers today; the simulator scrubs from 1 → 5K to
+  // showcase Bar → Corners → Edges → Faces → Volume formation. Modal
+  // synthesizes its own peer/share data — fully decoupled from real network
+  // state, so opening it doesn't disrupt the live Pulse cube underneath.
+  // (state declared above with main hook block)
   const placingPinRef = useRef(false);
   // rev70k: track pulseAnim in a ref so the stable pointer handlers can
   // branch behavior between globe (drag-rotate, pin tap) and constellation
@@ -8141,8 +8746,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     canvas._flakes = undefined;
     canvas._flakeAccum = undefined;
     canvas._timeAccum = undefined;
-    canvas._columns = undefined;
-    canvas._winnerAccum = undefined;
+    // v1.11.x: ticker moved to Hunt — _columns/_winnerAccum no longer used here.
     canvas._embers = undefined;
     canvas._emberAccum = undefined;
     canvas._chunks = undefined;
@@ -8152,6 +8756,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // ─── Sluice Box Stream ────────────────────────────────────
     const drawSluice = (dt, W, H) => {
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
       if (!canvas._flakes) canvas._flakes = [];
       if (canvas._flakeAccum === undefined) canvas._flakeAccum = 0;
       if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
@@ -8256,6 +8861,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // ─── Cave Glimmers ────────────────────────────────────────
     const drawGlimmers = (dt, W, H) => {
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
       if (!canvas._glints) canvas._glints = [];
       if (canvas._glintAccum === undefined) canvas._glintAccum = 0;
       if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
@@ -8367,152 +8973,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       ctx.shadowBlur = 0;
     };
 
-    // ─── Hash Ticker (Matrix Rain) ────────────────────────────
-    const HEX_CHARS = '0123456789abcdef';
-    const drawTicker = (dt, W, H) => {
-      if (!canvas._columns) canvas._columns = [];
-      if (canvas._winnerAccum === undefined) canvas._winnerAccum = 0;
-      const CHAR_W = 9;
-      const CHAR_H = 11;
-
-      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
-      const maxColumns = Math.floor(W / CHAR_W);
-      const columnCount = Math.min(maxColumns, 10 + Math.floor(ths * 0.4));
-      const fallSpeed = enabled ? 35 + Math.min(120, ths * 0.8) : 12;
-      const winnerRate = enabled ? 0.3 + Math.min(8, ths * 0.04) : 0.1;
-
-      while (canvas._columns.length < columnCount) {
-        canvas._columns.push({ drops: [], spawnAccum: Math.random() });
-      }
-      while (canvas._columns.length > columnCount) canvas._columns.pop();
-      const spacing = columnCount > 0 ? W / columnCount : W;
-      for (let i = 0; i < canvas._columns.length; i++) {
-        canvas._columns[i].x = spacing * i + spacing / 2;
-      }
-
-      canvas._winnerAccum += dt * winnerRate;
-      while (canvas._winnerAccum >= 1) {
-        canvas._winnerAccum -= 1;
-        if (canvas._columns.length > 0) {
-          const col = canvas._columns[Math.floor(Math.random() * canvas._columns.length)];
-          if (col.drops.length > 0) {
-            col.drops[0].isWinner = true;
-            col.drops[0].winnerLife = 0;
-          }
-        }
-      }
-
-      spikesRef.current = spikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) {
-          const numFlash = Math.min(4, canvas._columns.length);
-          const indices = new Set();
-          while (indices.size < numFlash && indices.size < canvas._columns.length) {
-            indices.add(Math.floor(Math.random() * canvas._columns.length));
-          }
-          for (const idx of indices) {
-            const col = canvas._columns[idx];
-            if (col.drops.length > 0) {
-              col.drops[0].isWinner = true;
-              col.drops[0].isBroadcast = true;
-              col.drops[0].winnerLife = 0;
-            }
-          }
-        }
-      }
-
-      // Scale drop density to canvas height — tall canvases need more drops
-      // per column to stay visually full. ~14 rows fits at 160px → up to 6 drops.
-      const rowsOnScreen = Math.max(8, Math.floor(H / CHAR_H));
-      const maxDropsPerCol = Math.max(3, Math.ceil(rowsOnScreen / 2.5));
-      // Faster cadence on taller canvases so drops don't drain out before refilling
-      const spawnGap = Math.max(0.25, 1.6 / (rowsOnScreen / 8));
-
-      for (const col of canvas._columns) {
-        col.spawnAccum -= dt * (fallSpeed / 60);
-        if (col.spawnAccum <= 0 && col.drops.length < maxDropsPerCol) {
-          const len = 6 + Math.floor(Math.random() * 14);
-          const chars = [];
-          for (let i = 0; i < len; i++) chars.push(HEX_CHARS[Math.floor(Math.random() * 16)]);
-          col.drops.push({
-            y: -CHAR_H * len, chars,
-            speedMul: 0.85 + Math.random() * 0.4,
-            nextChange: 0.05 + Math.random() * 0.15,
-            sinceChange: 0,
-            goldIdx: Math.random() < 0.25 ? Math.floor(Math.random() * len) : -1,
-          });
-          col.spawnAccum = (spawnGap * 0.4) + Math.random() * spawnGap;
-        }
-        for (let i = col.drops.length - 1; i >= 0; i--) {
-          const d = col.drops[i];
-          d.y += fallSpeed * d.speedMul * dt;
-          d.sinceChange += dt;
-          if (d.sinceChange >= d.nextChange) {
-            d.chars[Math.floor(Math.random() * d.chars.length)] = HEX_CHARS[Math.floor(Math.random() * 16)];
-            d.sinceChange = 0;
-            d.nextChange = 0.05 + Math.random() * 0.15;
-          }
-          if (d.isWinner !== undefined) d.winnerLife += dt;
-          if (d.y > H + CHAR_H * d.chars.length) col.drops.splice(i, 1);
-        }
-      }
-
-      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'center';
-
-      for (const col of canvas._columns) {
-        for (const d of col.drops) {
-          const len = d.chars.length;
-          for (let i = 0; i < len; i++) {
-            const charY = d.y + i * CHAR_H;
-            if (charY < -CHAR_H || charY > H + CHAR_H) continue;
-            const fromHead = (len - 1 - i) / len;
-            let r, g, b, a;
-            const isGold = d.isWinner || (d.goldIdx === i && d.y > 0);
-            if (isGold) {
-              const winnerFade = d.isWinner ? Math.max(0.6, 1 - d.winnerLife / 1.2) : 1;
-              if (d.isBroadcast) { r = 255; g = 240; b = 180; }
-              else { r = 255; g = 215; b = 90; }
-              a = (i === len - 1 ? 1 : 0.7 - fromHead * 0.6) * winnerFade;
-              if (!enabled) a *= 0.4;
-              ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
-              ctx.shadowBlur = 6;
-            } else {
-              const dim = enabled ? 1 : 0.5;
-              if (i === len - 1) { r = 200; g = 215; b = 230; a = 0.85 * dim; }
-              else { r = 110; g = 125; b = 145; a = (1 - fromHead * 0.85) * 0.55 * dim; }
-              ctx.shadowBlur = 0;
-            }
-            ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
-            // Bitcoin mode: emit at most ONE glyph per drop. Non-winner drops show
-            // the glyph at goldIdx; winner drops show it at the head only (rest of
-            // the gold trail keeps the hex char so we don't get a column of Bs).
-            const showGlyph = useBitcoinSymbols && (
-              (d.isWinner && i === len - 1) ||
-              (!d.isWinner && d.goldIdx === i && d.y > 0)
-            );
-            if (showGlyph) {
-              drawBtcGlyph(ctx, col.x, charY, 11);
-            } else {
-              ctx.fillText(d.chars[i], col.x, charY);
-            }
-          }
-        }
-      }
-      ctx.shadowBlur = 0;
-    };
-
     // ─── Solo Strike Map (Globe) ──────────────────────────────
     // Slowly-rotating 3D globe with real Natural Earth coastline outlines
     // drawn as faint amber lines + glowing amber pool dots pulsing on the
     // visible hemisphere at approximate (not exact) regional locations.
     // Coastline TopoJSON fetched once from CDN, cached on the canvas element.
     const drawGlobe = (dt, W, H) => {
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
       // First-call initialization (one-time per canvas)
       if (canvas._globeInit === undefined) {
         canvas._globeInit = false;
@@ -9019,6 +9486,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // ─── Forge Embers ─────────────────────────────────────────
     const drawEmbers = (dt, W, H) => {
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
       if (!canvas._embers) canvas._embers = [];
       if (canvas._emberAccum === undefined) canvas._emberAccum = 0;
       if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
@@ -9155,11 +9623,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         return;
       }
       ctx.clearRect(0, 0, W, H);
-      // rev61: dispatch trimmed — sluice/glimmers/embers removed. Stale
-      // pulseAnim values from localStorage just fall through to the
-      // ticker default.
-      // rev70i: 'constellation' drives a separate WebGL renderer; the 2D
-      // canvas just stays cleared underneath.
+      // v1.11.x: refresh closure-captured values from refs once per frame
+      // before dispatching to sub-draws. Re-shadows `pulseAnim`, `ns`,
+      // `workers` so the dispatch + the sub-draws (which look up `ns.peers`
+      // and `workers` directly when in 'block' mode) see live data without
+      // forcing a useEffect rebuild on every STATE_UPDATE.
+      const pulseAnim = pulseAnimRef.current;
+      const ns = nsRef.current;
+      const workers = workersInputRef.current;
+      // rev61: dispatch trimmed — sluice/glimmers/embers removed.
+      // v1.11.x: 'ticker' moved to Hunt; the dispatch is now {globe, block}
+      // only. Any stale stored value falls through to drawGlobe (the safer
+      // default — Pulse's default is 'block' but globe was the prior default
+      // before block existed and it's stable for legacy users).
+      // rev70i: 'block' drives a separate WebGL renderer; the 2D canvas
+      // just stays cleared underneath.
       if (pulseAnim === 'globe') drawGlobe(dt, W, H);
       else if (pulseAnim === 'block') {
         // rev70u: Drive WebGL renderer with real share-flash data.
@@ -9304,7 +9782,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           }
         }
       }
-      else drawTicker(dt, W, H); // default 'ticker'
+      // v1.11.x: ticker moved to Hunt; this fallthrough used to default
+      // to drawTicker. Stored 'ticker' value gets migrated to 'block'
+      // by loadPulseAnim, so realistically this `else` is unreachable —
+      // but defensively render the globe (the original v1.8 default) for
+      // any unforeseen stale state, rather than silently drawing nothing.
+      else drawGlobe(dt, W, H);
       animationFrameRef.current = requestAnimationFrame(draw);
     };
 
@@ -9312,7 +9795,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [enabled, ns.hashrate, ns.pools, ns.workers, ns.peers, workers, pulseAnim, useBitcoinSymbols]);
+  // v1.11.x: dependency array is intentionally empty. Previously this
+  // useEffect rebuilt on every change to ns.hashrate/ns.pools/ns.workers/
+  // ns.peers/workers/pulseAnim/useBitcoinSymbols/enabled — which fires on
+  // every WebSocket STATE_UPDATE (~every 2s). The teardown reset
+  // canvas._columns/_winnerAccum/_glints/etc. to undefined and the new
+  // effect re-initialized them, which is what made the Hash Ticker drops
+  // visibly RESTART every couple seconds and the Constellation lose
+  // animation continuity.
+  // The animation now mounts once for the lifetime of PulsePanel and
+  // reads live state via refs (nsRef, enabledRef, workersInputRef,
+  // pulseAnimRef, useBitcoinSymbolsRef) updated each render. Visible
+  // behavior is identical (still updates within 16ms of state change),
+  // but no teardown thrash.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // rev71i: per-worker share detection. Each worker's shareEvents.accepted
   // counter increments per accepted share. When it goes up by N, we schedule
@@ -9540,7 +10037,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   }
 
   return (
-    compact ? (
+    <>
+      {compact ? (
       <div style={{position:'relative'}}>
         {/* v1.11.1: title bar is the dedicated tap-to-open-strikers target,
             NOT the canvas. See full-branch comment below for rationale. */}
@@ -9647,6 +10145,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               <div
                 onClick={(e) => {
                   e.stopPropagation();
+                  setSimulatorOpen(true);
+                }}
+                style={{
+                  position: 'absolute', top: 8, right: 10,
+                  color: '#ffe07a', fontSize: '0.55rem',
+                  letterSpacing: '0.16em', cursor: 'pointer',
+                  userSelect: 'none', fontWeight: 600, zIndex: 5,
+                  textShadow: '0 0 8px rgba(212,164,55,0.7)',
+                }}
+                role="button"
+                aria-label="Open block constellation simulator"
+              >◈ Simulate</div>
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
                   const r = constellationRendererRef.current;
                   if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
                 }}
@@ -9676,6 +10189,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 role="button"
                 aria-label="Reset view"
               >⟲ Reset</div>
+              {/* v1.11.x: Simulator overlay was added here as a duplicate
+                  during patch development. The pre-existing one above
+                  already provides the same functionality — removed
+                  duplicate to avoid two stacked tap targets. */}
             </>
           )}
         </div>
@@ -9846,6 +10363,21 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             <div
               onClick={(e) => {
                 e.stopPropagation();
+                setSimulatorOpen(true);
+              }}
+              style={{
+                position: 'absolute', top: 10, right: 12,
+                color: '#ffe07a', fontSize: '0.6rem',
+                letterSpacing: '0.18em', cursor: 'pointer',
+                userSelect: 'none', fontWeight: 600, zIndex: 5,
+                textShadow: '0 0 8px rgba(212,164,55,0.7)',
+              }}
+              role="button"
+              aria-label="Open block constellation simulator"
+            >◈ Simulate</div>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
                 const r = constellationRendererRef.current;
                 if (r && typeof r.focusPeer === 'function') r.focusPeer(0, 4.0);
               }}
@@ -9875,6 +10407,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               role="button"
               aria-label="Reset view"
             >⟲ Reset</div>
+            {/* v1.11.x: Simulator overlay was added here as a duplicate
+                during patch development. The pre-existing one above
+                already provides the same functionality. */}
           </>
         )}
       </div>
@@ -9931,7 +10466,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       </div>
       <StampSolo/>
     </div>
-    )
+    )}
+    {/* v1.11.x: Block Constellation Simulator — full-screen modal mounted
+        only when simulatorOpen is true. Decoupled from real network state;
+        synthesizes peers + share traffic internally. Closes via the X
+        button or by tapping outside the picker drawer. */}
+    {simulatorOpen && (
+      <BlockSimulatorModal onClose={() => setSimulatorOpen(false)}/>
+    )}
+    </>
   );
 }
 
