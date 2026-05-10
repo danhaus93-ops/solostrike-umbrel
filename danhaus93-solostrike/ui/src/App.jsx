@@ -2500,17 +2500,25 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     // (transformed off-screen) so React doesn't pay re-mount cost on slide
     // changes — but the rAF loop continues running, burning GPU + battery
     // for animations the user can't see. IntersectionObserver flips a ref
-    // when the canvas intersects the viewport; the draw loop checks the
-    // ref and skips the heavy body when the panel is off-screen, while
-    // still scheduling the next frame so animation resumes instantly on
-    // scroll-back. A small threshold (0.01) avoids flicker at edges.
+    // when the panel intersects the viewport; the draw loop checks the
+    // ref and skips the heavy body when off-screen, while still scheduling
+    // the next frame so animation resumes instantly on scroll-back. A
+    // small threshold (0.01) avoids flicker at edges.
+    //
+    // CRITICAL: Observe `container`, NOT `canvas`. When huntAnim ===
+    // 'lightning' the 2D canvas is set to `display: none` (the WebGL
+    // canvas is shown instead). IntersectionObserver reports any
+    // display:none element as NOT intersecting, which would freeze the
+    // lightning draw permanently. The container holds both canvases and
+    // is always rendered, so observing it gives accurate viewport state
+    // regardless of which animation is active.
     const isVisibleRef = { current: true };
     let intersectionObserver = null;
     if (typeof IntersectionObserver !== 'undefined') {
       intersectionObserver = new IntersectionObserver((entries) => {
         for (const e of entries) isVisibleRef.current = e.isIntersecting;
       }, { threshold: 0.01 });
-      intersectionObserver.observe(canvas);
+      intersectionObserver.observe(container);
     }
 
     // Nonce-field grid params (only used by 'noncefield' draw fn)
@@ -8552,13 +8560,20 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // body when the panel is off-screen (carousel non-active slot). Keeps
     // the rAF chain alive so animation resumes instantly when scrolled
     // back into view. See NonceField for fuller commentary.
+    //
+    // CRITICAL: Observe the container (via containerRef), NOT the canvas.
+    // PulsePanel canvases aren't currently toggled display:none, but the
+    // pattern matches NonceField for consistency and safety in case future
+    // changes hide the canvas (which would freeze the draw loop). The
+    // container is always visible whenever the panel is mounted.
+    const containerEl = containerRef.current;
     const isVisibleRef = { current: true };
     let pulseIntersectionObserver = null;
-    if (typeof IntersectionObserver !== 'undefined') {
+    if (containerEl && typeof IntersectionObserver !== 'undefined') {
       pulseIntersectionObserver = new IntersectionObserver((entries) => {
         for (const e of entries) isVisibleRef.current = e.isIntersecting;
       }, { threshold: 0.01 });
-      pulseIntersectionObserver.observe(canvas);
+      pulseIntersectionObserver.observe(containerEl);
     }
 
     // Reset persistent state when switching animations so the new one starts clean
