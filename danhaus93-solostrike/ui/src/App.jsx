@@ -19,7 +19,7 @@ if (__btcGlyphImg) {
   __btcGlyphImg.decoding = 'async';
   __btcGlyphImg.onload = () => { __btcGlyphReady = true; };
   __btcGlyphImg.onerror = () => { __btcGlyphReady = false; };
-  __btcGlyphImg.src = '/btc-glyph.svg';
+  __btcGlyphImg.src = '/btc-glyph.png';
 }
 // Draw the custom B glyph centered at (x, y) at the given size. Honors the
 // canvas's current textBaseline ('top' vs 'middle'), textAlign is assumed
@@ -1195,7 +1195,7 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
           boxShadow:'0 0 8px var(--btc-orange-glow)',
           flexShrink:0,
         }}>
-          <img src="/btc-glyph.svg" alt="₿" width={12} height={12} style={{display:'block'}}/>
+          <img src="/btc-glyph.png" alt="₿" width={12} height={12} style={{display:'block'}}/>
         </span>
         <span style={{color:'var(--amber)', fontWeight:700}}>LATEST BLOCK</span>
       </span>
@@ -2470,7 +2470,6 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   const cellsRef = useRef(null);             // nonce field cells
   const strikeRef = useRef({ active: false, t: 0, x: 0, y: 0 });
   const scanXRef = useRef(0);
-  const sonarRef = useRef({ angle: 0, blips: null });
   const lightningRef = useRef({ bolts: null, megaBolt: null });
   const pickaxeRef = useRef({ strikes: null, megaStrike: null });
   // v1.11.x: ticker state. Same pattern as constellation-2d.js — persists
@@ -2478,7 +2477,6 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   // to rebuild on every prop change.
   const tickerColumnsRef = useRef(null);
   const tickerWinnerAccumRef = useRef(0);
-  const tickerSpikesRef = useRef([]);  // block-found spike events for "broadcast" gold flashes
   const lastFrameRef = useRef(performance.now());
   const hrRef = useRef(hashrate || 0);
   const netHrRef = useRef(netHashrate || 1);
@@ -2497,6 +2495,23 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     if (!canvas || !container) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // v1.11.x: Visibility gate. The carousel keeps non-active panels mounted
+    // (transformed off-screen) so React doesn't pay re-mount cost on slide
+    // changes — but the rAF loop continues running, burning GPU + battery
+    // for animations the user can't see. IntersectionObserver flips a ref
+    // when the canvas intersects the viewport; the draw loop checks the
+    // ref and skips the heavy body when the panel is off-screen, while
+    // still scheduling the next frame so animation resumes instantly on
+    // scroll-back. A small threshold (0.01) avoids flicker at edges.
+    const isVisibleRef = { current: true };
+    let intersectionObserver = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      intersectionObserver = new IntersectionObserver((entries) => {
+        for (const e of entries) isVisibleRef.current = e.isIntersecting;
+      }, { threshold: 0.01 });
+      intersectionObserver.observe(canvas);
+    }
 
     // Nonce-field grid params (only used by 'noncefield' draw fn)
     const COLS = 32;
@@ -2613,97 +2628,6 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       scanGrad.addColorStop(1, 'rgba(245, 166, 35, 0)');
       ctx.fillStyle = scanGrad;
       ctx.fillRect(scanX - 4, 0, 8, H);
-    };
-
-    // ─── Sonar Sweep ──────────────────────────────────────────────────────
-    const drawSonar = (dt, W, H) => {
-      const cx = W / 2, cy = H / 2;
-      const maxR = Math.min(cx, cy) - 4;
-      // Faint grid: concentric circles + crosshair lines
-      ctx.strokeStyle = 'rgba(245, 166, 35, 0.08)';
-      ctx.lineWidth = 1;
-      for (let i = 1; i <= 3; i++) {
-        ctx.beginPath(); ctx.arc(cx, cy, (maxR * i) / 3, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.moveTo(0, cy); ctx.lineTo(W, cy);
-      ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
-      ctx.stroke();
-
-      const ths = (hrRef.current || 0) / 1e12;
-      const sweepSpeed = 0.6 + Math.min(1.6, ths * 0.018); // rad/sec
-      sonarRef.current.angle = (sonarRef.current.angle + sweepSpeed * dt) % (Math.PI * 2);
-      const a = sonarRef.current.angle;
-
-      // Spawn blips ahead of the sweep edge
-      if (!sonarRef.current.blips) sonarRef.current.blips = [];
-      const blipRate = 1.5 + Math.min(20, ths * 0.35);
-      const expected = blipRate * dt;
-      let toSpawn = Math.floor(expected) + (Math.random() < (expected - Math.floor(expected)) ? 1 : 0);
-      for (let i = 0; i < toSpawn; i++) {
-        const spawnAngle = a - Math.random() * 0.25;
-        const r = 6 + Math.random() * (maxR - 8);
-        const isGold = Math.random() < 0.07;
-        sonarRef.current.blips.push({
-          x: cx + Math.cos(spawnAngle) * r,
-          y: cy + Math.sin(spawnAngle) * r,
-          life: 0,
-          maxLife: 1.3 + Math.random() * 1.0,
-          gold: isGold,
-        });
-      }
-
-      // Draw sweep wedge — segments behind leading edge fading out
-      const sweepWidth = Math.PI * 0.42;
-      const segs = 14;
-      for (let i = 0; i < segs; i++) {
-        const segA  = a - (i / segs) * sweepWidth;
-        const segA2 = a - ((i + 1) / segs) * sweepWidth;
-        const al = 0.22 * (1 - i / segs);
-        ctx.fillStyle = `rgba(245, 166, 35, ${al})`;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, maxR, segA2, segA);
-        ctx.closePath();
-        ctx.fill();
-      }
-      // Leading edge line
-      ctx.strokeStyle = 'rgba(245, 166, 35, 0.75)';
-      ctx.shadowColor = 'rgba(245, 166, 35, 0.6)';
-      ctx.shadowBlur = 6;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Update + draw blips on top
-      for (let i = sonarRef.current.blips.length - 1; i >= 0; i--) {
-        const b = sonarRef.current.blips[i];
-        b.life += dt;
-        if (b.life >= b.maxLife) { sonarRef.current.blips.splice(i, 1); continue; }
-        const p = b.life / b.maxLife;
-        const al = 1 - p;
-        if (b.gold) {
-          ctx.fillStyle = `rgba(255, 220, 140, ${al})`;
-          ctx.shadowColor = 'rgba(255, 220, 140, 0.85)';
-          ctx.shadowBlur = 9;
-          ctx.beginPath(); ctx.arc(b.x, b.y, 2.6 + (1 - p) * 1.2, 0, Math.PI * 2); ctx.fill();
-        } else {
-          ctx.fillStyle = `rgba(245, 166, 35, ${al * 0.85})`;
-          ctx.shadowColor = 'rgba(245, 166, 35, 0.55)';
-          ctx.shadowBlur = 4;
-          ctx.beginPath(); ctx.arc(b.x, b.y, 1.7, 0, Math.PI * 2); ctx.fill();
-        }
-        ctx.shadowBlur = 0;
-      }
-      // Center hub
-      ctx.fillStyle = 'rgba(245, 166, 35, 0.85)';
-      ctx.shadowColor = 'rgba(245, 166, 35, 0.7)';
-      ctx.shadowBlur = 8;
-      ctx.beginPath(); ctx.arc(cx, cy, 2.6, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
     };
 
     // ─── Lightning Strike Field ───────────────────────────────────────────
@@ -3038,11 +2962,8 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     // v1.11.x: ported from PulsePanel. Hashrate-driven hex/BTC-glyph rain
     // with periodic gold "winner" highlights. State held on tickerColumnsRef
     // (per-column drop arrays) and tickerWinnerAccumRef (accumulator for
-    // periodic winner spawns). Block-found events arrive via
-    // tickerSpikesRef which is currently unused (Hunt's BFM celebration
-    // already handles full-screen block visuals — adding column flashes
-    // would be redundant). Kept the ref for future use if we want
-    // localized ticker reactions.
+    // periodic winner spawns). Block-found events fire the Volcano
+    // celebration via tickerCelebStartRef (see drawTicker bottom).
     const HEX_CHARS = '0123456789abcdef';
     const drawTicker = (dt, W, H) => {
       // v1.11.x: BTC symbols are hardcoded ON (no toggle). Winner drops
@@ -3083,28 +3004,6 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
           if (col.drops.length > 0) {
             col.drops[0].isWinner = true;
             col.drops[0].winnerLife = 0;
-          }
-        }
-      }
-
-      // Drain block-found spikes (currently unused — see comment above)
-      tickerSpikesRef.current = tickerSpikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of tickerSpikesRef.current) {
-        if (s.age < dt * 1.5) {
-          const numFlash = Math.min(4, columns.length);
-          const indices = new Set();
-          while (indices.size < numFlash && indices.size < columns.length) {
-            indices.add(Math.floor(Math.random() * columns.length));
-          }
-          for (const idx of indices) {
-            const col = columns[idx];
-            if (col.drops.length > 0) {
-              col.drops[0].isWinner = true;
-              col.drops[0].isBroadcast = true;
-              col.drops[0].winnerLife = 0;
-            }
           }
         }
       }
@@ -3159,8 +3058,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
             const isGold = d.isWinner || (d.goldIdx === i && d.y > 0);
             if (isGold) {
               const winnerFade = d.isWinner ? Math.max(0.6, 1 - d.winnerLife / 1.2) : 1;
-              if (d.isBroadcast) { r = 255; g = 240; b = 180; }
-              else { r = 255; g = 215; b = 90; }
+              r = 255; g = 215; b = 90;
               a = (i === len - 1 ? 1 : 0.7 - fromHead * 0.6) * winnerFade;
               ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
               ctx.shadowBlur = 6;
@@ -3195,6 +3093,14 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     const draw = (now) => {
       const dt = Math.min(0.1, (now - lastFrameRef.current) / 1000);
       lastFrameRef.current = now;
+
+      // v1.11.x: Skip heavy draw work when panel is off-screen (carousel
+      // non-active slot) or page is hidden. Still schedule next frame so
+      // animation resumes immediately on scroll-back / focus-return.
+      if (!isVisibleRef.current || (typeof document !== 'undefined' && document.hidden)) {
+        animRef.current = requestAnimationFrame(draw);
+        return;
+      }
       // Self-heal stale dims. v1.8.8-rev15: in vertical-scroll (non-carousel)
       // mode the parent flex chain occasionally finishes laying out AFTER the
       // initial ResizeObserver callback fires, leaving dimsRef pointing at the
@@ -3260,8 +3166,11 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
       // v1.8.5-rev70e: clear to transparent so card shows through.
       ctx.clearRect(0, 0, W, H);
 
-      if (a === 'sonar') drawSonar(dt, W, H);
-      else if (a === 'lightning') drawLightning(dt, W, H);
+      // v1.11.x: 'sonar' was removed from Hunt animations. Any user with
+      // 'sonar' previously selected migrates here to 'lightning' (closest
+      // visual cousin — center-focused energy/strike). Persistent migration
+      // happens in the loadHuntAnim() function via fallback chain.
+      if (a === 'lightning') drawLightning(dt, W, H);
       else if (a === 'pickaxe') drawPickaxe(dt, W, H);
       else if (a === 'ticker') drawTicker(dt, W, H);
       else drawNonceField(dt, W, H);
@@ -3273,6 +3182,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     return () => {
       cancelAnimationFrame(animRef.current);
       ro.disconnect();
+      if (intersectionObserver) intersectionObserver.disconnect();
       // rev54: tear down WebGL on unmount
       if (lightningGLRef.current && !lightningGLRef.current.failed) {
         try { lightningGLRef.current.destroy(); } catch {}
@@ -3514,7 +3424,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
 // BLOCK FOUND CELEBRATION MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 // Fullscreen takeover that fires when poolState.blocks.length grows. Plays
-// the user's selected Hunt animation theme (lightning / sonar / noncefield /
+// the user's selected Hunt animation theme (lightning / noncefield /
 // pickaxe) at full screen size with phase progression:
 //   0.0 – 0.5s  buildup begin
 //   0.5 – 1.2s  target appears
@@ -3793,132 +3703,6 @@ function drawBFMLightningOverlay(ctx, W, H, t, state) {
   }
 
   drawBFMText(ctx, W, H, t, 'THE STRIKE', cy, iconSize);
-}
-
-// ─── Sonar celebration ───
-function drawBFMSonar(ctx, W, H, t, state) {
-  ctx.fillStyle = 'rgba(8,8,10,1)';
-  ctx.fillRect(0, 0, W, H);
-  const cx = W / 2, cy = H / 2;
-  const maxR = Math.min(cx, cy) - 8;
-  const iconSize = Math.min(H * 0.42, W * 0.55);
-
-  ctx.strokeStyle = 'rgba(245, 166, 35, 0.10)';
-  ctx.lineWidth = 1;
-  for (let i = 1; i <= 4; i++) {
-    ctx.beginPath(); ctx.arc(cx, cy, maxR * i / 4, 0, Math.PI * 2); ctx.stroke();
-  }
-  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy);
-  ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
-
-  const sweepSpeed = 0.8 + Math.min(8, t < 1.8 ? t * 5 : 0.8);
-  state.angle = (state.angle + sweepSpeed * (1 / 60)) % (Math.PI * 2);
-  const a = state.angle;
-
-  if (!state.target && t >= 0.5) {
-    const ang = Math.random() * Math.PI * 2;
-    const dist = maxR * 0.55;
-    state.target = {
-      startX: cx + Math.cos(ang) * dist,
-      startY: cy + Math.sin(ang) * dist,
-    };
-  }
-
-  let bx = cx, by = cy, bAlpha = 0, bBrightness = 1;
-  if (t >= 0.5 && state.target) {
-    if (t < 1.5) {
-      bx = state.target.startX; by = state.target.startY;
-      bAlpha = (t - 0.5) / 1.0 * 0.55;
-    } else if (t < 1.8) {
-      const dp = (t - 1.5) / 0.3;
-      bx = state.target.startX + (cx - state.target.startX) * dp;
-      by = state.target.startY + (cy - state.target.startY) * dp;
-      bAlpha = 0.55 + 0.45 * dp;
-      bBrightness = 1 + dp * 0.4;
-    } else if (t < 4.5) {
-      bx = cx; by = cy;
-      bAlpha = t > 4.0 ? (4.5 - t) / 0.5 : 1;
-      bBrightness = 1 + Math.max(0, 0.4 - (t - 1.8) * 0.4);
-    }
-  }
-
-  const sweepWidth = Math.PI * 0.42, segs = 18;
-  for (let i = 0; i < segs; i++) {
-    const segA  = a - (i / segs) * sweepWidth;
-    const segA2 = a - ((i + 1) / segs) * sweepWidth;
-    ctx.fillStyle = `rgba(245, 166, 35, ${0.32 * (1 - i / segs)})`;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, maxR, segA2, segA);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(245, 166, 35, 0.85)';
-  ctx.shadowColor = 'rgba(245, 166, 35, 0.7)'; ctx.shadowBlur = 10;
-  ctx.lineWidth = 2.4;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  if (t < 1.8 && Math.random() < 0.6) {
-    const sa = a - Math.random() * 0.2;
-    const rr = 6 + Math.random() * (maxR - 8);
-    state.blips.push({
-      x: cx + Math.cos(sa) * rr, y: cy + Math.sin(sa) * rr,
-      life: 0, maxLife: 1.2,
-    });
-  }
-  for (let i = state.blips.length - 1; i >= 0; i--) {
-    const b = state.blips[i];
-    b.life += 1 / 60;
-    if (b.life >= b.maxLife) { state.blips.splice(i, 1); continue; }
-    const al = (1 - b.life / b.maxLife);
-    ctx.fillStyle = `rgba(255, 220, 140, ${al})`;
-    ctx.shadowColor = 'rgba(255, 220, 140, 0.85)';
-    ctx.shadowBlur = 10;
-    ctx.beginPath(); ctx.arc(b.x, b.y, 4.0, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-  }
-
-  if (t >= 1.5 && t < 3.5 && state.target) {
-    if (Math.floor((t - 1.5) * 4) > state.rings.length - 1) {
-      state.rings.push({
-        x: t < 1.8 ? state.target.startX : cx,
-        y: t < 1.8 ? state.target.startY : cy,
-        life: 0, maxLife: 1.5,
-      });
-    }
-    for (let i = state.rings.length - 1; i >= 0; i--) {
-      const r = state.rings[i];
-      r.life += 1 / 60;
-      if (r.life >= r.maxLife) { state.rings.splice(i, 1); continue; }
-      const p = r.life / r.maxLife;
-      const radius = p * Math.min(W, H) * 0.6;
-      const al = (1 - p) * 0.85;
-      ctx.strokeStyle = `rgba(255, 220, 140, ${al})`;
-      ctx.shadowColor = 'rgba(255, 220, 140, 0.7)';
-      ctx.shadowBlur = 10;
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(r.x, r.y, radius, 0, Math.PI * 2); ctx.stroke();
-      ctx.shadowBlur = 0;
-    }
-  }
-
-  ctx.fillStyle = 'rgba(245, 166, 35, 0.85)';
-  ctx.shadowColor = 'rgba(245, 166, 35, 0.7)';
-  ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
-  ctx.shadowBlur = 0;
-
-  if (bAlpha > 0.05) {
-    ctx.save();
-    ctx.globalAlpha = bAlpha;
-    drawBtcCelebrate(ctx, bx, by, iconSize, bBrightness);
-    ctx.restore();
-  }
-  drawBFMText(ctx, W, H, t, 'TARGET ACQUIRED', cy, iconSize);
 }
 
 // ─── Nonce Field celebration ───
@@ -4259,7 +4043,6 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
   useEffect(() => {
     stateRef.current = {
       lightning: { bolts: [], megaBolt: null, sparks: [], megaBoltFired: false },
-      sonar:     { angle: 0, blips: [], rings: [], target: null },
       noncefield:{ cells: new Float32Array(BFM_TOTAL) },
       pickaxe:   { shards: null },
     };
@@ -4354,12 +4137,10 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
           // Fallback: 2D path (existing drawBFMNonce)
         }
 
-        const fn = animType === 'sonar'     ? drawBFMSonar
-                 : animType === 'lightning' ? drawBFMLightning
+        const fn = animType === 'lightning' ? drawBFMLightning
                  : animType === 'pickaxe'   ? drawBFMPickaxe
                  :                            drawBFMNonce;
-        const stateKey = animType === 'sonar' ? 'sonar'
-                       : animType === 'lightning' ? 'lightning'
+        const stateKey = animType === 'lightning' ? 'lightning'
                        : animType === 'pickaxe' ? 'pickaxe'
                        : 'noncefield';
         fn(ctx, W, H, t, st[stateKey]);
@@ -4557,7 +4338,7 @@ const PULSE_ANIM_OPTIONS = [
   // collapsed to single-mode. Existing users with stored 'constellation'
   // OR 'ticker' setting get auto-migrated to 'block' below.
   { id: 'globe', label: 'Solo Strike Map' },
-  { id: 'block', label: 'Block Constellation' },
+  { id: 'block', label: 'Strike Mesh' },
 ];
 const PULSE_ANIM_DEFAULT = 'block';
 function loadPulseAnim() {
@@ -4572,13 +4353,11 @@ function loadPulseAnim() {
   } catch { return PULSE_ANIM_DEFAULT; }
 }
 function savePulseAnim(v) { try { localStorage.setItem(LS_PULSE_ANIM, String(v)); } catch {} }
-const LS_PULSE_BITCOIN_SYMBOLS = 'ss_pulse_btc_v1';
-function loadPulseBitcoinSymbols() {
-  try { return localStorage.getItem(LS_PULSE_BITCOIN_SYMBOLS) === 'true'; } catch { return false; }
-}
-function savePulseBitcoinSymbols(v) {
-  try { localStorage.setItem(LS_PULSE_BITCOIN_SYMBOLS, String(!!v)); } catch {}
-}
+// v1.11.x: useBitcoinSymbols toggle removed entirely. Was a Pulse-only
+// option (₿ glyph vs shape) but the toggle was hidden from settings months
+// ago and defaulted to false (shapes). All Pulse animations now render the
+// shape variant always. Hash Ticker + Strike Mesh use ₿ glyphs natively
+// without consulting this flag.
 
 // User's approximate pool pin location. Stored as { lat, lon } in decimal
 // degrees, snapped to a 5° grid (~500km cells, US-state-sized) before save.
@@ -4627,11 +4406,13 @@ async function publishPoolPinToApi(pin) {
 }
 
 // Hunt card animation style (mirrors Pulse pattern)
-const LS_HUNT_ANIM = 'ss_hunt_anim_v1';   // 'noncefield' | 'sonar' | 'lightning' | 'pickaxe'
+const LS_HUNT_ANIM = 'ss_hunt_anim_v1';   // 'noncefield' | 'lightning' | 'pickaxe' | 'ticker'
 const HUNT_ANIM_OPTIONS = [
   { id: 'noncefield', label: 'Nonce Field' },
-  { id: 'sonar',      label: 'Sonar Sweep' },
-  { id: 'lightning',  label: 'Lightning Strike' },
+  // v1.11.x: 'sonar' was removed — weakest mining metaphor (echo detection
+  // doesn't match compute-grinding) and visually redundant with Nonce Field's
+  // grid scan. Saved 'sonar' values migrate to 'lightning' via loadHuntAnim.
+  { id: 'lightning',  label: 'The Strike' },
   { id: 'pickaxe',    label: 'Pickaxe Strike' },
   // v1.11.x: 'ticker' moved here from Pulse. The Hash Ticker is a network-
   // state visualization (hashrate-driven hex/BTC glyph rain), which belongs
@@ -4639,10 +4420,22 @@ const HUNT_ANIM_OPTIONS = [
   // peer/community visualizations.
   { id: 'ticker',     label: 'Hash Ticker' },
 ];
-const HUNT_ANIM_DEFAULT = 'noncefield';
+// v1.11.x: Default changed from 'noncefield' to 'ticker'. Hash Ticker is
+// the most recognizable / branded animation (hex chars + ₿ glyphs cascading)
+// and it tells new users immediately "this is mining" — vs noncefield's
+// abstract grid which requires explanation. Existing users keep their
+// chosen animation; only first-install users hit this default.
+const HUNT_ANIM_DEFAULT = 'ticker';
 function loadHuntAnim() {
   try {
     const v = localStorage.getItem(LS_HUNT_ANIM);
+    // v1.11.x: 'sonar' was removed — migrate any stored sonar value to
+    // 'lightning' (closest visual cousin: center-focused energy/strike).
+    // Persist the migration so subsequent reads return the new value.
+    if (v === 'sonar') {
+      try { localStorage.setItem(LS_HUNT_ANIM, 'lightning'); } catch {}
+      return 'lightning';
+    }
     return HUNT_ANIM_OPTIONS.some(o => o.id === v) ? v : HUNT_ANIM_DEFAULT;
   } catch { return HUNT_ANIM_DEFAULT; }
 }
@@ -6899,7 +6692,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   const [poolName, setPoolName] = useState(currentConfig?.poolName || 'SoloStrike');
@@ -6967,7 +6760,6 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {tab==='pulse' && (
           <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
-            useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}/>
         )}
         {tab==='hunt' && (
@@ -7388,7 +7180,7 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
 }
 
 // ── Pulse tab ─────────────────────────────────────────────────────────────────
-function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, useBitcoinSymbols, onBitcoinSymbolsChange, poolPin, onPoolPinChange }) {
+function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolPin, onPoolPinChange }) {
   const [err, setErr] = useState('');
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
@@ -8173,7 +7965,7 @@ function BlockSimulatorModal({ onClose }) {
 
 
 
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', useBitcoinSymbols = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -8186,7 +7978,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
   // v1.11.x: latest-value refs. The Pulse animation useEffect (line ~8134)
   // used to depend on [ns.hashrate, ns.pools, ns.workers, ns.peers, workers,
-  // pulseAnim, useBitcoinSymbols, enabled]. Every WebSocket STATE_UPDATE
+  // pulseAnim, enabled]. Every WebSocket STATE_UPDATE
   // (every ~2s) caused those values to change, the useEffect to tear down,
   // and the animation to RESTART FROM ZERO — visible as the Hash Ticker
   // resetting its drops and the Constellation losing animation continuity.
@@ -8199,14 +7991,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const workersInputRef = useRef(workers);
   // pulseAnimRef is declared further down (rev70k, used by pointer handlers).
   // We sync it in this same batch below.
-  const useBitcoinSymbolsRef = useRef(useBitcoinSymbols);
   // Sync refs every render — cheap, just assignment. No deps array means
   // this runs after every render, exactly when refs need to catch up.
   useEffect(() => {
     nsRef.current = ns;
     enabledRef.current = enabled;
     workersInputRef.current = workers;
-    useBitcoinSymbolsRef.current = useBitcoinSymbols;
     // pulseAnimRef already gets synced by its own useEffect below.
   });
 
@@ -8758,6 +8548,19 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // v1.11.x: Visibility gate (mirror of NonceField). Skip the heavy draw
+    // body when the panel is off-screen (carousel non-active slot). Keeps
+    // the rAF chain alive so animation resumes instantly when scrolled
+    // back into view. See NonceField for fuller commentary.
+    const isVisibleRef = { current: true };
+    let pulseIntersectionObserver = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      pulseIntersectionObserver = new IntersectionObserver((entries) => {
+        for (const e of entries) isVisibleRef.current = e.isIntersecting;
+      }, { threshold: 0.01 });
+      pulseIntersectionObserver.observe(canvas);
+    }
+
     // Reset persistent state when switching animations so the new one starts clean
     canvas._flakes = undefined;
     canvas._flakeAccum = undefined;
@@ -8772,7 +8575,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // ─── Sluice Box Stream ────────────────────────────────────
     const drawSluice = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
       if (!canvas._flakes) canvas._flakes = [];
       if (canvas._flakeAccum === undefined) canvas._flakeAccum = 0;
       if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
@@ -8859,25 +8662,18 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         const b = Math.round(35 + f.shade * 80);
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
         ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
-        if (useBitcoinSymbols) {
-          // Render as ₿ — use size to drive font size (1.6-3.2 range → 8-14px)
-          const fontPx = Math.max(8, Math.round(5 + f.size * 2.4));
-          ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          drawBtcGlyph(ctx, f.x, f.y, fontPx);
-        } else {
-          ctx.beginPath();
-          ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        // v1.11.x: ₿ glyph variant removed when useBitcoinSymbols was deleted.
+        // Particles always render as ellipses now.
+        ctx.beginPath();
+        ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.shadowBlur = 0;
     };
 
     // ─── Cave Glimmers ────────────────────────────────────────
     const drawGlimmers = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
       if (!canvas._glints) canvas._glints = [];
       if (canvas._glintAccum === undefined) canvas._glintAccum = 0;
       if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
@@ -8959,24 +8755,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.shadowColor = `rgba(${r},${gC},${b},0.9)`;
         ctx.shadowBlur = g.gold ? 14 : 8;
 
-        if (useBitcoinSymbols) {
-          // Render center as ₿ symbol
-          const fontPx = Math.max(8, Math.round(g.maxR * 3.2));
-          ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
-          drawBtcGlyph(ctx, g.x, g.y, fontPx);
-        } else {
-          // Center bright dot
-          ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
-          ctx.beginPath();
-          ctx.arc(g.x, g.y, g.maxR * (alpha * 0.6 + 0.4), 0, Math.PI * 2);
-          ctx.fill();
-        }
+        // v1.11.x: ₿ glyph variant removed. Always render the dot + rays.
+        // Center bright dot
+        ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
+        ctx.beginPath();
+        ctx.arc(g.x, g.y, g.maxR * (alpha * 0.6 + 0.4), 0, Math.PI * 2);
+        ctx.fill();
 
-        // 4-point star rays at peak (still drawn in both modes for emphasis)
-        if (alpha > 0.3 && !useBitcoinSymbols) {
+        // 4-point star rays at peak
+        if (alpha > 0.3) {
           ctx.strokeStyle = `rgba(${r},${gC},${b},${alpha * 0.7})`;
           ctx.lineWidth = 0.8;
           ctx.beginPath();
@@ -8995,7 +8782,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // visible hemisphere at approximate (not exact) regional locations.
     // Coastline TopoJSON fetched once from CDN, cached on the canvas element.
     const drawGlobe = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
       // First-call initialization (one-time per canvas)
       if (canvas._globeInit === undefined) {
         canvas._globeInit = false;
@@ -9502,7 +9289,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
     // ─── Forge Embers ─────────────────────────────────────────
     const drawEmbers = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current, useBitcoinSymbols = useBitcoinSymbolsRef.current;
+      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
       if (!canvas._embers) canvas._embers = [];
       if (canvas._emberAccum === undefined) canvas._emberAccum = 0;
       if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
@@ -9592,17 +9379,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
         ctx.shadowColor = `rgba(${r},${g + 40},${b + 30},${alpha * 0.9})`;
         ctx.shadowBlur = e.big ? 8 : 5;
-        if (useBitcoinSymbols) {
-          const fontPx = Math.max(8, Math.round(5 + e.size * 2.5));
-          ctx.font = `${fontPx}px "JetBrains Mono", monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          drawBtcGlyph(ctx, e.x, e.y, fontPx);
-        } else {
-          ctx.beginPath();
-          ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        // v1.11.x: ₿ glyph variant removed. Always render as filled arc.
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.shadowBlur = 0;
     };
@@ -9611,6 +9391,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const draw = (now) => {
       const dt = Math.min(0.05, (now - lastTickRef.current) / 1000);
       lastTickRef.current = now;
+
+      // v1.11.x: Skip work when off-screen / page hidden. Same pattern as
+      // NonceField — keeps animation responsive on scroll-back without
+      // burning GPU on invisible slots.
+      if (!isVisibleRef.current || (typeof document !== 'undefined' && document.hidden)) {
+        animationFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
       let W = canvasWidthRef.current;
       let H = canvasHeightRef.current;
       // Self-heal stale dims. v1.8.8-rev15: ResizeObserver sometimes misses
@@ -9810,10 +9599,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     animationFrameRef.current = requestAnimationFrame(draw);
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (pulseIntersectionObserver) pulseIntersectionObserver.disconnect();
     };
   // v1.11.x: dependency array is intentionally empty. Previously this
   // useEffect rebuilt on every change to ns.hashrate/ns.pools/ns.workers/
-  // ns.peers/workers/pulseAnim/useBitcoinSymbols/enabled — which fires on
+  // ns.peers/workers/pulseAnim/enabled — which fires on
   // every WebSocket STATE_UPDATE (~every 2s). The teardown reset
   // canvas._columns/_winnerAccum/_glints/etc. to undefined and the new
   // effect re-initialized them, which is what made the Hash Ticker drops
@@ -9821,7 +9611,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // animation continuity.
   // The animation now mounts once for the lifetime of PulsePanel and
   // reads live state via refs (nsRef, enabledRef, workersInputRef,
-  // pulseAnimRef, useBitcoinSymbolsRef) updated each render. Visible
+  // pulseAnimRef) updated each render. Visible
   // behavior is identical (still updates within 16ms of state change),
   // but no teardown thrash.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -10173,6 +9963,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 role="button"
                 aria-label="Open block constellation simulator"
               >◈ Simulate</div>
+              {/* v1.11.x: Find Me only shown when peer count > 2. With 2 peers
+                  the cube is in Bar stage taking up most of the canvas — the
+                  button does nothing useful. Hidden until peers grow. */}
+              {(ns.peers?.length || 0) > 2 && (
               <div
                 onClick={(e) => {
                   e.stopPropagation();
@@ -10189,6 +9983,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 role="button"
                 aria-label="Find my pool"
               >◎ Find Me</div>
+              )}
               <div
                 onClick={(e) => {
                   e.stopPropagation();
@@ -10391,6 +10186,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               role="button"
               aria-label="Open block constellation simulator"
             >◈ Simulate</div>
+            {/* v1.11.x: Find Me only shown when peer count > 2. See compact
+                branch comment for rationale. */}
+            {(ns.peers?.length || 0) > 2 && (
             <div
               onClick={(e) => {
                 e.stopPropagation();
@@ -10407,6 +10205,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               role="button"
               aria-label="Find my pool"
             >◎ Find Me</div>
+            )}
             <div
               onClick={(e) => {
                 e.stopPropagation();
@@ -12421,11 +12220,6 @@ export default function App() {
     };
     setBlockFoundCelebration({ animType: huntAnim, block: mock });
   }, [poolState, huntAnim]);
-  const [useBitcoinSymbols, setUseBitcoinSymbols] = useState(() => loadPulseBitcoinSymbols());
-  const onBitcoinSymbolsChange = useCallback((v) => {
-    savePulseBitcoinSymbols(v);
-    setUseBitcoinSymbols(!!v);
-  }, []);
   const useCarousel = isMobile && carouselEnabled;
   const carouselRef = useRef(null);
   const headerRef = useRef(null);
@@ -12841,7 +12635,6 @@ export default function App() {
             onNetworkStatsRefresh={refreshConfig}
             carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
-            useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
             huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
             debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
@@ -12872,7 +12665,6 @@ export default function App() {
       onOpenStrikers={()=>setShowStrikers(true)}
       pulseAnim={pulseAnim}
       onPulseAnimChange={onPulseAnimChange}
-      useBitcoinSymbols={useBitcoinSymbols}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
       lastShareAt={poolState?.shares?.lastShareAt}
@@ -13028,7 +12820,6 @@ export default function App() {
           onNetworkStatsRefresh={refreshConfig}
           carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}
           pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
-          useBitcoinSymbols={useBitcoinSymbols} onBitcoinSymbolsChange={onBitcoinSymbolsChange}
           huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
           onPreviewCelebration={onPreviewCelebration}
