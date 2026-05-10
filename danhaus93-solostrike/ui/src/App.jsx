@@ -12478,6 +12478,17 @@ export default function App() {
   const ns = poolState?.networkStats || {};
 
   const cardComponents = {
+    // ── ERROR BOUNDARY TEST ────────────────────────────────────────────────
+    // Always throws when rendered. Only inserted into renderableOrder when
+    // the URL contains ?testcrash=1 (see below). To dismiss: remove the
+    // ?testcrash=1 from your URL and reload. Safe to leave in production —
+    // it's gated by URL param and never appears unless explicitly triggered.
+    testbomb: (() => {
+      const TestBomb = () => {
+        throw new Error('ErrorBoundary test — triggered via ?testcrash=1 — works as expected if you see this in a fallback card!');
+      };
+      return <TestBomb />;
+    })(),
     hashrate: <HashrateChart
       history={poolState?.hashrate?.history}
       week={poolState?.hashrate?.week}
@@ -12527,7 +12538,9 @@ export default function App() {
   // v1.7.22: Stratum no longer auto-pins to first slot. Whatever order the
   // user has set (default or customized via Settings → Display) is used as-is.
   // Removes the surprise of Stratum jumping to front on first launch.
-  const renderableOrder = baseOrder;
+  // ── ERROR BOUNDARY TEST: prepend testbomb when URL has ?testcrash=1 ─────
+  const _testBombActive = typeof window !== 'undefined' && window.location.search.includes('testcrash=1');
+  const renderableOrder = _testBombActive ? ['testbomb', ...baseOrder] : baseOrder;
 
   return (
     <>
