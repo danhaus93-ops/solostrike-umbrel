@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import './styles/global.css'
 import { createAnimatedBackground } from './animated-bg-webgl.js'
 
@@ -21,5 +22,9 @@ import { createAnimatedBackground } from './animated-bg-webgl.js'
 })();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode><App /></React.StrictMode>
+  <React.StrictMode>
+    <ErrorBoundary fullscreen>
+      <App />
+    </ErrorBoundary>
+  </React.StrictMode>
 )

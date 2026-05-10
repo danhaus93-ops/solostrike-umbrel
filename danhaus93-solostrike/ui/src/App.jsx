@@ -5,6 +5,7 @@ import { usePool } from './hooks/usePool.js';
 import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
@@ -12580,7 +12581,9 @@ export default function App() {
         >
           {renderableOrder.map(id => (
             <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
-              {cardComponents[id]}
+              <ErrorBoundary label={id}>
+                {cardComponents[id]}
+              </ErrorBoundary>
             </DraggableCard>
           ))}
         </div>
