@@ -4477,7 +4477,7 @@ function saveStratumRotated()  { try { localStorage.setItem(LS_STRATUM_ROTATED, 
 const PULSE_ANIM_OPTIONS = [
   // rev61: removed 'sluice' (Sluice Box), 'glimmers' (Cave Glimmers),
   // 'embers' (Forge Embers) — they didn't fit the BTC-mining aesthetic.
-  // v1.11.0: added 'block' (Block Constellation) — peers progressively form
+  // v1.11.0: added 'block' (Strike Mesh) — peers progressively form
   // a 3D Bitcoin block as Pulse grows. Gold/amber cubes that arrange
   // themselves into corners → edges → faces → volume of a cube. Tap a cube
   // to fly the camera to it.
@@ -7690,7 +7690,7 @@ function fmtPulseHr(h) {
 }
 
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
-// ── Block Constellation Simulator (v1.11.x) ──────────────────────────
+// ── Strike Mesh Simulator (v1.11.x) ──────────────────────────
 // Full-screen modal for previewing how the cube forms at peer counts the
 // user won't realistically hit alone. Real network is 2 peers today; the
 // simulator scrubs from 1 → 5K to showcase Bar → Corners → Edges → Faces
@@ -7939,7 +7939,7 @@ function BlockSimulatorModal({ onClose }) {
           color: 'var(--amber)', fontFamily: 'var(--fd)',
           fontSize: '0.65rem', letterSpacing: '0.2em',
           textTransform: 'uppercase', fontWeight: 700,
-        }}>◈ Simulate · Block Constellation</span>
+        }}>◈ Simulate · Strike Mesh</span>
         <button
           onClick={onClose}
           style={{
@@ -8122,7 +8122,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
-  // v1.11.x: Block Constellation Simulator. Opens a full-screen modal
+  // v1.11.x: Strike Mesh Simulator. Opens a full-screen modal
   // showing the cube formation at user-selected peer counts (2 → 5K).
   // Decoupled from real network data — synthesizes peers + share traffic
   // internally so users can preview Bar/Corners/Edges/Faces/Volume stages
@@ -8179,7 +8179,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // pointerId -> { x, y } in CSS pixels.
   const constellationPointersRef = useRef(new Map());
   const constellationPinchPrevDistRef = useRef(0);
-  // v1.11.0: tap detection for Block Constellation focus-on-tap.
+  // v1.11.0: tap detection for Strike Mesh focus-on-tap.
   // Set on pointerDown; cleared on pointerUp; updated as didDrag=true
   // when pointerMove travels > 5px from the start. If pointerUp finds
   // didDrag=false, the gesture was a tap and we fly camera to the
@@ -8208,7 +8208,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // the user to tap, and the next tap on the canvas converts screen coords
   // → 3D unit sphere → lat/lon → 5° grid snap → poolPin update.
   const [placingPin, setPlacingPin] = useState(false);
-  // v1.11.x: Block Constellation Simulator. Tap "◈ Simulate" in the top-right
+  // v1.11.x: Strike Mesh Simulator. Tap "◈ Simulate" in the top-right
   // overlay to open a full-screen modal that lets the user (and reviewers)
   // preview how the cube forms at peer counts they'll never realistically hit
   // alone. Real network is 2 peers today; the simulator scrubs from 1 → 5K to
@@ -8257,7 +8257,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     };
   }, []);
 
-  // v1.11.0: Block Constellation init. Mount-once on canvas ref ready,
+  // v1.11.0: Strike Mesh init. Mount-once on canvas ref ready,
   // re-mounts only if pulseAnim changes to/from 'block'. Renders only
   // when pulseAnim === 'block' (canvas display:none otherwise — context
   // stays alive but no draw calls happen).
@@ -8538,7 +8538,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
     constellationPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     // v1.11.0: track start position so pointerUp can detect a tap
-    // (movement < 5px from start) vs a drag. Used by Block Constellation
+    // (movement < 5px from start) vs a drag. Used by Strike Mesh
     // mode to fly the camera to the tapped peer.
     constellationTapStartRef.current = {
       x: e.clientX, y: e.clientY,
@@ -8600,7 +8600,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     if (constellationPointersRef.current.size < 2) {
       constellationPinchPrevDistRef.current = 0;
     }
-    // v1.11.0: tap-to-focus for Block Constellation mode. If the user
+    // v1.11.0: tap-to-focus for Strike Mesh mode. If the user
     // tapped without dragging (< 5px movement) and the renderer supports
     // hit-testing, find the nearest peer cube and fly the camera to it.
     const tapStart = constellationTapStartRef.current;
@@ -9788,7 +9788,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
             </button>
           )}
-          {/* v1.11.0: Block Constellation overlays for the compact card. */}
+          {/* v1.11.0: Strike Mesh overlays for the compact card. */}
           {pulseAnim === 'block' && (
             <>
               <div
@@ -9907,7 +9907,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       {/* v1.11.1: title bar is now the dedicated tap-to-open-strikers
           target, NOT the canvas region. Previously the entire body of
           the card was wrapped in onClick={onOpenStrikers}, which made
-          the Block Constellation overlays (◎ Find Me / ⟲ Reset) bubble
+          the Strike Mesh overlays (◎ Find Me / ⟲ Reset) bubble
           up and accidentally open the panel on tap. By moving the
           onClick to the title bar + below-canvas caption only, the
           canvas itself is reserved for direct interaction (drag, pinch,
@@ -10007,7 +10007,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             {placingPin ? '✕' : (poolPin ? '↻' : '📍')}
           </button>
         )}
-        {/* v1.11.0: Block Constellation overlays. ◎ Find Me snaps the
+        {/* v1.11.0: Strike Mesh overlays. ◎ Find Me snaps the
             camera to your gold cube (peer 0); ⟲ Reset returns to the
             overview. Naked text styling (no box) — gold glow on Find Me,
             dim grey on Reset to indicate hierarchy. Only render when
@@ -10125,7 +10125,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       <StampSolo/>
     </div>
     )}
-    {/* v1.11.x: Block Constellation Simulator — full-screen modal mounted
+    {/* v1.11.x: Strike Mesh Simulator — full-screen modal mounted
         only when simulatorOpen is true. Decoupled from real network state;
         synthesizes peers + share traffic internally. Closes via the X
         button or by tapping outside the picker drawer. */}
