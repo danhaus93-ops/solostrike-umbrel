@@ -6,6 +6,25 @@ const cors = require('cors');
 const helmet = require('helmet');
 const http = require('http');
 const WebSocket = require('ws');
+
+// v1.11.x SAFETY: top-level error handlers. Without these, a single
+// unhandled async error or uncaught exception silently kills the API
+// process (Node's default behavior is exit-on-uncaught). The container
+// would restart via Docker's restart policy, but the UI would show a
+// connection blip until then. Now we:
+//   - Log unhandled promise rejections (don't exit — these are often
+//     false positives from libs and the process is usually still healthy)
+//   - Log uncaught exceptions and exit cleanly (process state may be
+//     corrupted; let Docker restart us fresh)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[unhandledRejection]', reason && (reason.stack || reason.message || reason));
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && (err.stack || err.message || err));
+  // Give logs a moment to flush, then exit so Docker restarts us clean.
+  setTimeout(() => process.exit(1), 100);
+});
+
 const { startStatusPoller }             = require('./status-poller');
 const { startUaTailer, getAllMeta }     = require('./ua-tailer');
 const { startMinerPoller, setEnabled: setMinerPollerEnabled,
@@ -536,6 +555,15 @@ function startZmq() {
 // ── HTTP/WS server ────────────────────────────────────────────────────────
 const app = express();
 
+// v1.11.x SAFETY: Trust X-Forwarded-* headers only when the immediate
+// proxy is on loopback. The Umbrel app_proxy connects to the API container
+// on the internal docker network (loopback from the API's perspective),
+// so this resolves req.ip to the real client IP for rate-limiting purposes.
+// Crucially, NOT 'true' — that would trust X-Forwarded-* from any source,
+// allowing a malicious authenticated user to spoof their IP. With
+// 'loopback', only loopback-originated proxy headers are honored.
+app.set('trust proxy', 'loopback');
+
 // v1.10.1 SECURITY: helmet adds defense-in-depth response headers.
 // Carefully configured to NOT break Umbrel's webview (which iframes the
 // app) and NOT break the React UI's heavy use of inline styles.
@@ -568,6 +596,17 @@ app.use(express.json({ limit: '64kb' }));
 
 function rateLimitFactory(maxPerMin = 60) {
   const buckets = new Map();
+  // v1.11.x SAFETY: periodic cleanup so the buckets Map doesn't grow
+  // unbounded over long uptimes. Each entry's `t` is the start of the
+  // current 60s window; anything older than 5 min is stale. Runs every
+  // 5 min — cheap (linear scan of small map). unref() so this timer
+  // doesn't keep the process alive on shutdown.
+  setInterval(() => {
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    for (const [ip, b] of buckets) {
+      if (b.t < cutoff) buckets.delete(ip);
+    }
+  }, 5 * 60 * 1000).unref();
   return (req, res, next) => {
     const ip = req.ip || 'unknown';
     const now = Date.now();
@@ -726,10 +765,11 @@ app.get('/api/health/detailed', (req, res) => {
   } catch (e) {
     // Don't throw — the health endpoint must never fail loudly. UI shows
     // a degraded card if the structure is malformed.
+    console.error('[health/detailed]', e && (e.stack || e.message));
     res.status(500).json({
       overall: 'red',
       checks: {},
-      error: e.message,
+      error: 'Internal server error',
     });
   }
 });
@@ -748,7 +788,8 @@ app.post('/api/setup', async (req, res) => {
     res.json({ ok: true });
     broadcast({ type: 'CONFIG', data: cfgPrivate() });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -771,7 +812,8 @@ app.post('/api/config', async (req, res) => {
     res.json({ ok: true, ...cfgPublic() });
     broadcast({ type: 'CONFIG', data: cfgPrivate() });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -828,7 +870,8 @@ app.post('/api/reset-share-stats', (req, res) => {
     });
     res.json({ ok: true, resetAt: state.shareStatsStartedAt });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -923,7 +966,8 @@ app.post('/api/webhooks', async (req, res) => {
     }
     return res.status(400).json({ error: 'Unknown op' });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -960,7 +1004,8 @@ app.post('/api/miners/poll/:workerName', async (req, res) => {
     if (!result) return res.status(404).json({ error: 'worker not found or no IP' });
     res.json({ ok: true, record: result });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -1024,7 +1069,8 @@ app.post('/api/network-stats/export-backup', (req, res) => {
     const backup = networkStatsController.exportBackup();
     res.json({ ok: true, ...backup });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -1054,7 +1100,8 @@ app.post('/api/network-stats/tor', async (req, res) => {
       via: result.via,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
