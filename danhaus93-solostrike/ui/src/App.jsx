@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
 import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
@@ -7965,9 +7966,22 @@ function BlockSimulatorModal({ onClose }) {
   };
 
   return (
+    /* v1.11.x: Render via createPortal to document.body so the modal
+       escapes the carousel's `transform` parent. CSS spec: a parent with
+       transform creates a containing block for `position: fixed`
+       descendants, which was trapping the modal inside the carousel
+       slot — visible as the SoloStrike header showing above and the
+       footer + carousel dots clipping the bottom of the modal. Portal
+       renders the modal as a sibling of the React root, escaping that
+       containing-block trap. */
+    createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       background: '#000', display: 'flex', flexDirection: 'column',
+      paddingTop: 'env(safe-area-inset-top, 0)',
+      paddingBottom: 'env(safe-area-inset-bottom, 0)',
+      paddingLeft: 'env(safe-area-inset-left, 0)',
+      paddingRight: 'env(safe-area-inset-right, 0)',
     }}>
       {/* Header bar */}
       <div style={{
@@ -8151,7 +8165,9 @@ function BlockSimulatorModal({ onClose }) {
           >⚡ Burst</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
+    )
   );
 }
 
