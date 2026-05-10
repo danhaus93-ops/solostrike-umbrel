@@ -14,7 +14,6 @@ export function fmtDiff(d){
   if(d>=1e3)return`${(d/1e3).toFixed(2)} K`;
   return d.toFixed(0);
 }
-export const fmtDiffCompact = fmtDiff;
 
 export function fmtNum(n){return new Intl.NumberFormat().format(Math.round(n||0));}
 

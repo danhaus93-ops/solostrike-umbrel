@@ -261,12 +261,7 @@ export const METRIC_MAP = Object.fromEntries(METRICS.map(m => [m.id, m]));
 // Category order for the settings UI
 export const METRIC_CATEGORIES = ['Performance', 'Workers', 'Odds', 'Network', 'Infrastructure', 'Session', 'Pulse'];
 
-// Available chart marker symbols
-export const MARKER_SYMBOLS = ['₿', '⛏', '💎', '⚡', '🎯', '🔥', '🚀', '🎰', '☠️', '🟠'];
-
 // Defaults
 export const DEFAULT_STRIP_METRICS = ['pool_hashrate', 'next_block_prize', 'accept_rate', 'worker_health', 'node_sync', 'hashrate_trend'];
 export const DEFAULT_CHUNK_SIZE   = 2;
 export const DEFAULT_FADE_MS      = 5000;
-export const DEFAULT_MARKER_SYMS  = ['₿', '⛏', '💎'];
-export const DEFAULT_MARKER_MS    = 4000;
