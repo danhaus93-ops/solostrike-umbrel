@@ -221,7 +221,6 @@ const LS_CARD_ORDER      = 'ss_card_order_v1';
 const LS_CURRENCY        = 'ss_currency_v1';
 const LS_ALIASES         = 'ss_worker_aliases_v1';
 const LS_NOTES           = 'ss_worker_notes_v1';
-const LS_OFFLINE_SEEN    = 'ss_offline_seen_v1';
 const LS_STRIP_METRICS   = 'ss_strip_metrics_v1';
 const LS_STRIP_CHUNK     = 'ss_strip_chunk_v1';
 const LS_STRIP_FADE      = 'ss_strip_fade_v1';
@@ -242,7 +241,7 @@ const ALL_CARDS = [
   { id:'pulse',         label:'Solostrike Pulse' },
   { id:'workers',       label:'The Crew' },
   { id:'stratum',       label:'Stratum Connection' },
-  { id:'vein',          label:'The Hunt' },
+  { id:'hunt',          label:'The Hunt' },
   { id:'network',       label:'Bitcoin Network' },
   { id:'node',          label:'Bitcoin Node' },
   { id:'luck',          label:'Hot Streak' },
@@ -256,26 +255,29 @@ const ALL_CARDS = [
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
-const DEFAULT_PRESET  = ['hashrate', 'strikevel', 'pulse', 'workers', 'stratum', 'vein', 'network', 'shares', 'best', 'closestcalls', 'jumpers', 'health'];
+const DEFAULT_PRESET  = ['hashrate', 'strikevel', 'pulse', 'workers', 'stratum', 'hunt', 'network', 'shares', 'best', 'closestcalls', 'jumpers', 'health'];
 const EVERYTHING_PRESET = [...ALL_CARD_IDS];
 
 // v1.7.6 migration — rename "odds" card id to "vein" in any persisted layouts.
+// v1.11.x — extends migration to rename "vein" → "hunt" (gold-mining vocab
+// retired in favor of brand-aligned "Hunt").
 // Idempotent and safe even if user hasn't seen the old id.
 function migrateCardIds(arr) {
   if (!Array.isArray(arr)) return arr;
   const seen = new Set();
   const out = [];
   for (const id of arr) {
-    // v1.7.x migrations:
-    //   'odds'       -> 'vein'        (older rename)
+    // v1.7.x → v1.11.x migrations:
+    //   'odds'       -> 'hunt'        (older rename via 'vein' interim)
+    //   'vein'       -> 'hunt'        (v1.11.x: gold-mining vocab retired)
     //   'hashpulse'  -> 'hashrate' + 'pulse' (v1.7.22-iter23: split back into two cards)
     //   'topfinders' -> 'jumpers'     (v1.7.22: merged Claim Jumpers + Gold Strikes)
     //   'blocks'     -> 'jumpers'     (v1.7.22: merged Claim Jumpers + Gold Strikes)
     //   'netstrikes' -> 'network'     (v1.7.22: split unwound; the strikes
     //                                  half goes into 'jumpers', so we add
     //                                  jumpers separately below)
-    if (id === 'odds') {
-      if (!seen.has('vein')) { seen.add('vein'); out.push('vein'); }
+    if (id === 'odds' || id === 'vein') {
+      if (!seen.has('hunt')) { seen.add('hunt'); out.push('hunt'); }
       continue;
     }
     if (id === 'hashpulse') {
@@ -2457,7 +2459,7 @@ function BitcoinNodePanel({ nodeInfo }) {
 // with hashrate. It's not a literal 1:1 cell-per-hash mapping (we'd need
 // 4 billion cells, not 120) — it's a representative visualization where
 // brightness ∝ work being done.
-function NonceField({ hashrate, netHashrate, huntAnim }) {
+function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlock = 0 }) {
   const canvasRef = useRef(null);
   const lightningGLCanvasRef = useRef(null);   // rev54: WebGL canvas for lightning mode
   const lightningGLRef = useRef(null);          // rev54: WebGL renderer instance
@@ -2477,17 +2479,36 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   // to rebuild on every prop change.
   const tickerColumnsRef = useRef(null);
   const tickerWinnerAccumRef = useRef(0);
+  // v1.11.x: Hash Ticker block-found celebration (Volcano). When
+  // tickerCelebTrigger increments, we record start time + block height
+  // and the drawTicker fountain overlay runs for ~5.5s.
+  const tickerCelebStartRef = useRef(0);    // timestamp of celebration start (0 = inactive)
+  const tickerCelebBlockRef = useRef(0);    // block height for the celebration text
+  const tickerCelebParticlesRef = useRef([]);  // active ₿ glyph particles
+  const tickerCelebSeenRef = useRef(0);     // last trigger value seen (mount-safety)
   const lastFrameRef = useRef(performance.now());
   const hrRef = useRef(hashrate || 0);
-  const netHrRef = useRef(netHashrate || 1);
   const huntAnimRef = useRef(huntAnim || 'noncefield');
 
   // Keep latest props accessible inside the rAF loop without triggering re-mount
   useEffect(() => {
     hrRef.current = hashrate || 0;
-    netHrRef.current = netHashrate || 1;
-  }, [hashrate, netHashrate]);
+  }, [hashrate]);
   useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
+
+  // v1.11.x: Block-found trigger watcher. When tickerCelebTrigger changes
+  // (parent bumps via setTickerCelebKey on real block-found OR preview
+  // button), record the start timestamp + block height. drawTicker reads
+  // these refs to know when/how to render the Volcano overlay. Skip on
+  // initial mount (trigger=0) so we don't celebrate on page-load.
+  useEffect(() => {
+    if (!tickerCelebTrigger) return;
+    if (tickerCelebSeenRef.current === tickerCelebTrigger) return;
+    tickerCelebSeenRef.current = tickerCelebTrigger;
+    tickerCelebStartRef.current = performance.now();
+    tickerCelebBlockRef.current = tickerCelebBlock || 0;
+    tickerCelebParticlesRef.current = [];
+  }, [tickerCelebTrigger, tickerCelebBlock]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2532,7 +2553,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
     const resize = () => {
       // v1.8.5: read actual container height (mirrors Pulse pattern at line ~5499).
       // Previously hardcoded 130, which kept the canvas backing-store fixed even
-      // when the wrapping container had grown taller. With VeinPanel now letting
+      // when the wrapping container had grown taller. With HuntPanel now letting
       // this container flex-grow into the leftover card space, we must size the
       // canvas to the rendered rect or the bottom of the visible area would be
       // empty / clipped.
@@ -3096,6 +3117,104 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
         }
       }
       ctx.shadowBlur = 0;
+
+      // ── v1.11.x: VOLCANO ERUPTION block-found celebration ────────────
+      // Mirrors the standalone preview from solostrike-ticker-celebrations-r3.html.
+      // When tickerCelebStartRef.current is set, we overlay this on top of
+      // the normal ticker for ~5.5s. Phase breakdown:
+      //   Phase 1 (0.00-0.70): continuous ₿ glyph fountain from bottom-center
+      //   Phase 2 (0.70-1.00): "BLOCK STRUCK" text fades in over a dim
+      const celebStart = tickerCelebStartRef.current;
+      const CELEB_DURATION_MS = 5500;
+      const celebElapsed = celebStart ? (performance.now() - celebStart) : 0;
+      if (celebStart && celebElapsed < CELEB_DURATION_MS) {
+        const age = celebElapsed / CELEB_DURATION_MS;
+        const cx = W / 2;
+
+        // Spawn fountain particles. Stop spawning after age 0.7 so they
+        // visually dissipate before the celebration ends.
+        const particles = tickerCelebParticlesRef.current;
+        const eruptionRate = age < 0.7 ? 80 : 0;
+        const expected = eruptionRate * dt;
+        let spawn = Math.floor(expected);
+        if (Math.random() < (expected - spawn)) spawn++;
+        for (let k = 0; k < spawn; k++) {
+          const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.0;
+          const speed = 250 + Math.random() * 280;
+          particles.push({
+            x: cx + (Math.random() - 0.5) * 60,
+            y: H + 5,
+            vx: Math.cos(ang) * speed,
+            vy: Math.sin(ang) * speed,
+            size: 10 + Math.random() * 6,
+            life: 2.0,
+            age: 0,
+          });
+        }
+
+        // Update + draw particles. Gravity pulls them back down so the
+        // visual is a fountain arc, not a one-way blast.
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += 600 * dt;
+          p.age += dt;
+          if (p.y > H + 20 || p.age > p.life) {
+            particles.splice(i, 1);
+            continue;
+          }
+          const a = Math.max(0, 1 - p.age / p.life);
+          ctx.shadowColor = 'rgba(255,180,80,0.7)';
+          ctx.shadowBlur = 5;
+          ctx.fillStyle = `rgba(255,200,100,${a})`;
+          drawBtcGlyph(ctx, p.x, p.y, p.size);
+        }
+        ctx.shadowBlur = 0;
+
+        // Pulsing glow at the eruption base.
+        if (age < 0.85) {
+          const baseAlpha = age < 0.7
+            ? 0.5 + Math.sin(performance.now() / 100) * 0.1
+            : (1 - (age - 0.7) / 0.15) * 0.5;
+          const bg = ctx.createRadialGradient(cx, H, 0, cx, H, 80);
+          bg.addColorStop(0, `rgba(255,215,90,${baseAlpha})`);
+          bg.addColorStop(1, 'rgba(255,215,90,0)');
+          ctx.fillStyle = bg;
+          ctx.beginPath();
+          ctx.arc(cx, H, 80, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Phase 2 text overlay
+        if (age >= 0.70) {
+          const ta = Math.min(1, (age - 0.70) / 0.30);
+          ctx.fillStyle = `rgba(0,0,0,${ta * 0.4})`;
+          ctx.fillRect(0, 0, W, H);
+
+          ctx.font = 'bold 22px "JetBrains Mono", monospace';
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'center';
+          const cy = H / 2 + 4;
+          ctx.shadowColor = 'rgba(255,215,90,0.95)';
+          ctx.shadowBlur = 14;
+          ctx.fillStyle = `rgba(255,235,140,${ta})`;
+          ctx.fillText('BLOCK STRUCK', cx, cy);
+          ctx.shadowBlur = 0;
+
+          // Block height under the headline
+          const blockH = tickerCelebBlockRef.current;
+          if (blockH) {
+            ctx.font = 'bold 11px "JetBrains Mono", monospace';
+            ctx.fillStyle = `rgba(255,200,120,${ta})`;
+            ctx.fillText('#' + blockH, cx, cy + 22);
+          }
+        }
+      } else if (celebStart) {
+        // Celebration ended — reset so it doesn't keep retriggering
+        tickerCelebStartRef.current = 0;
+        tickerCelebParticlesRef.current = [];
+      }
     };
 
     const draw = (now) => {
@@ -3206,7 +3325,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
 
   return (
     <div ref={containerRef} style={{
-      // v1.8.5: container fills its parent slot. VeinPanel wraps this in a
+      // v1.8.5: container fills its parent slot. HuntPanel wraps this in a
       // flex:1 div, so the canvas now grows into whatever vertical space is
       // left in the card after the header / reward / fees / stats rows have
       // taken theirs. Floor of 130 preserves the original look on short
@@ -3251,7 +3370,7 @@ function NonceField({ hashrate, netHashrate, huntAnim }) {
   );
 }
 
-function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, currency, huntAnim, onOpen }) {
+function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, tickerCelebTrigger = 0, tickerCelebBlock = 0, onOpen }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
   // iter27c: `scale` (logarithmic mapping for the gold-vein SVG fill width)
   // is no longer needed — replaced by the NonceField canvas component.
@@ -3320,7 +3439,7 @@ function VeinPanel({ odds, hashrate, netHashrate, blockReward, mempool, prices, 
             </span>
           </div>
           <div style={{flex:1, minHeight:0, display:'flex'}}>
-            <NonceField hashrate={hashrate} netHashrate={netHashrate} huntAnim={huntAnim}/>
+            <NonceField hashrate={hashrate} huntAnim={huntAnim} tickerCelebTrigger={tickerCelebTrigger} tickerCelebBlock={tickerCelebBlock}/>
           </div>
         </div>
 
@@ -8576,221 +8695,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       pulseIntersectionObserver.observe(containerEl);
     }
 
-    // Reset persistent state when switching animations so the new one starts clean
-    canvas._flakes = undefined;
-    canvas._flakeAccum = undefined;
-    canvas._timeAccum = undefined;
-    // v1.11.x: ticker moved to Hunt — _columns/_winnerAccum no longer used here.
-    canvas._embers = undefined;
-    canvas._emberAccum = undefined;
-    canvas._chunks = undefined;
-    canvas._chunkAccum = undefined;
-    canvas._glints = undefined;
-    canvas._glintAccum = undefined;
-
-    // ─── Sluice Box Stream ────────────────────────────────────
-    const drawSluice = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
-      if (!canvas._flakes) canvas._flakes = [];
-      if (canvas._flakeAccum === undefined) canvas._flakeAccum = 0;
-      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
-      canvas._timeAccum += dt;
-
-      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
-      const speed = enabled ? 60 + Math.min(180, ths * 1.5) : 25;
-      const flakeRate = enabled ? 0.5 + Math.min(15, ths * 0.15) : 0.15;
-
-      canvas._flakeAccum += dt * flakeRate;
-      while (canvas._flakeAccum >= 1) {
-        canvas._flakeAccum -= 1;
-        canvas._flakes.push({
-          x: -3, y: Math.random() * (H - 8) + 4,
-          vx: speed * (1.1 + Math.random() * 0.4),
-          vy: (Math.random() - 0.5) * 8,
-          size: 0.8 + Math.random() * 1.6,
-          shade: Math.random(), life: 0,
-        });
-      }
-
-      spikesRef.current = spikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) {
-          for (let i = 0; i < 12; i++) {
-            canvas._flakes.push({
-              x: -3 - Math.random() * 20,
-              y: Math.random() * (H - 8) + 4,
-              vx: speed * (1.2 + Math.random() * 0.6),
-              vy: (Math.random() - 0.5) * 16,
-              size: 1.2 + Math.random() * 2.0,
-              shade: 0.7 + Math.random() * 0.3,
-              life: 0, burst: true,
-            });
-          }
-        }
-      }
-
-      const flakes = canvas._flakes;
-      for (let i = flakes.length - 1; i >= 0; i--) {
-        const f = flakes[i];
-        f.x += f.vx * dt;
-        f.y += f.vy * dt;
-        f.life += dt;
-        if (f.x > W + 5) flakes.splice(i, 1);
-      }
-
-      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
-      ctx.fillRect(0, 0, W, H);
-
-      const layers = [
-        { y: H * 0.35, amp: 4,  freq: 0.018, color: 'rgba(60,80,100,0.20)', speedMul: 0.7 },
-        { y: H * 0.55, amp: 6,  freq: 0.022, color: 'rgba(80,100,120,0.18)', speedMul: 0.85 },
-        { y: H * 0.75, amp: 5,  freq: 0.026, color: 'rgba(100,120,140,0.14)', speedMul: 1.0 },
-      ];
-      for (const layer of layers) {
-        const phaseShift = canvas._timeAccum * speed * layer.speedMul * 0.05;
-        ctx.strokeStyle = layer.color;
-        ctx.lineWidth = 1.4;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        for (let x = 0; x <= W; x += 4) {
-          const y = layer.y + Math.sin(x * layer.freq + phaseShift) * layer.amp +
-                              Math.sin(x * layer.freq * 1.7 + phaseShift * 0.6) * (layer.amp * 0.4);
-          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = 'rgba(100,80,50,0.45)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      for (let x = 0; x < W; x += 14) { ctx.moveTo(x, H); ctx.lineTo(x, H - 6); }
-      ctx.moveTo(0, H - 0.5); ctx.lineTo(W, H - 0.5);
-      ctx.stroke();
-
-      ctx.shadowBlur = enabled ? 6 : 0;
-      for (const f of flakes) {
-        const alpha = enabled ? Math.min(1, f.life * 8) : 0.4;
-        const r = Math.round(245 + f.shade * 10);
-        const g = Math.round(166 + f.shade * 45);
-        const b = Math.round(35 + f.shade * 80);
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-        ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
-        // v1.11.x: ₿ glyph variant removed when useBitcoinSymbols was deleted.
-        // Particles always render as ellipses now.
-        ctx.beginPath();
-        ctx.ellipse(f.x, f.y, f.size * 1.4, f.size * 0.7, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
-    };
-
-    // ─── Cave Glimmers ────────────────────────────────────────
-    const drawGlimmers = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
-      if (!canvas._glints) canvas._glints = [];
-      if (canvas._glintAccum === undefined) canvas._glintAccum = 0;
-      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
-      canvas._timeAccum += dt;
-
-      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
-      // Glints per second: 0.8 base + 0.2 per TH/s
-      const rate = enabled ? 0.8 + Math.min(20, ths * 0.2) : 0.3;
-
-      canvas._glintAccum += dt * rate;
-      while (canvas._glintAccum >= 1) {
-        canvas._glintAccum -= 1;
-        canvas._glints.push({
-          x: 4 + Math.random() * (W - 8),
-          y: 4 + Math.random() * (H - 8),
-          age: 0,
-          life: 0.6 + Math.random() * 1.2,
-          maxR: 1.6 + Math.random() * 2.4,
-          shade: Math.random(),
-          gold: false,
-        });
-      }
-
-      spikesRef.current = spikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) {
-          // Big glint cluster — like a big find
-          for (let i = 0; i < 6; i++) {
-            canvas._glints.push({
-              x: 4 + Math.random() * (W - 8),
-              y: 4 + Math.random() * (H - 8),
-              age: 0, life: 1.4 + Math.random() * 0.8,
-              maxR: 3 + Math.random() * 2,
-              shade: 0.8, gold: true,
-            });
-          }
-        }
-      }
-
-      const glints = canvas._glints;
-      for (let i = glints.length - 1; i >= 0; i--) {
-        glints[i].age += dt;
-        if (glints[i].age > glints[i].life) glints.splice(i, 1);
-      }
-
-      // Dark cave-rock background with subtle vignette
-      ctx.fillStyle = 'rgba(14, 16, 20, 0.95)';
-      ctx.fillRect(0, 0, W, H);
-
-      // Faint cave-wall texture (deterministic pseudo-noise lines)
-      ctx.strokeStyle = 'rgba(60, 50, 40, 0.18)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = 0; x < W; x += 12) {
-        const y1 = (Math.sin(x * 0.13) + Math.sin(x * 0.07)) * 4 + H * 0.3;
-        const y2 = (Math.cos(x * 0.11) + Math.sin(x * 0.05)) * 5 + H * 0.7;
-        ctx.moveTo(x, y1); ctx.lineTo(x + 8, y1 + 1);
-        ctx.moveTo(x + 4, y2); ctx.lineTo(x + 12, y2 + 1.5);
-      }
-      ctx.stroke();
-
-      // Render glints
-      for (const g of glints) {
-        const t = g.age / g.life;
-        // 3-stage envelope: fade in (0-0.2) → peak (0.2-0.6) → fade out (0.6-1.0)
-        let alpha;
-        if (t < 0.2) alpha = t / 0.2;
-        else if (t < 0.6) alpha = 1;
-        else alpha = (1 - t) / 0.4;
-        if (!enabled) alpha *= 0.45;
-
-        const r = g.gold ? 255 : Math.round(245 + g.shade * 10);
-        const gC = g.gold ? 230 : Math.round(166 + g.shade * 50);
-        const b = g.gold ? 130 : Math.round(35 + g.shade * 90);
-
-        // Star-burst rays + center dot
-        ctx.shadowColor = `rgba(${r},${gC},${b},0.9)`;
-        ctx.shadowBlur = g.gold ? 14 : 8;
-
-        // v1.11.x: ₿ glyph variant removed. Always render the dot + rays.
-        // Center bright dot
-        ctx.fillStyle = `rgba(${r},${gC},${b},${alpha})`;
-        ctx.beginPath();
-        ctx.arc(g.x, g.y, g.maxR * (alpha * 0.6 + 0.4), 0, Math.PI * 2);
-        ctx.fill();
-
-        // 4-point star rays at peak
-        if (alpha > 0.3) {
-          ctx.strokeStyle = `rgba(${r},${gC},${b},${alpha * 0.7})`;
-          ctx.lineWidth = 0.8;
-          ctx.beginPath();
-          const rayLen = g.maxR * 2.5;
-          ctx.moveTo(g.x - rayLen, g.y); ctx.lineTo(g.x + rayLen, g.y);
-          ctx.moveTo(g.x, g.y - rayLen); ctx.lineTo(g.x, g.y + rayLen);
-          ctx.stroke();
-        }
-      }
-      ctx.shadowBlur = 0;
-    };
-
+    // v1.11.x: animation state-reset block removed. Was resetting
+    // canvas._flakes/_glints/_embers/_chunks/_timeAccum from the old
+    // Sluice Box / Cave Glimmers / Forge Embers Pulse animations, which
+    // were dispatch-removed in rev61 and now have their function bodies
+    // deleted too. Globe + Strike Mesh handle their own state internally.
     // ─── Solo Strike Map (Globe) ──────────────────────────────
     // Slowly-rotating 3D globe with real Natural Earth coastline outlines
     // drawn as faint amber lines + glowing amber pool dots pulsing on the
@@ -9301,107 +9210,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.fillText('Snapped to ~500km region', cx, cy + 8);
       }
     };
-
-    // ─── Forge Embers ─────────────────────────────────────────
-    const drawEmbers = (dt, W, H) => {
-      const ns = nsRef.current, enabled = enabledRef.current, workers = workersInputRef.current;
-      if (!canvas._embers) canvas._embers = [];
-      if (canvas._emberAccum === undefined) canvas._emberAccum = 0;
-      if (canvas._timeAccum === undefined) canvas._timeAccum = 0;
-      canvas._timeAccum += dt;
-
-      const ths = enabled ? (ns.hashrate || 0) / 1e12 : 0;
-      // Embers per sec: 1 + 0.18 per TH/s
-      const rate = enabled ? 1 + Math.min(18, ths * 0.18) : 0.4;
-
-      canvas._emberAccum += dt * rate;
-      while (canvas._emberAccum >= 1) {
-        canvas._emberAccum -= 1;
-        canvas._embers.push({
-          x: 4 + Math.random() * (W - 8),
-          y: H + 2,
-          // Upward velocity with subtle drift
-          vy: -(20 + Math.random() * 25),
-          vx: (Math.random() - 0.5) * 14,
-          size: 0.6 + Math.random() * 1.4,
-          shade: Math.random(),
-          life: 0,
-          maxLife: 1.2 + Math.random() * 1.0,
-          big: false,
-        });
-      }
-
-      spikesRef.current = spikesRef.current
-        .map(s => ({ ...s, age: s.age + dt }))
-        .filter(s => s.age < 0.3);
-      for (const s of spikesRef.current) {
-        if (s.age < dt * 1.5) {
-          // Big ember burst — like dropping fresh coal on the forge
-          for (let i = 0; i < 14; i++) {
-            canvas._embers.push({
-              x: 4 + Math.random() * (W - 8),
-              y: H - Math.random() * 6,
-              vy: -(35 + Math.random() * 30),
-              vx: (Math.random() - 0.5) * 30,
-              size: 1.2 + Math.random() * 1.5,
-              shade: 0.7 + Math.random() * 0.3,
-              life: 0,
-              maxLife: 1.5 + Math.random() * 0.8,
-              big: true,
-            });
-          }
-        }
-      }
-
-      const embers = canvas._embers;
-      for (let i = embers.length - 1; i >= 0; i--) {
-        const e = embers[i];
-        e.life += dt;
-        e.x += e.vx * dt;
-        e.y += e.vy * dt;
-        // Slight upward acceleration (heat rises)
-        e.vy -= 6 * dt;
-        // Horizontal drift settles
-        e.vx *= 0.985;
-        if (e.life > e.maxLife || e.y < -5) embers.splice(i, 1);
-      }
-
-      // Dark forge background with subtle warm gradient at bottom
-      ctx.fillStyle = 'rgba(16, 14, 12, 0.9)';
-      ctx.fillRect(0, 0, W, H);
-      // Glowing forge floor at bottom edge
-      const grad = ctx.createLinearGradient(0, H - 12, 0, H);
-      grad.addColorStop(0, 'rgba(60, 30, 10, 0)');
-      grad.addColorStop(1, enabled ? 'rgba(150, 70, 20, 0.4)' : 'rgba(80, 40, 15, 0.2)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, H - 12, W, 12);
-
-      // Render embers
-      for (const e of embers) {
-        const t = e.life / e.maxLife;
-        // Brightness fades over lifetime
-        let alpha;
-        if (t < 0.1) alpha = t / 0.1;
-        else alpha = (1 - t);
-        if (!enabled) alpha *= 0.5;
-
-        // Color shift: hot orange → cooler red-amber as it ages
-        const hot = 1 - t;
-        const r = e.big ? 255 : Math.round(245 + e.shade * 10);
-        const g = Math.round((e.big ? 170 : 120) * hot + (e.big ? 80 : 50) * t);
-        const b = Math.round(20 + e.shade * 30 * hot);
-
-        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-        ctx.shadowColor = `rgba(${r},${g + 40},${b + 30},${alpha * 0.9})`;
-        ctx.shadowBlur = e.big ? 8 : 5;
-        // v1.11.x: ₿ glyph variant removed. Always render as filled arc.
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
-    };
-
     // ─── Master draw — picks the right one ────────────────────
     const draw = (now) => {
       const dt = Math.min(0.05, (now - lastTickRef.current) / 1000);
@@ -11939,7 +11747,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','vein','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent','health'];
+const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','hunt','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent','health'];
 function loadOrder() {
   try {
     const s = localStorage.getItem(LS_CARD_ORDER);
@@ -12198,6 +12006,13 @@ export default function App() {
   // increments do). localStorage records the last celebrated block height
   // so a page refresh right after a block-found event won't re-fire the modal.
   const [blockFoundCelebration, setBlockFoundCelebration] = useState(null);
+  // v1.11.x: Counter that bumps when a new block is found, used to trigger
+  // the inline Hash Ticker Volcano celebration. NonceField watches the
+  // counter — when it changes, NonceField records the start time and runs
+  // the overlay for ~5.5s. Decoupled from blockFoundCelebration so the
+  // ticker fires independently of the full-screen modal lifecycle.
+  const [tickerCelebKey, setTickerCelebKey] = useState(0);
+  const [tickerCelebBlock, setTickerCelebBlock] = useState(0);
   const lastBlockHeightRef = useRef(null);
   useEffect(() => {
     const blocks = Array.isArray(poolState?.blocks) ? poolState.blocks : null;
@@ -12222,6 +12037,11 @@ export default function App() {
       } catch {}
       // Open modal with current Hunt animation theme
       setBlockFoundCelebration({ animType: huntAnim, block: newest });
+      // v1.11.x: also fire the inline Hash Ticker Volcano celebration.
+      // Independent of the full-screen modal — ticker celebrates whether
+      // or not the modal is shown / dismissed.
+      setTickerCelebBlock(height);
+      setTickerCelebKey((k) => k + 1);
     }
   }, [poolState?.blocks, huntAnim]);
   const dismissBlockFound = useCallback(() => setBlockFoundCelebration(null), []);
@@ -12234,6 +12054,10 @@ export default function App() {
       hash: '0000000000000000000pre00view0celebrationdataonlyaaaaaaaaaaaa',
     };
     setBlockFoundCelebration({ animType: huntAnim, block: mock });
+    // v1.11.x: also fire the inline Hash Ticker celebration so users can
+    // preview both surfaces from the settings preview button.
+    setTickerCelebBlock(mock.height);
+    setTickerCelebKey((k) => k + 1);
   }, [poolState, huntAnim]);
   const useCarousel = isMobile && carouselEnabled;
   const carouselRef = useRef(null);
@@ -12690,7 +12514,7 @@ export default function App() {
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
     stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
-    vein: <VeinPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} netHashrate={poolState?.network?.hashrate} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} onOpen={()=>setShowReckoning(true)}/>,
+    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} tickerCelebTrigger={tickerCelebKey} tickerCelebBlock={tickerCelebBlock} onOpen={()=>setShowReckoning(true)}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
