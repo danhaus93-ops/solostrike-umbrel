@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
-import { fmtHr, fmtDiff, fmtNum, fmtUptime, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
+import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
@@ -209,12 +209,9 @@ function poolAlignMeta(status) { return POOL_ALIGN_META[status] || null; }
 // Configurable later if anyone asks; hardcoded for v1.
 const TEMP_AMBER_C = 75;
 const TEMP_RED_C   = 80;
-function tempBadgeMeta(tempC) {
-  if (tempC == null || !Number.isFinite(tempC) || tempC <= 0) return null;
-  if (tempC >= TEMP_RED_C)   return { color:'var(--red)',   glyph:'🔥', label:'Running hot' };
-  if (tempC >= TEMP_AMBER_C) return { color:'var(--amber)', glyph:'',   label:'Warm' };
-  return null;  // normal — no badge
-}
+// v1.11.x: tempBadgeMeta() helper deleted (was declared, never invoked).
+// Inline temp-tier styling lives at line ~2221 directly using TEMP_AMBER_C
+// and TEMP_RED_C constants — no helper needed.
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LS_CARD_ORDER      = 'ss_card_order_v1';
@@ -2336,7 +2333,7 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
   const price = prices?.[currency];
   const rewardUsd = price && blockReward ? blockReward.totalBtc * price : null;
   // iter26: latest block weight + tx count (data from mempool.space netBlocks).
-  // Subsidy/fees breakdown and fee tiers live in the Vein card — not duplicated here.
+  // Subsidy/fees breakdown and fee tiers live in the Hunt card — not duplicated here.
   const lb = latestBlock || {};
   const blkWeight = lb.weight || lb.blockWeight || null;
   const blkTxs    = lb.txCount || lb.txs || lb.tx_count || null;
@@ -2440,12 +2437,12 @@ function BitcoinNodePanel({ nodeInfo }) {
 }
 
 // ── Strike Odds ───────────────────────────────────────────────────────────────
-// ── The Vein — Block Potential card (v1.7.6) ─────────────────────────────
+// ── The Hunt — Block Potential card (v1.7.6) ─────────────────────────────
 // Replaces the old "Strike Odds" card. Fuses Strike Odds' orbital gauge with
 // reward breakdown (subsidy + fees), expected daily sats, and live fee tier
 // strip. Tap to open The Reckoning. Same readability standard as Strikers/
 // Reckoning modals (no var(--text-3) ghost gray, body text >= 0.7rem).
-// ── NonceField — Bitcoin-native visualization for The Vein (iter27c) ─────
+// ── NonceField — Bitcoin-native visualization for The Hunt (iter27c) ─────
 // Each Bitcoin block requires finding a 32-bit nonce that, combined with
 // the block header, produces a hash below the network difficulty target.
 // The full nonce space is 2^32 ≈ 4.29 billion possibilities per header.
@@ -2459,7 +2456,7 @@ function BitcoinNodePanel({ nodeInfo }) {
 // with hashrate. It's not a literal 1:1 cell-per-hash mapping (we'd need
 // 4 billion cells, not 120) — it's a representative visualization where
 // brightness ∝ work being done.
-function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlock = 0 }) {
+function NonceField({ hashrate, huntAnim }) {
   const canvasRef = useRef(null);
   const lightningGLCanvasRef = useRef(null);   // rev54: WebGL canvas for lightning mode
   const lightningGLRef = useRef(null);          // rev54: WebGL renderer instance
@@ -2479,13 +2476,10 @@ function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlo
   // to rebuild on every prop change.
   const tickerColumnsRef = useRef(null);
   const tickerWinnerAccumRef = useRef(0);
-  // v1.11.x: Hash Ticker block-found celebration (Volcano). When
-  // tickerCelebTrigger increments, we record start time + block height
-  // and the drawTicker fountain overlay runs for ~5.5s.
-  const tickerCelebStartRef = useRef(0);    // timestamp of celebration start (0 = inactive)
-  const tickerCelebBlockRef = useRef(0);    // block height for the celebration text
-  const tickerCelebParticlesRef = useRef([]);  // active ₿ glyph particles
-  const tickerCelebSeenRef = useRef(0);     // last trigger value seen (mount-safety)
+  // v1.11.x: Block-found celebration moved to a proper full-screen BFM
+  // celebration (drawBFMTicker) matching the format of the other animations.
+  // The in-card overlay was dropped — it duplicated the BFM modal's purpose
+  // and didn't match the established celebration format.
   const lastFrameRef = useRef(performance.now());
   const hrRef = useRef(hashrate || 0);
   const huntAnimRef = useRef(huntAnim || 'noncefield');
@@ -2495,20 +2489,6 @@ function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlo
     hrRef.current = hashrate || 0;
   }, [hashrate]);
   useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
-
-  // v1.11.x: Block-found trigger watcher. When tickerCelebTrigger changes
-  // (parent bumps via setTickerCelebKey on real block-found OR preview
-  // button), record the start timestamp + block height. drawTicker reads
-  // these refs to know when/how to render the Volcano overlay. Skip on
-  // initial mount (trigger=0) so we don't celebrate on page-load.
-  useEffect(() => {
-    if (!tickerCelebTrigger) return;
-    if (tickerCelebSeenRef.current === tickerCelebTrigger) return;
-    tickerCelebSeenRef.current = tickerCelebTrigger;
-    tickerCelebStartRef.current = performance.now();
-    tickerCelebBlockRef.current = tickerCelebBlock || 0;
-    tickerCelebParticlesRef.current = [];
-  }, [tickerCelebTrigger, tickerCelebBlock]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2991,8 +2971,9 @@ function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlo
     // v1.11.x: ported from PulsePanel. Hashrate-driven hex/BTC-glyph rain
     // with periodic gold "winner" highlights. State held on tickerColumnsRef
     // (per-column drop arrays) and tickerWinnerAccumRef (accumulator for
-    // periodic winner spawns). Block-found events fire the Volcano
-    // celebration via tickerCelebStartRef (see drawTicker bottom).
+    // periodic winner spawns). Block-found events fire the full-screen
+    // BFM modal (drawBFMTicker) — the in-card surface stays as the
+    // running hash rain only.
     const HEX_CHARS = '0123456789abcdef';
     const drawTicker = (dt, W, H) => {
       // v1.11.x: BTC symbols are hardcoded ON (no toggle). Winner drops
@@ -3117,104 +3098,6 @@ function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlo
         }
       }
       ctx.shadowBlur = 0;
-
-      // ── v1.11.x: VOLCANO ERUPTION block-found celebration ────────────
-      // Mirrors the standalone preview from solostrike-ticker-celebrations-r3.html.
-      // When tickerCelebStartRef.current is set, we overlay this on top of
-      // the normal ticker for ~5.5s. Phase breakdown:
-      //   Phase 1 (0.00-0.70): continuous ₿ glyph fountain from bottom-center
-      //   Phase 2 (0.70-1.00): "BLOCK STRUCK" text fades in over a dim
-      const celebStart = tickerCelebStartRef.current;
-      const CELEB_DURATION_MS = 5500;
-      const celebElapsed = celebStart ? (performance.now() - celebStart) : 0;
-      if (celebStart && celebElapsed < CELEB_DURATION_MS) {
-        const age = celebElapsed / CELEB_DURATION_MS;
-        const cx = W / 2;
-
-        // Spawn fountain particles. Stop spawning after age 0.7 so they
-        // visually dissipate before the celebration ends.
-        const particles = tickerCelebParticlesRef.current;
-        const eruptionRate = age < 0.7 ? 80 : 0;
-        const expected = eruptionRate * dt;
-        let spawn = Math.floor(expected);
-        if (Math.random() < (expected - spawn)) spawn++;
-        for (let k = 0; k < spawn; k++) {
-          const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.0;
-          const speed = 250 + Math.random() * 280;
-          particles.push({
-            x: cx + (Math.random() - 0.5) * 60,
-            y: H + 5,
-            vx: Math.cos(ang) * speed,
-            vy: Math.sin(ang) * speed,
-            size: 10 + Math.random() * 6,
-            life: 2.0,
-            age: 0,
-          });
-        }
-
-        // Update + draw particles. Gravity pulls them back down so the
-        // visual is a fountain arc, not a one-way blast.
-        for (let i = particles.length - 1; i >= 0; i--) {
-          const p = particles[i];
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          p.vy += 600 * dt;
-          p.age += dt;
-          if (p.y > H + 20 || p.age > p.life) {
-            particles.splice(i, 1);
-            continue;
-          }
-          const a = Math.max(0, 1 - p.age / p.life);
-          ctx.shadowColor = 'rgba(255,180,80,0.7)';
-          ctx.shadowBlur = 5;
-          ctx.fillStyle = `rgba(255,200,100,${a})`;
-          drawBtcGlyph(ctx, p.x, p.y, p.size);
-        }
-        ctx.shadowBlur = 0;
-
-        // Pulsing glow at the eruption base.
-        if (age < 0.85) {
-          const baseAlpha = age < 0.7
-            ? 0.5 + Math.sin(performance.now() / 100) * 0.1
-            : (1 - (age - 0.7) / 0.15) * 0.5;
-          const bg = ctx.createRadialGradient(cx, H, 0, cx, H, 80);
-          bg.addColorStop(0, `rgba(255,215,90,${baseAlpha})`);
-          bg.addColorStop(1, 'rgba(255,215,90,0)');
-          ctx.fillStyle = bg;
-          ctx.beginPath();
-          ctx.arc(cx, H, 80, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Phase 2 text overlay
-        if (age >= 0.70) {
-          const ta = Math.min(1, (age - 0.70) / 0.30);
-          ctx.fillStyle = `rgba(0,0,0,${ta * 0.4})`;
-          ctx.fillRect(0, 0, W, H);
-
-          ctx.font = 'bold 22px "JetBrains Mono", monospace';
-          ctx.textBaseline = 'middle';
-          ctx.textAlign = 'center';
-          const cy = H / 2 + 4;
-          ctx.shadowColor = 'rgba(255,215,90,0.95)';
-          ctx.shadowBlur = 14;
-          ctx.fillStyle = `rgba(255,235,140,${ta})`;
-          ctx.fillText('BLOCK STRUCK', cx, cy);
-          ctx.shadowBlur = 0;
-
-          // Block height under the headline
-          const blockH = tickerCelebBlockRef.current;
-          if (blockH) {
-            ctx.font = 'bold 11px "JetBrains Mono", monospace';
-            ctx.fillStyle = `rgba(255,200,120,${ta})`;
-            ctx.fillText('#' + blockH, cx, cy + 22);
-          }
-        }
-      } else if (celebStart) {
-        // Celebration ended — reset so it doesn't keep retriggering
-        tickerCelebStartRef.current = 0;
-        tickerCelebParticlesRef.current = [];
-      }
     };
 
     const draw = (now) => {
@@ -3370,9 +3253,9 @@ function NonceField({ hashrate, huntAnim, tickerCelebTrigger = 0, tickerCelebBlo
   );
 }
 
-function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, tickerCelebTrigger = 0, tickerCelebBlock = 0, onOpen }) {
+function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, onOpen }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
-  // iter27c: `scale` (logarithmic mapping for the gold-vein SVG fill width)
+  // iter27c: `scale` (logarithmic mapping for the odds SVG fill width)
   // is no longer needed — replaced by the NonceField canvas component.
 
   // Reward breakdown — handle both shape variants for safety
@@ -3439,7 +3322,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
             </span>
           </div>
           <div style={{flex:1, minHeight:0, display:'flex'}}>
-            <NonceField hashrate={hashrate} huntAnim={huntAnim} tickerCelebTrigger={tickerCelebTrigger} tickerCelebBlock={tickerCelebBlock}/>
+            <NonceField hashrate={hashrate} huntAnim={huntAnim}/>
           </div>
         </div>
 
@@ -4080,6 +3963,146 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
   drawBFMText(ctx, W, H, t, 'BLOCK STRUCK', cy, iconSize);
 }
 
+// v1.11.x: drawBFMTicker — Hash Ticker block-found celebration in BFM modal.
+// Visual concept: VOLCANO ERUPTION. Bottom-center fountain of ₿ glyphs
+// erupts upward, gravity arcs them down, central icon ignites at 1.4s,
+// blazing phase shows crackling sparks + halo, fades by 4.5s, "BLOCK
+// STRUCK" letter-spaced text via drawBFMText. Format mirrors
+// drawBFMLightning/drawBFMPickaxe exactly: same phase timing, same
+// iconAlpha/Brightness/Scale/haloR/haloAlpha vocabulary, same drawBtcCelebrate
+// + drawBFMText calls. State.particles holds active ₿ glyph particles.
+function drawBFMTicker(ctx, W, H, t, state) {
+  // Background — match other BFM celebrations
+  ctx.fillStyle = 'rgba(8,8,10,1)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const iconSize = Math.min(H * 0.55, W * 0.7);
+
+  // Lazy-init particle arrays on the per-celebration state
+  if (!state.particles) state.particles = [];
+  if (!state.embers) state.embers = [];
+
+  // ── Buildup (0.0 – 1.4s): ramping eruption ───────────────────────────
+  // Particle spawn rate ramps from low → very high during buildup, then
+  // slows to a baseline trickle for the rest of the celebration. Mirrors
+  // drawBFMLightning's bolt spawn ramp.
+  const spawnRate = t < 1.2 ? (8 + t * 90) : (t < 1.8 ? 140 : 22);
+  const spawnExpected = spawnRate * (1 / 60);
+  let spawnCount = Math.floor(spawnExpected);
+  if (Math.random() < (spawnExpected - spawnCount)) spawnCount++;
+  for (let k = 0; k < spawnCount; k++) {
+    const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.1;
+    const speed = 320 + Math.random() * 360;
+    state.particles.push({
+      x: cx + (Math.random() - 0.5) * 100,
+      y: H + 6,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      size: 12 + Math.random() * 8,
+      life: 0,
+      maxLife: 1.5 + Math.random() * 0.8,
+    });
+  }
+
+  // Update + draw particles. Gravity arcs them back down so the fountain
+  // visually loops. Render with bitcoin orange glow, fade as life
+  // approaches maxLife.
+  for (let i = state.particles.length - 1; i >= 0; i--) {
+    const p = state.particles[i];
+    p.x += p.vx * (1 / 60);
+    p.y += p.vy * (1 / 60);
+    p.vy += 700 * (1 / 60);
+    p.life += 1 / 60;
+    if (p.y > H + 30 || p.life >= p.maxLife) {
+      state.particles.splice(i, 1);
+      continue;
+    }
+    const a = Math.max(0, 1 - p.life / p.maxLife);
+    ctx.shadowColor = 'rgba(255, 165, 60, 0.9)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = `rgba(245, 200, 110, ${a})`;
+    drawBtcGlyph(ctx, p.x, p.y, p.size);
+  }
+  ctx.shadowBlur = 0;
+
+  let iconAlpha = 0, iconBrightness = 1, haloR = 0, haloAlpha = 0, iconScale = 1;
+
+  // ── Target phase (0.5 – 1.4s): ghostly icon fades in ──────────────────
+  if (t >= 0.5 && t < 1.4) iconAlpha = (t - 0.5) / 0.9 * 0.40;
+
+  // ── Mega eruption (1.4 – 1.9s): icon ignites, halo blooms ─────────────
+  if (t >= 1.4 && t < 1.9) {
+    const sp = (t - 1.4) / 0.5;
+    // Bright flash on first frame of mega phase — like drawBFMLightning
+    if (sp < 0.3) {
+      ctx.fillStyle = `rgba(255, 240, 180, ${(0.3 - sp) * 1.5})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    iconAlpha = 0.40 + sp * 0.60;
+    iconBrightness = 1 + sp * 0.8;
+    haloR = iconSize * 0.6 + sp * iconSize * 1.4;
+    haloAlpha = (1 - sp) * 0.55;
+    iconScale = 1 + sp * 0.10 - Math.max(0, sp - 0.4) * 0.05;
+  }
+
+  // ── Blazing phase (1.9 – 4.5s): sparks + slow fade ────────────────────
+  if (t >= 1.9 && t < 4.5) {
+    iconAlpha = 1;
+    const dt2 = t - 1.9;
+    iconBrightness = 1 + Math.max(0, 0.6 - dt2 * 0.4);
+    haloR = iconSize * (1.4 - Math.min(0.4, dt2 * 0.2));
+    haloAlpha = Math.max(0, 0.55 - dt2 * 0.30);
+    if (t > 4.0) {
+      const fadeAlpha = (4.5 - t) / 0.5;
+      iconAlpha = fadeAlpha;
+      haloAlpha *= fadeAlpha;
+    }
+    // Crackling embers around the icon — visually echoes the eruption
+    if (Math.random() < 0.5) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = iconSize * 0.55 + Math.random() * 50;
+      state.embers.push({
+        x: cx + Math.cos(ang) * dist,
+        y: cy + Math.sin(ang) * dist,
+        life: 0,
+        maxLife: 0.4 + Math.random() * 0.35,
+      });
+    }
+    for (let i = state.embers.length - 1; i >= 0; i--) {
+      const e = state.embers[i];
+      e.life += 1 / 60;
+      if (e.life >= e.maxLife) { state.embers.splice(i, 1); continue; }
+      const ea = (1 - e.life / e.maxLife);
+      ctx.fillStyle = `rgba(255, 220, 130, ${ea})`;
+      ctx.shadowColor = 'rgba(255, 200, 100, 0.95)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(e.x, e.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // ── Halo behind icon ──────────────────────────────────────────────────
+  if (haloAlpha > 0.01 && haloR > 0) {
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    halo.addColorStop(0, `rgba(255, 220, 130, ${haloAlpha})`);
+    halo.addColorStop(0.4, `rgba(255, 165, 60, ${haloAlpha * 0.7})`);
+    halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // ── Icon (BTC celebrate glyph) ────────────────────────────────────────
+  if (iconAlpha > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = iconAlpha;
+    drawBtcCelebrate(ctx, cx, cy, iconSize * iconScale, iconBrightness);
+    ctx.restore();
+  }
+
+  // ── Title text (3.0 – 5.5s) ───────────────────────────────────────────
+  drawBFMText(ctx, W, H, t, 'BLOCK STRUCK', cy, iconSize);
+}
+
 // rev57: Overlay-only version of the BFM Nonce celebration. Used when the
 // WebGL Convergence Storm renderer (nonce-field-webgl in BFM mode) is
 // active. The 2D canvas only draws the ₿ glyph + halo + title text;
@@ -4172,6 +4195,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
       lightning: { bolts: [], megaBolt: null, sparks: [], megaBoltFired: false },
       noncefield:{ cells: new Float32Array(BFM_TOTAL) },
       pickaxe:   { shards: null },
+      ticker:    { particles: [], embers: [] },
     };
     startedAtRef.current = performance.now();
   }, [animType]);
@@ -4266,9 +4290,11 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
 
         const fn = animType === 'lightning' ? drawBFMLightning
                  : animType === 'pickaxe'   ? drawBFMPickaxe
+                 : animType === 'ticker'    ? drawBFMTicker
                  :                            drawBFMNonce;
         const stateKey = animType === 'lightning' ? 'lightning'
                        : animType === 'pickaxe' ? 'pickaxe'
+                       : animType === 'ticker'  ? 'ticker'
                        : 'noncefield';
         fn(ctx, W, H, t, st[stateKey]);
       } else {
@@ -8131,7 +8157,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const phaseRef = useRef(0);
   const spikesRef = useRef([]);
   const lastTickRef = useRef(performance.now());
   const lastBroadcastRef = useRef({ hashrate: 0, pools: 0, workers: 0 });
@@ -8161,9 +8186,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // nearest peer (handled by handleConstellationPointerUp).
   const constellationTapStartRef = useRef(null);
   // rev70u: real share-flash detection state.
-  // - lastShareAtRef tracks the last lastShareAt value we observed (our pool's share submissions)
   // - peerLastSeenRef tracks each peer's last observed lastSeenAgoSec value (broadcasts from other pools)
-  const lastShareAtRef = useRef(null);
   const peerLastSeenRef = useRef(new Map());
   // rev71f: per-peer Poisson schedule for synthesized share flashes between
   // broadcasts. Map<pubkey, { timeoutId, expiresAt }>. Cleared/rescheduled
@@ -8173,9 +8196,6 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // Each worker gets its own striker; when a worker's count increments we
   // flash THEIR specific striker, not a random one in the pool.
   const workerAcceptedRef = useRef(new Map());
-  // rev70w: secondary signal — acceptedCount increments per share, more
-  // reliable than lastShareAt timestamp comparison.
-  const acceptedCountRef = useRef(null);
   // rev70y: queue of pending flashes - decoupled from draw loop. Detection
   // effect pushes pool indices here; draw loop drains and dispatches.
   const pendingFlashesRef = useRef([]);
@@ -10126,23 +10146,9 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 // Section names ("FIREPOWER — LIVE" and "SOLOSTRIKE PULSE") are preserved
 // from the standalone cards so users still recognize what they're looking at.
 // PulsePanel in compact mode renders its own 100% SOLO stamp internally.
-function HashPulsePanel({ history, week, current, networkStats, onOpenSettings, onOpenStrikers, pulseAnim, onPulseAnimChange }) {
-  return (
-    <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden'}} className="fade-in ss-card-chrome">
-      {/* Firepower section */}
-      <HashrateChart history={history} week={week} current={current} compact />
-
-      {/* Divider between sections */}
-      <div style={{
-        height:1, background:'linear-gradient(90deg, transparent, rgba(245,166,35,0.25), transparent)',
-        margin:'0.7rem 0',
-      }}/>
-
-      {/* Pulse section — renders its own StampSolo internally in compact mode */}
-      <PulsePanel networkStats={networkStats} onOpenSettings={onOpenSettings} onOpenStrikers={onOpenStrikers} pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange} compact />
-    </div>
-  );
-}
+// v1.11.x: HashPulsePanel deleted (17 lines). Was a wrapper combining
+// HashrateChart + PulsePanel; never mounted anywhere. Card composition
+// happens inline in the carousel card map now.
 
 // ── Jumpers — Combined Claim Jumpers + Gold Strikes card (v1.7.22) ──────────
 // Stacks Claim Jumpers (top — pool find counts) with Gold Strikes (bottom —
@@ -12006,13 +12012,6 @@ export default function App() {
   // increments do). localStorage records the last celebrated block height
   // so a page refresh right after a block-found event won't re-fire the modal.
   const [blockFoundCelebration, setBlockFoundCelebration] = useState(null);
-  // v1.11.x: Counter that bumps when a new block is found, used to trigger
-  // the inline Hash Ticker Volcano celebration. NonceField watches the
-  // counter — when it changes, NonceField records the start time and runs
-  // the overlay for ~5.5s. Decoupled from blockFoundCelebration so the
-  // ticker fires independently of the full-screen modal lifecycle.
-  const [tickerCelebKey, setTickerCelebKey] = useState(0);
-  const [tickerCelebBlock, setTickerCelebBlock] = useState(0);
   const lastBlockHeightRef = useRef(null);
   useEffect(() => {
     const blocks = Array.isArray(poolState?.blocks) ? poolState.blocks : null;
@@ -12037,11 +12036,6 @@ export default function App() {
       } catch {}
       // Open modal with current Hunt animation theme
       setBlockFoundCelebration({ animType: huntAnim, block: newest });
-      // v1.11.x: also fire the inline Hash Ticker Volcano celebration.
-      // Independent of the full-screen modal — ticker celebrates whether
-      // or not the modal is shown / dismissed.
-      setTickerCelebBlock(height);
-      setTickerCelebKey((k) => k + 1);
     }
   }, [poolState?.blocks, huntAnim]);
   const dismissBlockFound = useCallback(() => setBlockFoundCelebration(null), []);
@@ -12054,10 +12048,6 @@ export default function App() {
       hash: '0000000000000000000pre00view0celebrationdataonlyaaaaaaaaaaaa',
     };
     setBlockFoundCelebration({ animType: huntAnim, block: mock });
-    // v1.11.x: also fire the inline Hash Ticker celebration so users can
-    // preview both surfaces from the settings preview button.
-    setTickerCelebBlock(mock.height);
-    setTickerCelebKey((k) => k + 1);
   }, [poolState, huntAnim]);
   const useCarousel = isMobile && carouselEnabled;
   const carouselRef = useRef(null);
@@ -12514,7 +12504,7 @@ export default function App() {
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
     stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
-    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} tickerCelebTrigger={tickerCelebKey} tickerCelebBlock={tickerCelebBlock} onOpen={()=>setShowReckoning(true)}/>,
+    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} onOpen={()=>setShowReckoning(true)}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
