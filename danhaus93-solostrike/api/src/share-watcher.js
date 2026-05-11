@@ -55,6 +55,15 @@ const SKIP_DIRS = new Set(['pool', 'users']);
 // in restorePersistedState().
 const MAX_FILE_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
 
+// v1.11.x MEMORY LEAK FIX (companion to the file-age fix above):
+// state.shareCounters is keyed by workerName and was never pruned. With a
+// stable fleet (current state: 14 workers) this is fine. But every unique
+// workerName ever seen accumulated forever, persisting to persist.json across
+// restarts. For long-running pools or pools open to testers, this grows.
+// Fix: prune counters for workers without a share submission in 30 days.
+const MAX_COUNTER_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const COUNTER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;    // hourly
+
 function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (!fs.existsSync(logDir)) {
     console.warn('[share-watcher] logDir not found:', logDir);
@@ -94,6 +103,27 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       const p = JSON.parse(fs.readFileSync(persistPath, 'utf8'));
       if (p.shareCounters && typeof p.shareCounters === 'object') {
         state.shareCounters = p.shareCounters;
+        // v1.11.x MEMORY LEAK FIX: prune counters for workers not seen in
+        // MAX_COUNTER_AGE_MS. Previously this Object grew unboundedly across
+        // restarts as every unique workerName ever observed accumulated.
+        // Counters without lastShareAt (created before this fix) get a
+        // backfilled timestamp using firstSeen — keeps recently-active
+        // workers, prunes truly ancient ones.
+        const ageCutoff = Date.now() - MAX_COUNTER_AGE_MS;
+        let pruned = 0;
+        for (const name of Object.keys(state.shareCounters)) {
+          const c = state.shareCounters[name];
+          const lastShareAt = (typeof c.lastShareAt === 'number') ? c.lastShareAt
+                            : (typeof c.firstSeen === 'number') ? c.firstSeen
+                            : 0;
+          if (lastShareAt < ageCutoff) {
+            delete state.shareCounters[name];
+            pruned++;
+          } else if (typeof c.lastShareAt !== 'number') {
+            // backfill for entries created before the fix
+            c.lastShareAt = lastShareAt;
+          }
+        }
         let poolAccepted = 0;
         let poolRejected = 0;
         let poolStale = 0;
@@ -114,7 +144,8 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         state.shares.stale = poolStale;
         state.shares.rejectReasons = poolReasons;
         state.shares.acceptedSdiffSum = poolSdiffSum;
-        console.log('[share-watcher] Restored counters for', Object.keys(state.shareCounters).length, 'workers (accepted=' + poolAccepted + ' rejected=' + poolRejected + ' stale=' + poolStale + ' sdiffSum=' + poolSdiffSum + ')');
+        const remaining = Object.keys(state.shareCounters).length;
+        console.log(`[share-watcher] Restored counters for ${remaining} workers (pruned ${pruned} stale) (accepted=${poolAccepted} rejected=${poolRejected} stale=${poolStale} sdiffSum=${poolSdiffSum})`);
       }
       if (p.sharelogCursors && typeof p.sharelogCursors === 'object') {
         state.sharelogCursors = p.sharelogCursors;
@@ -234,7 +265,14 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         accepted: 0, rejected: 0, stale: 0, bestSdiff: 0,
         rejectReasons: {}, lastRejectReason: null, lastRejectAt: null,
         port: null, firstSeen: Date.now(),
+        // v1.11.x MEMORY LEAK FIX: track lastShareAt so we can prune counters
+        // for workers that haven't submitted shares in a long time. Without
+        // this, every unique workerName ever seen accumulates forever.
+        lastShareAt: Date.now(),
       };
+    } else {
+      // Touch lastShareAt so existing counters get bumped on activity
+      state.shareCounters[name].lastShareAt = Date.now();
     }
     return state.shareCounters[name];
   }
@@ -385,6 +423,27 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   }
 
   setInterval(tick, POLL_MS);
+
+  // v1.11.x MEMORY LEAK FIX: hourly prune of stale shareCounters.
+  // Companion to the on-load prune in restorePersistedState — handles long-
+  // running containers where workers eventually go silent for >30d.
+  setInterval(() => {
+    const ageCutoff = Date.now() - MAX_COUNTER_AGE_MS;
+    let pruned = 0;
+    for (const name of Object.keys(state.shareCounters)) {
+      const c = state.shareCounters[name];
+      const lastShareAt = (typeof c.lastShareAt === 'number') ? c.lastShareAt : 0;
+      if (lastShareAt < ageCutoff) {
+        delete state.shareCounters[name];
+        pruned++;
+      }
+    }
+    if (pruned > 0) {
+      const remaining = Object.keys(state.shareCounters).length;
+      console.log(`[share-watcher] Pruned ${pruned} stale share counters (now tracking ${remaining} workers)`);
+    }
+  }, COUNTER_PRUNE_INTERVAL_MS).unref();
+
   console.log('[share-watcher] Watching', logDir, 'recursively for .sharelog files (v1.5.13)');
 }
 

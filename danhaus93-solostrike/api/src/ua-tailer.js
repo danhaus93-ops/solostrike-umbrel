@@ -11,6 +11,18 @@ const DROP_PATTERN = /Dropped\s+client\s+(\d+)\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{
 // Some ckpool builds emit useragent strings on subscribe lines — capture if present
 const UA_PATTERN   = /client\s+(\d+)\s+.*useragent[=:\s]+"?([^"\n\r]+)"?/i;
 
+// v1.11.x MEMORY LEAK FIX:
+// metaByWorker entries persist indefinitely — they only ever get .set(), never
+// .delete(). With a stable fleet this is fine (one entry per known worker),
+// but if random testers point miners at your pool with ever-changing worker
+// names, or if a single miner cycles labels across firmware reboots, this
+// Map grows unboundedly and bloats worker-meta.json on disk.
+//
+// Fix: prune entries with lastSeen older than MAX_META_AGE_MS. Sweep runs
+// hourly. Old entries are also purged on startup load.
+const MAX_META_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;          // hourly
+
 // In-memory cache of per-worker metadata
 // { workerName -> { ip, clientId, userAgent, authorisedAt, lastSeen } }
 const metaByWorker = new Map();
@@ -37,10 +49,20 @@ async function loadMetaCache(configDir) {
     if (await fs.pathExists(file)) {
       const data = await fs.readJson(file);
       if (data && typeof data === 'object' && data.byWorker) {
+        // v1.11.x MEMORY LEAK FIX: prune entries with lastSeen older than
+        // MAX_META_AGE_MS. Previously this Map grew unboundedly across restarts.
+        const ageCutoff = Date.now() - MAX_META_AGE_MS;
+        let loaded = 0, pruned = 0;
         for (const [name, meta] of Object.entries(data.byWorker)) {
-          metaByWorker.set(name, meta);
+          const lastSeen = (meta && typeof meta.lastSeen === 'number') ? meta.lastSeen : 0;
+          if (lastSeen >= ageCutoff) {
+            metaByWorker.set(name, meta);
+            loaded++;
+          } else {
+            pruned++;
+          }
         }
-        console.log(`[UA-Tailer] Loaded ${metaByWorker.size} cached worker metadata entries`);
+        console.log(`[UA-Tailer] Loaded ${loaded} cached worker metadata entries (pruned ${pruned} stale)`);
       }
     }
   } catch (e) {
@@ -115,6 +137,24 @@ function parseLine(line, configDir) {
 
 async function startUaTailer({ configDir, logDir }) {
   await loadMetaCache(configDir);
+
+  // v1.11.x MEMORY LEAK FIX: hourly prune of stale metaByWorker entries.
+  // Without this, every unique worker name ever seen accumulates forever.
+  setInterval(() => {
+    const ageCutoff = Date.now() - MAX_META_AGE_MS;
+    let pruned = 0;
+    for (const [name, meta] of metaByWorker.entries()) {
+      const lastSeen = (meta && typeof meta.lastSeen === 'number') ? meta.lastSeen : 0;
+      if (lastSeen < ageCutoff) {
+        metaByWorker.delete(name);
+        pruned++;
+      }
+    }
+    if (pruned > 0) {
+      console.log(`[UA-Tailer] Pruned ${pruned} stale worker metadata entries (now tracking ${metaByWorker.size})`);
+      scheduleMetaSave(configDir);
+    }
+  }, PRUNE_INTERVAL_MS).unref();
 
   const logFile = path.join(logDir, 'ckpool.log');
   let fileSize = 0;
