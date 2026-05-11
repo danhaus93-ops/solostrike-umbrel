@@ -130,8 +130,16 @@ let wsClients = 0;
 
 function broadcast(msg) {
   const data = JSON.stringify(msg);
+  // v1.11.x BACKPRESSURE: skip clients whose send buffer is over 1MB.
+  // Without this, a slow mobile client (poor WiFi / backgrounded PWA) can
+  // accumulate unsent frames in ws.bufferedAmount forever, growing the API
+  // process's memory until the OS or Node OOMs. At ~5-50KB per state push
+  // and 2-3 pushes/sec, 1MB is ~20-200 messages backlogged before we skip.
+  // Normal clients sit at bufferedAmount = 0; this only kicks in when a
+  // client is already in trouble. They'll catch up on the next broadcast
+  // once their buffer drains, or get fresh state on reconnect.
   wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) {
+    if (c.readyState === WebSocket.OPEN && c.bufferedAmount < 1_000_000) {
       try { c.send(data); } catch {}
     }
   });
@@ -640,11 +648,11 @@ app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // any external monitoring. This endpoint aggregates 6 health signals:
 //   containers, api, persistence, ckpool, zmq, disk
 // Each returns { status: 'green'|'amber'|'red', value: '<display string>' }.
-// Polled by the UI every 5s. Cheap to compute (one statSync, one execSync).
+// Polled by the UI every 5s. Cheap to compute (one statSync, one execFileSync).
 app.get('/api/health/detailed', (req, res) => {
   try {
     const now = Date.now();
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
 
     // ── containers ─────────────────────────────────────────────────────
     // From inside the API container we cannot enumerate sibling containers
@@ -725,10 +733,23 @@ app.get('/api/health/detailed', (req, res) => {
     // ── disk ───────────────────────────────────────────────────────────
     let diskFreePct = null;
     try {
-      // df returns: "Filesystem  Size  Used  Avail  Use%  Mounted on"
-      const out = execSync(`df ${CONFIG_DIR} 2>/dev/null | tail -1 | awk '{print $5}'`, { timeout: 1000 }).toString().trim();
-      const usedPct = parseInt(out.replace('%', ''), 10);
-      if (Number.isFinite(usedPct)) diskFreePct = 100 - usedPct;
+      // v1.11.x SECURITY: use execFileSync (no shell) instead of execSync.
+      // The previous shell-interpolated `df ${CONFIG_DIR}` was vulnerable
+      // to injection if CONFIG_DIR ever contained shell metacharacters
+      // (Docker compose sets it to /app/config, but defense-in-depth).
+      // We also lose shell pipes/redirects, so parse df output in JS:
+      // typical output is two lines, last line is the data row, 5th column
+      // (index 4) is the "Use%" percentage.
+      const raw = execFileSync('df', [CONFIG_DIR], {
+        timeout: 1000,
+        stdio: ['ignore', 'pipe', 'ignore'], // suppress stderr (replaces 2>/dev/null)
+      }).toString();
+      const lines = raw.trim().split('\n');
+      if (lines.length >= 2) {
+        const cols = lines[lines.length - 1].split(/\s+/);
+        const usedPct = parseInt(cols[4], 10);
+        if (Number.isFinite(usedPct)) diskFreePct = 100 - usedPct;
+      }
     } catch {}
     const disk = diskFreePct === null
       ? { status: 'amber', value: 'Unknown' }
