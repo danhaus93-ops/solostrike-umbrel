@@ -8305,9 +8305,10 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const spikesRef = useRef([]);
+  // v1.11.x: spikesRef + lastBroadcastRef removed — see leak fix comment near
+  // the deleted producer effect below. The consumer was deleted in rev60 but
+  // the producer was left, causing unbounded array growth.
   const lastTickRef = useRef(performance.now());
-  const lastBroadcastRef = useRef({ hashrate: 0, pools: 0, workers: 0 });
   const canvasWidthRef = useRef(0);
   const canvasHeightRef = useRef(0);
   const dprRef = useRef(window.devicePixelRatio || 1);
@@ -9761,20 +9762,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
 
 
 
-  // Trigger an emphasis bump when broadcast values change (i.e. a real event)
-  useEffect(() => {
-    const last = lastBroadcastRef.current;
-    const isFirstRun = last.pools === undefined && last.hashrate === undefined && last.workers === undefined;
-    if (!isFirstRun && enabled) {
-      const hashrateChanged = last.hashrate !== ns.hashrate;
-      const poolsChanged   = last.pools !== ns.pools;
-      const workersChanged  = last.workers !== ns.workers;
-      if (hashrateChanged || poolsChanged || workersChanged) {
-        spikesRef.current.push({ intensity: 1.0, age: 0 });
-      }
-    }
-    lastBroadcastRef.current = { hashrate: ns.hashrate, pools: ns.pools, workers: ns.workers };
-  }, [ns.hashrate, ns.pools, ns.workers, enabled]);
+  // v1.11.x MEMORY LEAK FIX: removed the spikesRef.current.push effect
+  // here. The consumer was deleted in rev60 (see comment in NonceField
+  // useEffect around line 3172: "removed broken spikesRef.current loop"),
+  // but this producer effect was left behind. Every hashrate/pools/workers
+  // change pushed an entry that was never read or popped, growing the
+  // array unboundedly across a long-running session.
 
   // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
   // iter27c: bumped up from 0.2rem to 0.6rem so it's no longer clipped
