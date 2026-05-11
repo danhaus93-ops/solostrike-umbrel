@@ -44,6 +44,18 @@ if (__pickaxeImg) {
   __pickaxeImg.onload = () => { __pickaxeReady = true; };
   __pickaxeImg.onerror = () => { __pickaxeReady = false; };
   __pickaxeImg.src = '/pickaxe-icon.png';
+
+// v1.11.x BFM: splash-pickaxe.png has the correct orientation (head top, grip
+// bottom-right) needed for the new Variant-25 BFM celebration animation.
+// pickaxe-icon.png is square/cartoonish and used elsewhere — kept separate.
+}
+const __splashPickaxeImg = (typeof window !== 'undefined') ? new Image() : null;
+let __splashPickaxeReady = false;
+if (__splashPickaxeImg) {
+  __splashPickaxeImg.decoding = 'async';
+  __splashPickaxeImg.onload = () => { __splashPickaxeReady = true; };
+  __splashPickaxeImg.onerror = () => { __splashPickaxeReady = false; };
+  __splashPickaxeImg.src = '/splash-pickaxe.png';
 }
 
 // ── BTC celebrate glyph (the user's exact icon, transparent bg) ──────────────
@@ -3782,13 +3794,38 @@ function drawBFMNonce(ctx, W, H, t, state) {
 
 // ─── Pickaxe celebration ───
 function drawBFMPickaxe(ctx, W, H, t, state) {
+  // ─────────────────────────────────────────────────────────────────────
+  // v1.11.x — VARIANT 25: "THE EVERYTHING" — max drama strike
+  //   - Wide wind-up (pickaxe pulls back tilted right, upper-right)
+  //   - Brief shake during hold (charging energy)
+  //   - Fast violent swing into block top, straightens at impact
+  //   - Heavy recoil bounce
+  //   - Block shakes hard, then fades away
+  //   - 45 explosive polygon shards + 25 sparkles fly in wide spread
+  //   - Intense full-screen flash + large shockwave ring
+  //   - BTC ₿ glyph rises from the rubble at 1.4s, halos, holds, fades
+  //   - "BLOCK STRUCK" text rendered by drawBFMText
+  //
+  // Phase timeline (impact at t=1.0):
+  //   0.0–0.2s : wind-up hold with shake
+  //   0.2–1.0s : fast swing (easeInQuint) + rotation straightens (easeOutCubic)
+  //   1.0–1.15s: impact + recoil bounce (30px rise, sin curve)
+  //   1.0+     : block shakes 0.25s, then fades 0.55s
+  //   1.0+     : 45 shards + 25 sparkles fly, gravity, fade over 2.5s
+  //   1.3–4.5s : ₿ glyph emerges, halos, holds, fades
+  // ─────────────────────────────────────────────────────────────────────
+
   ctx.fillStyle = 'rgba(8,8,10,1)';
   ctx.fillRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2;
   const iconSize = Math.min(H * 0.55, W * 0.7);
 
+  // ── Block growth + shake + fade ──────────────────────────────────────
+  // Block grows at start (0.0–0.5), holds, then at impact (1.0) shakes
+  // hard for 0.25s and starts a 0.55s fade.
   let blockSize = 0, blockAlpha = 0;
-  if (t < 1.5) {
+  let blockOffsetX = 0, blockOffsetY = 0;
+  if (t < 1.0) {
     const growT = Math.min(1, t / 0.5);
     const eased = 1 - Math.pow(1 - growT, 3);
     blockSize = Math.min(H * 0.45, W * 0.6) * eased;
@@ -3797,20 +3834,31 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
       const sq = (t - 1.0) / 0.2;
       blockSize *= 1 + Math.sin(sq * Math.PI) * 0.25;
     }
-    if (t > 1.2) blockAlpha = Math.max(0, 1 - (t - 1.2) / 0.2);
+  } else {
+    blockSize = Math.min(H * 0.45, W * 0.6);
+    // Fade after impact over 0.55s
+    blockAlpha = Math.max(0, 1 - (t - 1.0) / 0.55);
+    // Hard shake for 0.25s after impact
+    if (t < 1.25) {
+      const sp = (t - 1.0) / 0.25;
+      const shakeAmp = (1 - sp) * 8;
+      blockOffsetX = Math.sin(t * 80) * shakeAmp;
+      blockOffsetY = Math.cos(t * 75) * shakeAmp * 0.7;
+    }
   }
   if (blockAlpha > 0.05 && blockSize > 2) {
-    const bx = cx - blockSize / 2, by = cy - blockSize / 2;
+    const bx = cx + blockOffsetX - blockSize / 2;
+    const by = cy + blockOffsetY - blockSize / 2;
     const r = Math.max(3, blockSize * 0.12);
     ctx.save();
     ctx.globalAlpha = blockAlpha;
     const haloR = blockSize * 1.5;
-    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    const halo = ctx.createRadialGradient(cx + blockOffsetX, cy + blockOffsetY, 0, cx + blockOffsetX, cy + blockOffsetY, haloR);
     halo.addColorStop(0, 'rgba(255, 165, 60, 0.5)');
     halo.addColorStop(0.5, 'rgba(247, 147, 26, 0.2)');
     halo.addColorStop(1, 'rgba(247, 147, 26, 0)');
     ctx.fillStyle = halo;
-    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + blockOffsetX, cy + blockOffsetY, haloR, 0, Math.PI * 2); ctx.fill();
     const g = ctx.createLinearGradient(bx, by, bx + blockSize, by + blockSize);
     g.addColorStop(0, '#FFB347');
     g.addColorStop(0.45, '#FF8C1A');
@@ -3829,64 +3877,134 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
     ctx.closePath();
     ctx.fill();
     if (t > 1.0) {
-      ctx.strokeStyle = `rgba(80, 30, 0, ${blockAlpha * 0.7})`;
-      ctx.lineWidth = 2;
+      // Crack pattern overlay
+      ctx.strokeStyle = `rgba(80, 30, 0, ${blockAlpha * 0.85})`;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(cx - blockSize * 0.3, cy - blockSize * 0.1);
-      ctx.lineTo(cx + blockSize * 0.05, cy + blockSize * 0.18);
-      ctx.lineTo(cx + blockSize * 0.25, cy - blockSize * 0.05);
+      ctx.moveTo(cx + blockOffsetX - blockSize * 0.3, cy + blockOffsetY - blockSize * 0.1);
+      ctx.lineTo(cx + blockOffsetX + blockSize * 0.05, cy + blockOffsetY + blockSize * 0.18);
+      ctx.lineTo(cx + blockOffsetX + blockSize * 0.25, cy + blockOffsetY - blockSize * 0.05);
+      ctx.lineTo(cx + blockOffsetX + blockSize * 0.4, cy + blockOffsetY + blockSize * 0.25);
+      ctx.stroke();
+      // Secondary crack
+      ctx.beginPath();
+      ctx.moveTo(cx + blockOffsetX - blockSize * 0.15, cy + blockOffsetY + blockSize * 0.3);
+      ctx.lineTo(cx + blockOffsetX + blockSize * 0.1, cy + blockOffsetY - blockSize * 0.2);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  // Mega pickaxe
-  if (t < 1.4) {
-    const pickSize = Math.min(H * 0.45, W * 0.55);
-    let px, py, rot;
-    if (t < 0.5) {
-      px = cx - pickSize * 0.6; py = cy - pickSize * 0.7; rot = -0.6;
-    } else if (t < 1.0) {
-      const sw = (t - 0.5) / 0.5;
-      const eased = sw * sw;
-      px = cx - pickSize * 0.6 * (1 - eased * 0.7);
-      py = cy - pickSize * 0.7 * (1 - eased);
-      rot = -0.6 + eased * 1.0;
-    } else {
-      px = cx - pickSize * 0.18; py = cy; rot = 0.4;
-    }
-    const pAlpha = t < 1.2 ? 1 : Math.max(0, 1 - (t - 1.2) / 0.2);
-    if (pAlpha > 0.05 && __pickaxeReady) {
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(rot);
-      ctx.globalAlpha = pAlpha;
-      ctx.shadowColor = 'rgba(255, 220, 140, 0.9)';
-      ctx.shadowBlur = 18;
-      ctx.drawImage(__pickaxeImg, -pickSize / 2, -pickSize / 2, pickSize, pickSize);
-      ctx.shadowBlur = 0;
-      ctx.restore();
-    }
+  // ── Variant 25 pickaxe: wide wind-up + shake + fast violent swing ────
+  // Block top is at: cy - blockSize/2 (when fully grown ≈ cy - H*0.225)
+  // Strike contact target = (cx, cy - blockSize*0.45) ≈ block top center
+  const targetBlockSize = Math.min(H * 0.45, W * 0.6);
+  const impactX = cx;
+  const impactY = cy - targetBlockSize / 2;
+  const pickSize = Math.min(H * 0.5, W * 0.6);
+
+  // V25 params (matching the preview):
+  //   windOffsetX: 110, windOffsetY: -135, windRot: 1.3
+  //   windHoldEnd: 0.2 (in absolute time, t<0.2)
+  //   impactAt: 0.55 in normalized [0,1] cycle — but our cycle is t=0..1.0
+  //   So scale: windHoldEnd = 0.2 of 1.0 = 0.2, impactAt = 0.55 of 1.0 = 0.55
+  //   We'll use t=0.55 as impact instead of t=1.0. But the rest of the
+  //   celebration (shards, BTC reveal, text) was timed around impact=1.0.
+  //   To preserve that, treat the "impact" of the whole celebration as t=1.0
+  //   and have the pickaxe land at t=1.0. Compress the V25 motion accordingly:
+  //   Map V25 timeline (0..0.55 wind+swing, 0.55..0.67 recoil, 0.67..fade)
+  //   to absolute (0..1.0 wind+swing, 1.0..1.15 recoil, 1.15..fade).
+  const WIND_HOLD_END = 0.2;       // pickaxe holds wind-up until t=0.2
+  const IMPACT_TIME = 1.0;         // pickaxe impacts at t=1.0
+  const RECOIL_END = 1.15;         // recoil bounce ends
+  const PICKAXE_FADE_END = 1.45;   // fully faded
+  const windX = impactX + pickSize * 0.8;  // pickaxe wound back right (scaled for big pickaxe)
+  const windY = impactY - pickSize * 1.0;  // pickaxe wound back up
+  const windRot = 1.3;
+  const shakeAmp = 3;
+
+  // Compute pickaxe position+rotation at current t
+  let pCx = impactX, pCy = impactY, pRot = 0, pAlpha = 0;
+  if (t < WIND_HOLD_END) {
+    // Wind-up hold with shake
+    const sk = t * 30;
+    pCx = windX + Math.sin(sk) * shakeAmp;
+    pCy = windY + Math.cos(sk * 0.9) * shakeAmp * 0.5;
+    pRot = windRot;
+    pAlpha = 1;
+  } else if (t < IMPACT_TIME) {
+    // Fast swing: easeInQuint on position, easeOutCubic on rotation
+    const phase = (t - WIND_HOLD_END) / (IMPACT_TIME - WIND_HOLD_END);
+    const pPos = phase * phase * phase * phase * phase;  // easeInQuint
+    const pRotEase = 1 - Math.pow(1 - phase, 3);          // easeOutCubic
+    pCx = windX + (impactX - windX) * pPos;
+    pCy = windY + (impactY - windY) * pPos;
+    pRot = windRot + (0 - windRot) * pRotEase;
+    pAlpha = 1;
+  } else if (t < RECOIL_END) {
+    // Recoil bounce upward
+    const rp = (t - IMPACT_TIME) / (RECOIL_END - IMPACT_TIME);
+    pCx = impactX;
+    pCy = impactY - 30 * Math.sin(rp * Math.PI);
+    pRot = 0;
+    pAlpha = 1;
+  } else if (t < PICKAXE_FADE_END) {
+    pCx = impactX;
+    pCy = impactY;
+    pRot = 0;
+    pAlpha = Math.max(0, 1 - (t - RECOIL_END) / (PICKAXE_FADE_END - RECOIL_END));
   }
 
-  // Impact flash
-  if (Math.abs(t - 1.0) < 0.15) {
-    const fs = 1 - Math.abs(t - 1.0) / 0.15;
-    ctx.fillStyle = `rgba(255, 230, 180, ${fs * 0.65})`;
+  if (pAlpha > 0.05 && __splashPickaxeReady) {
+    // Draw splash-pickaxe.png with head-tip at (pCx, pCy), rotated by pRot.
+    // The PNG has aspect ~0.75 (W/H). Head contact point is at roughly
+    // (28%, 22%) of image dimensions. To position the head tip at (pCx, pCy),
+    // we translate to (pCx, pCy), rotate, then draw the image with offset
+    // so its contact point sits at (0,0) in local frame.
+    const pickH = pickSize;
+    const pickW = pickH * 0.75;
+    const HEAD_X_FRAC = 0.28;
+    const HEAD_Y_FRAC = 0.22;
+    ctx.save();
+    ctx.translate(pCx, pCy);
+    ctx.rotate(pRot);
+    ctx.globalAlpha = pAlpha;
+    ctx.shadowColor = 'rgba(255, 220, 140, 0.9)';
+    ctx.shadowBlur = 20;
+    ctx.drawImage(__splashPickaxeImg, -HEAD_X_FRAC * pickW, -HEAD_Y_FRAC * pickH, pickW, pickH);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // ── Intense flash at impact (V25 flashIntensity = 1.7) ──────────────
+  if (Math.abs(t - IMPACT_TIME) < 0.15) {
+    const fs = 1 - Math.abs(t - IMPACT_TIME) / 0.15;
+    ctx.fillStyle = `rgba(255, 230, 180, ${fs * 0.55 * 1.7})`;
     ctx.fillRect(0, 0, W, H);
   }
 
-  // rev61: POLYGON SHARDS — irregular rock-fragment shapes (matches hunt-mode
-  // shard upgrade). Pre-baked on first frame after impact, then ballistic
-  // trajectory with gravity over the 1.8s window.
-  if (t >= 1.0 && t < 4.0) {
+  // ── Shockwave ring (expanding circle at impact point) ───────────────
+  if (t >= IMPACT_TIME && t < IMPACT_TIME + 0.5) {
+    const ringT = (t - IMPACT_TIME) / 0.5;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 220, 140, ${0.7 * (1 - ringT) * 1.5})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(impactX, impactY, 30 + ringT * 120, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── 45 polygon shards + 25 sparkles (V25 debris config) ─────────────
+  if (t >= IMPACT_TIME && t < IMPACT_TIME + 3.0) {
     if (!state.shards) {
       state.shards = [];
-      const numShards = 14;
+      state.sparkles = [];
+      const numShards = 45;
       for (let i = 0; i < numShards; i++) {
-        const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.3;
-        const speed = 60 + Math.random() * 120;
-        const sz = 4 + Math.random() * 6;
+        const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.9;
+        const speed = 140 + Math.random() * 220;
+        const sz = 4 + Math.random() * 7;
         const numVerts = 3 + Math.floor(Math.random() * 3);
         const verts = [];
         for (let v = 0; v < numVerts; v++) {
@@ -3896,19 +4014,48 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
         }
         state.shards.push({
           vx: Math.cos(ang) * speed,
-          vy: Math.sin(ang) * speed - 35,
+          vy: Math.sin(ang) * speed,
           verts,
           rot: Math.random() * Math.PI * 2,
-          spin: (Math.random() - 0.5) * 10,
+          spin: (Math.random() - 0.5) * 12,
           shade: Math.random(),
         });
       }
+      // 25 sparkles
+      for (let i = 0; i < 25; i++) {
+        const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.6;
+        const speed = 120 + Math.random() * 220;
+        state.sparkles.push({
+          vx: Math.cos(ang) * speed,
+          vy: Math.sin(ang) * speed,
+          size: 1 + Math.random() * 2,
+          life: 0.5 + Math.random() * 0.3,
+        });
+      }
     }
-    const shardT = t - 1.0;
+    const shardT = t - IMPACT_TIME;
     const shardLife = 2.5;
+    // Draw sparkles first (behind shards)
+    for (const sp of state.sparkles) {
+      if (shardT > sp.life) continue;
+      const px = impactX + sp.vx * shardT;
+      const py = impactY + sp.vy * shardT + 0.5 * 200 * shardT * shardT;
+      const a = Math.max(0, 1 - shardT / sp.life);
+      if (a < 0.05) continue;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.shadowColor = '#FFE6A0';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#FFF5C2';
+      ctx.beginPath();
+      ctx.arc(px, py, sp.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Shards
     for (const sh of state.shards) {
-      const px = cx + sh.vx * shardT;
-      const py = cy + sh.vy * shardT + 0.5 * 220 * shardT * shardT;
+      const px = impactX + sh.vx * shardT;
+      const py = impactY + sh.vy * shardT + 0.5 * 280 * shardT * shardT;
       const alpha = Math.max(0, 1 - shardT / shardLife);
       if (alpha < 0.05) continue;
       ctx.save();
@@ -3926,11 +4073,12 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
       ctx.stroke();
       ctx.restore();
     }
-  } else if (t < 1.0) {
+  } else if (t < IMPACT_TIME) {
     state.shards = null;
+    state.sparkles = null;
   }
 
-  // Icon emerges from rubble
+  // ── BTC ₿ glyph emerges from rubble (same timing as before) ─────────
   let bAlpha = 0, bScale = 1;
   if (t >= 1.3 && t < 4.5) {
     if (t < 1.7) {
@@ -3963,7 +4111,6 @@ function drawBFMPickaxe(ctx, W, H, t, state) {
 
   drawBFMText(ctx, W, H, t, 'BLOCK STRUCK', cy, iconSize);
 }
-
 // v1.11.x: drawBFMTicker — Hash Ticker block-found celebration in BFM modal.
 // Visual concept: VOLCANO ERUPTION. Bottom-center fountain of ₿ glyphs
 // erupts upward, gravity arcs them down, central icon ignites at 1.4s,
