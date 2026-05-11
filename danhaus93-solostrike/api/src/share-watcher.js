@@ -106,22 +106,25 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         // v1.11.x MEMORY LEAK FIX: prune counters for workers not seen in
         // MAX_COUNTER_AGE_MS. Previously this Object grew unboundedly across
         // restarts as every unique workerName ever observed accumulated.
-        // Counters without lastShareAt (created before this fix) get a
-        // backfilled timestamp using firstSeen — keeps recently-active
-        // workers, prunes truly ancient ones.
+        //
+        // UPGRADE-SAFE BACKFILL: counters created before this fix lack
+        // lastShareAt. We backfill them with Date.now() (NOT firstSeen) on
+        // first load, which gives every existing worker a 30-day grace
+        // period from this deploy. This prevents accidentally wiping the
+        // user's entire lifetime stat history on upgrade. From this deploy
+        // forward, every share submission updates lastShareAt, so genuinely
+        // inactive workers will be pruned ~30 days later.
         const ageCutoff = Date.now() - MAX_COUNTER_AGE_MS;
         let pruned = 0;
         for (const name of Object.keys(state.shareCounters)) {
           const c = state.shareCounters[name];
-          const lastShareAt = (typeof c.lastShareAt === 'number') ? c.lastShareAt
-                            : (typeof c.firstSeen === 'number') ? c.firstSeen
-                            : 0;
-          if (lastShareAt < ageCutoff) {
+          if (typeof c.lastShareAt !== 'number') {
+            // Upgrade backfill: give grace period from now, not from firstSeen
+            c.lastShareAt = Date.now();
+          }
+          if (c.lastShareAt < ageCutoff) {
             delete state.shareCounters[name];
             pruned++;
-          } else if (typeof c.lastShareAt !== 'number') {
-            // backfill for entries created before the fix
-            c.lastShareAt = lastShareAt;
           }
         }
         let poolAccepted = 0;

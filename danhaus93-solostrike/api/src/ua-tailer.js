@@ -54,8 +54,14 @@ async function loadMetaCache(configDir) {
         const ageCutoff = Date.now() - MAX_META_AGE_MS;
         let loaded = 0, pruned = 0;
         for (const [name, meta] of Object.entries(data.byWorker)) {
-          const lastSeen = (meta && typeof meta.lastSeen === 'number') ? meta.lastSeen : 0;
-          if (lastSeen >= ageCutoff) {
+          if (!meta || typeof meta !== 'object') continue;
+          // UPGRADE-SAFE BACKFILL: any entry missing lastSeen (shouldn't
+          // happen since every set() includes it, but defensive) gets a
+          // grace period from this deploy rather than being pruned.
+          if (typeof meta.lastSeen !== 'number') {
+            meta.lastSeen = Date.now();
+          }
+          if (meta.lastSeen >= ageCutoff) {
             metaByWorker.set(name, meta);
             loaded++;
           } else {
