@@ -39,6 +39,22 @@ const PERSIST_MS = 60000;
 const RESCAN_DIRS_EVERY_MS = 15000;   // re-walk tree every 15s for new block-height dirs
 const SKIP_DIRS = new Set(['pool', 'users']);
 
+// v1.11.x MEMORY LEAK FIX:
+// ckpool creates a new directory for each block height under /var/log/ckpool
+// (e.g. 000e708f/, 000e7090/, ...). Once the chain moves on, ckpool stops
+// appending to old block-height dirs — they become frozen historical record.
+// Previously we tracked ALL .sharelog files forever, which accumulated to
+// 75,000+ files after a few weeks of mining. Each one held an entry in the
+// `tracked` Map AND `state.sharelogCursors` AND ran fs.stat() every poll
+// tick. Result: Node heap exhausted after ~34 hours of uptime, container
+// OOM-crash + restart.
+//
+// Fix: only track sharelog files modified within MAX_FILE_AGE_MS. Files
+// older than that are stale block-height dirs ckpool doesn't write to.
+// We skip them in walkSharelogFiles() and purge their cursors on startup
+// in restorePersistedState().
+const MAX_FILE_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   if (!fs.existsSync(logDir)) {
     console.warn('[share-watcher] logDir not found:', logDir);
@@ -102,7 +118,29 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       }
       if (p.sharelogCursors && typeof p.sharelogCursors === 'object') {
         state.sharelogCursors = p.sharelogCursors;
-        console.log('[share-watcher] Restored sharelog cursors for', Object.keys(state.sharelogCursors).length, 'files');
+        // v1.11.x MEMORY LEAK FIX: purge cursors for files that no longer
+        // exist or are older than MAX_FILE_AGE_MS. Previously this Object
+        // grew unboundedly (75,000+ entries observed in production after a
+        // few weeks of mining), causing eventual heap exhaustion. Pruning
+        // on startup ensures we don't drag old cursors forward.
+        const before = Object.keys(state.sharelogCursors).length;
+        const ageCutoff = Date.now() - MAX_FILE_AGE_MS;
+        let purged = 0;
+        for (const fp of Object.keys(state.sharelogCursors)) {
+          try {
+            const st = fs.statSync(fp);
+            if (st.mtimeMs < ageCutoff) {
+              delete state.sharelogCursors[fp];
+              purged++;
+            }
+          } catch {
+            // File no longer exists
+            delete state.sharelogCursors[fp];
+            purged++;
+          }
+        }
+        const after = Object.keys(state.sharelogCursors).length;
+        console.log(`[share-watcher] Restored sharelog cursors for ${after} files (purged ${purged} stale of ${before} total)`);
       }
       if (typeof p.shareStatsStartedAt === 'number' && p.shareStatsStartedAt > 0) {
         state.shareStatsStartedAt = p.shareStatsStartedAt;
@@ -158,6 +196,8 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
   function walkSharelogFiles(root) {
     const out = [];
     const stack = [root];
+    const ageCutoff = Date.now() - MAX_FILE_AGE_MS;
+    let skippedStale = 0;
     while (stack.length) {
       const dir = stack.pop();
       let entries;
@@ -168,9 +208,22 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
           if (SKIP_DIRS.has(e.name)) continue;
           stack.push(path.join(dir, e.name));
         } else if (e.isFile() && e.name.endsWith('.sharelog')) {
-          out.push(path.join(dir, e.name));
+          const filepath = path.join(dir, e.name);
+          // v1.11.x MEMORY LEAK FIX: skip stale block-height files. Once
+          // ckpool moves to a new block, old .sharelog files never get
+          // appended to again — only the current block's sharelogs are live.
+          // statSync is cheap; we do it here once per scan (every 15s).
+          try {
+            const stat = fs.statSync(filepath);
+            if (stat.mtimeMs < ageCutoff) { skippedStale++; continue; }
+            out.push(filepath);
+          } catch { /* file vanished mid-scan; ignore */ }
         }
       }
+    }
+    if (skippedStale > 0 && Math.random() < 0.05) {
+      // Log occasionally so users can see the leak fix at work without spamming
+      console.log(`[share-watcher] Skipped ${skippedStale} stale sharelog files (older than ${MAX_FILE_AGE_MS / 1000 / 60}min)`);
     }
     return out;
   }
