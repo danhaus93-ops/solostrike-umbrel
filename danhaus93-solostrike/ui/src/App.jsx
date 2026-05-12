@@ -9359,7 +9359,27 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         ctx.arc(px, py, 3.4, 0, Math.PI*2);
         ctx.fill();
         if (p.isOwn) {
-          ctx.strokeStyle = 'rgba(57,255,106,0.75)';
+          // v1.11.2: GOLD ECHO PULSE — three rings staggered out by 1/3 of
+          // the cycle each. Creates a continuous sonar-echo effect where
+          // ripples expand from your pin outward. Pure gold (#FFD700) so
+          // it pops against the warm amber globe. Each ring is independent:
+          // ring 0 starts at phase 0, ring 1 at phase 1/3, ring 2 at phase
+          // 2/3. As one fades out at the edge, the next is mid-expansion
+          // and the third is just emerging — no gap, no break.
+          const PULSE_PERIOD_S = 2.5;
+          const baseT = (canvas._globeT || 0);
+          for (let i = 0; i < 3; i++) {
+            const offset = i / 3;                                          // 0, 0.33, 0.66
+            const phase = ((baseT / PULSE_PERIOD_S) + offset) % 1;          // 0..1
+            const ringR = 6 + phase * 14;                                   // 6 → 20 px
+            const ringAlpha = 0.85 * (1 - phase);                           // fade out
+            ctx.strokeStyle = `rgba(255, 215, 0, ${ringAlpha.toFixed(3)})`; // pure gold
+            ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.arc(px, py, ringR, 0, Math.PI*2); ctx.stroke();
+          }
+          // Inner static halo — gold marker around the pin between pulses
+          // so the "I am you" identity is always visible.
+          ctx.strokeStyle = 'rgba(255, 215, 0, 0.55)';
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
         }
