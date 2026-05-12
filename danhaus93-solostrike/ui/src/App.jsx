@@ -10336,10 +10336,122 @@ function StrikersModal({ networkStats, onClose }) {
   const dispWorkers = shownPeers.reduce((s, p) => s + p.workers, 0);
   const dispCount = shownPeers.length;
 
+  // v1.11.x: rank by hashrate descending. Used for #1/#2/#3 badges + LAVA
+  // distribution bar coloring. Strikers with hashrate=0 sort to bottom.
+  const ranked = [...shownPeers].sort((a, b) => (b.hashrate || 0) - (a.hashrate || 0));
+  const rankByPubkey = new Map();
+  ranked.forEach((p, i) => rankByPubkey.set(p.pubkey, i));
+
+  // v1.12.x: hashrate trend — compare current network hashrate to ~1h ago.
+  // networkStats.hashrateHistory is a rolling buffer of {ts, hr} samples
+  // (max 60, ~1 per minute). Pick the oldest sample with at least 30 min lag
+  // for a stable trend signal; if buffer is too short, no trend shown.
+  const computeTrend = () => {
+    const hist = Array.isArray(ns.hashrateHistory) ? ns.hashrateHistory : [];
+    if (hist.length < 10) return null;  // need at least ~10 min of history
+    const now = Date.now();
+    const targetAgo = now - 60 * 60 * 1000; // 1h ago
+    // Pick sample closest to (but not after) targetAgo
+    let old = hist[0];
+    for (const s of hist) {
+      if (s.ts <= targetAgo) old = s;
+      else break;
+    }
+    // Require at least 30 min of separation for meaningful trend
+    if (now - old.ts < 30 * 60 * 1000) return null;
+    if (!old.hr || old.hr <= 0) return null;
+    const pct = ((dispHash - old.hr) / old.hr) * 100;
+    if (!Number.isFinite(pct)) return null;
+    // Don't show micro-changes (<3%) — they're noise
+    if (Math.abs(pct) < 3) return null;
+    return Math.round(pct);
+  };
+  const trendPct = computeTrend();
+
+  // v1.12.x LAVA palette — bright yellow → orange → red → deep brick.
+  // Top hashrate gets the hottest color, descending by rank.
+  const LAVA_STOPS = [
+    '#FFD700', // bright gold (rank #1)
+    '#FFA500', // pure orange
+    '#FF8C1A', // amber-orange
+    '#FF6B1A', // hot orange
+    '#FF4500', // orange-red
+    '#E63946', // crimson
+    '#B83228', // brick red
+    '#8B2222', // deep dark red (rank last+)
+  ];
+  const lavaColor = (rank) => LAVA_STOPS[Math.min(rank, LAVA_STOPS.length - 1)];
+
+  // v1.12.x: convert peer.loc ([lat, lon] on 5° grid) → flag emoji + region label.
+  // Coverage is approximate but good enough for "wow, global network" feel.
+  // Returns null if loc is missing or invalid.
+  const flagFromLoc = (loc) => {
+    if (!Array.isArray(loc) || loc.length !== 2) return null;
+    const [lat, lon] = loc;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    // Continental buckets — coarse, since loc grid is 5° (~500km cells).
+    if (lat >= 25 && lat <= 50 && lon >= -125 && lon <= -65) return { flag: '🇺🇸', label: 'US' };
+    if (lat >= 45 && lat <= 70 && lon >= -140 && lon <= -55) return { flag: '🇨🇦', label: 'CA' };
+    if (lat >= -35 && lat <= 15 && lon >= -85 && lon <= -35)  return { flag: '🇧🇷', label: 'SA' };
+    if (lat >= 35 && lat <= 70 && lon >= -10 && lon <= 30)    return { flag: '🇪🇺', label: 'EU' };
+    if (lat >= 50 && lat <= 60 && lon >= -10 && lon <= 5)     return { flag: '🇬🇧', label: 'UK' };
+    if (lat >= 30 && lat <= 50 && lon >= 125 && lon <= 150)   return { flag: '🇯🇵', label: 'JP' };
+    if (lat >= 15 && lat <= 55 && lon >= 70 && lon <= 135)    return { flag: '🌏', label: 'Asia' };
+    if (lat >= -45 && lat <= -10 && lon >= 110 && lon <= 180) return { flag: '🇦🇺', label: 'AU' };
+    if (lat >= -35 && lat <= 35 && lon >= -20 && lon <= 50)   return { flag: '🌍', label: 'AF' };
+    return { flag: '🌐', label: '' };
+  };
+
   const fmtAgo = (sec) => {
     if (!sec || sec < 60) return 'now';
     if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
     return Math.floor(sec / 3600) + 'h ago';
+  };
+
+  // v1.12.x: "Joined Nd ago" formatter. Takes unix seconds, returns short
+  // label. Hides if <1 day (just shows 'new') or older than 999d (caps).
+  const fmtJoined = (firstSeenSec) => {
+    if (!Number.isFinite(firstSeenSec) || firstSeenSec <= 0) return null;
+    const ageDays = (Date.now() / 1000 - firstSeenSec) / 86400;
+    if (ageDays < 1) return 'new';
+    return `${Math.min(999, Math.floor(ageDays))}d`;
+  };
+
+  // v1.12.x: aggregate Recent Strikes from all peers' lastStrike fields.
+  // Each peer broadcasts their most recent block found (if any). We dedupe
+  // by height, sort newest first, and show top 3-5. Also assign the row to
+  // a striker label (its rank index) so it matches the roster display.
+  const recentStrikes = (() => {
+    const strikes = [];
+    for (const p of shownPeers) {
+      if (!p.lastStrike || !Number.isFinite(p.lastStrike.height)) continue;
+      const rank = rankByPubkey.get(p.pubkey);
+      strikes.push({
+        height: p.lastStrike.height,
+        ts: p.lastStrike.ts,
+        isOwn: !!p.isOwn,
+        label: p.isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`,
+        pubkey: p.pubkey,
+      });
+    }
+    // Dedupe by height (one Striker per block — first wins, that's the legit finder)
+    const byHeight = new Map();
+    for (const s of strikes) {
+      if (!byHeight.has(s.height)) byHeight.set(s.height, s);
+    }
+    return [...byHeight.values()]
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+      .slice(0, 5);
+  })();
+
+  const fmtStrikeAgo = (ts) => {
+    if (!Number.isFinite(ts)) return '';
+    const secs = Math.floor(Date.now() / 1000 - ts);
+    if (secs < 60) return 'just now';
+    if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+    if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+    const days = Math.floor(secs / 86400);
+    return days + 'd ago';
   };
 
   const section = { marginBottom:'1rem' };
@@ -10348,10 +10460,102 @@ function StrikersModal({ networkStats, onClose }) {
   const heroLbl = { fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:4 };
   const heroVal = { fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, lineHeight:1, color:'var(--amber)' };
 
-  // Single row component — handles both "you" (highlighted gold treatment)
-  // and other Strikers (standard treatment) via the p.isOwn flag.
+  // v1.11.x: LAVA hashrate distribution bar. Renders only when ≥3 Strikers
+  // (with 1-2 it's just a "domination meter" without much info value).
+  // Each segment colored by LAVA gradient — brightest gold = top hashrate,
+  // descending through orange/red/brick to the smallest contributor.
+  const DistributionBar = () => {
+    if (ranked.length < 3 || dispHash <= 0) return null;
+    return (
+      <div style={section}>
+        <div style={secTitle}>▸ Hashrate Distribution</div>
+        <div style={{
+          display:'flex', height:12, borderRadius:4, overflow:'hidden',
+          background:'rgba(20,20,22,0.6)',
+          border:'1px solid rgba(245,166,35,0.18)',
+          boxShadow:'0 0 12px rgba(245,100,25,0.15)',
+        }}>
+          {ranked.map((p, i) => {
+            const color = lavaColor(i);
+            return (
+              <div key={p.pubkey} style={{
+                width: `${((p.hashrate || 0) / dispHash) * 100}%`,
+                background: color,
+                borderRight: i < ranked.length - 1 ? '1px solid rgba(8,8,10,0.5)' : 'none',
+                boxShadow: `inset 0 -2px 4px ${color}aa, inset 0 1px 2px rgba(255,255,255,0.15)`,
+              }}/>
+            );
+          })}
+        </div>
+        <div style={{
+          display:'flex', flexWrap:'wrap', gap:'0.4rem 0.7rem', marginTop:8,
+          fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-2)',
+        }}>
+          {ranked.map((p, i) => {
+            const color = lavaColor(i);
+            const pct = ((p.hashrate || 0) / dispHash) * 100;
+            const label = p.isOwn ? 'YOU' : `#${String(i + 1).padStart(2, '0')}`;
+            return (
+              <div key={p.pubkey} style={{display:'flex', alignItems:'center', gap:4}}>
+                <span style={{
+                  width:9, height:9, background:color, borderRadius:2, display:'inline-block',
+                  boxShadow:`0 0 4px ${color}88`,
+                }}/>
+                <span>{label} {pct.toFixed(0)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // v1.12.x: Recent Strikes ticker — shows recent blocks found by network peers
+  // (and yourself). Each row shows the Striker label + block height + "Xd ago".
+  // Renders only when at least one strike is known.
+  const RecentStrikesTicker = () => {
+    if (recentStrikes.length === 0) return null;
+    return (
+      <div style={section}>
+        <div style={secTitle}>▸ Recent Strikes</div>
+        {recentStrikes.map(s => (
+          <div key={s.pubkey + '-' + s.height} style={{
+            display:'flex', justifyContent:'space-between', alignItems:'center',
+            padding:'0.5rem 0.7rem',
+            background:'var(--bg-raised)',
+            border:'1px solid var(--border)',
+            marginBottom:'0.35rem',
+          }}>
+            <div style={{display:'flex', alignItems:'center', gap:8, fontFamily:'var(--fm)', fontSize:'0.72rem', minWidth:0}}>
+              <span style={{color:'var(--amber)', fontWeight:700, flexShrink:0}}>⛏</span>
+              <span style={{
+                color: s.isOwn ? 'var(--amber)' : 'var(--text-1)',
+                fontWeight: s.isOwn ? 700 : 500,
+                fontFamily:'var(--fd)', letterSpacing:'0.06em',
+              }}>{s.label}</span>
+              <span style={{color:'var(--text-3)'}}>·</span>
+              <span style={{color:'var(--text-2)'}}>#{s.height.toLocaleString()}</span>
+            </div>
+            <span style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', flexShrink:0}}>
+              {fmtStrikeAgo(s.ts)}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Single row component — v1.11.x: rank badge, geo flag, % of network,
+  // LAVA color stripe on left edge (when ≥3 Strikers so it matches the bar).
+  // v1.12.x: Joined Nd ago badge.
   const Row = ({ p, idx }) => {
-  const isOwn = !!p.isOwn;
+    const isOwn = !!p.isOwn;
+    const rank = rankByPubkey.get(p.pubkey) ?? idx;
+    const pct = dispHash > 0 ? (p.hashrate / dispHash) * 100 : 0;
+    const geo = flagFromLoc(p.loc);
+    const joined = fmtJoined(p.firstSeen);
+    const showStripe = ranked.length >= 3;
+    const stripeColor = showStripe ? lavaColor(rank) : null;
     return (
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -10361,8 +10565,17 @@ function StrikersModal({ networkStats, onClose }) {
         boxShadow: isOwn ? '0 0 12px rgba(245,166,35,0.2)' : 'none',
         marginBottom: isOwn ? '0.5rem' : '0.35rem',
         opacity: p.filtered && !isOwn ? 0.55 : 1,
+        position:'relative',
+        overflow:'hidden',
       }}>
-        <div style={{display:'flex', flexDirection:'column', gap:3, minWidth:0, flex:'1 1 auto'}}>
+        {stripeColor && (
+          <div style={{
+            position:'absolute', left:0, top:0, bottom:0,
+            width:4, background:stripeColor,
+            boxShadow:`0 0 8px ${stripeColor}66`,
+          }}/>
+        )}
+        <div style={{display:'flex', flexDirection:'column', gap:3, minWidth:0, flex:'1 1 auto', marginLeft: stripeColor ? 6 : 0}}>
           <div style={{display:'flex', alignItems:'center', gap:6, flexWrap:'wrap'}}>
             <span style={{
               fontFamily:'var(--fd)',
@@ -10373,12 +10586,28 @@ function StrikersModal({ networkStats, onClose }) {
             }}>
               {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
             </span>
+            {geo && (
+              <span style={{fontSize:'0.85rem', lineHeight:1}} title={geo.label}>{geo.flag}</span>
+            )}
+            {ranked.length >= 2 && (
+              <span style={{
+                fontFamily:'var(--fd)', fontSize:'0.55rem', color:'rgba(245,166,35,0.65)',
+                background:'rgba(245,166,35,0.1)', border:'1px solid rgba(245,166,35,0.2)',
+                padding:'1px 6px', letterSpacing:'0.06em', borderRadius:2,
+              }}>
+                #{rank + 1}
+              </span>
+            )}
             {p.filtered && !isOwn && (
               <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
             )}
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)'}}>
             {p.workers} worker{p.workers===1?'':'s'} · v{p.version || '?'}
+            {joined && (<> · <span title="Joined">{joined}</span></>)}
+            {dispHash > 0 && ranked.length >= 2 && (
+              <> · <span style={{color:'rgba(245,166,35,0.65)'}}>{pct.toFixed(1)}% of net</span></>
+            )}
           </div>
         </div>
         <div style={{textAlign:'right', flexShrink:0}}>
@@ -10416,10 +10645,25 @@ function StrikersModal({ networkStats, onClose }) {
             <div style={secTitle}>▸ Network Snapshot</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
               <div style={heroBox}><div style={heroLbl}>Strikers</div><div style={heroVal}>{dispCount}</div></div>
-              <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={{...heroVal, fontSize:'0.95rem'}}>{fmtPulseHr(dispHash)}</div></div>
+              <div style={heroBox}>
+                <div style={heroLbl}>Hashrate</div>
+                <div style={{...heroVal, fontSize:'0.95rem', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
+                  <span>{fmtPulseHr(dispHash)}</span>
+                  {trendPct !== null && (
+                    <span style={{
+                      fontFamily:'var(--fm)', fontSize:'0.55rem', fontWeight:600,
+                      color: trendPct > 0 ? 'var(--green)' : '#FF6B6B',
+                    }}>
+                      {trendPct > 0 ? '↑' : '↓'}{Math.abs(trendPct)}%
+                    </span>
+                  )}
+                </div>
+              </div>
               <div style={heroBox}><div style={heroLbl}>Miners</div><div style={heroVal}>{dispWorkers}</div></div>
             </div>
           </div>
+
+          <DistributionBar/>
 
           <div style={section}>
             <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -10447,16 +10691,51 @@ function StrikersModal({ networkStats, onClose }) {
             </div>
 
             {shownPeers.length === 0 && (
-              <div style={{textAlign:'center', padding:'1.25rem 0.5rem', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.75rem'}}>
-                No Strikers visible yet. The first broadcast cycle takes a few minutes after Pulse goes live.
+              <div style={{
+                textAlign:'center', padding:'1.5rem 0.5rem',
+                background:'var(--bg-raised)',
+                border:'1px dashed rgba(245,166,35,0.18)',
+                marginBottom:'0.35rem',
+              }}>
+                <div style={{
+                  fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--amber)',
+                  letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:6,
+                }}>
+                  Scanning for peers
+                </div>
+                <div style={{
+                  fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)',
+                  lineHeight:1.5,
+                }}>
+                  Your pulse broadcasts every 2.5 min over nostr.<br/>
+                  Other Strikers will appear here as they come online.
+                </div>
               </div>
             )}
 
-            {shownPeers.map((p, i) => (
+            {shownPeers.length === 1 && shownPeers[0].isOwn && (
+              <>
+                <Row p={shownPeers[0]} idx={0}/>
+                <div style={{
+                  textAlign:'center', padding:'1rem 0.5rem',
+                  background:'var(--bg-raised)',
+                  border:'1px dashed rgba(245,166,35,0.18)',
+                  marginTop:'0.35rem',
+                }}>
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', lineHeight:1.5}}>
+                    You're broadcasting solo. Other Strikers will appear here as they come online.
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!(shownPeers.length === 1 && shownPeers[0].isOwn) && shownPeers.map((p, i) => (
               <Row key={p.pubkey} p={p} idx={i}/>
             ))}
 
           </div>
+
+          <RecentStrikesTicker/>
 
           <div style={{
             borderTop:'1px dashed rgba(245,166,35,0.18)',
