@@ -65,7 +65,14 @@ services:
   # Accepts stratum+ssl connections on :4333, decrypts, forwards to ckpool:3333.
   # Self-signed cert auto-generated on first run and persisted in /data/stunnel.
   stunnel:
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:latest
+    # v1.11.1: PINNED by sha256 digest for supply-chain integrity.
+    # The :v1.11.1 tag is human-readable labeling; the @sha256: digest is
+    # the immutable contract — Docker pulls exactly these bytes regardless
+    # of what tag-pointer changes happen in the registry. To update on a
+    # new release: rebuild, push, capture the new digest with
+    # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
+    # and replace below.
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.1@sha256:df185cc36c2b15e70a2d9531c201b58815aeceea0e46132e1a7d8a891921fbf2
     restart: unless-stopped
     # v1.8.4: wait for ckpool to be healthy. stunnel forwards to ckpool:3333
     # so connecting to a half-booted ckpool would drop early SSL miners.
@@ -78,7 +85,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:latest
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.1@sha256:93c2d9b598d1c5137ee08f4f8db449f64d1af472d8c898e1743b6aa0bfa61951
     restart: unless-stopped
     stop_grace_period: 30s
     # v1.8.4: wait for ckpool to be HEALTHY, not just started. Combined
@@ -118,7 +125,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:latest
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.1@sha256:ab1305a4e3f28d47aee8a6e254b484455b3b381f4b41bd141ecfc711faa48781
     restart: unless-stopped
     container_name: danhaus93-solostrike_ui_1
     depends_on:
