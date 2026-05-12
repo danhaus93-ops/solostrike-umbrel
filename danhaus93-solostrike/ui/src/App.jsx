@@ -10322,6 +10322,43 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
 function StrikersModal({ networkStats, onClose }) {
   const [showFiltered, setShowFiltered] = useState(false);
 
+  // v1.11.2: ENGAGEMENT FEATURES
+  // - showOnboard: first-time "WHAT IS PULSE?" tooltip (localStorage gated)
+  // - drillPeer: currently-tapped Striker to expand in bottom sheet (null = no expansion)
+  // - hashGoal: user's personal hashrate target in TH/s, localStorage-persisted
+  // - heartbeatSec: countdown to next outbound broadcast; ticks down once/sec
+  const [showOnboard, setShowOnboard] = useState(false);
+  const [drillPeer, setDrillPeer] = useState(null);
+  const [hashGoal, setHashGoal] = useState(() => {
+    try { const v = localStorage.getItem('ss_hash_goal_v1'); return v ? parseFloat(v) : 0; } catch { return 0; }
+  });
+  const [heartbeatSec, setHeartbeatSec] = useState(150); // ~2.5min broadcast cycle
+
+  // Persist hashGoal changes
+  useEffect(() => {
+    try { localStorage.setItem('ss_hash_goal_v1', String(hashGoal || 0)); } catch {}
+  }, [hashGoal]);
+
+  // Heartbeat countdown — fires once/sec, wraps to 150 when it hits 0
+  useEffect(() => {
+    const t = setInterval(() => {
+      setHeartbeatSec(s => s <= 0 ? 150 : s - 1);
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // First-time onboarding trigger (one-shot, localStorage gated)
+  useEffect(() => {
+    try {
+      const seen = localStorage.getItem('ss_pulse_onboard_seen_v1');
+      if (!seen) setShowOnboard(true);
+    } catch {}
+  }, []);
+  const dismissOnboard = () => {
+    setShowOnboard(false);
+    try { localStorage.setItem('ss_pulse_onboard_seen_v1', '1'); } catch {}
+  };
+
   const ns = networkStats || {};
   const allPeers = Array.isArray(ns.peers) ? ns.peers : [];
   const ownPubkey = ns.ownPubkey || '';
@@ -10408,6 +10445,43 @@ function StrikersModal({ networkStats, onClose }) {
     return Math.floor(sec / 3600) + 'h ago';
   };
 
+  // v1.11.2: derive badges from already-broadcast peer data — no new
+  // protocol fields needed. Returns array of badge IDs.
+  //   🥇 OG          → joined > 90 days ago
+  //   ⚡ WHALE       → top 10% of network hashrate (or top 1 if ≤10 peers)
+  //   🌍 GLOBETROTTER → has a loc pin, AND not in the common US/EU buckets
+  //   🆕 NEW         → joined < 7 days ago
+  //   💀 GHOST       → has hashrate but 0 workers broadcast (privacy mode)
+  const BADGE_META = {
+    OG:           { emoji: '🥇', label: 'OG Striker',     desc: 'Broadcasting > 90 days' },
+    WHALE:        { emoji: '⚡', label: 'Whale',           desc: 'Top 10% network hashrate' },
+    GLOBETROTTER: { emoji: '🌍', label: 'Globetrotter',   desc: 'Outside common regions' },
+    NEW:          { emoji: '🆕', label: 'New Striker',    desc: 'Joined < 7 days ago' },
+    GHOST:        { emoji: '💀', label: 'Ghost',          desc: 'Hashrate without worker count' },
+  };
+
+  const deriveBadges = (p, allPeersSorted) => {
+    const badges = [];
+    const now = Date.now() / 1000;
+    const ageDays = p.firstSeen ? (now - p.firstSeen) / 86400 : 0;
+    if (ageDays >= 90) badges.push('OG');
+    if (ageDays < 7 && ageDays >= 0) badges.push('NEW');
+    // Whale: top 10% of peers by hashrate (or rank 1 if very few peers)
+    const myRank = allPeersSorted.findIndex(x => x.pubkey === p.pubkey);
+    const whaleCutoff = Math.max(1, Math.floor(allPeersSorted.length * 0.1));
+    if (myRank >= 0 && myRank < whaleCutoff && p.hashrate > 0) badges.push('WHALE');
+    // Globetrotter: has loc, but NOT in the dense US/EU buckets
+    if (Array.isArray(p.loc) && p.loc.length === 2) {
+      const [lat, lon] = p.loc;
+      const isCommon = (lat >= 25 && lat <= 50 && lon >= -125 && lon <= -65)  // US
+                   || (lat >= 35 && lat <= 70 && lon >= -10 && lon <= 30);    // EU
+      if (!isCommon) badges.push('GLOBETROTTER');
+    }
+    // Ghost: hashrate > 0 but workers === 0 (deliberately privacy-broadcasting)
+    if (p.hashrate > 0 && (p.workers === 0 || p.workers == null)) badges.push('GHOST');
+    return badges;
+  };
+
   // v1.12.x: "Joined Nd ago" formatter. Takes unix seconds, returns short
   // label. Hides if <1 day (just shows 'new') or older than 999d (caps).
   const fmtJoined = (firstSeenSec) => {
@@ -10425,12 +10499,15 @@ function StrikersModal({ networkStats, onClose }) {
     const strikes = [];
     for (const p of shownPeers) {
       if (!p.lastStrike || !Number.isFinite(p.lastStrike.height)) continue;
-      const rank = rankByPubkey.get(p.pubkey);
       strikes.push({
         height: p.lastStrike.height,
         ts: p.lastStrike.ts,
         isOwn: !!p.isOwn,
-        label: p.isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`,
+        // v1.11.2: anonymize block-finder label. The pubkey is on the wire
+        // (Nostr signs every event) but the UI no longer reveals which Striker
+        // found the block. Maintains the "celebrate together but stay private"
+        // ethos. YOU stays as YOU since you already know it's you.
+        label: p.isOwn ? 'YOU' : '⛏ A STRIKER',
         pubkey: p.pubkey,
       });
     }
@@ -10548,6 +10625,7 @@ function StrikersModal({ networkStats, onClose }) {
   // Single row component — v1.11.x: rank badge, geo flag, % of network,
   // LAVA color stripe on left edge (when ≥3 Strikers so it matches the bar).
   // v1.12.x: Joined Nd ago badge.
+  // v1.11.2: earned badges (🥇⚡🌍🆕💀), tappable for drill-down.
   const Row = ({ p, idx }) => {
     const isOwn = !!p.isOwn;
     const rank = rankByPubkey.get(p.pubkey) ?? idx;
@@ -10556,8 +10634,11 @@ function StrikersModal({ networkStats, onClose }) {
     const joined = fmtJoined(p.firstSeen);
     const showStripe = ranked.length >= 3;
     const stripeColor = showStripe ? lavaColor(rank) : null;
+    const badges = deriveBadges(p, ranked);
     return (
-      <div style={{
+      <div
+        onClick={() => setDrillPeer(p)}
+        style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
         padding: isOwn ? '0.7rem 0.8rem' : '0.6rem 0.8rem',
         background: isOwn ? 'rgba(245,166,35,0.08)' : 'var(--bg-raised)',
@@ -10567,7 +10648,14 @@ function StrikersModal({ networkStats, onClose }) {
         opacity: p.filtered && !isOwn ? 0.55 : 1,
         position:'relative',
         overflow:'hidden',
-      }}>
+        cursor:'pointer',
+        transition:'transform 0.08s ease',
+      }}
+      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.99)'}
+      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+      onTouchStart={e => e.currentTarget.style.transform = 'scale(0.99)'}
+      onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}
+      >
         {stripeColor && (
           <div style={{
             position:'absolute', left:0, top:0, bottom:0,
@@ -10598,6 +10686,21 @@ function StrikersModal({ networkStats, onClose }) {
                 #{rank + 1}
               </span>
             )}
+            {/* v1.11.2: badges */}
+            {badges.map(b => (
+              <span
+                key={b}
+                title={`${BADGE_META[b].label} — ${BADGE_META[b].desc}`}
+                style={{
+                  fontSize:'0.7rem', lineHeight:1,
+                  background:'rgba(245,166,35,0.08)',
+                  border:'1px solid rgba(245,166,35,0.2)',
+                  borderRadius:2, padding:'1px 4px',
+                }}
+              >
+                {BADGE_META[b].emoji}
+              </span>
+            ))}
             {p.filtered && !isOwn && (
               <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
             )}
@@ -10635,8 +10738,39 @@ function StrikersModal({ networkStats, onClose }) {
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📡</span>
             <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>Pulse Strikers</span>
+            {/* v1.11.2: help icon → opens onboarding */}
+            <button
+              onClick={() => setShowOnboard(true)}
+              aria-label="What is Pulse?"
+              style={{
+                background:'none', border:'1px solid var(--border)',
+                color:'var(--text-2)', cursor:'pointer',
+                width:18, height:18, borderRadius:'50%',
+                display:'inline-flex', alignItems:'center', justifyContent:'center',
+                fontSize:'0.7rem', fontFamily:'var(--fd)',
+                padding:0, lineHeight:1,
+              }}
+            >?</button>
           </div>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
+          <div style={{display:'flex', alignItems:'center', gap:8}}>
+            {/* v1.11.2: heartbeat indicator — visual proof of broadcasting */}
+            <div style={{
+              display:'inline-flex', alignItems:'center', gap:4,
+              fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
+              padding:'2px 6px', background:'var(--bg-raised)',
+              border:'1px solid var(--border)', borderRadius:2,
+              letterSpacing:'0.08em',
+            }}>
+              <span style={{
+                width:6, height:6, borderRadius:'50%',
+                background: heartbeatSec < 3 ? 'var(--green)' : 'var(--amber)',
+                boxShadow: heartbeatSec < 3 ? '0 0 8px var(--green)' : '0 0 4px var(--amber)',
+                transition:'all 0.3s',
+              }}/>
+              <span>{heartbeatSec < 3 ? 'BROADCASTING' : `BEAT ${heartbeatSec}s`}</span>
+            </div>
+            <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
+          </div>
         </div>
 
         <div style={{padding:'1rem 1.25rem 4.5rem 1.25rem'}}>
@@ -10664,6 +10798,63 @@ function StrikersModal({ networkStats, onClose }) {
           </div>
 
           <DistributionBar/>
+
+          {/* v1.11.2: personal hashrate goal tracker */}
+          {ownPeer && (() => {
+            const yourHr = ownPeer.hashrate || 0;
+            const goal = hashGoal || 0;
+            return (
+              <div style={section}>
+                <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <span>▸ Personal Goal {goal > 0 && <>· {goal} TH/s</>}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    placeholder="Set goal (TH/s)"
+                    value={hashGoal || ''}
+                    onChange={e => setHashGoal(parseFloat(e.target.value) || 0)}
+                    style={{
+                      background:'var(--bg-raised)',
+                      border:'1px solid var(--border)',
+                      color:'var(--amber)',
+                      fontFamily:'var(--fm)', fontSize:'0.65rem',
+                      padding:'2px 6px', width:90, textAlign:'right',
+                      borderRadius:2,
+                    }}
+                  />
+                </div>
+                {goal > 0 && (
+                  <>
+                    <div style={{
+                      height:8, background:'var(--bg-raised)',
+                      border:'1px solid var(--border)', borderRadius:3,
+                      overflow:'hidden', marginBottom:6,
+                    }}>
+                      <div style={{
+                        width:`${Math.min(100, (yourHr / goal) * 100)}%`,
+                        height:'100%',
+                        background:'linear-gradient(90deg, #FF6B1A, #FFD700)',
+                        boxShadow:'0 0 8px #FF8C1A88',
+                        transition:'width 0.5s ease',
+                      }}/>
+                    </div>
+                    <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)'}}>
+                      {yourHr >= goal
+                        ? <span style={{color:'var(--green)'}}>✓ Goal reached! You're at {yourHr.toFixed(1)} TH/s ({((yourHr/goal)*100).toFixed(0)}% of goal).</span>
+                        : <>+{(goal - yourHr).toFixed(1)} TH/s to go · {((yourHr/goal)*100).toFixed(0)}% there</>
+                      }
+                    </div>
+                  </>
+                )}
+                {!goal && (
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)'}}>
+                    Set a target hashrate to track your progress.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div style={section}>
             <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -10773,6 +10964,177 @@ function StrikersModal({ networkStats, onClose }) {
 
         </div>
       </div>
+
+      {/* v1.11.2: ONBOARDING MODAL — first-time + ? button trigger */}
+      {showOnboard && (
+        <div
+          onClick={dismissOnboard}
+          style={{
+            position:'fixed', inset:0, background:'rgba(0,0,0,0.85)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            zIndex:260, padding:'1rem',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background:'var(--bg-surface)', border:'1px solid var(--border-hot)',
+              maxWidth:380, padding:'1.5rem', borderRadius:6,
+              boxShadow:'0 0 40px rgba(245,166,35,0.2)',
+            }}
+          >
+            <div style={{
+              color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'1.05rem',
+              fontWeight:700, letterSpacing:'0.08em', marginBottom:'0.75rem',
+            }}>
+              WHAT IS PULSE?
+            </div>
+            <p style={{color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.75rem', lineHeight:1.6, margin:'0 0 0.75rem 0'}}>
+              Pulse is an <strong style={{color:'var(--amber)'}}>anonymous census</strong> of solo Bitcoin miners running SoloStrike. Hashrate is broadcast over <strong style={{color:'var(--amber)'}}>nostr</strong> — no names, no IPs, no pool affiliation.
+            </p>
+            <p style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.7rem', lineHeight:1.6, margin:'0 0 1rem 0'}}>
+              You see who else is broadcasting, roughly where they are, and how the network grows. <strong style={{color:'var(--text-1)'}}>Your blocks always stay 100% yours.</strong> Tap any Striker for details.
+            </p>
+            <button
+              onClick={dismissOnboard}
+              style={{
+                width:'100%', padding:'0.6rem',
+                background:'var(--amber)', color:'#000',
+                border:'none', borderRadius:3,
+                fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.15em',
+                cursor:'pointer', fontWeight:700,
+              }}
+            >GOT IT</button>
+          </div>
+        </div>
+      )}
+
+      {/* v1.11.2: DRILL-DOWN SHEET — tap any Striker row to expand */}
+      {drillPeer && (() => {
+        const p = drillPeer;
+        const isOwn = !!p.isOwn;
+        const rank = rankByPubkey.get(p.pubkey) ?? 0;
+        const pct = dispHash > 0 ? (p.hashrate / dispHash) * 100 : 0;
+        const geo = flagFromLoc(p.loc);
+        const joined = fmtJoined(p.firstSeen);
+        const badges = deriveBadges(p, ranked);
+        return (
+          <div
+            onClick={() => setDrillPeer(null)}
+            style={{
+              position:'fixed', inset:0, background:'rgba(0,0,0,0.7)',
+              display:'flex', alignItems:'flex-end', justifyContent:'center',
+              zIndex:260, padding:'1rem',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width:'100%', maxWidth:480,
+                background:'var(--bg-surface)', border:'1px solid var(--border-hot)',
+                borderRadius:'8px 8px 0 0', padding:'1.25rem',
+                maxHeight:'80dvh', overflowY:'auto',
+              }}
+            >
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
+                <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                  <span style={{
+                    color:isOwn ? 'var(--amber)' : 'var(--text-1)',
+                    fontFamily:'var(--fd)', fontSize:'1rem',
+                    fontWeight:700, letterSpacing:'0.08em',
+                  }}>
+                    {isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`}
+                  </span>
+                  {geo && <span style={{fontSize:'1.1rem'}}>{geo.flag}</span>}
+                  <span style={{
+                    color:'rgba(245,166,35,0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
+                    background:'rgba(245,166,35,0.1)', border:'1px solid rgba(245,166,35,0.2)',
+                    padding:'2px 8px', borderRadius:2, letterSpacing:'0.08em',
+                  }}>RANK #{rank + 1}</span>
+                </div>
+                <button
+                  onClick={() => setDrillPeer(null)}
+                  style={{background:'none', border:'none', color:'var(--text-2)', fontSize:22, cursor:'pointer', padding:'0 4px'}}
+                >✕</button>
+              </div>
+
+              {/* hashrate hero */}
+              <div style={{
+                textAlign:'center', padding:'0.75rem', marginBottom:'1rem',
+                background:'var(--bg-raised)', border:'1px solid var(--border)',
+              }}>
+                <div style={{
+                  fontFamily:'var(--fd)', fontSize:'1.6rem', fontWeight:700,
+                  color:'var(--amber)', lineHeight:1,
+                }}>{fmtPulseHr(p.hashrate)}</div>
+                {dispHash > 0 && (
+                  <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)', marginTop:4}}>
+                    {pct.toFixed(1)}% of network
+                  </div>
+                )}
+              </div>
+
+              {/* stat grid */}
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:'1rem'}}>
+                <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>WORKERS</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>{p.workers || 0}</div>
+                </div>
+                <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>VERSION</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>v{p.version || '?'}</div>
+                </div>
+                <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>JOINED</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>{joined || '—'}</div>
+                </div>
+                <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>LAST SEEN</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>{fmtAgo(p.lastSeenAgoSec)}</div>
+                </div>
+              </div>
+
+              {/* badges expanded */}
+              {badges.length > 0 && (
+                <div style={{marginBottom:'1rem'}}>
+                  <div style={{
+                    fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--amber)',
+                    letterSpacing:'0.2em', marginBottom:8,
+                  }}>▸ BADGES</div>
+                  {badges.map(b => {
+                    const m = BADGE_META[b];
+                    return (
+                      <div key={b} style={{
+                        display:'flex', alignItems:'center', gap:10,
+                        padding:'0.5rem 0.65rem',
+                        background:'var(--bg-raised)', border:'1px solid var(--border)',
+                        marginBottom:4,
+                      }}>
+                        <span style={{fontSize:'1.2rem'}}>{m.emoji}</span>
+                        <div style={{flex:1, minWidth:0}}>
+                          <div style={{fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:600, color:'var(--text-1)', letterSpacing:'0.05em'}}>{m.label}</div>
+                          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)'}}>{m.desc}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {badges.length === 0 && (
+                <div style={{
+                  textAlign:'center', padding:'0.75rem',
+                  background:'var(--bg-raised)', border:'1px dashed var(--border)',
+                  fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)',
+                  marginBottom:'1rem',
+                }}>
+                  No badges yet. Broadcast longer to earn 🥇 OG status.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
