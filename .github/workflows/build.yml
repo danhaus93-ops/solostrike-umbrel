@@ -247,25 +247,23 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-stunnel:latest
 
+
   # ═══════════════════════════════════════════════════════════════════
   # PIN DIGESTS — auto-update docker-compose.yml with the newly-built
-  # image digests so users updating via community-store always get
-  # code + digest pins in lockstep. Runs only after all three image
-  # builds succeed.
+  # image digests after every release.
   #
-  # Tag scheme:
-  #   :latest — always the newest image (mutable, useful for development)
-  #   :vX.Y.Z — immutable version label, derived from umbrel-app.yml
+  # CRITICAL: the GITHUB_TOKEN can push images by DIGEST and to :latest,
+  # but FAILS to create new VERSION TAGS (:v1.11.x) on personal-account
+  # packages with this error:
+  #   denied: installation not allowed to Write organization package
+  # Despite the misleading word "organization", this fires for personal
+  # accounts too. It's the GITHUB_TOKEN's installation context limitation.
   #
-  # docker-compose.yml format:
-  #   image: ghcr.io/<owner>/<name>:vX.Y.Z@sha256:<digest>
-  #
-  # The :vX.Y.Z label is human-readable; the @sha256: digest is the
-  # cryptographic contract. Docker pulls exactly those bytes regardless
-  # of tag-pointer changes.
-  #
-  # Uses GITHUB_TOKEN, which intentionally does NOT trigger downstream
-  # workflows on its auto-commits — prevents infinite CI loops.
+  # SOLUTION: write a PAT (GHCR_WRITE_TOKEN secret) directly into
+  # ~/.docker/config.json BEFORE invoking imagetools. docker/login-action
+  # writes to a sandboxed config path that imagetools doesn't read, so
+  # we manually populate the default config. This is the proven approach
+  # for "buildx imagetools create" + GHCR + tag-creation scenarios.
   # ═══════════════════════════════════════════════════════════════════
   pin-digests:
     name: Pin docker-compose.yml to new digests
@@ -273,27 +271,41 @@ jobs:
     needs: [merge-api, merge-ui, merge-stunnel]
     permissions:
       contents: write
-      packages: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
-          # Default GITHUB_TOKEN with write perms is fine for our commits.
-          # We set fetch-depth: 0 because we may need to rebase if main
-          # advanced during the build (e.g. user pushed another commit).
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure Docker auth (PAT for ghcr.io)
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_WRITE_TOKEN }}
+        run: |
+          # Write PAT directly into ~/.docker/config.json. imagetools reads
+          # from this file regardless of what docker/login-action did with
+          # its sandboxed config dir. This is what GitHub Actions community
+          # ultimately landed on as the workaround for the tag-create issue.
+          if [ -z "$GHCR_TOKEN" ]; then
+            echo "::error::GHCR_WRITE_TOKEN secret is not set. Add it under repo Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          mkdir -p ~/.docker
+          AUTH=$(printf "%s:%s" "${{ github.actor }}" "$GHCR_TOKEN" | base64 -w0)
+          cat > ~/.docker/config.json <<JSON
+          {
+            "auths": {
+              "ghcr.io": {
+                "auth": "$AUTH"
+              }
+            }
+          }
+          JSON
+          echo "Docker config written. ghcr.io will be authenticated as ${{ github.actor }} via PAT."
 
       - name: Read version from umbrel-app.yml
         id: ver
         run: |
-          # Parse `version: "X.Y.Z"` line. Quotes optional in YAML but
-          # currently present in our file. Strip them either way.
           VERSION=$(grep -E '^version:' danhaus93-solostrike/umbrel-app.yml \
             | head -1 \
             | sed -E 's/^version:[[:space:]]*"?([^"]+)"?$/\1/')
@@ -305,12 +317,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Tag images with version
-        id: tag
         run: |
           VERSION="${{ steps.ver.outputs.version }}"
-          # Re-tag :latest as :vX.Y.Z so we have an immutable version label.
-          # buildx imagetools create copies the manifest list (preserves
-          # multi-arch) — no rebuild, just a re-label in the registry.
           for img in solostrike-api solostrike-ui solostrike-stunnel; do
             echo "Tagging $img:latest → $img:v$VERSION"
             docker buildx imagetools create \
@@ -321,15 +329,7 @@ jobs:
       - name: Capture digests
         id: digests
         run: |
-          # Inspect each image and capture its sha256 digest. We use the
-          # :latest tag since we just confirmed it's the newest.
-          # `imagetools inspect --raw` returns the manifest JSON. The
-          # top-level manifest list's digest is what docker-compose will
-          # pin to (Docker resolves it to the per-platform manifest at
-          # pull time, which is the same behavior as :latest today).
           for img in solostrike-api solostrike-ui solostrike-stunnel; do
-            # Get digest from manifest-list inspection.
-            # buildx imagetools inspect prints "Name: ... Digest: sha256:..."
             DIGEST=$(docker buildx imagetools inspect \
               ${{ env.REGISTRY }}/${{ env.OWNER }}/$img:latest \
               | grep -E '^Digest:' \
@@ -340,7 +340,6 @@ jobs:
               exit 1
             fi
             echo "$img digest: $DIGEST"
-            # Map service name to env var (api/ui/stunnel)
             case "$img" in
               solostrike-api)     echo "api_digest=$DIGEST" >> $GITHUB_OUTPUT ;;
               solostrike-ui)      echo "ui_digest=$DIGEST" >> $GITHUB_OUTPUT ;;
@@ -357,34 +356,25 @@ jobs:
           STUNNEL_DIGEST="${{ steps.digests.outputs.stunnel_digest }}"
           FILE=danhaus93-solostrike/docker-compose.yml
 
-          # Snapshot before so we can detect no-op.
           cp "$FILE" "$FILE.before"
 
-          # Replace each service's image line with the pinned form.
-          # The pattern matches:
-          #   image: ghcr.io/danhaus93-ops/solostrike-NAME:<anything>
-          # And replaces with:
-          #   image: ghcr.io/danhaus93-ops/solostrike-NAME:vVERSION@DIGEST
-          # We use sed with extended regex. Each image gets one replacement.
           sed -i -E \
-            "s|image: ghcr\\.io/danhaus93-ops/solostrike-api:.*|image: ghcr.io/danhaus93-ops/solostrike-api:v$VERSION@$API_DIGEST|" \
+            "s|image: ghcr\.io/danhaus93-ops/solostrike-api:.*|image: ghcr.io/danhaus93-ops/solostrike-api:v$VERSION@$API_DIGEST|" \
             "$FILE"
           sed -i -E \
-            "s|image: ghcr\\.io/danhaus93-ops/solostrike-ui:.*|image: ghcr.io/danhaus93-ops/solostrike-ui:v$VERSION@$UI_DIGEST|" \
+            "s|image: ghcr\.io/danhaus93-ops/solostrike-ui:.*|image: ghcr.io/danhaus93-ops/solostrike-ui:v$VERSION@$UI_DIGEST|" \
             "$FILE"
           sed -i -E \
-            "s|image: ghcr\\.io/danhaus93-ops/solostrike-stunnel:.*|image: ghcr.io/danhaus93-ops/solostrike-stunnel:v$VERSION@$STUNNEL_DIGEST|" \
+            "s|image: ghcr\.io/danhaus93-ops/solostrike-stunnel:.*|image: ghcr.io/danhaus93-ops/solostrike-stunnel:v$VERSION@$STUNNEL_DIGEST|" \
             "$FILE"
 
-          # Sanity check — confirm all 3 images now have @sha256: pins.
-          PINNED=$(grep -cE "image: ghcr\\.io/danhaus93-ops/solostrike-.*@sha256:" "$FILE" || true)
+          PINNED=$(grep -cE "image: ghcr\.io/danhaus93-ops/solostrike-.*@sha256:" "$FILE" || true)
           if [ "$PINNED" -ne 3 ]; then
             echo "::error::Expected 3 pinned images in docker-compose.yml, found $PINNED"
             diff "$FILE.before" "$FILE" || true
             exit 1
           fi
 
-          # Detect no-op (digests haven't changed — same build twice).
           if diff -q "$FILE.before" "$FILE" > /dev/null; then
             echo "No digest changes — skipping commit"
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -403,13 +393,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add danhaus93-solostrike/docker-compose.yml
-          # [skip ci] in the message is belt-and-suspenders — GITHUB_TOKEN
-          # auto-commits already don't re-trigger workflows, but the marker
-          # makes intent obvious if anyone reads git log.
           git commit -m "[CI] pin docker-compose.yml to v$VERSION digests [skip ci]"
 
-          # Race-condition handling: if main advanced during our build
-          # (someone else pushed), rebase and retry up to 3 times.
           for attempt in 1 2 3; do
             if git push origin HEAD:${GITHUB_REF#refs/heads/}; then
               echo "Push succeeded on attempt $attempt"
