@@ -88,6 +88,122 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.11.1 — Pulse engagement bundle + supply-chain hardening.
+
+
+  PULSE ENGAGEMENT (1.11.1)
+
+
+  • Anonymous block alerts — when any Striker on the network finds a
+    block, all peers see "⛏ A STRIKER · #height" in their Pulse
+    Strikers modal. The block-finder's identity is never revealed in
+    the UI even though the underlying nostr event is signed. Celebrate
+    together, stay private.
+
+
+  • Earned badges on every Striker row — 🥇 OG (broadcasting 90+ days),
+    ⚡ WHALE (top 10% network hashrate), 🌍 GLOBETROTTER (pinned outside
+    US/EU), 🆕 NEW (joined less than 7 days), 💀 GHOST (broadcasts
+    without worker count). Auto-derived from existing broadcast data;
+    no new protocol fields required.
+
+
+  • Tap any Striker row → drill-down sheet with hashrate hero, 2×2
+    stat grid (workers / version / joined / last seen), and each
+    badge expanded with description. Bottom sheet on mobile, modal
+    on desktop.
+
+
+  • Personal hashrate goal tracker — set a target in TH/s, see a
+    LAVA-gradient progress bar showing your distance to goal. Stored
+    in localStorage per-device. "+X TH/s to go" / "✓ Goal reached!"
+
+
+  • Onboarding "?" tooltip — first-time users see a one-shot "WHAT IS
+    PULSE?" explainer modal. Dismissible, never shows again. Reachable
+    later via the "?" button in the Pulse Strikers title bar.
+
+
+  • Heartbeat indicator — live countdown to your next outbound
+    broadcast in the modal title bar. Pulses green and says
+    "BROADCASTING" for 3 seconds when the broadcast fires.
+
+
+  • Gold echo broadcast ring — replaced the static green ring around
+    your own pin on the Solo Strike Map with three concentric pure-gold
+    rings rippling outward continuously, sonar-style. Reads as
+    "actively broadcasting" even between actual broadcasts.
+
+
+  • LAVA palette hashrate distribution — when 3 or more Strikers are
+    visible, a gold-to-brick gradient bar shows network share by rank.
+    Each row gets a matching color stripe on its left edge. Top
+    hashrate = brightest gold.
+
+
+  • Geo flags from peer locations — 🇺🇸 🇨🇦 🇧🇷 🇪🇺 🇬🇧 🇯🇵 🌏 🇦🇺 🌍 🌐
+    appear next to each Striker based on their broadcast loc (snapped
+    to 5° grid for privacy). Continental buckets only — no
+    country-level resolution.
+
+
+  • Recent Strikes ticker — block-found events from any Striker on
+    the network appear in a dedicated section. Deduped by block height,
+    sorted newest first, top 5 shown.
+
+
+  STABILITY (1.11.1)
+
+
+  • Worker offline banner now fires correctly. ckpool drops disconnected
+    workers from its user files, so the status-poller wasn't seeing
+    them anymore and their status stayed "online" forever. Fix: added
+    an age-out pass that marks workers offline when lastSeen is >120s,
+    matching the same threshold used for live workers.
+
+
+  • Memory leak fixes across long-running deployments — share-watcher
+    cursor pruning (2hr TTL, was leaking 75K stale entries), ua-tailer
+    metaByWorker prune (30 day TTL), share-watcher shareCounters prune
+    (30 day TTL with Date.now() backfill that preserved 1.66M lifetime
+    accepted shares across the upgrade). Verified stable at 67 MiB
+    after 20+ hours uptime.
+
+
+  • WebSocket bufferedAmount backpressure guard — if a client falls
+    behind, the server now stops queuing messages instead of growing
+    its buffer unboundedly.
+
+
+  SUPPLY-CHAIN HARDENING (1.11.1)
+
+
+  • All three SoloStrike Docker images now pinned by sha256 digest in
+    docker-compose.yml. Even if a future GHCR account compromise
+    pushed malicious bytes to a tag, your install pulls exactly the
+    verified bytes. The :vX.Y.Z label is human-readable; the @sha256:
+    digest is the cryptographic contract.
+
+
+  • execFileSync replaces execSync throughout the API — eliminates
+    shell-injection vectors in all subprocess calls.
+
+
+  PRIVACY (Pulse v1.12.x protocol — backward compatible)
+
+
+  • Per-peer "Joined Nd ago" tracking via new optional firstSeen field
+    in the Pulse broadcast payload. v1.11.0 peers ignore the new field;
+    v1.11.1 peers use it to show how long each Striker has been on
+    the network.
+
+
+  • Network hashrate trend arrow (↑12%) on the Strikers modal — uses
+    a server-side rolling 60-sample buffer of aggregate hashrate to
+    compute the change since 1 hour ago. Hides below ±3% (noise
+    filter).
+
+
   v1.10.1 — Security hardening + visual polish.
 
 
