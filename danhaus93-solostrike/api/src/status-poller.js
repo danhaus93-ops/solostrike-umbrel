@@ -65,8 +65,24 @@ function startStatusPoller(state, broadcast, logDir) {
 
   function cleanupStaleWorkers() {
     const now = Date.now();
+    // v1.11.1 BUG FIX: workers dropped by ckpool (socket disconnect, miner
+    // powered off, network drop) disappear from the user files entirely, so
+    // the file-scan loop above never touches them again. Previously this meant
+    // they kept whatever status they had last — typically 'online' — until
+    // the 24h delete threshold hit. The offline-warning banner relies on
+    // status transitioning online → offline, so the banner never fired for
+    // these workers. Fix: age any worker offline whose lastSeen is older
+    // than the same 120s threshold used for live workers above (line 215).
+    const OFFLINE_THRESHOLD_MS = 120 * 1000;
     for (const key of Object.keys(state.workers)) {
       const w = state.workers[key];
+      if (!w) continue;
+      // Age-out: mark offline if we haven't seen a share in >120s
+      if (w.lastSeen && (now - w.lastSeen) > OFFLINE_THRESHOLD_MS && w.status !== 'offline') {
+        w.status = 'offline';
+        w.health = workerHealth(w);
+      }
+      // Original cleanup: delete after 24h
       if (w.lastSeen && (now - w.lastSeen) > STALE_THRESHOLD_MS) {
         delete state.workers[key];
       }
