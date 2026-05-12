@@ -1209,6 +1209,10 @@ async function main() {
   if (typeof persist.networkStatsEnabled === 'boolean') cfg.networkStatsEnabled = persist.networkStatsEnabled;
   if (persist.pulseDeviceSalt) cfg.pulseDeviceSalt = persist.pulseDeviceSalt;
   if (typeof persist.pulseTorEnabled === 'boolean') cfg.pulseTorEnabled = persist.pulseTorEnabled;
+  // v1.12.x: restore pulseFirstSeen so "Joined Nd ago" survives restarts
+  if (Number.isFinite(persist.pulseFirstSeen) && persist.pulseFirstSeen > 0) {
+    cfg.pulseFirstSeen = persist.pulseFirstSeen;
+  }
   // iter28-fix: restore Strike Velocity ring buffer + per-worker uptime sparklines
   // from disk so 24h history survives restarts. Drop samples older than 24h on load.
   if (Array.isArray(persist.spsHistory)) {

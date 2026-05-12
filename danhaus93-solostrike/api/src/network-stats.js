@@ -279,6 +279,36 @@ function validateAndExtractEvent(ev, ourPubkey) {
     }
   }
 
+  // v1.12.x: optional lastStrike — most recent block this peer claims found.
+  // Validated for shape + sanity ranges. Block height bounded to current
+  // chain tip + 1000 (defense against forged future blocks).
+  let lastStrike = null;
+  if (data.lastStrike !== undefined && data.lastStrike !== null) {
+    if (typeof data.lastStrike === 'object'
+        && Number.isFinite(data.lastStrike.height)
+        && Number.isFinite(data.lastStrike.ts)
+        && data.lastStrike.height >= 1
+        && data.lastStrike.height <= 10_000_000  // sanity: way beyond current chain
+        && data.lastStrike.ts >= 1_230_000_000   // post-genesis
+        && data.lastStrike.ts <= (Date.now() / 1000) + 600) { // ≤10min future
+      lastStrike = {
+        height: Math.floor(data.lastStrike.height),
+        ts: Math.floor(data.lastStrike.ts),
+      };
+    }
+  }
+
+  // v1.12.x: optional firstSeen — when this peer claims to have first
+  // activated. Defensive: must be ≥ 2024-01-01 (after SoloStrike existed)
+  // and ≤ event created_at. We don't trust this blindly — see the merge
+  // logic in the consumer.
+  let firstSeen = null;
+  if (data.firstSeen !== undefined && Number.isFinite(data.firstSeen)) {
+    if (data.firstSeen >= 1704067200 && data.firstSeen <= ev.created_at) {
+      firstSeen = Math.floor(data.firstSeen);
+    }
+  }
+
   // Signature — verify last (most expensive). Skip our own (we trust local).
   if (ev.pubkey === ourPubkey) {
     // Echo of our own broadcast — fine, accept
@@ -292,7 +322,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen },
   };
 }
 
@@ -314,6 +344,11 @@ function startNetworkStats({ state, cfg, savePersist }) {
           pulseDeviceSalt: cfg.pulseDeviceSalt,
           networkStatsEnabled: !!cfg.networkStatsEnabled,
           pulseTorEnabled: !!cfg.pulseTorEnabled,
+          // v1.12.x: persist when this install first joined the network. Used
+          // for the "Joined Nd ago" badge in the Strikers modal and broadcast
+          // to peers so they can show it for us. Rotates on identity rotation
+          // (every 90 days) — that's intentional, fresh identity = fresh start.
+          pulseFirstSeen: cfg.pulseFirstSeen,
         });
       } catch (e) {
         console.warn('[network-stats] saveIdentity failed:', e.message);
@@ -342,6 +377,15 @@ function startNetworkStats({ state, cfg, savePersist }) {
     privkeyBytes = sk;
     cfg.nostrPrivkey = encryptIdentityKey(plaintextForBackup, cfg);
     cfg.nostrInstallId = crypto.randomUUID();
+  }
+
+  // v1.12.x: stamp pulseFirstSeen if not yet recorded. For brand-new identities
+  // this is now-ish (matches "0d ago"). For users upgrading from v1.11.x, this
+  // ALSO stamps now — so existing peers will show "0d ago" on first upgrade.
+  // That's a one-time cosmetic acceptable tradeoff (we don't know when they
+  // really first activated; we never persisted it before).
+  if (!Number.isFinite(cfg.pulseFirstSeen) || cfg.pulseFirstSeen <= 0) {
+    cfg.pulseFirstSeen = Math.floor(Date.now() / 1000);
   }
 
   const pubkey = getPublicKey(privkeyBytes);
@@ -567,6 +611,19 @@ function startNetworkStats({ state, cfg, savePersist }) {
       return;
     }
 
+    // v1.12.x: track firstSeen — the timestamp we first observed this peer.
+    // Preserved across updates so we can show "Joined Nd ago" in the UI.
+    // If the peer broadcasts its OWN firstSeen (data.firstSeen), prefer
+    // that value when older than what we have (true network-wide first-seen).
+    const observedFirstSeen = (existing && existing.firstSeen) || result.created_at;
+    let peerFirstSeen = observedFirstSeen;
+    if (Number.isFinite(result.payload.firstSeen)
+        && result.payload.firstSeen > 0
+        && result.payload.firstSeen < result.created_at
+        && result.payload.firstSeen < peerFirstSeen) {
+      peerFirstSeen = Math.floor(result.payload.firstSeen);
+    }
+
     seenEvents.set(result.pubkey, {
       hashrate: result.payload.hashrate,
       workers: result.payload.workers,
@@ -574,6 +631,9 @@ function startNetworkStats({ state, cfg, savePersist }) {
       version: result.payload.version,
       loc: result.payload.loc,  // null if not broadcast by peer
       receivedAt: result.created_at,
+      firstSeen: peerFirstSeen,
+      // v1.12.x: most recent block this peer claims to have found
+      lastStrike: result.payload.lastStrike || (existing && existing.lastStrike) || null,
     });
     state.networkStats.security.eventsAccepted++;
     recomputeAggregates();
@@ -633,6 +693,9 @@ function startNetworkStats({ state, cfg, savePersist }) {
       lastSeenAgoSec: Math.max(0, Math.floor(Date.now() / 1000 - e.receivedAt)),
       filtered: !filteredPubkeys.has(pk),
       isOwn: pk === pubkey,
+      // v1.12.x: new fields surfaced for the Strikers modal
+      firstSeen: e.firstSeen || e.receivedAt,
+      lastStrike: e.lastStrike || null,
     })).sort((a, b) => b.hashrate - a.hashrate);
 
     state.networkStats.pools = activeEntries.length;
@@ -643,6 +706,20 @@ function startNetworkStats({ state, cfg, savePersist }) {
     state.networkStats.peers = peers;
     state.networkStats.lastUpdate = Date.now();
     state.networkStats.security.outliersFiltered += outliersFilteredThisRound;
+
+    // v1.12.x: rolling hashrate history for trend arrow in UI.
+    // Push current aggregate, keep last 60 samples. recomputeAggregates fires
+    // roughly once per minute (on every accepted event or publish cycle),
+    // giving us ~60 minutes of history. UI consumes via networkStats.hashrateHistory
+    // and computes trend = (now - 1h_ago) / 1h_ago * 100.
+    if (!Array.isArray(state.networkStats.hashrateHistory)) {
+      state.networkStats.hashrateHistory = [];
+    }
+    const HASHRATE_HISTORY_MAX = 60;
+    state.networkStats.hashrateHistory.push({ ts: Date.now(), hr: hashrate });
+    if (state.networkStats.hashrateHistory.length > HASHRATE_HISTORY_MAX) {
+      state.networkStats.hashrateHistory.splice(0, state.networkStats.hashrateHistory.length - HASHRATE_HISTORY_MAX);
+    }
   }
 
   function publishOurStats() {
@@ -682,6 +759,21 @@ function startNetworkStats({ state, cfg, savePersist }) {
       ...(Array.isArray(cfg.poolLocation) && cfg.poolLocation.length === 2
           && Number.isFinite(cfg.poolLocation[0]) && Number.isFinite(cfg.poolLocation[1])
         ? { loc: snapToLocGrid(cfg.poolLocation[0], cfg.poolLocation[1]) }
+        : {}),
+      // v1.12.x: broadcast our most recent found block so peers can show
+      // "Recent Strikes" in their Pulse modal. state.blocks[0] is the latest.
+      ...(Array.isArray(state.blocks) && state.blocks.length > 0
+          && Number.isFinite(state.blocks[0].height)
+          && Number.isFinite(state.blocks[0].timestamp)
+        ? { lastStrike: {
+            height: state.blocks[0].height,
+            ts: Math.floor(state.blocks[0].timestamp / 1000),
+          } }
+        : {}),
+      // v1.12.x: broadcast when this install joined the network. Lets peers
+      // show our "Joined Nd ago" badge in their UI.
+      ...(Number.isFinite(cfg.pulseFirstSeen) && cfg.pulseFirstSeen > 0
+        ? { firstSeen: cfg.pulseFirstSeen }
         : {}),
     });
 
