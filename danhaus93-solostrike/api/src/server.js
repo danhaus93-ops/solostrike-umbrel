@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.3 — privacy-aware)
+// SoloStrike API server (v1.11.4 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.3',
+  version: '1.11.4',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -816,14 +816,15 @@ app.post('/api/setup', async (req, res) => {
 
 app.post('/api/config', async (req, res) => {
   try {
-    const { payoutAddress, poolName, privateMode } = req.body || {};
+    // v1.11.4: poolName removed from accepted fields — UI no longer exposes it.
+    // Webhook payloads now hardcode 'SoloStrike' as the pool value (see line ~271).
+    const { payoutAddress, privateMode } = req.body || {};
     if (payoutAddress != null) {
       const t = String(payoutAddress).trim();
       if (!isValidBtcAddress(t)) return res.status(400).json({ error: 'Invalid BTC address' });
       cfg.payoutAddress = t;
       state.payoutAddress = t;
     }
-    if (poolName != null) cfg.poolName = String(poolName).slice(0, 32);
     if (typeof privateMode === 'boolean') {
       cfg.privateMode = privateMode;
       state.privateMode = privateMode;
