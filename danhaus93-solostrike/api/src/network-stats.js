@@ -415,6 +415,13 @@ function startNetworkStats({ state, cfg, savePersist }) {
     // Includes BOTH filtered and outlier entries; the UI decides what to show.
     peers: [],
     ownPubkey: '',  // populated below once pubkey closure var exists
+    // v1.11.6: network historical stats — restored from persist.json if present
+    peakHashrate: cfg.networkStatsPeakHashrate || 0,
+    peakHashrateTs: cfg.networkStatsPeakHashrateTs || 0,
+    totalStrikesEver: cfg.networkStatsTotalStrikesEver || 0,
+    // strikesSeen is a Set of block heights we've already counted toward
+    // totalStrikesEver, to avoid double-counting if a peer rebroadcasts
+    // their lastStrike or multiple peers claim the same block.
     security: {
       eventsAccepted: 0,
       eventsDropped: 0,
@@ -423,6 +430,8 @@ function startNetworkStats({ state, cfg, savePersist }) {
       torEnabled: false,
     },
   };
+  // v1.11.6: in-memory dedup set for strike-counting (re-built from persist on restart)
+  const strikesSeen = new Set(cfg.networkStatsStrikesSeen || []);
   state.networkStats.ownPubkey = pubkey;
 
   // ── Tier 3: Tor support with reachability test + auto-fallback ──────────
@@ -719,6 +728,39 @@ function startNetworkStats({ state, cfg, savePersist }) {
     state.networkStats.hashrateHistory.push({ ts: Date.now(), hr: hashrate });
     if (state.networkStats.hashrateHistory.length > HASHRATE_HISTORY_MAX) {
       state.networkStats.hashrateHistory.splice(0, state.networkStats.hashrateHistory.length - HASHRATE_HISTORY_MAX);
+    }
+
+    // v1.11.6: track all-time-high network hashrate. Persist to disk via
+    // existing persist mechanism so a restart doesn't lose the ATH.
+    if (hashrate > (state.networkStats.peakHashrate || 0)) {
+      state.networkStats.peakHashrate = hashrate;
+      state.networkStats.peakHashrateTs = Date.now();
+      cfg.networkStatsPeakHashrate = hashrate;
+      cfg.networkStatsPeakHashrateTs = state.networkStats.peakHashrateTs;
+      if (typeof savePersist === 'function') savePersist();
+    }
+
+    // v1.11.6: total cumulative strikes (block-find events) across all peers.
+    // Dedup by block height in `strikesSeen` so we don't double-count when
+    // peers rebroadcast their lastStrike for hours or multiple peers happen
+    // to broadcast the same height. Persist set to survive restart.
+    let strikeAdded = false;
+    for (const [, e] of activeEntries) {
+      if (e.lastStrike && Number.isFinite(e.lastStrike.height)) {
+        const h = Math.floor(e.lastStrike.height);
+        if (!strikesSeen.has(h)) {
+          strikesSeen.add(h);
+          state.networkStats.totalStrikesEver = (state.networkStats.totalStrikesEver || 0) + 1;
+          strikeAdded = true;
+        }
+      }
+    }
+    if (strikeAdded) {
+      // Cap persist set size — keep last 256 heights (more than enough for dedup)
+      const heights = Array.from(strikesSeen).slice(-256);
+      cfg.networkStatsStrikesSeen = heights;
+      cfg.networkStatsTotalStrikesEver = state.networkStats.totalStrikesEver;
+      if (typeof savePersist === 'function') savePersist();
     }
   }
 
