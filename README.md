@@ -2,7 +2,7 @@
 
 <img src="danhaus93-solostrike/ui/public/pickaxe-icon.png" width="72" alt="⛏">
 
-# SoloStrike
+# SoloStrike #
 
 **Zero-fee solo Bitcoin mining pool for your Umbrel node**
 
