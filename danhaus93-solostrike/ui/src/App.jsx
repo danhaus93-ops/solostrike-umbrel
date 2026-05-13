@@ -1068,6 +1068,17 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
   // Retarget direction colors
   const retargetColor = (retargetPct == null) ? 'var(--text-2)' : (retargetPct > 0 ? 'var(--green)' : retargetPct < 0 ? 'var(--red)' : 'var(--text-2)');
   const retargetSign = (retargetPct != null && retargetPct > 0) ? '+' : '';
+  // v1.11.6: STRIKES celebration — when blocksFound increments (our install
+  // just found a block!) pulse the badge dramatically. The rarest, most
+  // important moment in solo mining gets a visceral visual reward.
+  const [strikesPulseKey, setStrikesPulseKey] = useState(0);
+  const prevBlocksRef = useRef(blocksFound);
+  useEffect(() => {
+    if (blocksFound != null && prevBlocksRef.current != null && blocksFound > prevBlocksRef.current) {
+      setStrikesPulseKey(k => k + 1);
+    }
+    prevBlocksRef.current = blocksFound;
+  }, [blocksFound]);
   return (
     <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.5rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.4rem' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:1, flexWrap:'wrap' }}>
@@ -1083,7 +1094,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
             )}
             {/* Strikes counter — total blocks found by this install */}
             {blocksFound != null && (
-              <span title="Total blocks struck" style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color: blocksFound > 0 ? 'var(--amber)' : 'var(--text-2)', textShadow: blocksFound > 0 ? '0 0 6px rgba(245,166,35,0.5)' : 'none', flexShrink:0, marginLeft:4 }}>
+              <span key={strikesPulseKey} className={strikesPulseKey > 0 ? 'ss-strikes-celebrate' : ''} title="Total blocks struck" style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color: blocksFound > 0 ? 'var(--amber)' : 'var(--text-2)', textShadow: blocksFound > 0 ? '0 0 6px rgba(245,166,35,0.5)' : 'none', flexShrink:0, marginLeft:4 }}>
                 STRIKES <span style={{fontWeight:700}}>{blocksFound}</span>{blocksFound > 0 && <span>⚡</span>}
               </span>
             )}
@@ -2015,7 +2026,11 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
 
   const data = smoothed;
   const peak = useMemo(() => Math.max(current || 0, ...data.map(p => p.hr || 0)), [data, current]);
-  const [p0, p1] = fmtHr(current).split(' ');
+  // v1.11.6: animate the main Firepower hashrate number — the most-watched
+  // number in the app. Smooth tween on change creates a "system is alive"
+  // feel. Uses the same useAnimatedNumber hook as the Pulse modal.
+  const animatedCurrent = useAnimatedNumber(current || 0);
+  const [p0, p1] = fmtHr(animatedCurrent).split(' ');
 
   const chartHeight = compact ? 105 : 140;
   const numberSize = compact ? '2.3rem' : '2.6rem';
@@ -2129,11 +2144,22 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
   );
   const online = sorted.filter(w=>w.status!=='offline').length;
 
+  // v1.11.6: pop-pop animation when online worker count changes.
+  // Reinforces "fleet is alive" signal when a miner comes online/offline.
+  const [workersPulseKey, setWorkersPulseKey] = useState(0);
+  const prevOnlineRef = useRef(online);
+  useEffect(() => {
+    if (online !== prevOnlineRef.current) {
+      prevOnlineRef.current = online;
+      setWorkersPulseKey(k => k + 1);
+    }
+  }, [online]);
+
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
         <span>▸ The Crew</span>
-        <span style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap'}}>{online}/{sorted.length} online</span>
+        <span key={workersPulseKey} className={workersPulseKey > 0 ? 'ss-pop-pop' : ''} style={{color:'var(--amber)', marginRight:'14px', whiteSpace:'nowrap', display:'inline-block'}}>{online}/{sorted.length} online</span>
       </div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)',lineHeight:2}}>
@@ -7833,6 +7859,40 @@ function fmtPulseHr(h) {
   return Math.round(h) + ' H/s';
 }
 
+// v1.11.6: tween a numeric value smoothly over ~600ms with ease-out curve.
+// Returns the in-flight animated value, which re-renders the component each
+// animation frame. When `value` prop changes, animation restarts from current
+// displayed value to the new target. Useful for hashrate displays that
+// otherwise snap when peers update — animating creates a "system is alive"
+// feel without being distracting. Used sparingly: only on the 2-3 highest
+// impact numbers, not every value in the UI.
+function useAnimatedNumber(value, durationMs = 600) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const fromRef = useRef(value);
+  const startedAtRef = useRef(0);
+  const rafRef = useRef(0);
+  useEffect(() => {
+    if (value === displayValue) return;
+    fromRef.current = displayValue;
+    startedAtRef.current = performance.now();
+    // Ease-out cubic: starts fast, decelerates to land softly.
+    const tick = (now) => {
+      const elapsed = now - startedAtRef.current;
+      const t = Math.min(1, elapsed / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const next = fromRef.current + (value - fromRef.current) * eased;
+      setDisplayValue(next);
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, durationMs]);
+  return displayValue;
+}
+
 // ── PulsePanel — Heartbeat dashboard card (v1.7.0) ────────────────────────
 // ── Strike Mesh Simulator (v1.11.x) ──────────────────────────
 // Full-screen modal for previewing how the cube forms at peer counts the
@@ -10388,12 +10448,99 @@ function StrikersModal({ networkStats, onClose }) {
   const dispHash = shownPeers.reduce((s, p) => s + p.hashrate, 0);
   const dispWorkers = shownPeers.reduce((s, p) => s + p.workers, 0);
   const dispCount = shownPeers.length;
+  // v1.11.6: animated versions for smooth UX (tween 600ms on change)
+  const animatedDispHash = useAnimatedNumber(dispHash);
+  const animatedDispWorkers = useAnimatedNumber(dispWorkers);
+  const animatedDispCount = useAnimatedNumber(dispCount);
+  // v1.11.6: ATH + cumulative strikes from server-tracked persistent state
+  const peakHr = ns.peakHashrate || 0;
+  const peakTs = ns.peakHashrateTs || 0;
+  const totalStrikes = ns.totalStrikesEver || 0;
+  // Small inline helper for ATH timestamp ("Peak X · 3d ago")
+  const fmtRelativeTime = (ts) => {
+    if (!ts) return '';
+    const diff = Math.max(0, Date.now() - ts);
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return 'now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  };
+
+  // ── v1.11.6: pop-pop animation trigger on Strikers count change ───────
+  // When dispCount increments (peer joined) or decrements (peer left), we
+  // briefly add a class to the Strikers number that scales + flashes it.
+  // Different from the smooth tween — this is a discrete "something just
+  // happened" pulse, not a value transition.
+  const [strikersPulseKey, setStrikersPulseKey] = useState(0);
+  const prevDispCountRef = useRef(dispCount);
+  useEffect(() => {
+    if (dispCount !== prevDispCountRef.current) {
+      prevDispCountRef.current = dispCount;
+      setStrikersPulseKey(k => k + 1); // re-mount the element via key to retrigger CSS animation
+    }
+  }, [dispCount]);
+
+  // ── v1.11.6: strike celebration banner ────────────────────────────────
+  // When totalStrikes increments (any peer found a block), show a
+  // celebration banner that animates in for ~6 seconds, then fades.
+  const [strikeBannerShown, setStrikeBannerShown] = useState(false);
+  const prevStrikesRef = useRef(totalStrikes);
+  useEffect(() => {
+    if (totalStrikes > prevStrikesRef.current) {
+      prevStrikesRef.current = totalStrikes;
+      setStrikeBannerShown(true);
+      const t = setTimeout(() => setStrikeBannerShown(false), 6000);
+      return () => clearTimeout(t);
+    }
+    prevStrikesRef.current = totalStrikes;
+  }, [totalStrikes]);
+
+  // ── v1.11.6: badge unlock animation tracking ──────────────────────────
+  // Track previously-seen badge set for YOUR row. When the set grows,
+  // mark the newly-earned badges so they render with a pop-in animation.
+  // Use localStorage to persist across reloads (so badges don't re-animate
+  // every tab open).
+  const [newlyEarnedBadges, setNewlyEarnedBadges] = useState(new Set());
 
   // v1.11.x: rank by hashrate descending. Used for #1/#2/#3 badges + LAVA
   // distribution bar coloring. Strikers with hashrate=0 sort to bottom.
   const ranked = [...shownPeers].sort((a, b) => (b.hashrate || 0) - (a.hashrate || 0));
   const rankByPubkey = new Map();
   ranked.forEach((p, i) => rankByPubkey.set(p.pubkey, i));
+
+  // ── v1.11.6: detect newly-earned badges for YOUR row ──────────────────
+  // We can only compute badges once `ranked` exists (deriveBadges needs it).
+  // Compare against previously-seen set from localStorage; flag the diff
+  // as "newly earned" for animation, then update localStorage.
+  useEffect(() => {
+    if (!ownPeer) return;
+    let prevSeen = [];
+    try {
+      const raw = localStorage.getItem('ss_badges_seen_v1');
+      if (raw) prevSeen = JSON.parse(raw);
+    } catch {}
+    const currentBadges = deriveBadges(ownPeer, ranked);
+    const newOnes = currentBadges.filter(b => !prevSeen.includes(b));
+    if (newOnes.length > 0) {
+      setNewlyEarnedBadges(new Set(newOnes));
+      try {
+        localStorage.setItem('ss_badges_seen_v1', JSON.stringify(currentBadges));
+      } catch {}
+      // Clear the animation flag after animation completes (~1s)
+      const t = setTimeout(() => setNewlyEarnedBadges(new Set()), 1500);
+      return () => clearTimeout(t);
+    } else if (prevSeen.length !== currentBadges.length) {
+      // No new badges earned, but length differs (e.g., lost a badge) — sync state
+      try {
+        localStorage.setItem('ss_badges_seen_v1', JSON.stringify(currentBadges));
+      } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownPeer?.hashrate, ownPeer?.firstSeen, ownPeer?.loc, ownPeer?.workers, ranked.length]);
 
   // v1.12.x: hashrate trend — compare current network hashrate to ~1h ago.
   // networkStats.hashrateHistory is a rolling buffer of {ts, hr, peers} samples
@@ -10710,15 +10857,18 @@ function StrikersModal({ networkStats, onClose }) {
               </span>
             )}
             {/* v1.11.2: badges */}
+            {/* v1.11.6: newly-earned badges (YOUR row only) get a pop-in animation */}
             {badges.map(b => (
               <span
                 key={b}
                 title={`${BADGE_META[b].label} — ${BADGE_META[b].desc}`}
+                className={isOwn && newlyEarnedBadges.has(b) ? 'ss-badge-unlock' : ''}
                 style={{
                   fontSize:'0.7rem', lineHeight:1,
                   background:'rgba(245,166,35,0.08)',
                   border:'1px solid rgba(245,166,35,0.2)',
                   borderRadius:2, padding:'1px 4px',
+                  display: 'inline-block',
                 }}
               >
                 {BADGE_META[b].emoji}
@@ -10798,14 +10948,39 @@ function StrikersModal({ networkStats, onClose }) {
 
         <div style={{padding:'1rem 1.25rem 4.5rem 1.25rem'}}>
 
+          {/* v1.11.6: strike celebration banner — fires when totalStrikes
+              increments (any peer found a block). Shows for ~6s then fades. */}
+          {strikeBannerShown && (
+            <div className="ss-strike-celebrate" style={{
+              background: 'linear-gradient(90deg, #FF6B1A, #FFD700)',
+              color: '#000',
+              fontFamily: 'var(--fd)',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              textAlign: 'center',
+              padding: '12px 16px',
+              borderRadius: 4,
+              marginBottom: 14,
+              letterSpacing: '0.1em',
+              boxShadow: '0 0 24px rgba(255, 140, 26, 0.6)',
+            }}>
+              ⛏ STRIKE! · NETWORK FOUND A BLOCK
+            </div>
+          )}
+
           <div style={section}>
             <div style={secTitle}>▸ Network Snapshot</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
-              <div style={heroBox}><div style={heroLbl}>Strikers</div><div style={heroVal}>{dispCount}</div></div>
+              <div style={heroBox}>
+                <div style={heroLbl}>Strikers</div>
+                <div key={strikersPulseKey} className="ss-pop-pop" style={heroVal}>
+                  {Math.round(animatedDispCount)}
+                </div>
+              </div>
               <div style={heroBox}>
                 <div style={heroLbl}>Hashrate</div>
                 <div style={{...heroVal, fontSize:'0.95rem', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
-                  <span>{fmtPulseHr(dispHash)}</span>
+                  <span>{fmtPulseHr(animatedDispHash)}</span>
                   {trendPct !== null && (
                     <span style={{
                       fontFamily:'var(--fm)', fontSize:'0.55rem', fontWeight:600,
@@ -10816,15 +10991,31 @@ function StrikersModal({ networkStats, onClose }) {
                   )}
                 </div>
               </div>
-              <div style={heroBox}><div style={heroLbl}>Miners</div><div style={heroVal}>{dispWorkers}</div></div>
+              <div style={heroBox}><div style={heroLbl}>Miners</div><div style={heroVal}>{Math.round(animatedDispWorkers)}</div></div>
             </div>
+            {/* v1.11.6: network ATH + total strikes (small text below hero grid) */}
+            {(peakHr > 0 || totalStrikes > 0) && (
+              <div style={{
+                marginTop:8, display:'flex', justifyContent:'space-between',
+                fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-2)',
+              }}>
+                {peakHr > 0 && (
+                  <span>◇ Peak {fmtPulseHr(peakHr)}{peakTs > 0 ? ` · ${fmtRelativeTime(peakTs)}` : ''}</span>
+                )}
+                {totalStrikes > 0 && (
+                  <span style={{color:'var(--green)'}}>⛏ {totalStrikes} {totalStrikes === 1 ? 'strike' : 'strikes'}</span>
+                )}
+              </div>
+            )}
           </div>
 
           <DistributionBar/>
 
           {/* v1.11.2: personal hashrate goal tracker */}
+          {/* v1.11.6: convert ownPeer.hashrate from raw H/s to TH/s (peer
+              hashrates are canonical H/s; user enters goal in TH/s). */}
           {ownPeer && (() => {
-            const yourHr = ownPeer.hashrate || 0;
+            const yourHr = (ownPeer.hashrate || 0) / 1e12;
             const goal = hashGoal || 0;
             return (
               <div style={section}>
@@ -10960,7 +11151,7 @@ function StrikersModal({ networkStats, onClose }) {
           }}>
             Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
             <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate every 90 days.
+              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
             </div>
           </div>
 
@@ -13413,7 +13604,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.5 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.6 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
