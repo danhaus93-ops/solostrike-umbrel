@@ -5,6 +5,14 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+# Serialize workflow runs per branch to prevent concurrent pin-digests jobs
+# from racing each other on docker-compose.yml. Each run completes (including
+# the bot's auto-commit) before the next starts. cancel-in-progress: false
+# means queued runs wait, they don't overwrite each other.
+concurrency:
+  group: build-and-pin-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   OWNER: danhaus93-ops
