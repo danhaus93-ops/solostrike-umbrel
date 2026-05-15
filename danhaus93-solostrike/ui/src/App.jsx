@@ -5891,7 +5891,7 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
         }}
       >
         <span style={{fontSize:'0.6rem', letterSpacing:'0.05em', color:isCopied ? 'var(--green)' : (accent || 'var(--text-1)'), fontWeight:700}}>
-          {ssl && '🔒 '}{port}
+          {ssl && <span style={{fontSize:'0.45rem', letterSpacing:'0.14em', opacity:0.85, marginRight:3}}>TLS</span>}{port}
         </span>
         <span style={{fontSize:'0.5rem', letterSpacing:'0.08em', color: ps.color}}>
           {isCopied ? '✓ COPIED' : `${ps.dot} ${ps.status || 'tap to copy'}`}
@@ -5931,7 +5931,7 @@ function StratumPanel({ payoutAddress, stratumHealth, startedAt }) {
           <PortChip port="4333" accent="var(--cyan)" ssl />
         </div>
         <div style={{...helperStyle, marginTop:5, fontSize:'0.6rem'}}>
-          3333 ASIC · 3334 Hobby · 🔒 4333 SSL
+          3333 ASIC · 3334 Hobby · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>4333 SSL
         </div>
       </div>
 
@@ -13604,13 +13604,13 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.6 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.7 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
           </svg>
         </a>
-        <span>Ports <CopyablePort health={stratumHealth} port="3333"/> · <CopyablePort health={stratumHealth} port="3334"/> · 🔒 <CopyablePort health={stratumHealth} port="4333" ssl/></span>
+        <span>Ports <CopyablePort health={stratumHealth} port="3333"/> · <CopyablePort health={stratumHealth} port="3334"/> · <span title="TLS encryption via stunnel" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span><CopyablePort health={stratumHealth} port="4333" ssl/></span>
       </footer>
 
       <BlockAlert show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
