@@ -8,7 +8,7 @@
 
 *Self-hosted. Self-custodied. Airgap-capable.*
 
-[![License](https://img.shields.io/badge/license-MIT-F5A623.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-F5A623.svg)](LICENSE)
 [![Umbrel](https://img.shields.io/badge/umbrel-community%20app-00FFD1.svg)](https://umbrel.com)
 [![ckpool](https://img.shields.io/badge/powered%20by-ckpool--solo-39FF6A.svg)](https://bitbucket.org/ckolivas/ckpool-solo/)
 [![Arch](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-blue.svg)](#supported-platforms)
@@ -616,7 +616,36 @@ See `.github/workflows/build.yml` for the exact CI pipeline.
 
 ## License
 
-MIT — use it, fork it, remix it. Just don’t roll it into a custodial pool and charge fees. That’s the opposite of the point.
+**SoloStrike** (v1.11.11 and later) is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+
+The SoloStrike **name**, **pickaxe-and-Bitcoin logo**, and **LAVA visual identity** are trademarks of the SoloStrike project author, governed by a separate [TRADEMARK.md](TRADEMARK.md) policy.
+
+### What this means in plain English
+
+- ✅ **Personal use is free.** Run SoloStrike on your own Umbrel. Mine Bitcoin. Keep 100% of your blocks. No fees, no obligations.
+- ✅ **You can fork and modify the code.** Make it do whatever you want. Just keep your fork AGPL-3.0 and publish your source.
+- ✅ **You can contribute back.** Pull requests welcome. Your contributions are AGPL-3.0 under the same license.
+- ⚠️ **Hosted services must disclose source.** If you run a modified SoloStrike as a service for OTHER people to use (i.e. a hosted mining pool service), you must make your modified source code available to those users. This is the AGPL Section 13 requirement — it closes the SaaS loophole that GPL leaves open.
+- ❌ **You can't call your fork "SoloStrike".** The code is open under AGPL; the name and brand are not. See [TRADEMARK.md](TRADEMARK.md) for details on what is and isn't permitted brand use.
+- ❌ **You can't take this code and ship it under a proprietary closed-source license.** AGPL is copyleft — derivative works must be AGPL-3.0.
+
+### License relationships
+
+- **SoloStrike codebase** (this repo’s `danhaus93-solostrike/` directory): **AGPL-3.0** — all code in this directory is original implementation by the SoloStrike project.
+- **ckpool-solo**: **GPLv2** — runs as a separate Docker container (`ghcr.io/getumbrel/docker-ckpool-solo`); no ckpool source is bundled, embedded, linked, or modified in this repo. This is "mere aggregation" under GPL terms.
+- **GoBrrr Pool**: **GPL-3.0** — a separate, independent project. SoloStrike contains no code derived from GoBrrr Pool. The two apps use a similar Docker healthcheck pattern (testing for `ckpool.log` file presence), which is the conventional way to verify ckpool startup and is explicitly attributed in our `docker-compose.yml` comments.
+
+### Relicensing history
+
+SoloStrike was originally released under the MIT license (v1.0.0 through v1.11.10). Starting with v1.11.11, the project is licensed under AGPL-3.0. This change was made to:
+
+1. Ensure that any commercial hosted service built on SoloStrike must release its modifications to users (the AGPL Section 13 requirement)
+2. Prevent proprietary closed-source forks
+3. Align SoloStrike with the rest of the solo-mining ecosystem (ckpool, GoBrrr Pool) which is GPL-family
+
+Code distributed under prior versions (v1.11.10 and earlier) remains available under MIT for those releases. New code from v1.11.10 forward is AGPL-3.0.
+
+If you believe any code in this repo improperly incorporates third-party copyrighted material, please open an issue and we'll investigate immediately.
 
 -----
 

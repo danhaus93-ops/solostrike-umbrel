@@ -11,12 +11,173 @@ tracked and is omitted here intentionally. The full commit history is
 available at
 [github.com/danhaus93-ops/solostrike-umbrel/commits/main](https://github.com/danhaus93-ops/solostrike-umbrel/commits/main).
 
-## [Unreleased](https://github.com/danhaus93-ops/solostrike-umbrel/compare/v1.10.1...HEAD)
+## [Unreleased](https://github.com/danhaus93-ops/solostrike-umbrel/compare/v1.11.10...HEAD)
 
 ### Planned
 
-- **v1.11.x** — Galaxy topology visualization for Pulse network (when peer count grows)
+- **v1.12.x** — Performance pass: lazy-load Settings/Pulse/Reckoning modals, pause WebGL when offscreen
+- **v1.13.x** — Galaxy topology visualization for Pulse network (deferred, gated on peer count)
 - **v2.0.0** — DATUM protocol, Stratum V2 translator, official Umbrel App Store submission
+
+-----
+
+## [1.11.11](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.11.11) — 2026-05-16
+
+Version-bump cleanup + trademark policy. v1.11.10's relicensing release
+missed two version strings in the server backend, causing the Pulse
+Strikers roster and the System Health card to keep displaying v1.11.7
+even though the rest of the dashboard correctly showed v1.11.10. This
+release fixes that and formalizes the SoloStrike brand protection policy.
+
+### Fixed
+
+- **`state.version` in `api/src/server.js`** was hardcoded to `'1.11.7'`
+  and was never picked up by the release scripts because nothing matches
+  that string outside this one line. This value is what gets broadcast
+  to the Pulse network as your peer's version AND what the
+  `/api/health/detailed` endpoint returns to the System Health card.
+  Now correctly reads `'1.11.11'` and follows future release bumps.
+
+- **Pulse Strikers roster** now displays your correct app version next
+  to your peer entry (was stuck on v1.11.7 across previous releases).
+
+- **System Health card** now displays the correct app version in its
+  "v{X}" indicator (was stuck on v1.11.7 across previous releases).
+
+### Added
+
+- **`TRADEMARK.md`** — formal policy documenting that "SoloStrike", the
+  pickaxe-and-Bitcoin icon, the LAVA visual identity, and the brand
+  vocabulary ("Strikers", "The Hunt", "The Vein", etc.) are protected
+  trademarks separate from the AGPL-3.0 source license. Models on
+  Docker, Mozilla, and WordPress Foundation policies. Permits all the
+  freedoms AGPL grants on the code while protecting users from
+  malicious lookalike apps shipping under the SoloStrike name.
+
+### Changed
+
+- **README License section** updated to reference the AGPL-3.0
+  effective-version cutoff at v1.11.11 (was v1.11.10) and link to
+  the new TRADEMARK.md.
+
+-----
+
+## [1.11.10](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.11.10) — 2026-05-16
+
+Relicensing release + small UI consistency fix. Pure code behavior is
+unchanged for end users; this release primarily updates licensing terms
+and brand protection.
+
+### Changed
+
+- **Relicensed from MIT to AGPL-3.0.** Starting with v1.11.10, SoloStrike is
+  licensed under the [GNU Affero General Public License v3.0](LICENSE). This
+  is a stricter copyleft license that ensures:
+
+  - Personal use remains free (run SoloStrike on your own Umbrel, mine, keep
+    100% of blocks — no obligations)
+  - Forks must remain AGPL-3.0 with source code published
+  - Hosted services running modified SoloStrike must disclose their source
+    to users (AGPL Section 13 — closes the SaaS loophole that plain GPL
+    leaves open)
+  - Proprietary closed-source derivatives are no longer permitted
+
+  Code in versions v1.0.0 through v1.11.9 remains MIT-licensed for those
+  specific releases. New code from v1.11.10 forward is AGPL-3.0.
+
+- **Added TRADEMARK.md trademark policy.** The SoloStrike name,
+  pickaxe-and-Bitcoin logo, and LAVA visual identity are now explicitly
+  documented as trademarks. AGPL gives you the right to fork the code; the
+  trademark policy preserves the brand. Forks must use a clearly distinct
+  name and replace the visual identity. See [TRADEMARK.md](TRADEMARK.md)
+  for details.
+
+### Fixed
+
+- **Retarget color consistency.** The header `RETARGET` indicator was using
+  inverted color semantics vs the Difficulty Retarget card. Both showed the
+  same number but with opposite colors. Now matches the card across the
+  entire dashboard: positive % (difficulty UP, harder for miners) is RED,
+  negative % (difficulty DOWN, easier for miners) is GREEN.
+
+### Why the license change
+
+The MIT license is permissive — under MIT, any commercial mining-pool service
+could legally take SoloStrike's code, change one line, and offer it as a
+paid hosted service against the original project without giving anything back.
+
+The AGPL-3.0 + trademark combination addresses both:
+
+- **AGPL** ensures that anyone running modified SoloStrike as a service
+  must release their source to users — drastically reducing the commercial
+  moat for forked services
+- **Trademark** ensures that even legitimate forks can't trade on the
+  SoloStrike name — they must rename and rebrand
+
+This is the same protection strategy used by Mastodon, Nextcloud, and Grafana.
+The combination preserves open-source freedom while preventing extractive
+commercial copying.
+
+-----
+
+## [1.11.9](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.11.9) — 2026-05-16
+
+iOS reconnect hang fix. Fixes the 10-30 second hang when returning to
+SoloStrike on iPhone/iPad after using another app for several minutes.
+
+### Fixed
+
+- **iOS Safari WebSocket zombie reconnect.** When iOS suspends Safari, it
+  freezes JavaScript execution entirely. iOS then kills TCP connections
+  silently — but because JS is frozen, the WebSocket `onclose` handler
+  never fires. On resume, `readyState` still reports OPEN even though the
+  TCP is dead. The previous visibility-resume logic checked `readyState`
+  and bailed early thinking the socket was healthy, leaving users stuck
+  on a zombie connection for 20-30 seconds.
+
+  Fix: on every transition to visible, ALWAYS force-close the existing
+  socket and reconnect fresh. Closing a zombie is a no-op; closing a
+  healthy socket and reopening costs ~50ms on local network. Net effect:
+  reconnect is near-instant when you return to the app.
+
+- **Stale REST fetches blocking new requests.** Dashboard REST endpoints
+  (`/api/state`, `/api/stratum-health`, `/api/health/detailed`) that were
+  in-flight when iOS suspended remained stuck on dead TCP for 20+ seconds
+  after resume, blocking new requests. All affected fetches now use
+  `AbortController` with an 8-second timeout. Zombie post-suspend
+  fetches abort fast so new ones proceed immediately.
+
+  Debug log from a user's iPhone confirmed 20976ms and 21094ms hangs on
+  these endpoints in v1.11.8; v1.11.9 caps them at 8s.
+
+-----
+
+## [1.11.8](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.11.8) — 2026-05-15
+
+Snappier dashboard updates. Decouples poll cadence from broadcast cadence so
+the dashboard feels meaningfully more alive without a proportional WebSocket
+bandwidth cost.
+
+### Performance
+
+- **Status poller cadence reduced from 5s → 2s.** Internal state stays fresh
+  for the HTTP `/api/state` endpoint and for the next eligible broadcast.
+  File-cache reads only — no extra disk or network load on the host.
+
+- **WebSocket broadcasts throttled to ≥3s minimum** (was 5s). Dashboard
+  updates feel ~1.7× snappier without a proportional bandwidth increase
+  (~1.7× the prior cadence vs the 2.5× a 2s rate would have cost). Pool
+  hashrate, worker counts, and live tiles visibly tick faster.
+
+- **Decoupled poll cadence from broadcast cadence**. Internal state refreshes
+  every 2s; clients are notified every 3s minimum. Best of both worlds.
+
+### Notes
+
+- Entire v1.11.7 was a versioning misfire — the build pipeline produced
+  pinned `:v1.11.7@sha256:` digests in `docker-compose.yml` before the
+  cadence patch landed in the source, so the digests pointed to old code.
+  v1.11.8 ships the same payload with a fresh tag and re-pinned digests.
 
 -----
 
