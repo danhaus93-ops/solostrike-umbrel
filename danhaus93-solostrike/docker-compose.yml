@@ -30,14 +30,13 @@ services:
     restart: unless-stopped
     stop_grace_period: 1m
     command: ["--btcsolo", "--log-shares", "--config", "/etc/ckpool/ckpool.conf"]
-    # v1.8.4: healthcheck so the api service can wait for ckpool to be
-    # actually ready (not just started). Tests for the existence of
-    # ckpool.log — ckpool creates this on first successful boot, so
-    # presence == process is up and writing. Same pattern GoBrrr Pool
-    # uses. Without this, the API can attach to a half-started ckpool
-    # socket on cold boot and miss the first batch of share events.
+    # v1.11.12 — Robust healthcheck verifying both ckpool process and its
+    # Unix listener socket are live. Process-existence alone could pass on
+    # a zombie/stuck ckpool; socket-existence alone could pass before the
+    # process is actually accepting work. Combined check ensures the API
+    # only attaches once ckpool is fully ready for stratum traffic.
     healthcheck:
-      test: ["CMD-SHELL", "test -f /var/log/ckpool/ckpool.log"]
+      test: ["CMD-SHELL", "pgrep -f ckpool > /dev/null && test -S /tmp/ckpool/listener"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -72,7 +71,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.11@sha256:c77f3f4b443ca8d5a895735ebc8d47a63d8500d4604b341c4bcd2f34e18ae61d
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.11@sha256:53a23c06353d7c3ad27cd61b691295130224a3f3d64c6c4028f6587552d3e23d
     restart: unless-stopped
     # v1.8.4: wait for ckpool to be healthy. stunnel forwards to ckpool:3333
     # so connecting to a half-booted ckpool would drop early SSL miners.
@@ -85,7 +84,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.11@sha256:b5f797a6a873518ee3190cee54ecb626ccc6121450124946649cd0e817c70252
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.11@sha256:33bdcd3116d0baf65caf9c4980284bc6da841a3e72885e0c26b376651b270e68
     restart: unless-stopped
     stop_grace_period: 30s
     # v1.8.4: wait for ckpool to be HEALTHY, not just started. Combined
@@ -125,7 +124,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.11@sha256:bdadd050cdd9b29ef92fcd68e2673ca508781eb969b15d3580bc05c4a5f7f6e3
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.11@sha256:122409c7b6f746b021f4428061af5403b88e5864562e2e1689c761731dc03a81
     restart: unless-stopped
     container_name: danhaus93-solostrike_ui_1
     depends_on:
