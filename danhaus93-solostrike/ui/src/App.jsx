@@ -13137,41 +13137,56 @@ export default function App() {
   }, []);
 
   // Track which card is centered as the user swipes.
-  // v1.8.1: dep array includes poolState._loaded so the effect re-runs after
-  // the loading screen unmounts and the carousel <div ref={carouselRef}>
-  // actually exists. Without this, the effect fired during the loading-screen
-  // render with carouselRef.current === null, early-returned, and never
-  // re-attached the scroll listener — leaving the dots dead until the user
-  // toggled vertical→carousel mode (which flipped useCarousel and forced
-  // a re-run after the ref had populated).
   //
-  // v1.8.3-rev29b: ALSO depend on minSplashElapsed. The rev29 splash fix
-  // gates unmount on (poolState._loaded && minSplashElapsed). So when
-  // _loaded flips true, the splash still hasn't unmounted yet — carouselRef
-  // is still null and the effect early-returns. Without minSplashElapsed
-  // in the dep array, the effect never re-runs after the splash actually
-  // hides → scroll listener never attaches → dots stop updating on swipe.
+  // v1.11.13: self-healing scroll listener — retries via rAF until the
+  // carouselRef.current is populated, instead of relying on dep array hacks
+  // (poolState._loaded + minSplashElapsed) to time effect re-runs against
+  // splash unmount. The previous approach kept regressing whenever the
+  // splash/loading sequence timing changed. This version:
+  //   1. Only depends on useCarousel (single source of truth)
+  //   2. Retries attachment on each animation frame until ref is ready
+  //   3. Properly cancels both the retry loop and the scroll-rAF on cleanup
+  // Result: dots track activeIndex deterministically regardless of mount
+  // order, container restarts, or async data-load timing.
   useEffect(() => {
     if (!useCarousel) return;
-    const el = carouselRef.current;
-    if (!el) return;
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const w = el.clientWidth;
-        if (!w) return;
-        const idx = Math.round(el.scrollLeft / w);
-        setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
-      });
+    let cancelled = false;
+    let attachRaf = 0;
+    let cleanup = null;
+
+    const tryAttach = () => {
+      if (cancelled) return;
+      const el = carouselRef.current;
+      if (!el) {
+        attachRaf = requestAnimationFrame(tryAttach);
+        return;
+      }
+      let scrollRaf = 0;
+      const onScroll = () => {
+        cancelAnimationFrame(scrollRaf);
+        scrollRaf = requestAnimationFrame(() => {
+          const w = el.clientWidth;
+          if (!w) return;
+          const idx = Math.round(el.scrollLeft / w);
+          setActiveIndex(prev => prev === idx ? prev : Math.max(0, idx));
+        });
+      };
+      el.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+      cleanup = () => {
+        el.removeEventListener('scroll', onScroll);
+        cancelAnimationFrame(scrollRaf);
+      };
     };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+
+    tryAttach();
+
     return () => {
-      el.removeEventListener('scroll', onScroll);
-      cancelAnimationFrame(raf);
+      cancelled = true;
+      cancelAnimationFrame(attachRaf);
+      if (cleanup) cleanup();
     };
-  }, [useCarousel, poolState._loaded, minSplashElapsed]);
+  }, [useCarousel]);
 
   // Reset to first card when entering carousel mode (covers viewport rotate case)
   useEffect(() => {
@@ -13659,7 +13674,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.12 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.13 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
