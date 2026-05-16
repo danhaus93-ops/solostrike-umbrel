@@ -633,7 +633,6 @@ The SoloStrike **name**, **pickaxe-and-Bitcoin logo**, and **LAVA visual identit
 
 - **SoloStrike codebase** (this repo’s `danhaus93-solostrike/` directory): **AGPL-3.0** — all code in this directory is original implementation by the SoloStrike project.
 - **ckpool-solo**: **GPLv2** — runs as a separate Docker container (`ghcr.io/getumbrel/docker-ckpool-solo`); no ckpool source is bundled, embedded, linked, or modified in this repo. This is "mere aggregation" under GPL terms.
-- **GoBrrr Pool**: **GPL-3.0** — a separate, independent project. SoloStrike contains no code derived from GoBrrr Pool. The two apps use a similar Docker healthcheck pattern (testing for `ckpool.log` file presence), which is the conventional way to verify ckpool startup and is explicitly attributed in our `docker-compose.yml` comments.
 
 ### Relicensing history
 
@@ -641,7 +640,7 @@ SoloStrike was originally released under the MIT license (v1.0.0 through v1.11.1
 
 1. Ensure that any commercial hosted service built on SoloStrike must release its modifications to users (the AGPL Section 13 requirement)
 2. Prevent proprietary closed-source forks
-3. Align SoloStrike with the rest of the solo-mining ecosystem (ckpool, GoBrrr Pool) which is GPL-family
+3. Align SoloStrike with the rest of the solo-mining ecosystem which is GPL-family
 
 Code distributed under prior versions (v1.11.10 and earlier) remains available under MIT for those releases. New code from v1.11.10 forward is AGPL-3.0.
 
