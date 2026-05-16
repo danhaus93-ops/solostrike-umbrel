@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.7"
+version: "1.11.8"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,6 +88,27 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.11.8 — Snappier dashboard updates.
+
+
+  PERFORMANCE (1.11.8)
+
+
+  • Status poller cadence reduced from 5s → 2s. Internal state stays fresh
+    for the HTTP /api/state endpoint and for the next eligible broadcast.
+    File-cache reads only — no extra disk or network load.
+
+
+  • WebSocket broadcasts throttled to ≥3s minimum (was 5s). Dashboard
+    updates feel ~1.7× snappier without proportionally increasing WS
+    bandwidth. Pool hashrate, worker counts, and live tiles tick visibly
+    faster.
+
+
+  • Decoupled poll cadence from broadcast cadence — fresh data on demand
+    via HTTP, throttled push via WebSocket. Best of both worlds.
+
+
   v1.11.1 — Pulse engagement bundle + supply-chain hardening.
 
 
