@@ -449,6 +449,28 @@ if last:
 "
 }
 
+# v1.11.12 — new section. Verifies ckpool's four Unix-socket endpoints
+# exist inside its container. These are the channels the API uses to
+# talk to ckpool (listener=stats, stratifier=workers, connector=clients,
+# generator=block templates). Missing sockets indicate ckpool is not
+# fully started even if the process exists. Mirrors the docker-compose
+# healthcheck approach (which checks listener specifically).
+section_ckpool_sockets() {
+  hdr "Ckpool Unix Sockets"
+  missing=0
+  for s in listener stratifier connector generator; do
+    if sudo docker exec "$CK" test -S "/tmp/ckpool/$s" 2>/dev/null; then
+      ok "/tmp/ckpool/$s — present"
+    else
+      bad "/tmp/ckpool/$s — MISSING"
+      missing=$((missing+1))
+    fi
+  done
+  if [[ $missing -gt 0 ]]; then
+    warn "$missing socket(s) missing — ckpool may be partially started"
+  fi
+}
+
 section_logs() {
   hdr "Recent Log Errors (API, last 200 lines)"
   errs=$(sudo docker logs --tail 200 "$API" 2>&1 | grep -iE "error|warn|fail|crash|exception" | grep -v "ECONNREFUSED.*tcp4" | tail -10)
@@ -528,6 +550,7 @@ run_report() {
     section_zmq            || true
     section_pool_activity  || true
     section_stratum_ports  || true
+    section_ckpool_sockets || true
   fi
 
   section_logs          || true
