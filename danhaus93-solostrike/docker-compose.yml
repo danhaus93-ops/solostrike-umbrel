@@ -30,13 +30,17 @@ services:
     restart: unless-stopped
     stop_grace_period: 1m
     command: ["--btcsolo", "--log-shares", "--config", "/etc/ckpool/ckpool.conf"]
-    # v1.11.12 — Robust healthcheck verifying both ckpool process and its
-    # Unix listener socket are live. Process-existence alone could pass on
-    # a zombie/stuck ckpool; socket-existence alone could pass before the
-    # process is actually accepting work. Combined check ensures the API
-    # only attaches once ckpool is fully ready for stratum traffic.
+    # v1.11.13 — Healthcheck verifies the pid file AND listener socket exist.
+    # Previous v1.11.12 attempt used `pgrep -f ckpool` to verify process
+    # liveness, but the upstream ckpool-solo image doesn't ship pgrep, so
+    # the test always errored out → container reported unhealthy even
+    # though mining was working fine. ckpool writes /tmp/ckpool/main.pid
+    # on startup and removes it on graceful shutdown, so its presence is a
+    # reliable process-liveness signal. Pairing it with the listener socket
+    # check still ensures the API only attaches when ckpool is fully ready
+    # for stratum traffic — same goal as v1.11.12, working implementation.
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f ckpool > /dev/null && test -S /tmp/ckpool/listener"]
+      test: ["CMD-SHELL", "test -f /tmp/ckpool/main.pid && test -S /tmp/ckpool/listener"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -71,7 +75,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.12@sha256:ebc2c73cd6dedbcf93cc8ccdafb21d252489053efeae93d959cf2de78f48f6e1
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.12@sha256:07dd96aec554fb917132f2c0fa210332350022a77ca37b7f2f68174153b8062b
     restart: unless-stopped
     # v1.8.4: wait for ckpool to be healthy. stunnel forwards to ckpool:3333
     # so connecting to a half-booted ckpool would drop early SSL miners.
@@ -84,7 +88,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.12@sha256:05bd9c175d750c4b771bb5ad76d7ee287f0d50e902d09159ecc2525d2bfb4a92
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.12@sha256:8fd85e146125e57e77e01e25a9ae997963f54916e18036ec84ad40628593c4c4
     restart: unless-stopped
     stop_grace_period: 30s
     # v1.8.4: wait for ckpool to be HEALTHY, not just started. Combined
@@ -124,7 +128,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.12@sha256:f42f8c426ccde0af9eb547a6c2b2f08db45a9b3ba2cc608d02ee86cde541e07f
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.12@sha256:f3fe2fd4b25cc417ca048f8d06476c3974c49ea5ffac823a9d846692c14800df
     restart: unless-stopped
     container_name: danhaus93-solostrike_ui_1
     depends_on:
