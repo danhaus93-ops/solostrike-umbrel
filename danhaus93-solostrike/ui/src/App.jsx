@@ -6652,17 +6652,34 @@ function SetupForm({ saveConfig }) {
 function HealthStatusCard({ onOpen }) {
   const [health, setHealth] = useState(null);
   const [errored, setErrored] = useState(false);
+  // v1.11.9: track in-flight AbortController so we can kill zombie fetches.
+  // After iOS Safari suspends and resumes, prior fetches sit on dead TCP
+  // for 20-30s before browser timeout — confirmed in debug log
+  // (21094ms hang on /api/health/detailed). Aborting on every new fetch
+  // attempt clears the zombie immediately so the new request goes through.
+  const inflightRef = useRef(null);
 
   const fetchHealth = useCallback(async () => {
+    try { inflightRef.current?.abort(); } catch {}
+    const ctrl = new AbortController();
+    inflightRef.current = ctrl;
+    const killTimer = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const res = await fetch('/api/health/detailed', { cache: 'no-store' });
+      const res = await fetch('/api/health/detailed', { cache: 'no-store', signal: ctrl.signal });
+      clearTimeout(killTimer);
       const data = await res.json();
       setHealth(data);
       setErrored(false);
     } catch (e) {
+      // AbortError from our 8s killtimer or a real network failure both land here.
+      // Don't clobber existing health state on abort — wait for the next poll cycle.
+      if (e.name === 'AbortError') return;
       setErrored(true);
       // Show degraded state in card if endpoint is unreachable.
       setHealth({ overall: 'red', checks: {}, error: e.message });
+    } finally {
+      clearTimeout(killTimer);
+      if (inflightRef.current === ctrl) inflightRef.current = null;
     }
   }, []);
 
@@ -6823,11 +6840,15 @@ function HealthDetailModal({ initialHealth, onClose }) {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
+    // v1.11.9: 8s timeout — same iOS-suspend zombie-TCP pattern applies.
+    const ctrl = new AbortController();
+    const killTimer = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const res = await fetch('/api/health/detailed', { cache: 'no-store' });
+      const res = await fetch('/api/health/detailed', { cache: 'no-store', signal: ctrl.signal });
       const data = await res.json();
       setHealth(data);
     } catch {}
+    finally { clearTimeout(killTimer); }
     setTimeout(() => setRefreshing(false), 300);
   }, []);
 
@@ -12828,17 +12849,29 @@ export default function App() {
   }, []);
   useEffect(() => {
     let cancelled = false;
+    let inflight = null; // v1.11.9: track AbortController for in-flight fetch
     async function fetchHealth() {
+      // v1.11.9: cancel any prior in-flight fetch — fixes iOS PWA hang
+      // where post-suspend zombie TCP connections held requests for 20+s.
+      // Confirmed in debug log: 20976ms hang on /api/stratum-health after
+      // ~5min app backgrounding. AbortController + 8s timeout makes
+      // zombie fetches die fast so new ones can proceed.
+      try { inflight?.abort(); } catch {}
+      const ctrl = new AbortController();
+      inflight = ctrl;
+      const killTimer = setTimeout(() => ctrl.abort(), 8000);
       try {
-        const r = await fetch('/api/stratum-health', { cache: 'no-store' });
+        const r = await fetch('/api/stratum-health', { cache: 'no-store', signal: ctrl.signal });
+        clearTimeout(killTimer);
         if (!r.ok) return;
         const j = await r.json();
         if (!cancelled) setStratumHealth(j || { ports: {} });
-      } catch (_) { /* network blip — keep last known state */ }
+      } catch (_) { /* network blip or abort — keep last known state */ }
+      finally { clearTimeout(killTimer); if (inflight === ctrl) inflight = null; }
     }
     fetchHealth();
     const id = setInterval(fetchHealth, 30000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => { cancelled = true; clearInterval(id); try { inflight?.abort(); } catch {} };
   }, []);
 
   // ── Update banner state ──────────────────────────────────────────────
@@ -13604,7 +13637,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.8 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.9 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
