@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.8"
+version: "1.11.9"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,6 +88,32 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.11.9 — iOS reconnect hang fix.
+
+
+  BUG FIX (1.11.9)
+
+
+  • Fixed 10-30 second hang when returning to SoloStrike on iPhone/iPad
+    after using another app. Root cause: iOS Safari freezes JavaScript
+    during background, so the WebSocket onclose handler never fires when
+    iOS kills the TCP connection. On resume, the dead socket reported
+    OPEN, so the existing reconnect logic bailed early — and stale
+    REST fetches (stratum-health, system health) sat on zombie TCP
+    connections for 20+ seconds before browser timeout.
+
+
+  • Fix part 1: visibility-resume always force-closes the existing WS
+    and reconnects fresh. Closing a zombie is a no-op; closing a healthy
+    socket and reopening costs ~50ms on local network. Net effect:
+    reconnect is near-instant when you return to the app.
+
+
+  • Fix part 2: all dashboard REST fetches now use AbortController with
+    an 8-second timeout. Zombie post-suspend fetches abort fast so new
+    requests proceed immediately instead of blocking 20-30s.
+
+
   v1.11.8 — Snappier dashboard updates.
 
 
