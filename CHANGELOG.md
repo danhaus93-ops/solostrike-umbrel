@@ -11,13 +11,45 @@ tracked and is omitted here intentionally. The full commit history is
 available at
 [github.com/danhaus93-ops/solostrike-umbrel/commits/main](https://github.com/danhaus93-ops/solostrike-umbrel/commits/main).
 
-## [Unreleased](https://github.com/danhaus93-ops/solostrike-umbrel/compare/v1.11.10...HEAD)
+## [Unreleased](https://github.com/danhaus93-ops/solostrike-umbrel/compare/v1.11.12...HEAD)
 
 ### Planned
 
 - **v1.12.x** — Performance pass: lazy-load Settings/Pulse/Reckoning modals, pause WebGL when offscreen
 - **v1.13.x** — Galaxy topology visualization for Pulse network (deferred, gated on peer count)
 - **v2.0.0** — DATUM protocol, Stratum V2 translator, official Umbrel App Store submission
+
+-----
+
+## [1.11.12](https://github.com/danhaus93-ops/solostrike-umbrel/releases/tag/v1.11.12) — 2026-05-16
+
+Stronger healthcheck + diagnostics expansion.
+
+### Changed
+
+- **`docker-compose.yml` ckpool healthcheck rewritten.** Previous check
+  tested for the existence of `/var/log/ckpool/ckpool.log` — adequate
+  but could pass on a zombie ckpool that had written its first log line
+  but stalled before opening sockets. New check verifies both that the
+  ckpool process is running AND that its Unix listener socket
+  (`/tmp/ckpool/listener`) exists. Process-existence alone could pass
+  on a stuck process; socket-existence alone could pass before the
+  process is actually accepting work. Combined: the API only attaches
+  once ckpool is fully ready for stratum traffic.
+
+### Added
+
+- **`solostrike-health.sh` — new "Ckpool Unix Sockets" diagnostic section.**
+  Probes all four socket endpoints (`listener`, `stratifier`, `connector`,
+  `generator`) inside the ckpool container. Useful for diagnosing the
+  "ckpool process exists but API can't talk to it" failure mode. Runs
+  in both default and verbose health-script modes.
+
+### Notes
+
+- This release does not change any user-visible app behavior. It hardens
+  the underlying container startup orchestration and gives operators
+  better diagnostic visibility into ckpool's internal readiness.
 
 -----
 
