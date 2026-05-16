@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.9"
+version: "1.11.11"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,33 +88,61 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.11.11 — Version display fix + trademark policy.
+
+
+  BUG FIX (1.11.11)
+
+
+  • The Pulse Strikers roster and System Health card were both still
+    displaying v1.11.7 in earlier releases even though the rest of the
+    dashboard correctly showed the current version. Root cause: the
+    api/src/server.js state.version field was hardcoded and missed by
+    the release scripts. Now correctly reads v1.11.11 and will follow
+    future bumps. This is what determines what gets broadcast on the
+    Pulse network as your peer's version.
+
+
+  ADDED (1.11.11)
+
+
+  • TRADEMARK.md — formal trademark policy documenting that the
+    SoloStrike name, pickaxe logo, LAVA visual identity, and brand
+    vocabulary ("Strikers", "The Hunt", "The Vein", etc.) are
+    protected marks separate from the AGPL-3.0 source license.
+    Models on Docker / Mozilla / WordPress Foundation policies.
+
+
+  v1.11.10 — Relicensed to AGPL-3.0 + Retarget color consistency.
+
+
+  LICENSING (1.11.10)
+
+
+  • SoloStrike is now licensed under the GNU Affero General Public
+    License v3.0 (AGPL-3.0), replacing the previous MIT license. Personal
+    use remains free with no obligations. Forks must remain AGPL-3.0 with
+    source published. Hosted services running modified SoloStrike must
+    disclose source to users (closes the SaaS loophole). See LICENSE.
+
+
+  • Added TRADEMARK.md — the SoloStrike name, pickaxe logo, and LAVA
+    visual identity are now explicitly trademarked. Forks must use a
+    distinct name and replace the visual identity. AGPL governs the
+    code; trademark policy governs the brand.
+
+
+  BUG FIX (1.11.10)
+
+
+  • The header RETARGET indicator was using inverted color semantics vs
+    the Difficulty Retarget card — both showed the same number but with
+    opposite colors. Now matches the card: positive % (difficulty UP,
+    harder for miners) is RED, negative % (difficulty DOWN, easier for
+    miners) is GREEN. Same semantics across the entire dashboard.
+
+
   v1.11.9 — iOS reconnect hang fix.
-
-
-  BUG FIX (1.11.9)
-
-
-  • Fixed 10-30 second hang when returning to SoloStrike on iPhone/iPad
-    after using another app. Root cause: iOS Safari freezes JavaScript
-    during background, so the WebSocket onclose handler never fires when
-    iOS kills the TCP connection. On resume, the dead socket reported
-    OPEN, so the existing reconnect logic bailed early — and stale
-    REST fetches (stratum-health, system health) sat on zombie TCP
-    connections for 20+ seconds before browser timeout.
-
-
-  • Fix part 1: visibility-resume always force-closes the existing WS
-    and reconnects fresh. Closing a zombie is a no-op; closing a healthy
-    socket and reopening costs ~50ms on local network. Net effect:
-    reconnect is near-instant when you return to the app.
-
-
-  • Fix part 2: all dashboard REST fetches now use AbortController with
-    an 8-second timeout. Zombie post-suspend fetches abort fast so new
-    requests proceed immediately instead of blocking 20-30s.
-
-
-  v1.11.8 — Snappier dashboard updates.
 
 
   PERFORMANCE (1.11.8)
