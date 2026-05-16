@@ -217,6 +217,28 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @media (min-width:640px){.ss-grid{gap:0.875rem;grid-template-columns:repeat(2,1fr)}}
 @media (min-width:1024px){.ss-grid{grid-template-columns:repeat(4,1fr)}}
 
+/* v1.11.12: vertical fit on desktop — cap card height at viewport-minus-chrome
+ * so dashboard fits in one screen without body scroll. Cards with internal
+ * scroll regions (The Crew's worker list with its flex:1 + overflowY:auto +
+ * minHeight:0 chain) finally activate because their parent now has a bounded
+ * height. Cards without internal scroll fall back to card-level scroll via
+ * overflow-y:auto. Mobile carousel layout (.ss-carousel, used at <768px) is
+ * a different DOM class — totally untouched.
+ *
+ * The 200px reserve accounts for: SoloStrike header (~50px), ticker strip
+ * (~26px), latest block strip (~30px), customizable top strip (~32px),
+ * live-indicator row (~20px), footer (~26px), padding (~16px). If your chrome
+ * height differs, tune the constant — the value is the only knob. */
+@media (min-width:1024px){
+  .ss-grid > .ss-card{
+    max-height: calc(100dvh - 200px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
 /* Cards that want to span 2 cols on desktop, full width on mobile/tablet */
 .ss-span-2{grid-column:span 1}
 @media (min-width:640px){.ss-span-2{grid-column:span 2}}
