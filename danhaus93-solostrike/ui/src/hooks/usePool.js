@@ -34,10 +34,19 @@ export function usePool() {
     // parallel; their results are merged into state. The webhooks tab and
     // settings flow still use /api/config for cfg.payoutAddress, /api/state
     // for everything else.
+    //
+    // v1.11.9: 8s abort timeout on these initial fetches. Without this, if
+    // iOS suspended the page mid-fetch and resumed later, the dead TCP
+    // connection holds the request for 20-30s before the browser gives up.
+    // 8s is generous for local Umbrel (which responds in <500ms typically)
+    // while killing zombie requests fast.
+    const ctrl = new AbortController();
+    const killTimer = setTimeout(() => ctrl.abort(), 8000);
     Promise.all([
-      fetch('/api/state').then(r => r.json()).catch(() => ({})),
-      fetch('/api/config').then(r => r.json()).catch(() => ({})),
+      fetch('/api/state',  { signal: ctrl.signal }).then(r => r.json()).catch(() => ({})),
+      fetch('/api/config', { signal: ctrl.signal }).then(r => r.json()).catch(() => ({})),
     ]).then(([stateData, configData]) => {
+      clearTimeout(killTimer);
       setState(p => ({
         ...p,
         ...stateData,
@@ -48,6 +57,7 @@ export function usePool() {
         _loaded: true,
       }));
     });
+    return () => { clearTimeout(killTimer); ctrl.abort(); };
   }, []);
 
   const connect = useCallback(() => {
@@ -92,18 +102,27 @@ export function usePool() {
 
   useEffect(() => {
     connect();
-    // rev70d: iOS PWA suspend kills the WebSocket (close code 1006 in logs
-    // captured during backgrounding). The exponential backoff in onclose
-    // means if the suspend happened after a few quick failures, the resume
-    // could land 24–30s into the wait. Jump the queue: when the page
-    // becomes visible, if the socket isn't open or connecting, drop any
-    // pending retry timer, reset the backoff, and reconnect now.
+    // v1.11.9: After iOS Safari suspend, the WebSocket can be silently
+    // dead while readyState still reports OPEN — iOS freezes JS execution
+    // so the onclose handler never fires even when TCP is killed at the
+    // network level. The previous rev70d fix bailed early if readyState
+    // looked healthy, leaving users stuck on a zombie socket for 20-30s
+    // until the browser's own keep-alive timeout finally noticed.
+    //
+    // Fix: on every transition to 'visible', ALWAYS force-close any
+    // existing socket and reconnect fresh. Closing a zombie socket is
+    // a no-op; closing a healthy socket and reopening costs ~50ms on
+    // local network. Net effect: reconnect is near-instant when user
+    // returns to the app instead of taking up to 30s.
     const onVisibility = () => {
       if (document.visibilityState !== 'visible') return;
-      const ws = wsRef.current;
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+      // Reset backoff state — any timer queued from a prior onclose
+      // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
+      // Force a clean reconnect. Wrap close() in try/catch since the
+      // socket may already be in a bad state.
+      try { wsRef.current?.close(); } catch {}
       connect();
     };
     document.addEventListener('visibilitychange', onVisibility);
