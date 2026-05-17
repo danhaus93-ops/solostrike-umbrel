@@ -43,40 +43,9 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
-/* v1.11.19: RESTORE pure-CSS ticker + GEOMETRY FIX for both bugs.
-   Bug 1 (≤8 metrics): "blank spot at loop boundary" — content < viewport
-   means -50% shift exposes blank space at viewport edge.
-   Bug 2 (10+ metrics with v1.11.17 inline-flex): "metrics stack on top"
-   in Chrome when content is very wide — flex layout wraps the second span
-   below the first, both visible within the 26px container.
-
-   Fix: keep track as inline-block (avoids inline-flex wrap bug). Give each
-   copy span min-width: 100vw. min-width is a FLOOR, not a ceiling — so:
-   - With short text (≤8 metrics): each copy = 100vw min-width. Track = 2×
-     100vw. Half-track = 100vw = viewport. No blank spot.
-   - With long text (10+ metrics): each copy = natural text width (which
-     exceeds 100vw). min-width has no effect. Track = 2× natural. Half-track
-     > viewport. No blank spot. No flex wrap (track is inline-block). */
-@keyframes ss-ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-.ss-ticker-track {
-  white-space: nowrap;
-  font-family: var(--fd);
-  font-size: 0.55rem;
-  letter-spacing: 0.15em;
-  color: var(--text-2);
-  text-transform: uppercase;
-  display: inline-block;
-  flex-shrink: 0;
-  will-change: transform;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  animation: ss-ticker-scroll var(--ticker-duration, 30s) linear infinite;
-}
-.ss-ticker-copy {
-  display: inline-block;
-  min-width: 100vw;
-  padding-right: 1rem;
-}
+/* v1.11.19: ticker is back to inline styles + JS rAF (see Ticker component
+   in App.jsx). The ss-ticker-track, ss-ticker-copy, and ss-ticker-scroll
+   rules from v1.11.15-19 are no longer used. */
 /* v1.8.3-rev29: splash strike animation, retimed.
    Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
    into a 1.4s loop), with a long 35% pre-strike dwell at the wound-back
