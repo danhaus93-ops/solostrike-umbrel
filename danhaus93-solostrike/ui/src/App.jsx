@@ -1133,27 +1133,51 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
-// v1.11.19: RESTORE v1.11.16 pure-CSS keyframes ticker per user request.
-//
-// History recap so the next Claude doesn't undo this:
-//   v1.5.7 → v1.11.14: JS rAF on translate3d. Worked but rAF-jitter when
-//     main thread was busy (visible micro-stutters during WebGL renders).
-//   v1.11.15: REWRITE to pure CSS @keyframes. Animation property was INLINE
-//     style, so React re-applied it on every snapshotText update → WebKit
-//     reset the running animation → visible snap every ~1s.
-//   v1.11.16 (THIS VERSION): moved animation to `.ss-ticker-track` CSS class.
-//     Per-instance duration via `--ticker-duration` CSS custom property.
-//     React only updates the variable value (smooth, no restart). User
-//     reported scroll itself became "smoother" — compositor-thread CSS
-//     animation, immune to main-thread jank. Tradeoff: visible snap at the
-//     loop boundary every speedSec seconds when content < 2× viewport.
-//     This is acceptable — better than rAF jitter.
-//   v1.11.17 ATTEMPT: padding-right:100vw on each copy → broke layout
-//     ("metrics on top of metrics"). DO NOT REPEAT.
-//   v1.11.18 REVERT: went all the way back to v1.5.7 rAF. Undid the
-//     smoothness gain. User asked to restore v1.11.16 state.
+// v1.11.19: REVERT to v1.10.0's exact JS rAF Ticker — the version that
+// actually worked. Every CSS-keyframes attempt (v1.11.15/16/17 and my
+// initial v1.11.19) was a regression. JS rAF uses precise pixel math via
+// scrollWidth/2 which handles both short and long content correctly:
+//   - short content: halfWidth is small, animation cycles fast but seamlessly
+//   - long content: halfWidth is large, no overlap, no blank gap
+// CSS percent-based animation (-50%) is subject to subpixel drift and
+// browser inline-block quirks. JS rAF measures the actual rendered width
+// and snaps the position back by exactly that amount. Mathematically exact.
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
+  const trackRef = useRef(null);
+  const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
+
+  useEffect(() => {
+    if (!enabled || !snapshotText) return;
+    const track = trackRef.current;
+    if (!track) return;
+
+    const measure = () => {
+      stateRef.current.halfWidth = track.scrollWidth / 2;
+    };
+    measure();
+    window.addEventListener('resize', measure);
+
+    const step = (t) => {
+      const s = stateRef.current;
+      if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
+      if (s.lastT == null) s.lastT = t;
+      const dt = (t - s.lastT) / 1000;
+      s.lastT = t;
+      const pxPerSec = s.halfWidth / duration;
+      s.x -= pxPerSec * dt;
+      while (s.x <= -s.halfWidth) s.x += s.halfWidth;
+      track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
+      s.rafId = requestAnimationFrame(step);
+    };
+    stateRef.current.rafId = requestAnimationFrame(step);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
+      stateRef.current.lastT = null;
+    };
+  }, [enabled, snapshotText, duration]);
 
   if (!enabled || !snapshotText) return null;
 
@@ -1166,17 +1190,20 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       height:26,
       display:'flex',
       alignItems:'center',
-      // Compositor isolation — hints to the browser to put this subtree on
-      // its own GPU layer so other page repaints can't affect it.
-      contain: 'layout paint style',
-      transform: 'translateZ(0)',
     }}>
-      <div
-        className="ss-ticker-track"
-        style={{ '--ticker-duration': `${duration}s` }}
-      >
-        <span className="ss-ticker-copy">{snapshotText}</span>
-        <span className="ss-ticker-copy">{snapshotText}</span>
+      <div ref={trackRef} style={{
+        whiteSpace:'nowrap',
+        fontFamily:'var(--fd)',
+        fontSize:'0.55rem',
+        letterSpacing:'0.15em',
+        color:'var(--text-2)',
+        textTransform:'uppercase',
+        display:'inline-block',
+        flexShrink:0,
+        willChange:'transform',
+        transform:'translate3d(0,0,0)',
+      }}>
+        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       </div>
     </div>
   );
@@ -13641,7 +13668,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.19 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.20 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
