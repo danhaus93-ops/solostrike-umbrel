@@ -1134,38 +1134,43 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
 // v1.11.15: REWRITTEN to use pure CSS @keyframes animation instead of JS rAF.
-// v1.11.16: FIX for periodic restart bug. The previous version put the
-// `animation` property INSIDE an inline style object. When snapshotText
-// changed (every WebSocket update — every ~1s because of `time_since_block`
-// and similar live-tick metrics), React re-rendered the Ticker. React then
-// re-applied the style attribute on the DOM element, which in WebKit/Safari
-// causes the CSS animation to reset back to 0%. Symptom: visible restart
-// every `speedSec` seconds (one full loop, then snap back, then loop again).
+// v1.11.16: Moved animation property from inline style to CSS class to prevent
+// React style-attribute re-application from restarting the animation.
+// v1.11.17: ACTUAL FIX for the periodic reset bug.
 //
-// Fix: move the animation to a CSS class (`.ss-ticker-track` in global.css)
-// and pass the per-instance duration via a CSS custom property
-// (`--ticker-duration`). React only updates the variable's value (which the
-// browser handles smoothly without restarting), never the `animation`
-// property itself. Animation runs uninterrupted forever.
+// Root cause (finally diagnosed correctly):
+// The 2-copy marquee pattern only produces a seamless visual loop when
+// `2 × copy_width > viewport_width`. The animation goes from translateX(0) to
+// translateX(-50%) over `speedSec` seconds. At -50%, copy 2 must occupy
+// EXACTLY the position where copy 1 started. For that to be visually seamless,
+// the content must be wide enough that the viewport ALWAYS shows some content
+// (not blank space) during the transition.
 //
-// Why: the v1.11.12/v1.11.14 fixes addressed PAINT (compositor isolation) but
-// didn't address ANIMATION COMPUTATION, which was still happening in JS via
-// requestAnimationFrame. When the main thread stalled (WebGL render, large
-// React re-render), rAF callbacks were delayed, dt became huge (50ms instead
-// of 16ms), and s.x jumped forward by a large amount — visible as a stutter.
+// Previously (v1.11.15/16), copies were separated by only 6 non-breaking spaces.
+// With few ticker metrics, total content width was LESS than viewport width on
+// mobile. Result: at the loop boundary, blank space appeared at the right edge
+// of the viewport, visible as a "reset" every `speedSec` seconds. Symptom: the
+// ticker appears to jump back to start at the exact interval of the speed
+// setting (3s reset for speedSec=3, etc).
 //
-// CSS keyframe animations on `transform` run ENTIRELY on the compositor
-// thread. No JS, no rAF, no timing dependency on the main thread. Even at
-// 5fps main thread, the ticker keeps scrolling at full smoothness.
+// This bug was first observed in April 2026 (v1.5.7 era) when the user noted
+// "if I select 5 metrics for the ticker they make it all the way across the
+// screen" but fewer metrics caused visible resets. The fix was proposed
+// (viewport-relative padding between copies) but deferred and forgotten when
+// v1.11.15 rewrote the ticker to CSS keyframes — the broken duplication
+// pattern got carried forward.
 //
-// Implementation:
-//   - Animation: translateX(0) → translateX(-50%) over `speedSec` seconds
-//   - The track contains the text DUPLICATED, so translating by -50% slides
-//     the second copy into the position where the first copy started,
-//     creating a seamless infinite loop
-//   - Pausing: `animation-play-state: paused` when not enabled
-//   - Text changes: React updates content, animation continues uninterrupted
-//     (no element re-key, no animation reset)
+// Fix: each copy gets `padding-right: 100vw` (in the .ss-ticker-copy CSS class).
+// This guarantees that each copy's effective width is AT LEAST one viewport
+// width. Two copies = at least 2 viewport widths total. -50% shift = exactly
+// 1 viewport width. Result: the viewport ALWAYS shows continuous content
+// regardless of how few metrics the user picks. Padding is always counted in
+// element width (unlike trailing whitespace in inline-block on WebKit), so
+// the math is mathematically exact.
+//
+// Container changed from `inline-block` to `inline-flex` so the two copies
+// are explicit siblings — no whitespace collapsing or text-node boundary
+// ambiguity that could break sub-pixel alignment.
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const duration = speedSec || DEFAULT_TICKER_SPEED;
 
@@ -1188,7 +1193,8 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
         className="ss-ticker-track"
         style={{ '--ticker-duration': `${duration}s` }}
       >
-        {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <span className="ss-ticker-copy">{snapshotText}</span>
+        <span className="ss-ticker-copy">{snapshotText}</span>
       </div>
     </div>
   );
@@ -13653,7 +13659,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.16 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.17 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
