@@ -1133,44 +1133,25 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
-// v1.11.15: REWRITTEN to use pure CSS @keyframes animation instead of JS rAF.
-// v1.11.16: Moved animation property from inline style to CSS class to prevent
-// React style-attribute re-application from restarting the animation.
-// v1.11.17: ACTUAL FIX for the periodic reset bug.
+// v1.11.19: RESTORE v1.11.16 pure-CSS keyframes ticker per user request.
 //
-// Root cause (finally diagnosed correctly):
-// The 2-copy marquee pattern only produces a seamless visual loop when
-// `2 × copy_width > viewport_width`. The animation goes from translateX(0) to
-// translateX(-50%) over `speedSec` seconds. At -50%, copy 2 must occupy
-// EXACTLY the position where copy 1 started. For that to be visually seamless,
-// the content must be wide enough that the viewport ALWAYS shows some content
-// (not blank space) during the transition.
-//
-// Previously (v1.11.15/16), copies were separated by only 6 non-breaking spaces.
-// With few ticker metrics, total content width was LESS than viewport width on
-// mobile. Result: at the loop boundary, blank space appeared at the right edge
-// of the viewport, visible as a "reset" every `speedSec` seconds. Symptom: the
-// ticker appears to jump back to start at the exact interval of the speed
-// setting (3s reset for speedSec=3, etc).
-//
-// This bug was first observed in April 2026 (v1.5.7 era) when the user noted
-// "if I select 5 metrics for the ticker they make it all the way across the
-// screen" but fewer metrics caused visible resets. The fix was proposed
-// (viewport-relative padding between copies) but deferred and forgotten when
-// v1.11.15 rewrote the ticker to CSS keyframes — the broken duplication
-// pattern got carried forward.
-//
-// Fix: each copy gets `padding-right: 100vw` (in the .ss-ticker-copy CSS class).
-// This guarantees that each copy's effective width is AT LEAST one viewport
-// width. Two copies = at least 2 viewport widths total. -50% shift = exactly
-// 1 viewport width. Result: the viewport ALWAYS shows continuous content
-// regardless of how few metrics the user picks. Padding is always counted in
-// element width (unlike trailing whitespace in inline-block on WebKit), so
-// the math is mathematically exact.
-//
-// Container changed from `inline-block` to `inline-flex` so the two copies
-// are explicit siblings — no whitespace collapsing or text-node boundary
-// ambiguity that could break sub-pixel alignment.
+// History recap so the next Claude doesn't undo this:
+//   v1.5.7 → v1.11.14: JS rAF on translate3d. Worked but rAF-jitter when
+//     main thread was busy (visible micro-stutters during WebGL renders).
+//   v1.11.15: REWRITE to pure CSS @keyframes. Animation property was INLINE
+//     style, so React re-applied it on every snapshotText update → WebKit
+//     reset the running animation → visible snap every ~1s.
+//   v1.11.16 (THIS VERSION): moved animation to `.ss-ticker-track` CSS class.
+//     Per-instance duration via `--ticker-duration` CSS custom property.
+//     React only updates the variable value (smooth, no restart). User
+//     reported scroll itself became "smoother" — compositor-thread CSS
+//     animation, immune to main-thread jank. Tradeoff: visible snap at the
+//     loop boundary every speedSec seconds when content < 2× viewport.
+//     This is acceptable — better than rAF jitter.
+//   v1.11.17 ATTEMPT: padding-right:100vw on each copy → broke layout
+//     ("metrics on top of metrics"). DO NOT REPEAT.
+//   v1.11.18 REVERT: went all the way back to v1.5.7 rAF. Undid the
+//     smoothness gain. User asked to restore v1.11.16 state.
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const duration = speedSec || DEFAULT_TICKER_SPEED;
 
@@ -1185,7 +1166,8 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       height:26,
       display:'flex',
       alignItems:'center',
-      // Compositor isolation — kept from v1.11.14 (still useful for paint).
+      // Compositor isolation — hints to the browser to put this subtree on
+      // its own GPU layer so other page repaints can't affect it.
       contain: 'layout paint style',
       transform: 'translateZ(0)',
     }}>
@@ -13659,7 +13641,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.17 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.19 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
