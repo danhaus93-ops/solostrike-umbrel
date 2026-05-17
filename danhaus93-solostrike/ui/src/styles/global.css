@@ -43,7 +43,13 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
-@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* v1.11.15: ticker animation. Pure CSS keyframe — runs on compositor thread,
+   immune to main-thread jank. The track contains the text duplicated, so
+   translateX(-50%) slides the second copy into the first copy's position,
+   creating a seamless infinite loop. Renamed from `ticker` to `ss-ticker-scroll`
+   in v1.11.15 to be explicit about ownership (avoid collisions with browser
+   extensions or other libs that might define `@keyframes ticker`). */
+@keyframes ss-ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 /* v1.8.3-rev29: splash strike animation, retimed.
    Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
    into a 1.4s loop), with a long 35% pre-strike dwell at the wound-back
