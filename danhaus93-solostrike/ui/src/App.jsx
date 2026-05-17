@@ -1134,6 +1134,19 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
 // v1.11.15: REWRITTEN to use pure CSS @keyframes animation instead of JS rAF.
+// v1.11.16: FIX for periodic restart bug. The previous version put the
+// `animation` property INSIDE an inline style object. When snapshotText
+// changed (every WebSocket update — every ~1s because of `time_since_block`
+// and similar live-tick metrics), React re-rendered the Ticker. React then
+// re-applied the style attribute on the DOM element, which in WebKit/Safari
+// causes the CSS animation to reset back to 0%. Symptom: visible restart
+// every `speedSec` seconds (one full loop, then snap back, then loop again).
+//
+// Fix: move the animation to a CSS class (`.ss-ticker-track` in global.css)
+// and pass the per-instance duration via a CSS custom property
+// (`--ticker-duration`). React only updates the variable's value (which the
+// browser handles smoothly without restarting), never the `animation`
+// property itself. Animation runs uninterrupted forever.
 //
 // Why: the v1.11.12/v1.11.14 fixes addressed PAINT (compositor isolation) but
 // didn't address ANIMATION COMPUTATION, which was still happening in JS via
@@ -1171,21 +1184,10 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       contain: 'layout paint style',
       transform: 'translateZ(0)',
     }}>
-      <div style={{
-        whiteSpace:'nowrap',
-        fontFamily:'var(--fd)',
-        fontSize:'0.55rem',
-        letterSpacing:'0.15em',
-        color:'var(--text-2)',
-        textTransform:'uppercase',
-        display:'inline-block',
-        flexShrink:0,
-        willChange:'transform',
-        backfaceVisibility: 'hidden',
-        WebkitBackfaceVisibility: 'hidden',
-        // The actual animation — pure CSS, runs on compositor thread.
-        animation: `ss-ticker-scroll ${duration}s linear infinite`,
-      }}>
+      <div
+        className="ss-ticker-track"
+        style={{ '--ticker-duration': `${duration}s` }}
+      >
         {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       </div>
     </div>
@@ -13651,7 +13653,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.15 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.16 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
