@@ -1133,57 +1133,28 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
+// v1.11.15: REWRITTEN to use pure CSS @keyframes animation instead of JS rAF.
+//
+// Why: the v1.11.12/v1.11.14 fixes addressed PAINT (compositor isolation) but
+// didn't address ANIMATION COMPUTATION, which was still happening in JS via
+// requestAnimationFrame. When the main thread stalled (WebGL render, large
+// React re-render), rAF callbacks were delayed, dt became huge (50ms instead
+// of 16ms), and s.x jumped forward by a large amount — visible as a stutter.
+//
+// CSS keyframe animations on `transform` run ENTIRELY on the compositor
+// thread. No JS, no rAF, no timing dependency on the main thread. Even at
+// 5fps main thread, the ticker keeps scrolling at full smoothness.
+//
+// Implementation:
+//   - Animation: translateX(0) → translateX(-50%) over `speedSec` seconds
+//   - The track contains the text DUPLICATED, so translating by -50% slides
+//     the second copy into the position where the first copy started,
+//     creating a seamless infinite loop
+//   - Pausing: `animation-play-state: paused` when not enabled
+//   - Text changes: React updates content, animation continues uninterrupted
+//     (no element re-key, no animation reset)
 const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
-  const trackRef = useRef(null);
-  const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
-
-  // v1.11.12: split into two effects to fix desktop glitchiness. Previously
-  // [enabled, snapshotText, duration] was the dep array, so every snapshotText
-  // change (price/mempool/block-age update every few seconds) cancelled the
-  // RAF loop, reset lastT, and re-measured halfWidth — visible micro-stutter
-  // each refresh. Now: animation runs continuously, measurement re-runs
-  // independently when text content changes. No more frame skip on updates.
-  useEffect(() => {
-    if (!enabled) return;
-    const track = trackRef.current;
-    if (!track) return;
-
-    const step = (t) => {
-      const s = stateRef.current;
-      if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
-      if (s.lastT == null) s.lastT = t;
-      const dt = (t - s.lastT) / 1000;
-      s.lastT = t;
-      const pxPerSec = s.halfWidth / duration;
-      s.x -= pxPerSec * dt;
-      while (s.x <= -s.halfWidth) s.x += s.halfWidth;
-      track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
-      s.rafId = requestAnimationFrame(step);
-    };
-    stateRef.current.rafId = requestAnimationFrame(step);
-
-    return () => {
-      if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
-      stateRef.current.lastT = null;
-    };
-  }, [enabled, duration]);
-
-  // v1.11.12: measurement effect — only re-measures halfWidth when text
-  // content changes. Does NOT cancel/restart the RAF. Animation position (x)
-  // persists across measurement changes for seamless scrolling.
-  useEffect(() => {
-    if (!enabled || !snapshotText) return;
-    const track = trackRef.current;
-    if (!track) return;
-    const measure = () => {
-      const newHW = track.scrollWidth / 2;
-      if (newHW > 0) stateRef.current.halfWidth = newHW;
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [enabled, snapshotText]);
 
   if (!enabled || !snapshotText) return null;
 
@@ -1196,18 +1167,11 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       height:26,
       display:'flex',
       alignItems:'center',
-      // v1.11.14: compositor isolation. `contain` tells the browser this
-      // element's layout, style, and paint don't affect anything outside
-      // its box — so when the rest of the page repaints (WebGL bg, large
-      // re-renders), the ticker doesn't get pulled into the same paint
-      // pass. `transform: translateZ(0)` forces this wrapper onto its own
-      // GPU compositor layer; combined with the track's existing layer
-      // promotion, the ticker animation runs on the compositor thread,
-      // immune to main-thread jank.
+      // Compositor isolation — kept from v1.11.14 (still useful for paint).
       contain: 'layout paint style',
       transform: 'translateZ(0)',
     }}>
-      <div ref={trackRef} style={{
+      <div style={{
         whiteSpace:'nowrap',
         fontFamily:'var(--fd)',
         fontSize:'0.55rem',
@@ -1217,13 +1181,10 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
         display:'inline-block',
         flexShrink:0,
         willChange:'transform',
-        transform:'translate3d(0,0,0)',
-        // v1.11.14: extra Safari-specific compositor stability hints.
-        // backfaceVisibility:hidden prevents Safari from evicting the
-        // composite layer under memory pressure (a known Safari quirk
-        // where will-change layers get garbage-collected too eagerly).
         backfaceVisibility: 'hidden',
         WebkitBackfaceVisibility: 'hidden',
+        // The actual animation — pure CSS, runs on compositor thread.
+        animation: `ss-ticker-scroll ${duration}s linear infinite`,
       }}>
         {snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{snapshotText}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       </div>
@@ -13690,7 +13651,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.14 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.15 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
