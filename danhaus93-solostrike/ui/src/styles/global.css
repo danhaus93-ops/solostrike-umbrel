@@ -43,25 +43,21 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
-/* v1.11.15: ticker animation. Pure CSS keyframe — runs on compositor thread,
-   immune to main-thread jank. The track contains the text duplicated, so
-   translateX(-50%) slides the second copy into the first copy's position,
-   creating a seamless infinite loop. Renamed from `ticker` to `ss-ticker-scroll`
-   in v1.11.15 to be explicit about ownership (avoid collisions with browser
-   extensions or other libs that might define `@keyframes ticker`). */
+/* v1.11.19: RESTORE pure-CSS ticker + GEOMETRY FIX for both bugs.
+   Bug 1 (≤8 metrics): "blank spot at loop boundary" — content < viewport
+   means -50% shift exposes blank space at viewport edge.
+   Bug 2 (10+ metrics with v1.11.17 inline-flex): "metrics stack on top"
+   in Chrome when content is very wide — flex layout wraps the second span
+   below the first, both visible within the 26px container.
+
+   Fix: keep track as inline-block (avoids inline-flex wrap bug). Give each
+   copy span min-width: 100vw. min-width is a FLOOR, not a ceiling — so:
+   - With short text (≤8 metrics): each copy = 100vw min-width. Track = 2×
+     100vw. Half-track = 100vw = viewport. No blank spot.
+   - With long text (10+ metrics): each copy = natural text width (which
+     exceeds 100vw). min-width has no effect. Track = 2× natural. Half-track
+     > viewport. No blank spot. No flex wrap (track is inline-block). */
 @keyframes ss-ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-/* v1.11.17: ticker track + copies. Each copy gets padding-right: 100vw which
-   GUARANTEES that 2 × copy_width > viewport_width regardless of how few metrics
-   the user has selected. Without this, the previous v1.11.15/16 implementations
-   broke seamlessness when content was shorter than the viewport — the -50%
-   translate would land where there was no fresh content, visibly resetting at
-   each loop boundary. Root cause was diagnosed in April 2026 (v1.5.x era) but
-   the fix was deferred and lost when v1.11.15 rewrote to pure CSS keyframes.
-   Container uses inline-flex so the two copies are guaranteed siblings (no
-   inline whitespace collapsing or trailing-space ambiguity). Padding is
-   ALWAYS counted in element width (unlike trailing whitespace in inline-block
-   on WebKit), so the math is mathematically exact: track = 2 × (text + 100vw),
-   -50% shift = exactly one (text + 100vw), seamless guaranteed. */
 .ss-ticker-track {
   white-space: nowrap;
   font-family: var(--fd);
@@ -69,7 +65,7 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   letter-spacing: 0.15em;
   color: var(--text-2);
   text-transform: uppercase;
-  display: inline-flex;
+  display: inline-block;
   flex-shrink: 0;
   will-change: transform;
   backface-visibility: hidden;
@@ -77,8 +73,9 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   animation: ss-ticker-scroll var(--ticker-duration, 30s) linear infinite;
 }
 .ss-ticker-copy {
-  flex-shrink: 0;
-  padding-right: 100vw;
+  display: inline-block;
+  min-width: 100vw;
+  padding-right: 1rem;
 }
 /* v1.8.3-rev29: splash strike animation, retimed.
    Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
