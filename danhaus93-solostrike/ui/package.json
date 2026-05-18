@@ -1,6 +1,6 @@
 {
   "name": "solostrike-ui",
-  "version": "1.11.21",
+  "version": "1.11.22",
   "type": "module",
   "engines": {
     "node": ">=18.0.0"
