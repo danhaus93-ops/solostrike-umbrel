@@ -239,6 +239,7 @@ const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
 const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
+const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.21: Performance Mode toggle
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -329,6 +330,12 @@ function loadTickerMetrics() { try { const s = localStorage.getItem(LS_TICKER_ME
 function saveTickerMetrics(list) { try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(list)); } catch {} }
 function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === 'true'; } catch { return false; } }
 function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
+// v1.11.21: Performance Mode — replaces animated Pulse/Hunt canvases with
+// static baked frames. Strike pulse rings stay live (information-bearing).
+// Header pickaxe pulse + glow auto-suppressed (already handled via the
+// existing minimalMode ternary; performanceMode joins it).
+function loadPerformanceMode()   { try { const v = localStorage.getItem(LS_PERFORMANCE_MODE); return v === 'true'; } catch { return false; } }
+function savePerformanceMode(v)  { try { localStorage.setItem(LS_PERFORMANCE_MODE, String(!!v)); } catch {} }
 function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); const migrated = migrateCardIds(Array.isArray(p) ? p : []); return migrated.length ? migrated.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
 function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
 
@@ -883,7 +890,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
     fg     = '#FFE6E1';
     label  = `CRITICAL UPDATE V${version}`;
     glyph  = (
-      <span style={{ fontSize:'1.1rem', filter:'drop-shadow(0 0 4px rgba(255,59,59,0.8))', animation:'pulse 1.4s ease-in-out infinite' }}>🚨</span>
+      <span style={{ fontSize:'1.1rem', filter:'drop-shadow(0 0 4px rgba(255,59,59,0.8))', animation:'pulse 1.4s ease-in-out infinite', willChange:'opacity' }}>🚨</span>
     );
   } else if (isHard) {
     bg     = 'linear-gradient(90deg, rgba(0,255,209,0.14), rgba(0,255,209,0.04))';
@@ -903,7 +910,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
     label  = `V${version} — TAP TO UPDATE`;
     glyph  = (
       // Custom lightning-bolt SVG in amber
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink:0, color:'var(--amber)', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.55))', animation:'pulse 2.2s ease-in-out infinite' }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink:0, color:'var(--amber)', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.55))', animation:'pulse 2.2s ease-in-out infinite', willChange:'opacity' }}>
         <path d="M13 2 L4 14 L11 14 L10 22 L20 9 L13 9 L13 2 Z"/>
       </svg>
     );
@@ -924,6 +931,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
       background: bg,
       fontFamily: 'var(--fd)',
       animation: isCritical ? 'pulse 1.4s ease-in-out infinite' : 'slideUp 0.3s ease both',
+      willChange: isCritical ? 'opacity' : 'auto',
     }}>
       <div style={{
         display: 'flex',
@@ -1089,15 +1097,15 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, zmq, 
   return (
     <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.5rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.4rem' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:1, flexWrap:'wrap' }}>
-        <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{ width:18, height:18, objectFit:'contain', filter: minimalMode?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: minimalMode?'none':'pulse 3s ease-in-out infinite', flexShrink:0 }}/>
+        <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{ width:18, height:18, objectFit:'contain', filter: (minimalMode||performanceMode)?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: (minimalMode||performanceMode)?'none':'pulse 3s ease-in-out infinite', willChange: (minimalMode||performanceMode)?'auto':'opacity', flexShrink:0 }}/>
         <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
         {!minimalMode && (
           <>
             <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
-            <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', color:st.c, textShadow:`0 0 6px ${st.c}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }}>{st.t}</span>
+            <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', color:st.c, textShadow:`0 0 6px ${st.c}`, animation:'pulse 2s ease-in-out infinite', willChange:'opacity', flexShrink:0 }}>{st.t}</span>
             <ZmqBadge zmq={zmq}/>
             {privateMode && (
-              <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', flexShrink:0, marginLeft:4 }}>🔒</span>
+              <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', willChange:'opacity', flexShrink:0, marginLeft:4 }}>🔒</span>
             )}
             {/* Strikes counter — total blocks found by this install */}
             {blocksFound != null && (
@@ -1147,16 +1155,27 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
 
-  useEffect(() => {
-    if (!enabled || !snapshotText) return;
-    const track = trackRef.current;
-    if (!track) return;
+  // ── v1.11.21: rAF decoupling ────────────────────────────────────────────
+  // Previously a single useEffect with deps [enabled, snapshotText, duration]
+  // tore down and rebuilt the rAF loop every time snapshotText changed
+  // (~every 2s when new WS state arrives). That caused a brief freeze + a
+  // timing reset (lastT = null) on every snapshot update → micro-stutter
+  // synced to mining-state updates.
+  //
+  // Now split into TWO effects:
+  //   - Effect A (rAF loop): runs continuously, only restarts on enabled/
+  //     duration changes. Reads halfWidth from stateRef each tick, so width
+  //     updates take effect immediately without restarting the loop.
+  //   - Effect B (measure): re-runs only when snapshotText changes, just
+  //     re-measures track.scrollWidth/2 into stateRef.halfWidth. The rAF
+  //     loop picks up the new width on its next tick (~16ms later).
+  //
+  // Math is byte-identical to the original single-effect version. Only the
+  // lifecycle changes.
 
-    const measure = () => {
-      stateRef.current.halfWidth = track.scrollWidth / 2;
-    };
-    measure();
-    window.addEventListener('resize', measure);
+  // Effect A: rAF loop (never restarts during normal operation)
+  useEffect(() => {
+    if (!enabled) return;
 
     const step = (t) => {
       const s = stateRef.current;
@@ -1167,17 +1186,36 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       const pxPerSec = s.halfWidth / duration;
       s.x -= pxPerSec * dt;
       while (s.x <= -s.halfWidth) s.x += s.halfWidth;
-      track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
+      const track = trackRef.current;
+      if (track) track.style.transform = `translate3d(${s.x.toFixed(2)}px, 0, 0)`;
       s.rafId = requestAnimationFrame(step);
     };
     stateRef.current.rafId = requestAnimationFrame(step);
 
     return () => {
-      window.removeEventListener('resize', measure);
       if (stateRef.current.rafId) cancelAnimationFrame(stateRef.current.rafId);
       stateRef.current.lastT = null;
     };
-  }, [enabled, snapshotText, duration]);
+  }, [enabled, duration]);
+
+  // Effect B: measurement (re-runs on snapshotText change without touching rAF)
+  useEffect(() => {
+    if (!enabled || !snapshotText) return;
+    const track = trackRef.current;
+    if (!track) return;
+
+    const measure = () => {
+      if (trackRef.current) {
+        stateRef.current.halfWidth = trackRef.current.scrollWidth / 2;
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  }, [enabled, snapshotText]);
 
   if (!enabled || !snapshotText) return null;
 
@@ -1361,7 +1399,7 @@ function SyncWarningBanner({ sync }) {
       boxShadow:'inset 0 -1px 0 rgba(255,59,59,0.2)',
       overflowX:'auto', whiteSpace:'nowrap',
     }}>
-      <span style={{fontWeight:700, animation:'pulse 2s ease-in-out infinite', flexShrink:0}}>⚠ BITCOIN CORE SYNCING</span>
+      <span style={{fontWeight:700, animation:'pulse 2s ease-in-out infinite', willChange:'opacity', flexShrink:0}}>⚠ BITCOIN CORE SYNCING</span>
       <span style={{color:'var(--text-2)', flexShrink:0}}>·</span>
       <span style={{color:'var(--text-1)', fontFamily:'var(--fm)', flexShrink:0}}>{pct.toFixed(2)}% verified</span>
       {behind > 0 && <>
@@ -2463,7 +2501,7 @@ function BitcoinNodePanel({ nodeInfo }) {
       <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
         <span>▸ Bitcoin Node</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, color: connected?'var(--green)':'var(--red)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>
-          <span style={{width:6, height:6, borderRadius:'50%', background: connected?'var(--green)':'var(--red)', boxShadow: `0 0 6px ${connected?'var(--green)':'var(--red)'}`, animation: connected?'pulse 2s ease-in-out infinite':'none'}}/>
+          <span style={{width:6, height:6, borderRadius:'50%', background: connected?'var(--green)':'var(--red)', boxShadow: `0 0 6px ${connected?'var(--green)':'var(--red)'}`, animation: connected?'pulse 2s ease-in-out infinite':'none', willChange: connected?'opacity':'auto'}}/>
           {connected ? 'CONNECTED' : 'OFFLINE'}
         </span>
       </div>
@@ -2511,7 +2549,7 @@ function BitcoinNodePanel({ nodeInfo }) {
 // with hashrate. It's not a literal 1:1 cell-per-hash mapping (we'd need
 // 4 billion cells, not 120) — it's a representative visualization where
 // brightness ∝ work being done.
-function NonceField({ hashrate, huntAnim }) {
+function NonceField({ hashrate, huntAnim, performanceMode }) {
   const canvasRef = useRef(null);
   const lightningGLCanvasRef = useRef(null);   // rev54: WebGL canvas for lightning mode
   const lightningGLRef = useRef(null);          // rev54: WebGL renderer instance
@@ -2544,6 +2582,12 @@ function NonceField({ hashrate, huntAnim }) {
     hrRef.current = hashrate || 0;
   }, [hashrate]);
   useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
+
+  // v1.11.21: Performance Mode ref — checked inside the rAF body to bail
+  // out of heavy draw work without restarting the loop. Live updates via
+  // useEffect mean the toggle takes effect on the next frame (<16ms).
+  const perfModeRef = useRef(!!performanceMode);
+  useEffect(() => { perfModeRef.current = !!performanceMode; }, [performanceMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -3231,6 +3275,16 @@ function NonceField({ hashrate, huntAnim }) {
       // v1.8.5-rev70e: clear to transparent so card shows through.
       ctx.clearRect(0, 0, W, H);
 
+      // v1.11.21: Performance Mode short-circuit. Skip all draw work — the
+      // static <img> overlay in JSX covers the canvas surface. We still
+      // schedule the next frame (cheap when there's nothing to draw) so
+      // toggling Performance Mode off resumes animation instantly without
+      // remounting the component.
+      if (perfModeRef.current) {
+        animRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
       // v1.11.x: 'sonar' was removed from Hunt animations. Any user with
       // 'sonar' previously selected migrates here to 'lightning' (closest
       // visual cousin — center-focused energy/strike). Persistent migration
@@ -3304,11 +3358,31 @@ function NonceField({ hashrate, huntAnim }) {
         position: 'absolute', inset: 0,
         width: '100%', height: '100%',
       }}/>
+      {/* v1.11.21: Performance Mode static frame — overlays all canvases
+          with a baked PNG matching the selected huntAnim. Loaded only when
+          performanceMode is on, so it costs nothing for default users. */}
+      {performanceMode && (
+        <img
+          src={`/static/hunt-${huntAnim === 'lightning' ? 'lightning'
+                              : huntAnim === 'pickaxe'   ? 'pickaxe'
+                              : huntAnim === 'ticker'    ? 'ticker'
+                              : 'noncefield'}.png`}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, onOpen }) {
+function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, performanceMode, onOpen }) {
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
   // iter27c: `scale` (logarithmic mapping for the odds SVG fill width)
   // is no longer needed — replaced by the NonceField canvas component.
@@ -3377,7 +3451,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
             </span>
           </div>
           <div style={{flex:1, minHeight:0, display:'flex'}}>
-            <NonceField hashrate={hashrate} huntAnim={huntAnim}/>
+            <NonceField hashrate={hashrate} huntAnim={huntAnim} performanceMode={performanceMode}/>
           </div>
         </div>
 
@@ -6617,7 +6691,7 @@ function BlockAlert({ show, block, onDismiss }) {
       <Confetti/>
       <div onClick={onDismiss} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',cursor:'pointer'}}>
         <div style={{textAlign:'center',background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',padding:'2.4rem 2rem',maxWidth:420,boxShadow:'0 0 50px rgba(245,166,35,0.5)'}}>
-          <div style={{fontSize:60,animation:'pulse 1.2s infinite'}}>⚡</div>
+          <div style={{fontSize:60,animation:'pulse 1.2s infinite',willChange:'opacity'}}>⚡</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>BLOCK STRUCK!</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'1.05rem',color:'var(--text-1)',marginTop:8}}>Block #{fmtNum(block.height||0)}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'1.4rem',color:'var(--green)',fontWeight:700,marginTop:14,textShadow:'0 0 14px rgba(57,255,106,0.45)'}}>+{(block.reward||0).toFixed(3)} BTC</div>
@@ -7056,7 +7130,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
@@ -7115,6 +7189,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
             tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
             minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
+            performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
             visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
             carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}/>
         )}
@@ -7176,7 +7251,7 @@ function MainTab({addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,sa
 }
 
 // ── Display tab ───────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
+function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
   const toggleMetric = (id) => {
     const next = stripSettings.metricIds.includes(id) ? stripSettings.metricIds.filter(x => x !== id) : [...stripSettings.metricIds, id];
     onStripSettingsChange({ ...stripSettings, metricIds: next });
@@ -7254,6 +7329,28 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       {minimalMode && (
         <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
           🔇 Minimal Mode is on — settings below are overridden until you turn it off.
+        </div>
+      )}
+
+      {/* v1.11.21: Performance Mode — freezes decorative animations while
+          keeping information-bearing animations (strike pulse) alive.
+          Mirrors Minimal Mode UI pattern for visual consistency. */}
+      <div style={firstSectionTitle}>▸ Performance Mode</div>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: performanceMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${performanceMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: performanceMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>Static Mode</div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
+            Replaces animated Pulse globe and Hunt canvases with static baked frames. Reduces battery drain and heat on older devices. Strike pulse rings stay live (information-bearing).
+          </div>
+        </div>
+        <button onClick={()=>onPerformanceModeChange(!performanceMode)}
+          style={{width:46, height:26, borderRadius:13, background: performanceMode?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
+          <div style={{position:'absolute', top:2, left: performanceMode?22:2, width:20, height:20, borderRadius:'50%', background: performanceMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
+      </div>
+      {performanceMode && (
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
+          ⚡ Performance Mode is on — animations frozen for older or battery-throttled iPhones, budget Android, Pi 4/5, and DIY Umbrel hosts. Live strikes still pulse.
         </div>
       )}
 
@@ -8359,7 +8456,67 @@ function BlockSimulatorModal({ onClose }) {
 
 
 
-function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
+// ── v1.11.21 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
+// DOM-based strike markers shown over the baked equirectangular world map
+// when performanceMode is on. Replaces the WebGL strikes that get frozen
+// when the canvas rAF is bailed out.
+//
+// Why DOM not canvas: CSS keyframes run on the compositor thread, immune
+// to main-thread jank. Even on a Pi 4 / older iPhone, a few dozen markers
+// pulsing simultaneously cost effectively zero main-thread work. That's the
+// whole reason Performance Mode exists — kill the expensive WebGL loop,
+// keep cheap compositor-thread animation that still conveys information.
+//
+// Each peer gets one marker positioned by equirectangular projection:
+//   left = (lon + 180) / 360 * 100%
+//   top  = (90 - lat)  / 180 * 100%
+// Each marker has 3 expanding amber rings on staggered delays (0, 0.73s,
+// 1.46s) mirroring the look of the original WebGL strikes, plus a center
+// dot. Own pool's marker uses red instead of amber.
+//
+// `peers` is the same `ns.peers` array the WebGL renderer consumes, with
+// pre-filtered (no `filtered:true`) entries. We render up to PEER_CAP
+// markers to keep the DOM lightweight even if the network is huge.
+const PEER_CAP_STATIC = 60;
+function StaticPulseStrikes({ peers }) {
+  if (!Array.isArray(peers) || peers.length === 0) return null;
+  const list = peers.slice(0, PEER_CAP_STATIC);
+  return (
+    <div style={{
+      position: 'absolute',
+      inset: 0,
+      pointerEvents: 'none',
+      zIndex: 2,
+      overflow: 'hidden',
+    }}>
+      {list.map((p, i) => {
+        // Skip peers without coordinates (defensive — broadcast schema
+        // includes lat/lon, but a stale or partial peer might lack them).
+        if (typeof p.lat !== 'number' || typeof p.lon !== 'number') return null;
+        const left = ((p.lon + 180) / 360) * 100;
+        const top  = ((90 - p.lat) / 180) * 100;
+        // Clamp to [0, 100] so off-map values don't position outside the
+        // container — though the parent has overflow:hidden as defense.
+        if (left < 0 || left > 100 || top < 0 || top > 100) return null;
+        const key = p.pubkey || `peer-${i}`;
+        return (
+          <div
+            key={key}
+            className={`ss-static-strike-marker${p.isOwn ? ' own' : ''}`}
+            style={{ left: `${left}%`, top: `${top}%` }}
+          >
+            <span className="ring" />
+            <span className="ring d1" />
+            <span className="ring d2" />
+            <span className="dot" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -8464,6 +8621,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // (drag-rotate the WebGL camera, pinch-zoom).
   const pulseAnimRef = useRef(pulseAnim);
   useEffect(() => { pulseAnimRef.current = pulseAnim; }, [pulseAnim]);
+  // v1.11.21: Performance Mode ref — same pattern as NonceField. Live
+  // updates via useEffect; rAF checks the ref each frame and bails out
+  // when on, while still rescheduling the next frame.
+  const perfModeRef = useRef(!!performanceMode);
+  useEffect(() => { perfModeRef.current = !!performanceMode; }, [performanceMode]);
   // rev70k: pinch-zoom state. Tracks all active pointer IDs and their
   // positions so we can compute pinch distance from 2-finger gestures.
   const pointersRef = useRef(new Map());
@@ -9533,6 +9695,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         return;
       }
       ctx.clearRect(0, 0, W, H);
+
+      // v1.11.21: Performance Mode short-circuit. The static <img> overlay
+      // in JSX (below) replaces the globe/block animation. Schedule next
+      // frame anyway so toggling Performance Mode off resumes instantly.
+      if (perfModeRef.current) {
+        animationFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
       // v1.11.x: refresh closure-captured values from refs once per frame
       // before dispatching to sub-draws. Re-shadows `pulseAnim`, `ns`,
       // `workers` so the dispatch + the sub-draws (which look up `ns.peers`
@@ -9901,6 +10072,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       lineHeight:1.2,
       textAlign:'center',
       animation:'pulse 4s ease-in-out infinite',
+      willChange:'opacity',
     }}>
       <div>100%</div>
       <div>SOLO</div>
@@ -9955,7 +10127,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
         >
           <span>▸ SoloStrike Pulse</span>
           <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
-            <span style={{width:5, height:5, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite'}}/>
+            <span style={{width:5, height:5, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite', willChange:'opacity'}}/>
             LIVE
           </span>
         </div>
@@ -10001,6 +10173,27 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               display: pulseAnim === 'block' ? 'block' : 'none',
             }}
           />
+          {/* v1.11.21: Performance Mode static Pulse map (compact layout). */}
+          {performanceMode && (
+            <img
+              src="/static/pulse-map.png"
+              alt=""
+              draggable={false}
+              style={{
+                position:'absolute', inset:0,
+                width:'100%', height:'100%',
+                objectFit:'cover',
+                pointerEvents:'none',
+                zIndex:1,
+              }}
+            />
+          )}
+          {/* v1.11.21: DOM strike markers — CSS-keyframe animated rings
+              positioned via equirectangular projection. Only mounted when
+              performanceMode is on (zero cost otherwise). */}
+          {performanceMode && (
+            <StaticPulseStrikes peers={Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : []} />
+          )}
           <canvas
             ref={canvasRef}
             onPointerDown={handlePointerDown}
@@ -10176,7 +10369,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       >
         <span>▸ SoloStrike Pulse</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
-          <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite'}}/>
+          <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite', willChange:'opacity'}}/>
           LIVE
         </span>
       </div>
@@ -10223,6 +10416,28 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             display: pulseAnim === 'block' ? 'block' : 'none',
           }}
         />
+        {/* v1.11.21: Performance Mode static Pulse map. Overlays globe and
+            constellation WebGL canvases with a baked equirectangular world.
+            Pointer events disabled so the 2D canvas below still handles
+            pin placement. */}
+        {performanceMode && (
+          <img
+            src="/static/pulse-map.png"
+            alt=""
+            draggable={false}
+            style={{
+              position:'absolute', inset:0,
+              width:'100%', height:'100%',
+              objectFit:'cover',
+              pointerEvents:'none',
+              zIndex:1,
+            }}
+          />
+        )}
+        {/* v1.11.21: DOM strike markers — same as compact layout above. */}
+        {performanceMode && (
+          <StaticPulseStrikes peers={Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : []} />
+        )}
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
@@ -11208,6 +11423,7 @@ function StrikersModal({ networkStats, onClose }) {
             lineHeight:1.2,
             textAlign:'center',
             animation:'pulse 4s ease-in-out infinite',
+            willChange:'opacity',
           }}>
             <div>100%</div>
             <div>SOLO</div>
@@ -12649,7 +12865,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
               {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
             </div>
             <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
-              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none'}}/>
+              <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none',willChange:on?'opacity':'auto'}}/>
               <span style={{color:on?'var(--green)':'var(--red)'}}>{on?'ONLINE':'OFFLINE'}</span>
               <span style={{color:'var(--text-3)',marginLeft:8}}>last share {w.lastSeen?timeAgo(w.lastSeen):'—'}</span>
             </div>
@@ -12846,6 +13062,7 @@ export default function App() {
     enabled: loadTickerEnabled(), speedSec: loadTickerSpeed(), metricIds: loadTickerMetrics(),
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
+  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.21
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
   const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
@@ -12952,6 +13169,7 @@ export default function App() {
   const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
+  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.21
   const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   const onStripSettingsChange = useCallback((next) => {
@@ -13519,6 +13737,7 @@ export default function App() {
             stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
             tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
             minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
+            performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
             visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
             networkStats={poolState?.networkStats}
             onNetworkStatsRefresh={refreshConfig}
@@ -13564,6 +13783,7 @@ export default function App() {
       onOpenSettings={()=>setShowSettings(true)}
       onOpenStrikers={()=>setShowStrikers(true)}
       pulseAnim={pulseAnim}
+      performanceMode={performanceMode}
       onPulseAnimChange={onPulseAnimChange}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
@@ -13575,7 +13795,7 @@ export default function App() {
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
     stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
-    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} onOpen={()=>setShowReckoning(true)}/>,
+    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
@@ -13668,7 +13888,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.20 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.21 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -13719,6 +13939,7 @@ export default function App() {
           stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
           tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
           minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
+            performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
           visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
           networkStats={poolState?.networkStats}
           onNetworkStatsRefresh={refreshConfig}
