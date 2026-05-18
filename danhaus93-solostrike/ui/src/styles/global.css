@@ -609,6 +609,9 @@ body.ss-in-iframe .ss-app-header {
   height: 8px;
   flex-shrink: 0;
   vertical-align: middle;
+  /* v1.11.21: stacking context — no visual effect, but lets the browser
+     keep this dot's animation on its own compositor layer. */
+  isolation: isolate;
 }
 .ss-status-dot::before {
   content: '';
@@ -632,9 +635,15 @@ body.ss-in-iframe .ss-app-header {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: ssDotBreath 2.5s ease-in-out infinite;
+  /* v1.11.21: hint to GPU-promote so the opacity/transform animation
+     runs on the compositor thread without triggering main-thread paint. */
+  will-change: transform, opacity;
 }
 .ss-status-dot-green::after {
   animation: ssDotPing 2.5s ease-out infinite;
+  /* v1.11.21: same — the ping ring expands via transform: scale, which is
+     a compositor-cheap op when this element has its own layer. */
+  will-change: transform, opacity;
 }
 .ss-status-dot-amber {
   color: var(--amber);
@@ -643,6 +652,8 @@ body.ss-in-iframe .ss-app-header {
   background: var(--amber);
   box-shadow: 0 0 6px var(--amber);
   animation: ssDotBreath 4s ease-in-out infinite;
+  /* v1.11.21: same compositor promotion as green dot. */
+  will-change: transform, opacity;
 }
 .ss-status-dot-amber::after {
   /* No ping for warning-state — just breath. Less alarming. */
@@ -754,3 +765,61 @@ body.ss-in-iframe .ss-app-header {
   100% { transform: scale(1); color: var(--amber); text-shadow: 0 0 6px rgba(245,166,35,0.5); }
 }
 .ss-strikes-celebrate { animation: ssStrikesCelebrate 1.5s ease-out; display: inline-flex !important; }
+
+/* ── v1.11.21 ── Static Pulse strike markers (Performance Mode) ────────────
+   DOM-based strike markers for Performance Mode. Each marker has 3 expanding
+   rings on staggered delays mirroring the original WebGL strike animation,
+   plus a static dot at center. CSS keyframes run on the compositor thread —
+   immune to main-thread jank, effectively free across any device.
+
+   Markers are absolutely positioned within the static pulse-map container.
+   Equirectangular projection: left = (lon+180)/360 * 100%,
+                                top  = (90-lat)/180 * 100%.
+   See StaticPulseStrikes in App.jsx.                                       */
+@keyframes ssStaticStrike {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 1; border-color: var(--amber-hot, #FF7A00); }
+  100% { transform: translate(-50%, -50%) scale(3.0); opacity: 0; border-color: var(--amber, #F5A623); }
+}
+.ss-static-strike-marker {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  isolation: isolate;
+  z-index: 2;
+}
+.ss-static-strike-marker .dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--red, #FF3B3B);
+  box-shadow: 0 0 6px rgba(255, 59, 59, 0.7);
+  transform: translate(-50%, -50%);
+  will-change: opacity;
+}
+.ss-static-strike-marker.own .dot {
+  background: var(--red, #FF3B3B);
+  box-shadow: 0 0 8px rgba(255, 59, 59, 0.85);
+}
+.ss-static-strike-marker:not(.own) .dot {
+  background: var(--amber, #F5A623);
+  box-shadow: 0 0 6px rgba(245, 166, 35, 0.6);
+}
+.ss-static-strike-marker .ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--amber, #F5A623);
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: ssStaticStrike 2.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+.ss-static-strike-marker .ring.d1 { animation-delay: 0.73s; }
+.ss-static-strike-marker .ring.d2 { animation-delay: 1.46s; }
+.ss-static-strike-marker.own .ring { border-color: var(--red, #FF3B3B); }
