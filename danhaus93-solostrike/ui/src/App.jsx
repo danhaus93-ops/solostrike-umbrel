@@ -239,7 +239,7 @@ const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
 const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
-const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.26: Performance Mode toggle
+const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.27: Performance Mode toggle
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -330,7 +330,7 @@ function loadTickerMetrics() { try { const s = localStorage.getItem(LS_TICKER_ME
 function saveTickerMetrics(list) { try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(list)); } catch {} }
 function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === 'true'; } catch { return false; } }
 function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
-// v1.11.26: Performance Mode — replaces animated Pulse/Hunt canvases with
+// v1.11.27: Performance Mode — replaces animated Pulse/Hunt canvases with
 // static baked frames. Strike pulse rings stay live (information-bearing).
 // Header pickaxe pulse + glow auto-suppressed (already handled via the
 // existing minimalMode ternary; performanceMode joins it).
@@ -1155,7 +1155,7 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
 
-  // ── v1.11.26: rAF decoupling ────────────────────────────────────────────
+  // ── v1.11.27: rAF decoupling ────────────────────────────────────────────
   // Previously a single useEffect with deps [enabled, snapshotText, duration]
   // tore down and rebuilt the rAF loop every time snapshotText changed
   // (~every 2s when new WS state arrives). That caused a brief freeze + a
@@ -2583,7 +2583,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
   }, [hashrate]);
   useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
 
-  // v1.11.26: Performance Mode ref — checked inside the rAF body to bail
+  // v1.11.27: Performance Mode ref — checked inside the rAF body to bail
   // out of heavy draw work without restarting the loop. Live updates via
   // useEffect mean the toggle takes effect on the next frame (<16ms).
   const perfModeRef = useRef(!!performanceMode);
@@ -3275,7 +3275,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // v1.8.5-rev70e: clear to transparent so card shows through.
       ctx.clearRect(0, 0, W, H);
 
-      // v1.11.26: Performance Mode short-circuit. Skip all draw work — the
+      // v1.11.27: Performance Mode short-circuit. Skip all draw work — the
       // static <img> overlay in JSX covers the canvas surface. We still
       // schedule the next frame (cheap when there's nothing to draw) so
       // toggling Performance Mode off resumes animation instantly without
@@ -3358,7 +3358,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
         position: 'absolute', inset: 0,
         width: '100%', height: '100%',
       }}/>
-      {/* v1.11.26: Performance Mode static frame — overlays all canvases
+      {/* v1.11.27: Performance Mode static frame — overlays all canvases
           with a baked PNG matching the selected huntAnim. Loaded only when
           performanceMode is on, so it costs nothing for default users. */}
       {performanceMode && (
@@ -7332,7 +7332,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </div>
       )}
 
-      {/* v1.11.26: Performance Mode — freezes decorative animations while
+      {/* v1.11.27: Performance Mode — freezes decorative animations while
           keeping information-bearing animations (strike pulse) alive.
           Mirrors Minimal Mode UI pattern for visual consistency. */}
       <div style={firstSectionTitle}>▸ Performance Mode</div>
@@ -8456,7 +8456,7 @@ function BlockSimulatorModal({ onClose }) {
 
 
 
-// ── v1.11.26 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
+// ── v1.11.27 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
 // DOM-based strike markers shown over the baked equirectangular world map
 // when performanceMode is on. Replaces the WebGL strikes that get frozen
 // when the canvas rAF is bailed out.
@@ -8478,32 +8478,26 @@ function BlockSimulatorModal({ onClose }) {
 // pre-filtered (no `filtered:true`) entries. We render up to PEER_CAP
 // markers to keep the DOM lightweight even if the network is huge.
 const PEER_CAP_STATIC = 60;
-// ── v1.11.26 ── Static Pulse Strikes — SVG version ─────────────────────────
-// SVG-based peer markers rendered over the static pulse-map.png when
-// performanceMode is on AND pulseAnim === 'globe'. Replaces the previous
-// DOM-based markers, which had subpixel rendering bugs at small sizes
-// (some dots appeared elliptical due to fractional-pixel rounding).
-// SVG circles render perfectly round at ANY size on every device.
+// ── v1.11.27 ── Static Pulse Strikes — DOM divs ────────────────────────────
+// DOM-based peer markers using HTML divs with border-radius:50%. Unlike SVG
+// circles, DOM divs aren't subject to the parent's coordinate system — they
+// stay perfectly round in CSS pixels regardless of how the underlying map
+// is stretched (object-fit: fill stretches the map, but %-positioned divs
+// on top stay circular and land at the correct visual location).
 //
 // Color/animation mirror the LIVE globe (App.jsx line 9665-9697):
 //   - ALL peer dots are crimson #A8170E (matches globe markers)
-//   - Only OWN gets gold echo pulse: 3 staggered #FFD700 rings,
-//     2.5s period, 1/3 phase offset, scale 0.5 → 1.67 with fade-out
+//   - Only OWN gets gold echo pulse: 3 staggered rings, 2.5s period,
+//     1/3 phase offset, scale 1 → 3 with fade-out
 //   - Static gold halo always visible between echo pulses
 function StaticPulseStrikes({ peers, ownPin }) {
   const markers = [];
-  // v1.11.26: When the user has placed a local pin, suppress the server's
-  // own-peer marker so the LOCAL pin wins. Without this, tapping to move
-  // your pin appears to do nothing until the server's next websocket
-  // broadcast updates ns.peers (which can take MINUTES). Local state
-  // always wins for the user's own marker.
   const hasLocalPin = ownPin
     && Number.isFinite(ownPin.lat) && Number.isFinite(ownPin.lon);
   let ownIncluded = false;
   if (Array.isArray(peers)) {
     for (const p of peers.slice(0, PEER_CAP_STATIC)) {
       if (!p || !Array.isArray(p.loc) || p.loc.length !== 2) continue;
-      // Skip the server's stale own-peer when we have a fresh local pin.
       if (hasLocalPin && p.isOwn) continue;
       const lat = p.loc[0], lon = p.loc[1];
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
@@ -8516,181 +8510,34 @@ function StaticPulseStrikes({ peers, ownPin }) {
   }
   if (markers.length === 0) return null;
 
-  // viewBox 200×100 matches the 2:1 aspect of the map container.
-  // Marker radii in viewBox units — render as crisp anti-aliased circles
-  // regardless of container pixel size or device DPR.
   return (
-    <svg viewBox="0 0 200 100" preserveAspectRatio="xMidYMid meet"
-      style={{
-        position:'absolute', inset:0,
-        width:'100%', height:'100%',
-        pointerEvents:'none', zIndex:2, overflow:'visible',
-      }}>
+    <div style={{
+      position:'absolute', inset:0,
+      pointerEvents:'none', zIndex:2,
+      overflow:'hidden',
+    }}>
       {markers.map(m => {
-        const cx = ((m.lon + 180) / 360) * 200;
-        const cy = ((90 - m.lat) / 180) * 100;
-        if (cx < 0 || cx > 200 || cy < 0 || cy > 100) return null;
-        if (m.isOwn) {
-          return (
-            <g key={m.key} transform={`translate(${cx} ${cy})`}>
-              {/* Static gold halo — always visible */}
-              <circle cx="0" cy="0" r="1.6" fill="none"
-                stroke="#FFD700" strokeOpacity="0.55" strokeWidth="0.22" />
-              {/* v1.11.26: 3 gold echo rings wrapped in <g> elements so CSS
-                  transform animations work in Safari iOS. CSS scale on raw
-                  <circle> with transform-box: fill-box is unreliable on
-                  iOS — using <g> wrappers fixes the static-blob bug. */}
-              <g className="ss-svg-gold-echo">
-                <circle cx="0" cy="0" r="1.6" fill="none"
-                  stroke="#FFD700" strokeWidth="0.26"
-                  vectorEffect="non-scaling-stroke" />
-              </g>
-              <g className="ss-svg-gold-echo d1">
-                <circle cx="0" cy="0" r="1.6" fill="none"
-                  stroke="#FFD700" strokeWidth="0.26"
-                  vectorEffect="non-scaling-stroke" />
-              </g>
-              <g className="ss-svg-gold-echo d2">
-                <circle cx="0" cy="0" r="1.6" fill="none"
-                  stroke="#FFD700" strokeWidth="0.26"
-                  vectorEffect="non-scaling-stroke" />
-              </g>
-              {/* Crimson dot — slightly larger than peers so the gold framing reads */}
-              <circle cx="0" cy="0" r="0.9" fill="#A8170E" />
-            </g>
-          );
-        }
+        const left = ((m.lon + 180) / 360) * 100;
+        const top  = ((90 - m.lat) / 180) * 100;
+        if (left < 0 || left > 100 || top < 0 || top > 100) return null;
         return (
-          <circle key={m.key}
-            cx={cx} cy={cy} r="0.5"
-            fill="#A8170E" />
+          <div key={m.key}
+            className={'ss-static-strike-marker' + (m.isOwn ? ' own' : '')}
+            style={{ left: `${left}%`, top: `${top}%` }}>
+            <span className="dot" />
+            {m.isOwn && (
+              <>
+                <span className="halo" />
+                <span className="ring" />
+                <span className="ring d1" />
+                <span className="ring d2" />
+              </>
+            )}
+          </div>
         );
       })}
-    </svg>
+    </div>
   );
-}
-
-// ── v1.11.26 ── Static Pulse Mesh (Performance Mode for pulseAnim 'block') ──
-// Mirrors the LIVE constellation cube renderer (constellation-cube.js) as
-// a static SVG — same isometric 3D cube layout, same gold/orange palette,
-// same peer-count → cube placement stages:
-//   1-2 peers:  bar layout
-//   3-8:        cube corners
-//   9-20:       corners + edge midpoints
-//   21-56:      corners + 4 per edge
-//   57-200:     faces filling
-//   200+:       volume packing
-// Own cube is GOLD and pulses (CSS keyframe). Peer cubes are Bitcoin
-// orange and stay static so the scene doesn't get visually noisy when
-// the network grows. Cube size scales down as peer count grows so they
-// don't overlap. Pure SVG, no rAF, zero canvas.
-const CUBE_CORNERS = [
-  {x:-1,y:-1,z:-1}, {x: 1,y:-1,z:-1}, {x: 1,y: 1,z:-1}, {x:-1,y: 1,z:-1},
-  {x:-1,y:-1,z: 1}, {x: 1,y:-1,z: 1}, {x: 1,y: 1,z: 1}, {x:-1,y: 1,z: 1},
-];
-const CUBE_EDGES = [
-  [0,1],[1,2],[2,3],[3,0],
-  [4,5],[5,6],[6,7],[7,4],
-  [0,4],[1,5],[2,6],[3,7],
-];
-
-function placeMeshPeers(n) {
-  const out = [];
-  if (n <= 0) return out;
-  if (n <= 2) {
-    out.push({ x:-0.4, y:0, z:0, isOwn:true });
-    if (n === 2) out.push({ x: 0.4, y:0, z:0, isOwn:false });
-    return out;
-  }
-  if (n <= 8) {
-    out.push({ ...CUBE_CORNERS[0], isOwn:true });
-    for (let i = 1; i < n; i++) out.push({ ...CUBE_CORNERS[i], isOwn:false });
-    return out;
-  }
-  if (n <= 20) {
-    out.push({ ...CUBE_CORNERS[0], isOwn:true });
-    for (let i = 1; i < 8 && out.length < n; i++) out.push({ ...CUBE_CORNERS[i], isOwn:false });
-    let e = 0;
-    while (out.length < n && e < CUBE_EDGES.length) {
-      const [a,b] = CUBE_EDGES[e];
-      const ca = CUBE_CORNERS[a], cb = CUBE_CORNERS[b];
-      out.push({ x:(ca.x+cb.x)/2, y:(ca.y+cb.y)/2, z:(ca.z+cb.z)/2, isOwn:false });
-      e++;
-    }
-    return out;
-  }
-  // 21-56+ stages — simplified for static: corners + N per edge
-  out.push({ ...CUBE_CORNERS[0], isOwn:true });
-  for (let i = 1; i < 8 && out.length < n; i++) out.push({ ...CUBE_CORNERS[i], isOwn:false });
-  const remaining = n - out.length;
-  const perEdge = Math.ceil(remaining / 12);
-  for (let e = 0; e < 12 && out.length < n; e++) {
-    const [a,b] = CUBE_EDGES[e];
-    const ca = CUBE_CORNERS[a], cb = CUBE_CORNERS[b];
-    for (let p = 1; p <= perEdge && out.length < n; p++) {
-      const t = p / (perEdge + 1);
-      out.push({ x:ca.x+(cb.x-ca.x)*t, y:ca.y+(cb.y-ca.y)*t, z:ca.z+(cb.z-ca.z)*t, isOwn:false });
-    }
-  }
-  return out;
-}
-
-// Isometric projection — matches constellation-cube.js project() with
-// fixed rotY for a static look that shows top + two side faces.
-const MESH_TILT_X = 0.45;
-const MESH_ROT_Y  = 0.6;
-function meshProject(v) {
-  const cosY = Math.cos(MESH_ROT_Y), sinY = Math.sin(MESH_ROT_Y);
-  const cosT = Math.cos(MESH_TILT_X), sinT = Math.sin(MESH_TILT_X);
-  const x1 = v.x * cosY - v.z * sinY;
-  const z1 = v.x * sinY + v.z * cosY;
-  const y1 = v.y * cosT - z1 * sinT;
-  const z2 = v.y * sinT + z1 * cosT;
-  return { x: x1, y: y1, z: z2 };
-}
-
-// Build the 3 visible faces of a cube (top, left/front, right/back) with
-// depth-correct ordering. Returns [{ pts: [...4 points], color }] back to front.
-function buildCubeFaces(cx, cy, sizePx, isOwn) {
-  // Gold (own) vs Bitcoin orange (peer). Match constellation-cube.js exactly.
-  const PAL = isOwn
-    ? { top:'#FFE07A', left:'#D4A437', right:'#9B6E19', deep:'#50370A' }
-    : { top:'#FFB350', left:'#F7931A', right:'#B45F0F', deep:'#6E3705' };
-  const s = sizePx;
-  const localVerts = [
-    {x:-s, y:-s, z:-s}, {x: s, y:-s, z:-s},
-    {x: s, y: s, z:-s}, {x:-s, y: s, z:-s},
-    {x:-s, y:-s, z: s}, {x: s, y:-s, z: s},
-    {x: s, y: s, z: s}, {x:-s, y: s, z: s},
-  ];
-  const proj = localVerts.map(v => {
-    const p = meshProject(v);
-    return { x: cx + p.x, y: cy + p.y, z: p.z };
-  });
-  // 6 faces of the cube — we'll depth-sort and render back-to-front.
-  // Each face: indices into proj[], plus a name for color lookup.
-  const faces = [
-    { vs:[4,5,6,7], name:'front' },
-    { vs:[1,0,3,2], name:'back'  },
-    { vs:[0,4,7,3], name:'left'  },
-    { vs:[5,1,2,6], name:'right' },
-    { vs:[3,7,6,2], name:'top'   },
-    { vs:[0,1,5,4], name:'bottom'},
-  ];
-  function colorFor(name) {
-    if (name === 'top') return PAL.top;
-    if (name === 'bottom') return PAL.deep;
-    if (name === 'front' || name === 'right') return PAL.left;
-    return PAL.right;
-  }
-  return faces
-    .map(f => ({
-      pts: f.vs.map(i => proj[i]),
-      avgZ: f.vs.reduce((s, i) => s + proj[i].z, 0) / 4,
-      color: colorFor(f.name),
-      stroke: PAL.deep,
-    }))
-    .sort((a, b) => a.avgZ - b.avgZ);
 }
 
 function StaticPulseMesh({ peers, ownPin }) {
@@ -8876,7 +8723,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // the user to tap, and the next tap on the canvas converts screen coords
   // → 3D unit sphere → lat/lon → 5° grid snap → poolPin update.
   const [placingPin, setPlacingPin] = useState(false);
-  // v1.11.26 — Pinch-zoom + pan state for Performance Mode static
+  // v1.11.27 — Pinch-zoom + pan state for Performance Mode static
   // visualization. Applies to BOTH the static map (pulseAnim==='globe')
   // and the static mesh cube (pulseAnim==='block'). Zoom is clamped
   // 1.0×–5.0×. Pan keeps content within the visible container.
@@ -8907,7 +8754,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
   // (drag-rotate the WebGL camera, pinch-zoom).
   const pulseAnimRef = useRef(pulseAnim);
   useEffect(() => { pulseAnimRef.current = pulseAnim; }, [pulseAnim]);
-  // v1.11.26: Performance Mode ref — same pattern as NonceField. Live
+  // v1.11.27: Performance Mode ref — same pattern as NonceField. Live
   // updates via useEffect; rAF checks the ref each frame and bails out
   // when on, while still rescheduling the next frame.
   const perfModeRef = useRef(!!performanceMode);
@@ -8983,7 +8830,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // v1.11.26: Performance Mode uses a flat equirectangular map (not a
+    // v1.11.27: Performance Mode uses a flat equirectangular map (not a
     // globe disk). Use 2D projection instead of inverse orthographic math.
     // The visible map fills the container exactly (objectFit:contain on a
     // 2:1 aspect container = no letterbox), so canvas dimensions match
@@ -8994,13 +8841,13 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     // the bottom edge of the image. The inverse projection must use the
     // same range or pins drift south.
     if (perfModeRef.current) {
-      // v1.11.26: Suppress tap-to-pin if the user just finished a pinch
+      // v1.11.27: Suppress tap-to-pin if the user just finished a pinch
       // gesture (didPinchRef gets set on 2-finger touchend).
       if (didPinchRef.current) {
         didPinchRef.current = false;
         return;
       }
-      // v1.11.26: Inverse-transform click coords if user has zoomed/panned.
+      // v1.11.27: Inverse-transform click coords if user has zoomed/panned.
       // Wrapper transform is: translate(panX, panY) scale(zoom)
       // with origin 50% 50%. To recover pre-transform coords:
       //   cx = (clickX - W/2 - pan.x) / zoom + W/2
@@ -9008,7 +8855,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       const W = rect.width, H = rect.height;
       const cx = (clickX - W/2 - staticPan.x) / staticZoom + W/2;
       const cy = (clickY - H/2 - staticPan.y) / staticZoom + H/2;
-      // v1.11.26: Standard equirectangular [-90, +90] — keeps pin
+      // v1.11.27: Standard equirectangular [-90, +90] — keeps pin
       // placement aligned with the live globe's sphere projection.
       const lonDeg = (cx / W) * 360 - 180;
       const latDeg = 90 - (cy / H) * 180;
@@ -9084,7 +8931,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
     setPlacingPin(false);
   }, [onPoolPinChange, staticZoom, staticPan]);
 
-  // v1.11.26 — Pinch-zoom + pan touch handlers for the Performance Mode
+  // v1.11.27 — Pinch-zoom + pan touch handlers for the Performance Mode
   // static visualization wrapper. Native touch events (not React synthetic)
   // because we need passive:false on touchmove to preventDefault during pinch.
   const staticWrapperRef = useRef(null);
@@ -9163,7 +9010,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       }
     };
 
-    // v1.11.26: Click → place pin in Performance Mode (when pulseAnim is
+    // v1.11.27: Click → place pin in Performance Mode (when pulseAnim is
     // globe). Uses container rect (NOT wrapper rect, which is transformed)
     // for accurate inverse projection.
     const onClick = (e) => {
@@ -10135,7 +9982,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
       }
       ctx.clearRect(0, 0, W, H);
 
-      // v1.11.26: Performance Mode short-circuit. The static <img> overlay
+      // v1.11.27: Performance Mode short-circuit. The static <img> overlay
       // in JSX (below) replaces the globe/block animation. Schedule next
       // frame anyway so toggling Performance Mode off resumes instantly.
       if (perfModeRef.current) {
@@ -10578,9 +10425,12 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             All canvases inside are alpha-transparent. */}
         <div ref={containerRef} style={{
           width:'100%',
-          // v1.11.26: 2:1 aspect when Performance Mode is on (matches equirectangular map).
+          // v1.11.27: Compact layout — mirror the live globe sizing.
+          // The non-perf branch uses height:88 (small embedded mode);
+          // perf mode mirrors that single-height behavior with a small
+          // bump for the map to be readable.
           ...(performanceMode
-            ? { aspectRatio: '2 / 1', height: 'auto' }
+            ? { height: 140 }
             : { height: 88 }),
           background:'transparent',
           marginBottom:'0.6rem',
@@ -10616,8 +10466,8 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               display: pulseAnim === 'block' ? 'block' : 'none',
             }}
           />
-          {/* v1.11.26: Performance Mode static Pulse map (compact layout). */}
-          {/* v1.11.26 — Pinch-zoom wrapper (same as full layout below). */}
+          {/* v1.11.27: Performance Mode static Pulse map (compact layout). */}
+          {/* v1.11.27 — Pinch-zoom wrapper (same as full layout below). */}
           {performanceMode && (
             <div
               ref={staticWrapperRef}
@@ -10638,7 +10488,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                   style={{
                     position:'absolute', inset:0,
                     width:'100%', height:'100%',
-                    objectFit:'contain',
+                    objectFit:'fill',
                     pointerEvents:'none',
                     background:'var(--bg-void)',
                   }}
@@ -10652,7 +10502,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
               )}
             </div>
           )}
-          {/* v1.11.26: DOM strike markers — CSS-keyframe animated rings
+          {/* v1.11.27: DOM strike markers — CSS-keyframe animated rings
               positioned via equirectangular projection. Only mounted when
               performanceMode is on (zero cost otherwise). */}
 
@@ -10842,14 +10692,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           opening the strikers panel. */}
       <div
         style={{
-          // v1.11.26: Drop flex:1 when Performance Mode is on so this
-          // wrapper shrinks to fit the 2:1 map instead of growing into
-          // empty space below the map. Without this, the parent grows
-          // to fill the card's flex space, leaving ~250px of waste
-          // between the map and the stats grid.
-          ...(performanceMode
-            ? { minHeight:0, display:'flex', flexDirection:'column' }
-            : { flex:1, minHeight:0, display:'flex', flexDirection:'column' }),
+          // v1.11.27: Restored flex:1 always — the inner containerRef now
+          // flex-grows to fill the card's available height instead of
+          // locking to 2:1 aspect ratio. Map image inside uses object-fit:
+          // contain to scale up without distortion.
+          flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
         }}
       >
       {/* The heartbeat waveform itself — flex-grows to fill available card height (min 240, max 380 to prevent runaway growth in vertical-scroll mode).
@@ -10857,17 +10704,15 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
           (and other animations) sit directly on the card surface. */}
       <div ref={containerRef} style={{
         width:'100%',
-        // v1.11.26: When Performance Mode is on, REMOVE flex:1 entirely.
-        // flex:1 grow + aspect-ratio conflict makes the browser ignore
-        // aspect-ratio when there's available vertical space, which was
-        // causing the container to stretch tall and leave black bars
-        // above/below the contained 2:1 map. Without flex:1, aspect-ratio
-        // is the boss and the container is EXACTLY 2:1 on every device.
-        // This also fixes pin placement accuracy — handleCanvasTap uses
-        // canvas rect dimensions, which now match the visible map size.
-        ...(performanceMode
-          ? { aspectRatio: '2 / 1', minHeight: 0, maxHeight: 'none' }
-          : { flex: 1, minHeight: 240, maxHeight: 380 }),
+        // v1.11.27: Mirror the LIVE GLOBE sizing exactly — flex:1 with
+        // minHeight:240, maxHeight:380. Previously locked perf mode to
+        // aspect-ratio 2/1 which collapsed the container to ~half the
+        // card height, leaving a huge dead-space gap below. The map
+        // <img> already has object-fit:contain, so it preserves its
+        // true 2:1 equirectangular proportions inside whatever rect
+        // the container becomes — same way the round globe centers
+        // itself in its container.
+        flex: 1, minHeight: 240, maxHeight: 380,
         background:'transparent',
         marginBottom:'0.7rem',
         position:'relative', overflow:'hidden',
@@ -10898,11 +10743,11 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
             display: pulseAnim === 'block' ? 'block' : 'none',
           }}
         />
-        {/* v1.11.26: Performance Mode static Pulse map. Overlays globe and
+        {/* v1.11.27: Performance Mode static Pulse map. Overlays globe and
             constellation WebGL canvases with a baked equirectangular world.
             Pointer events disabled so the 2D canvas below still handles
             pin placement. */}
-        {/* v1.11.26 — Pinch-zoom + pan wrapper. Map, mesh, and SVG strikes
+        {/* v1.11.27 — Pinch-zoom + pan wrapper. Map, mesh, and SVG strikes
             all transform together so they stay aligned at any zoom level.
             Inverse transform applied to handleCanvasTap for accurate pin
             placement when zoomed. Double-tap to reset. */}
@@ -10926,7 +10771,7 @@ function PulsePanel({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 
                 style={{
                   position:'absolute', inset:0,
                   width:'100%', height:'100%',
-                  objectFit:'contain',
+                  objectFit:'fill',
                   pointerEvents:'none',
                   background:'var(--bg-void)',
                 }}
@@ -13564,7 +13409,7 @@ export default function App() {
     enabled: loadTickerEnabled(), speedSec: loadTickerSpeed(), metricIds: loadTickerMetrics(),
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
-  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.26
+  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.27
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
   const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
@@ -13671,7 +13516,7 @@ export default function App() {
   const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
-  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.26
+  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.27
   const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   const onStripSettingsChange = useCallback((next) => {
@@ -14391,7 +14236,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.26 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.27 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
