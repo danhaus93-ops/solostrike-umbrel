@@ -609,7 +609,7 @@ body.ss-in-iframe .ss-app-header {
   height: 8px;
   flex-shrink: 0;
   vertical-align: middle;
-  /* v1.11.23: stacking context — no visual effect, but lets the browser
+  /* v1.11.24: stacking context — no visual effect, but lets the browser
      keep this dot's animation on its own compositor layer. */
   isolation: isolate;
 }
@@ -635,13 +635,13 @@ body.ss-in-iframe .ss-app-header {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: ssDotBreath 2.5s ease-in-out infinite;
-  /* v1.11.23: hint to GPU-promote so the opacity/transform animation
+  /* v1.11.24: hint to GPU-promote so the opacity/transform animation
      runs on the compositor thread without triggering main-thread paint. */
   will-change: transform, opacity;
 }
 .ss-status-dot-green::after {
   animation: ssDotPing 2.5s ease-out infinite;
-  /* v1.11.23: same — the ping ring expands via transform: scale, which is
+  /* v1.11.24: same — the ping ring expands via transform: scale, which is
      a compositor-cheap op when this element has its own layer. */
   will-change: transform, opacity;
 }
@@ -652,7 +652,7 @@ body.ss-in-iframe .ss-app-header {
   background: var(--amber);
   box-shadow: 0 0 6px var(--amber);
   animation: ssDotBreath 4s ease-in-out infinite;
-  /* v1.11.23: same compositor promotion as green dot. */
+  /* v1.11.24: same compositor promotion as green dot. */
   will-change: transform, opacity;
 }
 .ss-status-dot-amber::after {
@@ -766,7 +766,7 @@ body.ss-in-iframe .ss-app-header {
 }
 .ss-strikes-celebrate { animation: ssStrikesCelebrate 1.5s ease-out; display: inline-flex !important; }
 
-/* ── v1.11.23 ── Static Pulse strike markers (Performance Mode) ────────────
+/* ── v1.11.24 ── Static Pulse strike markers (Performance Mode) ────────────
    DOM-based strike markers for Performance Mode. Each marker has 3 expanding
    rings on staggered delays mirroring the original WebGL strike animation,
    plus a static dot at center. CSS keyframes run on the compositor thread —
