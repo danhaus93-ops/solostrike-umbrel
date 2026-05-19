@@ -609,7 +609,7 @@ body.ss-in-iframe .ss-app-header {
   height: 8px;
   flex-shrink: 0;
   vertical-align: middle;
-  /* v1.11.26: stacking context — no visual effect, but lets the browser
+  /* v1.11.27: stacking context — no visual effect, but lets the browser
      keep this dot's animation on its own compositor layer. */
   isolation: isolate;
 }
@@ -635,13 +635,13 @@ body.ss-in-iframe .ss-app-header {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: ssDotBreath 2.5s ease-in-out infinite;
-  /* v1.11.26: hint to GPU-promote so the opacity/transform animation
+  /* v1.11.27: hint to GPU-promote so the opacity/transform animation
      runs on the compositor thread without triggering main-thread paint. */
   will-change: transform, opacity;
 }
 .ss-status-dot-green::after {
   animation: ssDotPing 2.5s ease-out infinite;
-  /* v1.11.26: same — the ping ring expands via transform: scale, which is
+  /* v1.11.27: same — the ping ring expands via transform: scale, which is
      a compositor-cheap op when this element has its own layer. */
   will-change: transform, opacity;
 }
@@ -652,7 +652,7 @@ body.ss-in-iframe .ss-app-header {
   background: var(--amber);
   box-shadow: 0 0 6px var(--amber);
   animation: ssDotBreath 4s ease-in-out infinite;
-  /* v1.11.26: same compositor promotion as green dot. */
+  /* v1.11.27: same compositor promotion as green dot. */
   will-change: transform, opacity;
 }
 .ss-status-dot-amber::after {
@@ -766,7 +766,7 @@ body.ss-in-iframe .ss-app-header {
 }
 .ss-strikes-celebrate { animation: ssStrikesCelebrate 1.5s ease-out; display: inline-flex !important; }
 
-/* ── v1.11.26 ── Static Pulse strike markers (Performance Mode) ────────────
+/* ── v1.11.27 ── Static Pulse strike markers (Performance Mode) ────────────
    DOM-based strike markers for Performance Mode. Each marker has 3 expanding
    rings on staggered delays mirroring the original WebGL strike animation,
    plus a static dot at center. CSS keyframes run on the compositor thread —
@@ -784,29 +784,20 @@ body.ss-in-iframe .ss-app-header {
 }
 
 
-/* v1.11.26 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
+/* v1.11.27 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
    ALL peer dots are crimson #A8170E (no rings — pure pinpoints).
    Only OWN gets the gold echo pulse: 3 staggered #FFD700 rings, 2.5s period,
    1/3 phase offset, scale 0.5 → 3 with fade-out. Matches the WebGL globe
    marker code (App.jsx lines 9665-9697) byte-for-byte. */
-/* v1.11.26 — Echo applied to <g> wrappers, not raw <circle>. The <g>
+/* v1.11.27 — Echo applied to <g> wrappers, not raw <circle>. The <g>
    inherits its parent's translate so transform-origin: 0 0 means "rotate
    around the parent's translate point" which equals the circle's center.
    This works reliably on Safari iOS 16+ where transform-box: fill-box
    on <circle> renders statically. */
-.ss-svg-gold-echo {
-  transform-origin: 0 0;
-  animation: ssSvgGoldEcho 2.5s linear infinite;
-  will-change: transform, opacity;
-}
-.ss-svg-gold-echo.d1 { animation-delay: 0.833s; }
-.ss-svg-gold-echo.d2 { animation-delay: 1.666s; }
-@keyframes ssSvgGoldEcho {
-  0%   { transform: scale(1);   opacity: 0.85; }
-  100% { transform: scale(3);   opacity: 0;    }
+
 }
 
-/* v1.11.26 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
+/* v1.11.27 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
    the scene stays calm as peer count grows. Peer cubes are static. */
 .ss-mesh-own-cube {
   animation: ssMeshOwnPulse 2.4s ease-in-out infinite;
@@ -824,3 +815,58 @@ body.ss-in-iframe .ss-app-header {
     filter: drop-shadow(0 0 6px rgba(255, 224, 122, 0.9));
   }
 }
+
+/* v1.11.27 — Static Pulse Strikes (DOM divs). Markers are HTML divs that
+   stay circular in CSS pixels regardless of how the underlying map is
+   stretched (object-fit: fill). Animations target CSS scale on inner
+   <span> ring elements. Mirrors live globe markers byte-for-byte. */
+.ss-static-strike-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.ss-static-strike-marker .dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 3px; height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #A8170E;
+  box-shadow: 0 0 3px rgba(168, 23, 14, 0.55);
+}
+.ss-static-strike-marker.own .dot {
+  width: 5px; height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  box-shadow: 0 0 5px rgba(168, 23, 14, 0.75);
+}
+/* Static gold halo — always visible */
+.ss-static-strike-marker.own .halo {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  border: 1.2px solid rgba(255, 215, 0, 0.55);
+}
+/* 3 gold echo rings — 2.5s period, 0.833s stagger (matches globe) */
+.ss-static-strike-marker.own .ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  border: 1.4px solid #FFD700;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: ssDomGoldEcho 2.5s linear infinite;
+}
+.ss-static-strike-marker.own .ring.d1 { animation-delay: 0.833s; }
+.ss-static-strike-marker.own .ring.d2 { animation-delay: 1.666s; }
+@keyframes ssDomGoldEcho {
+  0%   { transform: scale(1);    opacity: 0.85; }
+  100% { transform: scale(3);    opacity: 0;    }
+}
+
