@@ -62,6 +62,21 @@ export function usePool() {
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
+    // v1.11.30: instrumentation — count every WS spawn to detect duplicates
+    // in production. If wsSpawnCount climbs while only one socket is expected,
+    // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the
+    // debug dump's `wsSpawnCount` field.
+    if (typeof window !== 'undefined' && window._ssDebug) {
+      window._ssDebug.wsSpawnCount = (window._ssDebug.wsSpawnCount || 0) + 1;
+      window._ssDebug.wsSpawnLog = window._ssDebug.wsSpawnLog || [];
+      window._ssDebug.wsSpawnLog.push({
+        ts: Date.now(),
+        spawn: window._ssDebug.wsSpawnCount,
+        reason: window._ssDebug.__lastSpawnReason || 'connect()',
+      });
+      if (window._ssDebug.wsSpawnLog.length > 20) window._ssDebug.wsSpawnLog.shift();
+      window._ssDebug.__lastSpawnReason = null;
+    }
     ws.onopen = () => {
       setConnected(true);
       retryCount.current = 0;
@@ -95,12 +110,20 @@ export function usePool() {
       setConnected(false);
       const delay = Math.min(30000, 3000 * Math.pow(2, retryCount.current));
       retryCount.current = Math.min(4, retryCount.current + 1);
-      retryRef.current = setTimeout(connect, delay);
+      retryRef.current = setTimeout(() => {
+        if (typeof window !== 'undefined' && window._ssDebug) {
+          window._ssDebug.__lastSpawnReason = 'onclose-retry';
+        }
+        connect();
+      }, delay);
     };
     ws.onerror = () => { try { ws.close(); } catch {} };
   }, []);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window._ssDebug) {
+      window._ssDebug.__lastSpawnReason = 'initial-mount';
+    }
     connect();
     // v1.11.9: After iOS Safari suspend, the WebSocket can be silently
     // dead while readyState still reports OPEN — iOS freezes JS execution
@@ -120,9 +143,29 @@ export function usePool() {
       // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
-      // Force a clean reconnect. Wrap close() in try/catch since the
-      // socket may already be in a bad state.
-      try { wsRef.current?.close(); } catch {}
+      // v1.11.30 FIX — duplicate-socket bug. ws.close() is async: it puts
+      // the socket into CLOSING state but doesn't fire onclose synchronously.
+      // If we immediately call connect(), we get Socket #2. Then Socket #1's
+      // onclose fires later and schedules ITS OWN retry via setTimeout —
+      // which creates Socket #3. End result: 2 (or more) parallel sockets
+      // all receiving broadcasts → JSON.parse + setState run TWICE per
+      // server broadcast → main thread saturated → ticker drops frames.
+      //
+      // Fix: detach the OLD socket's onclose/onerror handlers BEFORE closing
+      // it. Without the onclose handler, the old socket can die in peace
+      // and won't queue a competing reconnect.
+      const old = wsRef.current;
+      if (old) {
+        old.onopen = null;
+        old.onmessage = null;
+        old.onclose = null;
+        old.onerror = null;
+        try { old.close(); } catch {}
+      }
+      // v1.11.30: tag the spawn reason so wsSpawnLog explains each event
+      if (typeof window !== 'undefined' && window._ssDebug) {
+        window._ssDebug.__lastSpawnReason = 'visibilitychange';
+      }
       connect();
     };
     document.addEventListener('visibilitychange', onVisibility);
