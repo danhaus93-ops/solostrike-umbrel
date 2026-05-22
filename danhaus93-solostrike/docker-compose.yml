@@ -75,7 +75,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.31@sha256:c06471624b3a6417608b74dccaffe9ceb14769d9133f08812a187e4c46c9c120
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.31@sha256:46202183efd57591d779790e5a58a4d5c938e5bb5c13c2a0a939ffcc9f395cc6
     restart: unless-stopped
     # v1.8.4: wait for ckpool to be healthy. stunnel forwards to ckpool:3333
     # so connecting to a half-booted ckpool would drop early SSL miners.
@@ -88,7 +88,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.31@sha256:86f06c1f09b3bd531d3f4e03b38f67ce527ba03daf6bd79908cb065d26e826ad
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.31@sha256:e69bc1d1b579d22bc6b320b3000f4f3a602b3a8fa4db430a34ec1d28a0dee705
     restart: unless-stopped
     stop_grace_period: 30s
     # v1.8.4: wait for ckpool to be HEALTHY, not just started. Combined
@@ -128,7 +128,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.31@sha256:91e923b4044d899db8245027950b10538e1b7956d1377845c1b8192451b71d58
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.31@sha256:fc79db34f4431f68100641755f05a9a7ea290e2165e48ddc73074e2552290cfc
     restart: unless-stopped
     container_name: danhaus93-solostrike_ui_1
     depends_on:
