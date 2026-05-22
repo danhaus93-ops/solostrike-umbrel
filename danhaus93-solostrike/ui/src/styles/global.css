@@ -609,7 +609,7 @@ body.ss-in-iframe .ss-app-header {
   height: 8px;
   flex-shrink: 0;
   vertical-align: middle;
-  /* v1.11.32: stacking context — no visual effect, but lets the browser
+  /* v1.11.33: stacking context — no visual effect, but lets the browser
      keep this dot's animation on its own compositor layer. */
   isolation: isolate;
 }
@@ -635,13 +635,13 @@ body.ss-in-iframe .ss-app-header {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: ssDotBreath 2.5s ease-in-out infinite;
-  /* v1.11.32: hint to GPU-promote so the opacity/transform animation
+  /* v1.11.33: hint to GPU-promote so the opacity/transform animation
      runs on the compositor thread without triggering main-thread paint. */
   will-change: transform, opacity;
 }
 .ss-status-dot-green::after {
   animation: ssDotPing 2.5s ease-out infinite;
-  /* v1.11.32: same — the ping ring expands via transform: scale, which is
+  /* v1.11.33: same — the ping ring expands via transform: scale, which is
      a compositor-cheap op when this element has its own layer. */
   will-change: transform, opacity;
 }
@@ -652,7 +652,7 @@ body.ss-in-iframe .ss-app-header {
   background: var(--amber);
   box-shadow: 0 0 6px var(--amber);
   animation: ssDotBreath 4s ease-in-out infinite;
-  /* v1.11.32: same compositor promotion as green dot. */
+  /* v1.11.33: same compositor promotion as green dot. */
   will-change: transform, opacity;
 }
 .ss-status-dot-amber::after {
@@ -766,7 +766,7 @@ body.ss-in-iframe .ss-app-header {
 }
 .ss-strikes-celebrate { animation: ssStrikesCelebrate 1.5s ease-out; display: inline-flex !important; }
 
-/* ── v1.11.32 ── Static Pulse strike markers (Performance Mode) ────────────
+/* ── v1.11.33 ── Static Pulse strike markers (Performance Mode) ────────────
    DOM-based strike markers for Performance Mode. Each marker has 3 expanding
    rings on staggered delays mirroring the original WebGL strike animation,
    plus a static dot at center. CSS keyframes run on the compositor thread —
@@ -784,12 +784,12 @@ body.ss-in-iframe .ss-app-header {
 }
 
 
-/* v1.11.32 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
+/* v1.11.33 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
    ALL peer dots are crimson #A8170E (no rings — pure pinpoints).
    Only OWN gets the gold echo pulse: 3 staggered #FFD700 rings, 2.5s period,
    1/3 phase offset, scale 0.5 → 3 with fade-out. Matches the WebGL globe
    marker code (App.jsx lines 9665-9697) byte-for-byte. */
-/* v1.11.32 — Echo applied to <g> wrappers, not raw <circle>. The <g>
+/* v1.11.33 — Echo applied to <g> wrappers, not raw <circle>. The <g>
    inherits its parent's translate so transform-origin: 0 0 means "rotate
    around the parent's translate point" which equals the circle's center.
    This works reliably on Safari iOS 16+ where transform-box: fill-box
@@ -797,7 +797,7 @@ body.ss-in-iframe .ss-app-header {
 
 }
 
-/* v1.11.32 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
+/* v1.11.33 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
    the scene stays calm as peer count grows. Peer cubes are static. */
 .ss-mesh-own-cube {
   animation: ssMeshOwnPulse 2.4s ease-in-out infinite;
@@ -816,7 +816,7 @@ body.ss-in-iframe .ss-app-header {
   }
 }
 
-/* v1.11.32 — Static Pulse Strikes (DOM divs). Markers are HTML divs that
+/* v1.11.33 — Static Pulse Strikes (DOM divs). Markers are HTML divs that
    stay circular in CSS pixels regardless of how the underlying map is
    stretched (object-fit: fill). Animations target CSS scale on inner
    <span> ring elements. Mirrors live globe markers byte-for-byte. */
