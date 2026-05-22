@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.30 — privacy-aware)
+// SoloStrike API server (v1.11.31 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.30',
+  version: '1.11.31',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -636,7 +636,7 @@ wss.on('connection', (ws, req) => {
     return;
   }
   wsClients++;
-  try { ws.send(JSON.stringify({ type:'STATE_UPDATE', data: transformState(state) })); } catch {}
+  try { ws.send(JSON.stringify({ type:'STATE_UPDATE', data: transformState(state, { compact: true }) })); } catch {}
   try { ws.send(JSON.stringify({ type:'CONFIG', data: cfgPrivate() })); } catch {}
   ws.on('close', () => { wsClients--; });
 });
@@ -1164,7 +1164,7 @@ app.get('/metrics', (req, res) => {
 
 setInterval(() => {
   if (wss.clients.size === 0) return;
-  broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
+  broadcast({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
 }, 5000);
 
 // ── Snapshots scheduler ────────────────────────────────────────────────────
