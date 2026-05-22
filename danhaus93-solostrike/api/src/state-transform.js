@@ -96,6 +96,19 @@ function transformState(state, opts) {
     _avgState, _workerLastStatus, workers, shareCounters,
     payoutAddress,    // PII — exposed via /api/config (auth required) instead
     webhooks,         // URLs may contain Discord/Slack/ntfy webhook tokens
+    // v1.11.32 FIX: snapshots was previously NOT destructured, so the
+    // earlier ...(compact ? {} : { snapshots }) conditional was a no-op
+    // (snapshots was still in ...rest). Now properly extracted so we can
+    // omit it from compact broadcasts.
+    snapshots: stateSnapshots,
+    // v1.11.32: networkStats.peers can be 100-500 entries worldwide,
+    // ~150 bytes each. Extract networkStats so we can rebuild it in
+    // compact mode with peers omitted.
+    networkStats: stateNetworkStats,
+    // v1.11.32: state.blocks can hold up to 1000 mined blocks. Compact
+    // broadcasts ship only the latest 20; full history available on
+    // /api/state initial load. Client merge preserves the rest.
+    blocks: stateBlocks,
     ...rest
   } = state;
   // netBlocks fallback (v1.5.7+) — when mempool.space is unreachable or privateMode,
@@ -138,9 +151,23 @@ function transformState(state, opts) {
     localMempoolReachable: state.localMempoolReachable || false,
     topFinders:           computeTopFinders(state),
     blockReward:          computeBlockReward(state),
-    // v1.11.31: snapshots only on full /api/state, not on every WS broadcast.
-    // Client preserves the last-known snapshots via merge logic in usePool.js.
-    ...(compact ? {} : { snapshots: state.snapshots || { daily: [], closestCalls: [], lastRollupDate: null } }),
+    // v1.11.32: heavy fields ride only on /api/state (full), not WS broadcasts.
+    // Client merge logic in usePool.js preserves last-known values.
+    ...(compact ? {
+      // Compact broadcast: ship only the latest 20 blocks (UI shows ~5 max
+      // in the "latest blocks" strip; full history loads via /api/state).
+      blocks: Array.isArray(stateBlocks) ? stateBlocks.slice(0, 20) : [],
+      // Compact broadcast: networkStats WITHOUT peers (peers array can be
+      // 100-500 entries × ~150 bytes = up to 75KB).
+      networkStats: stateNetworkStats
+        ? (({ peers, ...rest_ns }) => rest_ns)(stateNetworkStats)
+        : undefined,
+      // snapshots omitted entirely in compact mode
+    } : {
+      blocks: stateBlocks || [],
+      networkStats: stateNetworkStats || undefined,
+      snapshots: stateSnapshots || { daily: [], closestCalls: [], lastRollupDate: null },
+    }),
   };
 }
 
