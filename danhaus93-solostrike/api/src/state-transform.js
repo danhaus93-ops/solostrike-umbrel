@@ -109,6 +109,15 @@ function transformState(state, opts) {
     // broadcasts ship only the latest 20; full history available on
     // /api/state initial load. Client merge preserves the rest.
     blocks: stateBlocks,
+    // v1.11.33 FIX (THE REAL CULPRIT): state.hashrate.history holds 1440
+    // entries (24h @ 1min) and state.hashrate.week holds up to 10080
+    // entries (7d @ 1min). After a few days of uptime this is 300KB+
+    // shipped on EVERY WS broadcast. v1.11.32 stripped snapshots/peers
+    // but missed this — leaving the payload still at ~132KB because
+    // hashrate alone is 94% of the broadcast size. Charts that need
+    // historical data load via /api/state on initial connect; live
+    // updates only need hashrate.current and hashrate.averages (tiny).
+    hashrate: stateHashrate,
     ...rest
   } = state;
   // netBlocks fallback (v1.5.7+) — when mempool.space is unreachable or privateMode,
@@ -162,10 +171,22 @@ function transformState(state, opts) {
       networkStats: stateNetworkStats
         ? (({ peers, ...rest_ns }) => rest_ns)(stateNetworkStats)
         : undefined,
+      // v1.11.33: hashrate without full history/week arrays. Charts need
+      // those arrays to render, so we ship just the LAST 2 entries from
+      // each as historyTail/weekTail. Client appends new points to its
+      // existing arrays (deduped by ts). Chart stays live, payload tiny
+      // (~70 bytes vs 300KB+ for the full arrays).
+      hashrate: stateHashrate ? {
+        current:     stateHashrate.current     || 0,
+        averages:    stateHashrate.averages    || {},
+        historyTail: Array.isArray(stateHashrate.history) ? stateHashrate.history.slice(-2) : [],
+        weekTail:    Array.isArray(stateHashrate.week)    ? stateHashrate.week.slice(-2)    : [],
+      } : undefined,
       // snapshots omitted entirely in compact mode
     } : {
       blocks: stateBlocks || [],
       networkStats: stateNetworkStats || undefined,
+      hashrate: stateHashrate || undefined,
       snapshots: stateSnapshots || { daily: [], closestCalls: [], lastRollupDate: null },
     }),
   };
