@@ -62,7 +62,7 @@ export function usePool() {
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
-    // v1.11.31: instrumentation — count every WS spawn to detect duplicates
+    // v1.11.32: instrumentation — count every WS spawn to detect duplicates
     // in production. If wsSpawnCount climbs while only one socket is expected,
     // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the
     // debug dump's `wsSpawnCount` field.
@@ -86,17 +86,44 @@ export function usePool() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'STATE_UPDATE') {
-          // v1.11.31: server's WS broadcast omits the 90-day snapshots blob
-          // to keep payloads small (134KB → ~5KB). Initial /api/state load
-          // delivers full snapshots; we preserve them across subsequent WS
-          // updates here. Without this merge, snapshots would disappear
-          // after the first WS update, breaking BlockSimulator + daily-luck
-          // history views.
-          setState(p => ({
-            ...p,
-            ...msg.data,
-            snapshots: msg.data.snapshots || p.snapshots,
-          }));
+          // v1.11.32: compact WS broadcasts strip 3 heavy fields to keep
+          // payload small (was 137KB → should now be ~10-30KB). Initial
+          // /api/state load delivers the full payload; subsequent WS
+          // updates preserve last-known values for:
+          //   - snapshots (90-day daily history, ~90KB potential)
+          //   - networkStats.peers (per-peer list, up to 75KB potential)
+          //   - blocks beyond the latest 20 (full mined-blocks history)
+          // Without this merge, those fields would disappear on first WS
+          // update, breaking BlockSimulator, Strikers modal, and the
+          // mined-blocks view.
+          setState(p => {
+            const newData = msg.data;
+            const merged = { ...p, ...newData };
+            // Preserve snapshots if WS update doesn't include them
+            if (!newData.snapshots && p.snapshots) {
+              merged.snapshots = p.snapshots;
+            }
+            // For networkStats: if new data has it but lacks peers (compact),
+            // merge in old peers list. If new data omits networkStats entirely,
+            // keep the old object.
+            if (newData.networkStats) {
+              if (!newData.networkStats.peers && p.networkStats?.peers) {
+                merged.networkStats = { ...newData.networkStats, peers: p.networkStats.peers };
+              }
+            } else if (p.networkStats) {
+              merged.networkStats = p.networkStats;
+            }
+            // For blocks: if new data has fewer blocks than we already had,
+            // it's a truncated compact broadcast — keep the longer history.
+            if (Array.isArray(newData.blocks) && Array.isArray(p.blocks)
+                && newData.blocks.length < p.blocks.length) {
+              // Merge: take new top-N (fresh) + old beyond that (historical)
+              const seen = new Set(newData.blocks.map(b => b.height ?? b.hash));
+              const oldExtra = p.blocks.filter(b => !seen.has(b.height ?? b.hash));
+              merged.blocks = [...newData.blocks, ...oldExtra];
+            }
+            return merged;
+          });
         }
         else if (msg.type === 'BLOCK_FOUND') {
           setBlockAlert(msg.data);
@@ -153,7 +180,7 @@ export function usePool() {
       // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
-      // v1.11.31 FIX — duplicate-socket bug. ws.close() is async: it puts
+      // v1.11.32 FIX — duplicate-socket bug. ws.close() is async: it puts
       // the socket into CLOSING state but doesn't fire onclose synchronously.
       // If we immediately call connect(), we get Socket #2. Then Socket #1's
       // onclose fires later and schedules ITS OWN retry via setTimeout —
@@ -172,7 +199,7 @@ export function usePool() {
         old.onerror = null;
         try { old.close(); } catch {}
       }
-      // v1.11.31: tag the spawn reason so wsSpawnLog explains each event
+      // v1.11.32: tag the spawn reason so wsSpawnLog explains each event
       if (typeof window !== 'undefined' && window._ssDebug) {
         window._ssDebug.__lastSpawnReason = 'visibilitychange';
       }
