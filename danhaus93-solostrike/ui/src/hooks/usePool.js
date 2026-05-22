@@ -62,7 +62,7 @@ export function usePool() {
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
-    // v1.11.30: instrumentation — count every WS spawn to detect duplicates
+    // v1.11.31: instrumentation — count every WS spawn to detect duplicates
     // in production. If wsSpawnCount climbs while only one socket is expected,
     // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the
     // debug dump's `wsSpawnCount` field.
@@ -86,7 +86,17 @@ export function usePool() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'STATE_UPDATE') {
-          setState(p => ({ ...p, ...msg.data }));
+          // v1.11.31: server's WS broadcast omits the 90-day snapshots blob
+          // to keep payloads small (134KB → ~5KB). Initial /api/state load
+          // delivers full snapshots; we preserve them across subsequent WS
+          // updates here. Without this merge, snapshots would disappear
+          // after the first WS update, breaking BlockSimulator + daily-luck
+          // history views.
+          setState(p => ({
+            ...p,
+            ...msg.data,
+            snapshots: msg.data.snapshots || p.snapshots,
+          }));
         }
         else if (msg.type === 'BLOCK_FOUND') {
           setBlockAlert(msg.data);
@@ -143,7 +153,7 @@ export function usePool() {
       // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
-      // v1.11.30 FIX — duplicate-socket bug. ws.close() is async: it puts
+      // v1.11.31 FIX — duplicate-socket bug. ws.close() is async: it puts
       // the socket into CLOSING state but doesn't fire onclose synchronously.
       // If we immediately call connect(), we get Socket #2. Then Socket #1's
       // onclose fires later and schedules ITS OWN retry via setTimeout —
@@ -162,7 +172,7 @@ export function usePool() {
         old.onerror = null;
         try { old.close(); } catch {}
       }
-      // v1.11.30: tag the spawn reason so wsSpawnLog explains each event
+      // v1.11.31: tag the spawn reason so wsSpawnLog explains each event
       if (typeof window !== 'undefined' && window._ssDebug) {
         window._ssDebug.__lastSpawnReason = 'visibilitychange';
       }
