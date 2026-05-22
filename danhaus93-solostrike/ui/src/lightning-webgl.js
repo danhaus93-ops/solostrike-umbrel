@@ -230,6 +230,22 @@ export function createLightningWebGL(canvas, opts = {}) {
       antialias: true,
       depth: false,
     });
+
+  // v1.11.31: surface WebGL context loss. iOS Safari (and some Android
+  // Chrome) reclaim GPU resources under memory pressure or after
+  // backgrounding. Without a listener, the canvas silently goes black
+  // forever. We can't reliably re-init from inside this module without
+  // significant refactoring — for now we warn so users can manually
+  // reload to recover. Future work: full restore handler.
+  try {
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('[WebGL] context lost — reload page to recover');
+    }, false);
+    canvas.addEventListener('webglcontextrestored', () => {
+      console.warn('[WebGL] context restored — reload recommended');
+    }, false);
+  } catch (_) { /* listener support absent */ }
   } catch (e) {}
   if (!gl) return { failed: true };
 
