@@ -62,7 +62,7 @@ export function usePool() {
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
-    // v1.11.33: instrumentation — count every WS spawn to detect duplicates
+    // v1.11.34: instrumentation — count every WS spawn to detect duplicates
     // in production. If wsSpawnCount climbs while only one socket is expected,
     // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the
     // debug dump's `wsSpawnCount` field.
@@ -86,7 +86,7 @@ export function usePool() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'STATE_UPDATE') {
-          // v1.11.33: compact WS broadcasts strip 4 heavy fields to keep
+          // v1.11.34: compact WS broadcasts strip 4 heavy fields to keep
           // payload small. Was 132KB → should now be ~10-15KB total.
           // Initial /api/state load delivers the full payload; subsequent
           // WS updates preserve last-known values for:
@@ -111,7 +111,35 @@ export function usePool() {
             } else if (p.networkStats) {
               merged.networkStats = p.networkStats;
             }
-            // v1.11.33: for hashrate: compact mode ships current+averages
+            // v1.11.34: workers — compact broadcasts strip per-worker
+            // statusHistory (3.7KB × 13 workers = 48KB) and ship the last 2
+            // entries as statusHistoryTail. Append them to existing history
+            // (deduped by ts) so UptimeSparkline stays live. shareEvents is
+            // still in compact (small) so striker animations keep working.
+            if (Array.isArray(newData.workers) && Array.isArray(p.workers)) {
+              const oldByName = new Map(p.workers.map(w => [w.name, w]));
+              merged.workers = newData.workers.map(w => {
+                const oldW = oldByName.get(w.name);
+                const { statusHistoryTail, ...wRest } = w;
+                // Build the new statusHistory: append new tail entries to
+                // existing array, deduped by ts, capped at 96 entries.
+                let mergedHistory = Array.isArray(oldW?.statusHistory) ? oldW.statusHistory : [];
+                if (Array.isArray(statusHistoryTail) && statusHistoryTail.length) {
+                  const lastTs = mergedHistory.length ? mergedHistory[mergedHistory.length - 1].ts : 0;
+                  const newEntries = statusHistoryTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastTs);
+                  if (newEntries.length) {
+                    mergedHistory = [...mergedHistory, ...newEntries].slice(-96);
+                  }
+                }
+                // If new data has a full statusHistory (from /api/state), use it
+                if (Array.isArray(w.statusHistory)) {
+                  mergedHistory = w.statusHistory;
+                }
+                return { ...wRest, statusHistory: mergedHistory };
+              });
+            }
+
+            // v1.11.34: for hashrate: compact mode ships current+averages
             // plus historyTail/weekTail (last 2 entries each). Append new
             // points to existing arrays so the chart curve stays live.
             // Dedup by timestamp — most broadcasts re-ship duplicate tails
@@ -131,7 +159,7 @@ export function usePool() {
               const histNew = histTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastHistTs);
               const weekNew = weekTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastWeekTs);
 
-              // v1.11.33 SAFETY LOG: if we receive a tail with a huge gap
+              // v1.11.34 SAFETY LOG: if we receive a tail with a huge gap
               // from our existing history (>5 min), something's wrong. Log
               // once via console.warn so it appears in consoleLog stream of
               // the next debug dump. Self-healing — chart still renders.
@@ -222,7 +250,7 @@ export function usePool() {
       // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
-      // v1.11.33 FIX — duplicate-socket bug. ws.close() is async: it puts
+      // v1.11.34 FIX — duplicate-socket bug. ws.close() is async: it puts
       // the socket into CLOSING state but doesn't fire onclose synchronously.
       // If we immediately call connect(), we get Socket #2. Then Socket #1's
       // onclose fires later and schedules ITS OWN retry via setTimeout —
@@ -241,7 +269,7 @@ export function usePool() {
         old.onerror = null;
         try { old.close(); } catch {}
       }
-      // v1.11.33: tag the spawn reason so wsSpawnLog explains each event
+      // v1.11.34: tag the spawn reason so wsSpawnLog explains each event
       if (typeof window !== 'undefined' && window._ssDebug) {
         window._ssDebug.__lastSpawnReason = 'visibilitychange';
       }
