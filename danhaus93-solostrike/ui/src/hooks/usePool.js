@@ -62,7 +62,7 @@ export function usePool() {
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
-    // v1.11.32: instrumentation — count every WS spawn to detect duplicates
+    // v1.11.33: instrumentation — count every WS spawn to detect duplicates
     // in production. If wsSpawnCount climbs while only one socket is expected,
     // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the
     // debug dump's `wsSpawnCount` field.
@@ -86,16 +86,14 @@ export function usePool() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'STATE_UPDATE') {
-          // v1.11.32: compact WS broadcasts strip 3 heavy fields to keep
-          // payload small (was 137KB → should now be ~10-30KB). Initial
-          // /api/state load delivers the full payload; subsequent WS
-          // updates preserve last-known values for:
-          //   - snapshots (90-day daily history, ~90KB potential)
-          //   - networkStats.peers (per-peer list, up to 75KB potential)
+          // v1.11.33: compact WS broadcasts strip 4 heavy fields to keep
+          // payload small. Was 132KB → should now be ~10-15KB total.
+          // Initial /api/state load delivers the full payload; subsequent
+          // WS updates preserve last-known values for:
+          //   - hashrate.history (1440 pts = ~43KB) and hashrate.week (up to 300KB!)
+          //   - snapshots (90-day daily history)
+          //   - networkStats.peers (per-peer list, up to 75KB)
           //   - blocks beyond the latest 20 (full mined-blocks history)
-          // Without this merge, those fields would disappear on first WS
-          // update, breaking BlockSimulator, Strikers modal, and the
-          // mined-blocks view.
           setState(p => {
             const newData = msg.data;
             const merged = { ...p, ...newData };
@@ -112,6 +110,50 @@ export function usePool() {
               }
             } else if (p.networkStats) {
               merged.networkStats = p.networkStats;
+            }
+            // v1.11.33: for hashrate: compact mode ships current+averages
+            // plus historyTail/weekTail (last 2 entries each). Append new
+            // points to existing arrays so the chart curve stays live.
+            // Dedup by timestamp — most broadcasts re-ship duplicate tails
+            // (history only grows once per minute, broadcasts fire every ~3s).
+            if (newData.hashrate) {
+              const oldHr = p.hashrate || {};
+              const oldHistory = Array.isArray(oldHr.history) ? oldHr.history : [];
+              const oldWeek    = Array.isArray(oldHr.week)    ? oldHr.week    : [];
+
+              // Append entries with ts greater than last existing entry's ts
+              const lastHistTs = oldHistory.length ? oldHistory[oldHistory.length - 1].ts : 0;
+              const lastWeekTs = oldWeek.length    ? oldWeek[oldWeek.length - 1].ts       : 0;
+
+              const histTail = Array.isArray(newData.hashrate.historyTail) ? newData.hashrate.historyTail : [];
+              const weekTail = Array.isArray(newData.hashrate.weekTail)    ? newData.hashrate.weekTail    : [];
+
+              const histNew = histTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastHistTs);
+              const weekNew = weekTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastWeekTs);
+
+              // v1.11.33 SAFETY LOG: if we receive a tail with a huge gap
+              // from our existing history (>5 min), something's wrong. Log
+              // once via console.warn so it appears in consoleLog stream of
+              // the next debug dump. Self-healing — chart still renders.
+              if (oldHistory.length > 0 && histNew.length > 0) {
+                const gapMs = histNew[0].ts - lastHistTs;
+                if (gapMs > 5 * 60 * 1000
+                    && typeof window !== 'undefined'
+                    && !window.__ssHrGapWarned) {
+                  window.__ssHrGapWarned = true;
+                  console.warn('[hashrate-merge] gap detected:', Math.round(gapMs/1000), 's between old tail and new tail — chart may show jump');
+                }
+              }
+
+              // Build merged hashrate: take new fields, restore arrays, drop tail keys
+              const { historyTail, weekTail: _wt, ...newHrRest } = newData.hashrate;
+              merged.hashrate = {
+                ...newHrRest,
+                history: histNew.length ? [...oldHistory, ...histNew].slice(-1440) : oldHistory,
+                week:    weekNew.length ? [...oldWeek,    ...weekNew].slice(-10080) : oldWeek,
+              };
+            } else if (p.hashrate) {
+              merged.hashrate = p.hashrate;
             }
             // For blocks: if new data has fewer blocks than we already had,
             // it's a truncated compact broadcast — keep the longer history.
@@ -180,7 +222,7 @@ export function usePool() {
       // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
-      // v1.11.32 FIX — duplicate-socket bug. ws.close() is async: it puts
+      // v1.11.33 FIX — duplicate-socket bug. ws.close() is async: it puts
       // the socket into CLOSING state but doesn't fire onclose synchronously.
       // If we immediately call connect(), we get Socket #2. Then Socket #1's
       // onclose fires later and schedules ITS OWN retry via setTimeout —
@@ -199,7 +241,7 @@ export function usePool() {
         old.onerror = null;
         try { old.close(); } catch {}
       }
-      // v1.11.32: tag the spawn reason so wsSpawnLog explains each event
+      // v1.11.33: tag the spawn reason so wsSpawnLog explains each event
       if (typeof window !== 'undefined' && window._ssDebug) {
         window._ssDebug.__lastSpawnReason = 'visibilitychange';
       }
