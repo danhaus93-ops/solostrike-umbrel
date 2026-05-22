@@ -553,6 +553,79 @@ function extractEspMinerLive(d) {
   return live;
 }
 
+// ── v1.11.31: self-host detection for URL-based pool alignment fallback ────
+// When a miner firmware redacts User credentials in its cgminer-JSON pools
+// response (e.g. Avalon Nano 3S, custom TNA-branded S19j Pro firmware,
+// other privacy-conscious variants), we can't compare pool.user vs the
+// configured payout address. As a fallback, we try to match the active
+// pool's URL host against the Umbrel host's own LAN IP(s). If the miner
+// is pointed at this Umbrel box's stratum, the URL host matches and we
+// can confidently mark the alignment as ALIGNED-BY-URL (still green, with
+// a slightly different label to indicate how we matched).
+
+let _selfHostsCache = null;
+let _selfHostsCacheTs = 0;
+const SELF_HOSTS_CACHE_MS = 60 * 1000; // refresh every minute
+
+function getSelfHosts() {
+  const now = Date.now();
+  if (_selfHostsCache && (now - _selfHostsCacheTs) < SELF_HOSTS_CACHE_MS) {
+    return _selfHostsCache;
+  }
+  const hosts = new Set([
+    'localhost',
+    '127.0.0.1',
+    'umbrel.local',
+    'umbrel.localdomain',
+    'umbrel',
+  ]);
+  try {
+    const os = require('os');
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const addr of ifaces[name] || []) {
+        // IPv4 only, skip internal/loopback (we already added 127.0.0.1)
+        if (addr.family === 'IPv4' && !addr.internal && addr.address) {
+          hosts.add(addr.address);
+        }
+      }
+    }
+  } catch (e) {
+    // os module unavailable or permission error — fallback list still works
+  }
+  _selfHostsCache = hosts;
+  _selfHostsCacheTs = now;
+  return hosts;
+}
+
+// Parse a cgminer pool URL like "stratum+tcp://192.168.1.239:3333" and
+// return just the host. Tolerates missing schemes, IPv4, hostnames.
+function extractPoolHost(url) {
+  if (typeof url !== 'string' || !url) return null;
+  let s = url.trim();
+  // Strip scheme: stratum+tcp://, stratum+ssl://, stratum://, ssl://, tcp://
+  s = s.replace(/^[a-z+]+:\/\//i, '');
+  // Strip path/query (rare for stratum but defensive)
+  s = s.split('/')[0];
+  // Strip port
+  const portIdx = s.lastIndexOf(':');
+  if (portIdx >= 0) s = s.substring(0, portIdx);
+  return s.toLowerCase() || null;
+}
+
+function activePoolPointsAtSelf(configuredPools) {
+  if (!Array.isArray(configuredPools) || !configuredPools.length) return false;
+  const selfHosts = getSelfHosts();
+  // Prefer the active pool, but also check non-active ones — a miner with
+  // SoloStrike as backup is still "pointed at SoloStrike", just on standby.
+  for (const p of configuredPools) {
+    if (!p || !p.url) continue;
+    const host = extractPoolHost(p.url);
+    if (host && selfHosts.has(host)) return { matched: true, active: !!p.active, host };
+  }
+  return false;
+}
+
 // ── Pool alignment computation ───────────────────────────────────────────────
 
 function computeAlignment(pools, payoutAddress) {
@@ -592,6 +665,21 @@ function computeAlignment(pools, payoutAddress) {
   const anyUserData = configuredPools.some(p =>
     typeof p.user === 'string' && p.user.trim().length > 0);
   if (!anyUserData) {
+    // v1.11.31: URL-based fallback. Some firmwares (Avalon Nano 3S, certain
+    // TNA-branded S19j Pro builds, etc) redact the User field for security
+    // but keep URL. If the active pool's URL host matches this Umbrel host's
+    // own IP(s), we can confidently report ALIGNED-BY-URL.
+    const urlMatch = activePoolPointsAtSelf(configuredPools);
+    if (urlMatch && urlMatch.matched) {
+      return {
+        status: urlMatch.active ? 'aligned' : 'backup',
+        matchedBy: 'url',
+        matchedHost: urlMatch.host,
+        activePool: activePool ? activePool.url : null,
+        activePoolUser: null,
+        configuredPools,
+      };
+    }
     return {
       status: 'unverifiable',
       error: 'no_user_data',
