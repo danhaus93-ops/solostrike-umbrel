@@ -230,7 +230,18 @@ export function createNonceFieldWebGL(canvas, options) {
   const gl = canvas.getContext('webgl', {
     antialias: false,
     // v1.8.5-rev70e: alpha:true so card shows through gap pixels in
-    // hunt mode (fragment shader outputs alpha=inBlock; gaps = 0).
+    // hunt mode (fragment shader outputs alpha=inBlock;
+
+  // v1.11.31: surface WebGL context loss.
+  try {
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      console.warn('[WebGL nonce-field] context lost — reload to recover');
+    }, false);
+    canvas.addEventListener('webglcontextrestored', () => {
+      console.warn('[WebGL nonce-field] context restored — reload recommended');
+    }, false);
+  } catch (_) { /* */ } gaps = 0).
     alpha: true,
     premultipliedAlpha: false,
     preserveDrawingBuffer: false,
