@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.31 — privacy-aware)
+// SoloStrike API server (v1.11.32 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.31',
+  version: '1.11.32',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1164,6 +1164,13 @@ app.get('/metrics', (req, res) => {
 
 setInterval(() => {
   if (wss.clients.size === 0) return;
+    // v1.11.32: diagnostic — log broadcast size every 60 seconds so we can
+  // verify the compact mode actually reduces payload. Remove after confirming.
+  const _payload = JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
+  if (!global.__ssLastSizeLog || Date.now() - global.__ssLastSizeLog > 60000) {
+    console.log('[broadcast] STATE_UPDATE size:', _payload.length, 'bytes');
+    global.__ssLastSizeLog = Date.now();
+  }
   broadcast({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
 }, 5000);
 
