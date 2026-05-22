@@ -109,15 +109,16 @@ function transformState(state, opts) {
     // broadcasts ship only the latest 20; full history available on
     // /api/state initial load. Client merge preserves the rest.
     blocks: stateBlocks,
-    // v1.11.33 FIX (THE REAL CULPRIT): state.hashrate.history holds 1440
-    // entries (24h @ 1min) and state.hashrate.week holds up to 10080
-    // entries (7d @ 1min). After a few days of uptime this is 300KB+
-    // shipped on EVERY WS broadcast. v1.11.32 stripped snapshots/peers
-    // but missed this — leaving the payload still at ~132KB because
-    // hashrate alone is 94% of the broadcast size. Charts that need
-    // historical data load via /api/state on initial connect; live
-    // updates only need hashrate.current and hashrate.averages (tiny).
+    // v1.11.33 FIX: state.hashrate.history holds 1440 entries (24h @ 1min)
+    // and state.hashrate.week holds up to 10080 entries (7d @ 1min).
     hashrate: stateHashrate,
+    // v1.11.34 FIX (RUNTIME-VERIFIED): production /api/state diagnostic
+    // showed actual bloat was elsewhere than I'd been targeting:
+    //   shares          = 46KB (rejectReasons dict grows unbounded)
+    //   sharelogCursors = 21KB (server-only bookkeeping, UI never reads)
+    //   workers         = 57KB (statusHistory at 3.7KB × N workers)
+    shares: stateShares,
+    sharelogCursors: _stateSharelogCursors,  // dropped entirely from output
     ...rest
   } = state;
   // netBlocks fallback (v1.5.7+) — when mempool.space is unreachable or privateMode,
@@ -143,12 +144,30 @@ function transformState(state, opts) {
     // (StratumPanel for the copy-username feature) read it from /api/config
     // instead.
     hasAddress: !!payoutAddress,
-    workers:              Object.values(workers || {}).map(w => ({
-                            ...w,
-                            shareEvents:   (shareCounters || {})[w.name] || null,
-                            poolAlignment: getAlignmentForWorker(w.name),
-                            live:          getLiveForWorker(w.name),
-                          })),
+    // v1.11.34: in compact mode strip per-worker statusHistory (3.7KB
+    // each × 13 workers = 48KB!) and ship just the last 2 entries as
+    // statusHistoryTail. Client appends them to its existing array
+    // (deduped by ts). UptimeSparkline stays live, payload tiny.
+    // shareEvents stays in compact (small, 267 bytes, drives striker
+    // animations).
+    workers: Object.values(workers || {}).map(w => {
+      if (compact) {
+        const { statusHistory, ...wRest } = w;
+        return {
+          ...wRest,
+          shareEvents:   (shareCounters || {})[w.name] || null,
+          poolAlignment: getAlignmentForWorker(w.name),
+          live:          getLiveForWorker(w.name),
+          statusHistoryTail: Array.isArray(statusHistory) ? statusHistory.slice(-2) : [],
+        };
+      }
+      return {
+        ...w,
+        shareEvents:   (shareCounters || {})[w.name] || null,
+        poolAlignment: getAlignmentForWorker(w.name),
+        live:          getLiveForWorker(w.name),
+      };
+    }),
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
     retarget:             state.retarget  || null,
@@ -182,12 +201,26 @@ function transformState(state, opts) {
         historyTail: Array.isArray(stateHashrate.history) ? stateHashrate.history.slice(-2) : [],
         weekTail:    Array.isArray(stateHashrate.week)    ? stateHashrate.week.slice(-2)    : [],
       } : undefined,
+      // v1.11.34: shares.rejectReasons grows unbounded — accumulates every
+      // unique rejection string ckpool ever emits. Production showed 46KB.
+      // Cap to TOP 20 most-frequent reasons (covers >99% of rejects). Full
+      // dictionary available via /api/state.
+      shares: stateShares ? (() => {
+        const { rejectReasons, ...rest_s } = stateShares;
+        const top = rejectReasons
+          ? Object.entries(rejectReasons).sort((a,b)=>b[1]-a[1]).slice(0,20)
+          : [];
+        return { ...rest_s, rejectReasons: Object.fromEntries(top) };
+      })() : undefined,
       // snapshots omitted entirely in compact mode
+      // sharelogCursors omitted entirely (server-only bookkeeping)
     } : {
       blocks: stateBlocks || [],
       networkStats: stateNetworkStats || undefined,
       hashrate: stateHashrate || undefined,
+      shares: stateShares || undefined,
       snapshots: stateSnapshots || { daily: [], closestCalls: [], lastRollupDate: null },
+      // sharelogCursors still omitted from /api/state — UI never reads it
     }),
   };
 }
