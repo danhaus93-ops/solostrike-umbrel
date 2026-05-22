@@ -77,7 +77,14 @@ function computeBlockReward(state) {
   };
 }
 
-function transformState(state) {
+// v1.11.31: transformState accepts options. opts.compact=true strips
+// the 90-day snapshots blob to keep WS broadcast payloads small (was
+// ~134KB → now ~5-10KB). The HTTP /api/state endpoint always returns
+// the full payload including snapshots, so the client gets them once
+// on initial load and preserves them via merge logic in usePool.js
+// across subsequent WS updates.
+function transformState(state, opts) {
+  const compact = opts && opts.compact === true;
   // v1.10.1 SECURITY: explicitly strip sensitive fields before returning. The
   // /api/state endpoint is on Umbrel's app_proxy auth whitelist (no session
   // required), so anything we return here is reachable by anyone who can
@@ -131,7 +138,9 @@ function transformState(state) {
     localMempoolReachable: state.localMempoolReachable || false,
     topFinders:           computeTopFinders(state),
     blockReward:          computeBlockReward(state),
-    snapshots:            state.snapshots || { daily: [], closestCalls: [], lastRollupDate: null },
+    // v1.11.31: snapshots only on full /api/state, not on every WS broadcast.
+    // Client preserves the last-known snapshots via merge logic in usePool.js.
+    ...(compact ? {} : { snapshots: state.snapshots || { daily: [], closestCalls: [], lastRollupDate: null } }),
   };
 }
 
