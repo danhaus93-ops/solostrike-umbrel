@@ -83,6 +83,35 @@ function computeBlockReward(state) {
 // the full payload including snapshots, so the client gets them once
 // on initial load and preserves them via merge logic in usePool.js
 // across subsequent WS updates.
+// v1.11.37: shares-flowing alignment proof. The URL-based fallback added in
+// v1.11.31 doesn't work for Docker installs because os.networkInterfaces()
+// inside the API container returns container bridge IPs (172.x.x.x), not
+// the Umbrel host's LAN IP. When a miner reports redacted User credentials,
+// the only way to "verify" alignment from inside the container is via the
+// strongest possible signal: the miner is actively submitting shares that
+// ckpool is accepting. If we see the worker name in shareCounters with a
+// recent lastShareAt, the miner IS pointed at our pool — no IP match
+// needed. Self-evident proof: they couldn't be in our share log if they
+// weren't sending shares to us.
+function enhanceAlignmentWithShares(alignment, shareCounters, workerName) {
+  if (!alignment) return alignment;
+  if (alignment.status !== 'unverifiable' || alignment.error !== 'no_user_data') {
+    return alignment;
+  }
+  const counter = shareCounters && shareCounters[workerName];
+  if (!counter || !counter.lastShareAt) return alignment;
+  const ageMs = Date.now() - counter.lastShareAt;
+  // 5-minute freshness window. Shares older than this aren't strong
+  // enough proof — the miner may have moved to a different pool.
+  if (ageMs > 5 * 60 * 1000) return alignment;
+  return {
+    ...alignment,
+    status: 'aligned',
+    matchedBy: 'shares-flowing',
+    lastShareAgo: Math.round(ageMs / 1000),
+  };
+}
+
 function transformState(state, opts) {
   const compact = opts && opts.compact === true;
   // v1.10.1 SECURITY: explicitly strip sensitive fields before returning. The
@@ -151,12 +180,15 @@ function transformState(state, opts) {
     // shareEvents stays in compact (small, 267 bytes, drives striker
     // animations).
     workers: Object.values(workers || {}).map(w => {
+      // v1.11.37: shares-flowing alignment fallback applied to both paths
+      const rawAlignment = getAlignmentForWorker(w.name);
+      const alignment = enhanceAlignmentWithShares(rawAlignment, shareCounters, w.name);
       if (compact) {
         const { statusHistory, ...wRest } = w;
         return {
           ...wRest,
           shareEvents:   (shareCounters || {})[w.name] || null,
-          poolAlignment: getAlignmentForWorker(w.name),
+          poolAlignment: alignment,
           live:          getLiveForWorker(w.name),
           statusHistoryTail: Array.isArray(statusHistory) ? statusHistory.slice(-2) : [],
         };
@@ -164,7 +196,7 @@ function transformState(state, opts) {
       return {
         ...w,
         shareEvents:   (shareCounters || {})[w.name] || null,
-        poolAlignment: getAlignmentForWorker(w.name),
+        poolAlignment: alignment,
         live:          getLiveForWorker(w.name),
       };
     }),
@@ -185,10 +217,24 @@ function transformState(state, opts) {
       // Compact broadcast: ship only the latest 20 blocks (UI shows ~5 max
       // in the "latest blocks" strip; full history loads via /api/state).
       blocks: Array.isArray(stateBlocks) ? stateBlocks.slice(0, 20) : [],
-      // Compact broadcast: networkStats WITHOUT peers (peers array can be
-      // 100-500 entries × ~150 bytes = up to 75KB).
+      // Compact broadcast: networkStats WITHOUT full peers array but WITH
+      // peerHeartbeats (pubkey → lastSeenAgoSec). Full peers (loc, hashrate,
+      // etc) are preserved client-side from initial /api/state. The
+      // heartbeat update is essential for the peer share-synthesis effect
+      // in App.jsx — it triggers a new Poisson schedule whenever a peer's
+      // lastSeenAgoSec resets to a smaller value (= they just rebroadcast).
+      // Without this, peer firing animations stop after 4 minutes.
+      // Cost: ~10 bytes × 20 active peers = 200 bytes vs 75KB for full peers.
       networkStats: stateNetworkStats
-        ? (({ peers, ...rest_ns }) => rest_ns)(stateNetworkStats)
+        ? (() => {
+            const { peers, ...rest_ns } = stateNetworkStats;
+            const peerHeartbeats = Array.isArray(peers)
+              ? peers
+                  .filter(p => p && p.pubkey && Number.isFinite(p.lastSeenAgoSec))
+                  .map(p => [p.pubkey, p.lastSeenAgoSec | 0])
+              : [];
+            return { ...rest_ns, peerHeartbeats };
+          })()
         : undefined,
       // v1.11.33: hashrate without full history/week arrays. Charts need
       // those arrays to render, so we ship just the LAST 2 entries from
