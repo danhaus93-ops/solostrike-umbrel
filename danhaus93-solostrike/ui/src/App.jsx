@@ -239,7 +239,7 @@ const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
 const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
-const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.34: Performance Mode toggle
+const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.35: Performance Mode toggle
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -330,7 +330,7 @@ function loadTickerMetrics() { try { const s = localStorage.getItem(LS_TICKER_ME
 function saveTickerMetrics(list) { try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(list)); } catch {} }
 function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === 'true'; } catch { return false; } }
 function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
-// v1.11.34: Performance Mode — replaces animated Pulse/Hunt canvases with
+// v1.11.35: Performance Mode — replaces animated Pulse/Hunt canvases with
 // static baked frames. Strike pulse rings stay live (information-bearing).
 // Header pickaxe pulse + glow auto-suppressed (already handled via the
 // existing minimalMode ternary; performanceMode joins it).
@@ -422,16 +422,16 @@ const _ssDebug = {
   resources:     [],   // {ts, name, dur, size, type}  — only slow/large
   visibility:    { state: 'visible', transitions: 0, lastChangeTs: Date.now() },
   battery:       null, // { level, charging, chargingTime, dischargingTime } when supported
-  // v1.11.34 — ticker / stutter diagnosis streams
+  // v1.11.35 — ticker / stutter diagnosis streams
   tickerFrames:  [],   // {ts, dt, x, hw}      — sliding window, last ~150 rAF ticks
   longTaskList:  [],   // {ts, dur, attrib}    — last ~30 PerformanceObserver longtask entries
   wsEvents:      [],   // {ts, size, type}     — last ~50 WS message arrivals with byte size
   tickerStalls:  [],   // {ts, gap, x}         — detected ticker stalls (gap > 33ms between frames)
-  // v1.11.34 — WebSocket spawn tracking (duplicate-socket bug detection)
+  // v1.11.35 — WebSocket spawn tracking (duplicate-socket bug detection)
   wsSpawnCount:  0,    // total number of new WebSocket() calls since page load
   wsSpawnLog:    [],   // {ts, spawn, reason}  — last 20 spawn events with reason tag
 };
-// v1.11.34 FIX: expose _ssDebug to window so cross-module instrumentation
+// v1.11.35 FIX: expose _ssDebug to window so cross-module instrumentation
 // (in usePool.js, etc) can write to it. Without this, the previous tracking
 // in usePool.js silently no-op'd because `window._ssDebug` was undefined,
 // leaving wsSpawnCount=0 and wsSpawnLog=[] in every debug dump.
@@ -1197,7 +1197,7 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
   const stateRef = useRef({ x: 0, halfWidth: 0, lastT: null, rafId: null });
   const duration = speedSec || DEFAULT_TICKER_SPEED;
 
-  // ── v1.11.34: rAF decoupling ────────────────────────────────────────────
+  // ── v1.11.35: rAF decoupling ────────────────────────────────────────────
   // Previously a single useEffect with deps [enabled, snapshotText, duration]
   // tore down and rebuilt the rAF loop every time snapshotText changed
   // (~every 2s when new WS state arrives). That caused a brief freeze + a
@@ -1224,7 +1224,7 @@ const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
       if (s.halfWidth <= 0) { s.rafId = requestAnimationFrame(step); return; }
       if (s.lastT == null) s.lastT = t;
       const dt = (t - s.lastT) / 1000;
-      // v1.11.34: instrument frames + stalls for diagnostic dump
+      // v1.11.35: instrument frames + stalls for diagnostic dump
       if (typeof window !== 'undefined' && window._ssDebug) {
         const dbg = window._ssDebug;
         if (dt > 0.033 && dbg.tickerStalls) {
@@ -2667,7 +2667,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
   }, [hashrate]);
   useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
 
-  // v1.11.34: Performance Mode ref — checked inside the rAF body to bail
+  // v1.11.35: Performance Mode ref — checked inside the rAF body to bail
   // out of heavy draw work without restarting the loop. Live updates via
   // useEffect mean the toggle takes effect on the next frame (<16ms).
   const perfModeRef = useRef(!!performanceMode);
@@ -3359,7 +3359,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // v1.8.5-rev70e: clear to transparent so card shows through.
       ctx.clearRect(0, 0, W, H);
 
-      // v1.11.34: Performance Mode short-circuit. Skip all draw work — the
+      // v1.11.35: Performance Mode short-circuit. Skip all draw work — the
       // static <img> overlay in JSX covers the canvas surface. We still
       // schedule the next frame (cheap when there's nothing to draw) so
       // toggling Performance Mode off resumes animation instantly without
@@ -3442,7 +3442,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
         position: 'absolute', inset: 0,
         width: '100%', height: '100%',
       }}/>
-      {/* v1.11.34: Performance Mode static frame — overlays all canvases
+      {/* v1.11.35: Performance Mode static frame — overlays all canvases
           with a baked PNG matching the selected huntAnim. Loaded only when
           performanceMode is on, so it costs nothing for default users. */}
       {performanceMode && (
@@ -5969,7 +5969,7 @@ function DebugOverlay({ settings, onSettingsChange, appState }) {
 // All three persist to localStorage. The HOST value is also exported via
 // useStratumHost() so the footer ports and any other stratum URL builder
 // uses the same configured value.
-// v1.11.34: memoized to skip re-renders when props unchanged across WS broadcasts
+// v1.11.35: memoized to skip re-renders when props unchanged across WS broadcasts
 const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stratumHealth, startedAt }) {
   const [copied, setCopied] = useState('');
 
@@ -7418,7 +7418,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </div>
       )}
 
-      {/* v1.11.34: Performance Mode — freezes decorative animations while
+      {/* v1.11.35: Performance Mode — freezes decorative animations while
           keeping information-bearing animations (strike pulse) alive.
           Mirrors Minimal Mode UI pattern for visual consistency. */}
       <div style={firstSectionTitle}>▸ Performance Mode</div>
@@ -8132,7 +8132,7 @@ function useAnimatedNumber(value, durationMs = 600) {
 //     bolts/packets fire continuously. Burst button injects a wave.
 //   - Sliding logarithmic scrub: peerCount maps to slider via log scale
 //     so 1-2-8-20-50-200-1K-5K stages are roughly evenly spaced.
-// v1.11.34: memoized to skip re-renders when props unchanged across WS broadcasts
+// v1.11.35: memoized to skip re-renders when props unchanged across WS broadcasts
 const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClose }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -8544,7 +8544,7 @@ BlockSimulatorModal.displayName = "BlockSimulatorModal";
 
 
 
-// ── v1.11.34 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
+// ── v1.11.35 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
 // DOM-based strike markers shown over the baked equirectangular world map
 // when performanceMode is on. Replaces the WebGL strikes that get frozen
 // when the canvas rAF is bailed out.
@@ -8566,7 +8566,7 @@ BlockSimulatorModal.displayName = "BlockSimulatorModal";
 // pre-filtered (no `filtered:true`) entries. We render up to PEER_CAP
 // markers to keep the DOM lightweight even if the network is huge.
 const PEER_CAP_STATIC = 60;
-// ── v1.11.34 ── Static Pulse Strikes — DOM divs ────────────────────────────
+// ── v1.11.35 ── Static Pulse Strikes — DOM divs ────────────────────────────
 // DOM-based peer markers using HTML divs with border-radius:50%. Unlike SVG
 // circles, DOM divs aren't subject to the parent's coordinate system — they
 // stay perfectly round in CSS pixels regardless of how the underlying map
@@ -8628,7 +8628,7 @@ function StaticPulseStrikes({ peers, ownPin }) {
   );
 }
 
-// ── v1.11.34 — Static Pulse Mesh helpers (restored) ────────────────────────
+// ── v1.11.35 — Static Pulse Mesh helpers (restored) ────────────────────────
 // Cube layout constants — must match constellation-cube.js byte-for-byte
 // so the static mesh visualization mirrors the live constellation animation.
 const CUBE_CORNERS = [
@@ -8827,7 +8827,7 @@ function StaticPulseMesh({ peers, ownPin }) {
 }
 
 
-// v1.11.34: memoized to skip re-renders when props unchanged across WS broadcasts
+// v1.11.35: memoized to skip re-renders when props unchanged across WS broadcasts
 const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
@@ -8919,7 +8919,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // the user to tap, and the next tap on the canvas converts screen coords
   // → 3D unit sphere → lat/lon → 5° grid snap → poolPin update.
   const [placingPin, setPlacingPin] = useState(false);
-  // v1.11.34 — Pinch-zoom + pan state for Performance Mode static
+  // v1.11.35 — Pinch-zoom + pan state for Performance Mode static
   // visualization. Applies to BOTH the static map (pulseAnim==='globe')
   // and the static mesh cube (pulseAnim==='block'). Zoom is clamped
   // 1.0×–5.0×. Pan keeps content within the visible container.
@@ -8950,7 +8950,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // (drag-rotate the WebGL camera, pinch-zoom).
   const pulseAnimRef = useRef(pulseAnim);
   useEffect(() => { pulseAnimRef.current = pulseAnim; }, [pulseAnim]);
-  // v1.11.34: Performance Mode ref — same pattern as NonceField. Live
+  // v1.11.35: Performance Mode ref — same pattern as NonceField. Live
   // updates via useEffect; rAF checks the ref each frame and bails out
   // when on, while still rescheduling the next frame.
   const perfModeRef = useRef(!!performanceMode);
@@ -9026,7 +9026,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // v1.11.34: Performance Mode uses a flat equirectangular map (not a
+    // v1.11.35: Performance Mode uses a flat equirectangular map (not a
     // globe disk). Use 2D projection instead of inverse orthographic math.
     // The visible map fills the container exactly (objectFit:contain on a
     // 2:1 aspect container = no letterbox), so canvas dimensions match
@@ -9037,13 +9037,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     // the bottom edge of the image. The inverse projection must use the
     // same range or pins drift south.
     if (perfModeRef.current) {
-      // v1.11.34: Suppress tap-to-pin if the user just finished a pinch
+      // v1.11.35: Suppress tap-to-pin if the user just finished a pinch
       // gesture (didPinchRef gets set on 2-finger touchend).
       if (didPinchRef.current) {
         didPinchRef.current = false;
         return;
       }
-      // v1.11.34: Inverse-transform click coords if user has zoomed/panned.
+      // v1.11.35: Inverse-transform click coords if user has zoomed/panned.
       // Wrapper transform is: translate(panX, panY) scale(zoom)
       // with origin 50% 50%. To recover pre-transform coords:
       //   cx = (clickX - W/2 - pan.x) / zoom + W/2
@@ -9051,7 +9051,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       const W = rect.width, H = rect.height;
       const cx = (clickX - W/2 - staticPan.x) / staticZoom + W/2;
       const cy = (clickY - H/2 - staticPan.y) / staticZoom + H/2;
-      // v1.11.34: Standard equirectangular [-90, +90] — keeps pin
+      // v1.11.35: Standard equirectangular [-90, +90] — keeps pin
       // placement aligned with the live globe's sphere projection.
       const lonDeg = (cx / W) * 360 - 180;
       const latDeg = 90 - (cy / H) * 180;
@@ -9127,7 +9127,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     setPlacingPin(false);
   }, [onPoolPinChange, staticZoom, staticPan]);
 
-  // v1.11.34 — Pinch-zoom + pan touch handlers for the Performance Mode
+  // v1.11.35 — Pinch-zoom + pan touch handlers for the Performance Mode
   // static visualization wrapper. Native touch events (not React synthetic)
   // because we need passive:false on touchmove to preventDefault during pinch.
   const staticWrapperRef = useRef(null);
@@ -9206,7 +9206,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       }
     };
 
-    // v1.11.34: Click → place pin in Performance Mode (when pulseAnim is
+    // v1.11.35: Click → place pin in Performance Mode (when pulseAnim is
     // globe). Uses container rect (NOT wrapper rect, which is transformed)
     // for accurate inverse projection.
     const onClick = (e) => {
@@ -10178,7 +10178,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       }
       ctx.clearRect(0, 0, W, H);
 
-      // v1.11.34: Performance Mode short-circuit. The static <img> overlay
+      // v1.11.35: Performance Mode short-circuit. The static <img> overlay
       // in JSX (below) replaces the globe/block animation. Schedule next
       // frame anyway so toggling Performance Mode off resumes instantly.
       if (perfModeRef.current) {
@@ -10621,7 +10621,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             All canvases inside are alpha-transparent. */}
         <div ref={containerRef} style={{
           width:'100%',
-          // v1.11.34: Compact layout — mirror the live globe sizing.
+          // v1.11.35: Compact layout — mirror the live globe sizing.
           // The non-perf branch uses height:88 (small embedded mode);
           // perf mode mirrors that single-height behavior with a small
           // bump for the map to be readable.
@@ -10662,8 +10662,8 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               display: pulseAnim === 'block' ? 'block' : 'none',
             }}
           />
-          {/* v1.11.34: Performance Mode static Pulse map (compact layout). */}
-          {/* v1.11.34 — Pinch-zoom wrapper (same as full layout below). */}
+          {/* v1.11.35: Performance Mode static Pulse map (compact layout). */}
+          {/* v1.11.35 — Pinch-zoom wrapper (same as full layout below). */}
           {performanceMode && (
             <div
               ref={staticWrapperRef}
@@ -10698,7 +10698,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               )}
             </div>
           )}
-          {/* v1.11.34: DOM strike markers — CSS-keyframe animated rings
+          {/* v1.11.35: DOM strike markers — CSS-keyframe animated rings
               positioned via equirectangular projection. Only mounted when
               performanceMode is on (zero cost otherwise). */}
 
@@ -10888,7 +10888,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           opening the strikers panel. */}
       <div
         style={{
-          // v1.11.34: Restored flex:1 always — the inner containerRef now
+          // v1.11.35: Restored flex:1 always — the inner containerRef now
           // flex-grows to fill the card's available height instead of
           // locking to 2:1 aspect ratio. Map image inside uses object-fit:
           // contain to scale up without distortion.
@@ -10900,7 +10900,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           (and other animations) sit directly on the card surface. */}
       <div ref={containerRef} style={{
         width:'100%',
-        // v1.11.34: Mirror the LIVE GLOBE sizing exactly — flex:1 with
+        // v1.11.35: Mirror the LIVE GLOBE sizing exactly — flex:1 with
         // minHeight:240, maxHeight:380. Previously locked perf mode to
         // aspect-ratio 2/1 which collapsed the container to ~half the
         // card height, leaving a huge dead-space gap below. The map
@@ -10939,11 +10939,11 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             display: pulseAnim === 'block' ? 'block' : 'none',
           }}
         />
-        {/* v1.11.34: Performance Mode static Pulse map. Overlays globe and
+        {/* v1.11.35: Performance Mode static Pulse map. Overlays globe and
             constellation WebGL canvases with a baked equirectangular world.
             Pointer events disabled so the 2D canvas below still handles
             pin placement. */}
-        {/* v1.11.34 — Pinch-zoom + pan wrapper. Map, mesh, and SVG strikes
+        {/* v1.11.35 — Pinch-zoom + pan wrapper. Map, mesh, and SVG strikes
             all transform together so they stay aligned at any zoom level.
             Inverse transform applied to handleCanvasTap for accurate pin
             placement when zoomed. Double-tap to reset. */}
@@ -12969,12 +12969,12 @@ function DebugTab({ settings, onSettingsChange }) {
           visibility:  _ssDebug.visibility,
           battery:     _ssDebug.battery,
           lastTap:     _ssDebug.lastTap,
-          // v1.11.34 — stutter diagnosis streams
+          // v1.11.35 — stutter diagnosis streams
           tickerFrames:  _ssDebug.tickerFrames  || [],
           tickerStalls:  _ssDebug.tickerStalls  || [],
           longTaskList:  _ssDebug.longTaskList  || [],
           wsEvents:      _ssDebug.wsEvents      || [],
-          // v1.11.34 — WS spawn tracking
+          // v1.11.35 — WS spawn tracking
           wsSpawnCount:  _ssDebug.wsSpawnCount  || 0,
           wsSpawnLog:    _ssDebug.wsSpawnLog    || [],
         },
@@ -13614,7 +13614,7 @@ export default function App() {
     enabled: loadTickerEnabled(), speedSec: loadTickerSpeed(), metricIds: loadTickerMetrics(),
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
-  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.34
+  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.35
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
   const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
@@ -13721,7 +13721,7 @@ export default function App() {
   const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
-  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.34
+  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.35
   const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   const onStripSettingsChange = useCallback((next) => {
@@ -14441,7 +14441,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.34 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.35 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
