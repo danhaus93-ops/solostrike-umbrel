@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.37 — privacy-aware)
+// SoloStrike API server (v1.11.38 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.37',
+  version: '1.11.38',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -636,7 +636,23 @@ wss.on('connection', (ws, req) => {
     return;
   }
   wsClients++;
-  try { ws.send(JSON.stringify({ type:'STATE_UPDATE', data: transformState(state, { compact: true }) })); } catch {}
+  // v1.11.38 FIX: on-connection welcome message ships FULL transformState
+  // (not compact). Reason: iOS aggressively backgrounds web/PWA tabs,
+  // closing the WS every 6-7 minutes. Each reconnect previously got a
+  // compact welcome with only 2-entry tails for spsHistory/hashrate.history/
+  // statusHistory. Entries written by the server during the disconnect
+  // window were silently lost — Strike Velocity chart bled samples over
+  // time (debug showed 18 samples at 73min uptime, [hashrate-merge] gap
+  // warning fired with 1142s gap). Closing+reopening the app "fixed" it
+  // only because that triggered a fresh /api/state HTTP fetch on remount.
+  //
+  // Now: WS welcome = full state (~120KB once per reconnect), subsequent
+  // setInterval broadcasts (every 3s) stay compact (~24KB). Net cost on
+  // iOS: ~10 extra welcomes/hour × 100KB = ~1MB/hour, fully acceptable.
+  // The client's existing merge logic already handles full-state arrivals
+  // correctly (the conditional tail-merges are no-ops when full arrays
+  // are present, so the outer { ...newData } spread sets them cleanly).
+  try { ws.send(JSON.stringify({ type:'STATE_UPDATE', data: transformState(state) })); } catch {}
   try { ws.send(JSON.stringify({ type:'CONFIG', data: cfgPrivate() })); } catch {}
   ws.on('close', () => { wsClients--; });
 });
@@ -1164,7 +1180,7 @@ app.get('/metrics', (req, res) => {
 
 setInterval(() => {
   if (wss.clients.size === 0) return;
-    // v1.11.37: diagnostic — log broadcast size every 60 seconds so we can
+    // v1.11.38: diagnostic — log broadcast size every 60 seconds so we can
   // verify the compact mode actually reduces payload. Remove after confirming.
   const _payload = JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
   if (!global.__ssLastSizeLog || Date.now() - global.__ssLastSizeLog > 60000) {
