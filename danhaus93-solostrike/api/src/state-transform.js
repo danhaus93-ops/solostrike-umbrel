@@ -205,12 +205,23 @@ function transformState(state, opts) {
       // unique rejection string ckpool ever emits. Production showed 46KB.
       // Cap to TOP 20 most-frequent reasons (covers >99% of rejects). Full
       // dictionary available via /api/state.
+      //
+      // v1.11.36: shares.spsHistory holds 1440 entries (24h @ 1min sampling)
+      // at ~32 bytes each = ~46KB. This was the REAL culprit hiding in
+      // state.shares all along — v1.11.34's rejectReasons cap was correct
+      // but targeted the wrong field. Same fix as hashrate: ship last 2
+      // entries as spsHistoryTail, client appends to its existing array.
+      // StrikeVelocityChart consumes shares.spsHistory.
       shares: stateShares ? (() => {
-        const { rejectReasons, ...rest_s } = stateShares;
+        const { rejectReasons, spsHistory, ...rest_s } = stateShares;
         const top = rejectReasons
           ? Object.entries(rejectReasons).sort((a,b)=>b[1]-a[1]).slice(0,20)
           : [];
-        return { ...rest_s, rejectReasons: Object.fromEntries(top) };
+        return {
+          ...rest_s,
+          rejectReasons: Object.fromEntries(top),
+          spsHistoryTail: Array.isArray(spsHistory) ? spsHistory.slice(-2) : [],
+        };
       })() : undefined,
       // snapshots omitted entirely in compact mode
       // sharelogCursors omitted entirely (server-only bookkeeping)
