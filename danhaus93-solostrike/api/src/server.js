@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.34 — privacy-aware)
+// SoloStrike API server (v1.11.35 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.34',
+  version: '1.11.35',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1164,14 +1164,33 @@ app.get('/metrics', (req, res) => {
 
 setInterval(() => {
   if (wss.clients.size === 0) return;
-    // v1.11.34: diagnostic — log broadcast size every 60 seconds so we can
-  // verify the compact mode actually reduces payload. Remove after confirming.
-  const _payload = JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
+  // v1.11.35: per-key size diagnostic. Logs top fields + worker[0] breakdown
+  // every 60 seconds so we can identify what's still bloating production
+  // payloads. Replaces the simple total-size log that wasn't actionable.
+  const _data = transformState(state, { compact: true });
+  const _payload = JSON.stringify({ type: 'STATE_UPDATE', data: _data });
   if (!global.__ssLastSizeLog || Date.now() - global.__ssLastSizeLog > 60000) {
-    console.log('[broadcast] STATE_UPDATE size:', _payload.length, 'bytes');
+    const sizes = {};
+    for (const k of Object.keys(_data)) {
+      try { sizes[k] = JSON.stringify(_data[k]).length; } catch { sizes[k] = -1; }
+    }
+    const top = Object.entries(sizes).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    console.log('[broadcast] size:', _payload.length, 'top:',
+      top.map(([k, v]) => `${k}=${v}`).join(' '));
+    // Drill into worker[0] if workers is fat
+    if (sizes.workers && sizes.workers > 5000 && Array.isArray(_data.workers) && _data.workers[0]) {
+      const w = _data.workers[0];
+      const wSizes = {};
+      for (const k of Object.keys(w)) {
+        try { wSizes[k] = JSON.stringify(w[k]).length; } catch { wSizes[k] = -1; }
+      }
+      const wtop = Object.entries(wSizes).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      console.log('[broadcast] worker[0] (' + (w.name || '?').slice(0, 50) + '):',
+        wtop.map(([k, v]) => `${k}=${v}`).join(' '));
+    }
     global.__ssLastSizeLog = Date.now();
   }
-  broadcast({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
+  broadcast({ type: 'STATE_UPDATE', data: _data });
 }, 5000);
 
 // ── Snapshots scheduler ────────────────────────────────────────────────────
