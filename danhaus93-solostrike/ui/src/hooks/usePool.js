@@ -62,7 +62,7 @@ export function usePool() {
 
   const connect = useCallback(() => {
     const ws = new WebSocket(WS); wsRef.current = ws;
-    // v1.11.36: instrumentation — count every WS spawn to detect duplicates
+    // v1.11.37: instrumentation — count every WS spawn to detect duplicates
     // in production. If wsSpawnCount climbs while only one socket is expected,
     // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the
     // debug dump's `wsSpawnCount` field.
@@ -86,7 +86,7 @@ export function usePool() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'STATE_UPDATE') {
-          // v1.11.36: compact WS broadcasts strip 4 heavy fields to keep
+          // v1.11.37: compact WS broadcasts strip 4 heavy fields to keep
           // payload small. Was 132KB → should now be ~10-15KB total.
           // Initial /api/state load delivers the full payload; subsequent
           // WS updates preserve last-known values for:
@@ -104,14 +104,36 @@ export function usePool() {
             // For networkStats: if new data has it but lacks peers (compact),
             // merge in old peers list. If new data omits networkStats entirely,
             // keep the old object.
+            //
+            // v1.11.37: BUT also apply peerHeartbeats updates to the preserved
+            // peers — this updates each peer's lastSeenAgoSec, which is what
+            // the share-synthesis effect in App.jsx watches for "peer just
+            // rebroadcast" events. Without this update, peer firing stops
+            // after 4 minutes (SCHEDULE_DURATION_MS) since the synthesis
+            // schedule never gets restarted.
             if (newData.networkStats) {
               if (!newData.networkStats.peers && p.networkStats?.peers) {
-                merged.networkStats = { ...newData.networkStats, peers: p.networkStats.peers };
+                // Build heartbeat map
+                const heartbeats = Array.isArray(newData.networkStats.peerHeartbeats)
+                  ? new Map(newData.networkStats.peerHeartbeats)
+                  : null;
+                // Apply updated lastSeenAgoSec to preserved peers
+                const updatedPeers = heartbeats
+                  ? p.networkStats.peers.map(peer => {
+                      const hb = heartbeats.get(peer.pubkey);
+                      return Number.isFinite(hb)
+                        ? { ...peer, lastSeenAgoSec: hb }
+                        : peer;
+                    })
+                  : p.networkStats.peers;
+                // Strip peerHeartbeats from merged (it's transport-only)
+                const { peerHeartbeats: _hb, ...nsRest } = newData.networkStats;
+                merged.networkStats = { ...nsRest, peers: updatedPeers };
               }
             } else if (p.networkStats) {
               merged.networkStats = p.networkStats;
             }
-            // v1.11.36: shares.spsHistory works just like hashrate.history —
+            // v1.11.37: shares.spsHistory works just like hashrate.history —
             // compact mode ships spsHistoryTail (last 2 entries), client
             // appends them to existing array (deduped by ts). StrikeVelocity
             // chart stays live, payload drops ~46KB.
@@ -137,7 +159,7 @@ export function usePool() {
               merged.shares = p.shares;
             }
 
-            // v1.11.36: workers — compact broadcasts strip per-worker
+            // v1.11.37: workers — compact broadcasts strip per-worker
             // statusHistory (3.7KB × 13 workers = 48KB) and ship the last 2
             // entries as statusHistoryTail. Append them to existing history
             // (deduped by ts) so UptimeSparkline stays live. shareEvents is
@@ -165,7 +187,7 @@ export function usePool() {
               });
             }
 
-            // v1.11.36: for hashrate: compact mode ships current+averages
+            // v1.11.37: for hashrate: compact mode ships current+averages
             // plus historyTail/weekTail (last 2 entries each). Append new
             // points to existing arrays so the chart curve stays live.
             // Dedup by timestamp — most broadcasts re-ship duplicate tails
@@ -185,7 +207,7 @@ export function usePool() {
               const histNew = histTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastHistTs);
               const weekNew = weekTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastWeekTs);
 
-              // v1.11.36 SAFETY LOG: if we receive a tail with a huge gap
+              // v1.11.37 SAFETY LOG: if we receive a tail with a huge gap
               // from our existing history (>5 min), something's wrong. Log
               // once via console.warn so it appears in consoleLog stream of
               // the next debug dump. Self-healing — chart still renders.
@@ -276,7 +298,7 @@ export function usePool() {
       // would otherwise extend the reconnect wait.
       clearTimeout(retryRef.current);
       retryCount.current = 0;
-      // v1.11.36 FIX — duplicate-socket bug. ws.close() is async: it puts
+      // v1.11.37 FIX — duplicate-socket bug. ws.close() is async: it puts
       // the socket into CLOSING state but doesn't fire onclose synchronously.
       // If we immediately call connect(), we get Socket #2. Then Socket #1's
       // onclose fires later and schedules ITS OWN retry via setTimeout —
@@ -295,7 +317,7 @@ export function usePool() {
         old.onerror = null;
         try { old.close(); } catch {}
       }
-      // v1.11.36: tag the spawn reason so wsSpawnLog explains each event
+      // v1.11.37: tag the spawn reason so wsSpawnLog explains each event
       if (typeof window !== 'undefined' && window._ssDebug) {
         window._ssDebug.__lastSpawnReason = 'visibilitychange';
       }
