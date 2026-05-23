@@ -276,7 +276,13 @@ function startStatusPoller(state, broadcast, logDir) {
       const now = Date.now();
       if (now - lastBroadcastAt >= BROADCAST_MIN_INTERVAL_MS) {
         lastBroadcastAt = now;
-        broadcast({ type: 'STATE_UPDATE', data: transformState(state) });
+        // v1.11.35 FIX: this site was missing { compact: true } and was
+        // shipping FULL transformState (~113KB) every 3s, doubling the
+        // broadcast bandwidth and bypassing all the v1.11.32-34 compact
+        // mode work. The other two broadcast sites in server.js were
+        // already correct. This is why the debug log showed alternating
+        // 67KB and 113KB broadcasts.
+        broadcast({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
       }
     } catch (e) {
       console.error('[StatusPoller]', e.message);
