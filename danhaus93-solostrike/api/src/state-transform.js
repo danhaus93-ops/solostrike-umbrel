@@ -190,7 +190,7 @@ function transformState(state, opts) {
           shareEvents:   (shareCounters || {})[w.name] || null,
           poolAlignment: alignment,
           live:          getLiveForWorker(w.name),
-          statusHistoryTail: Array.isArray(statusHistory) ? statusHistory.slice(-2) : [],
+          statusHistoryTail: Array.isArray(statusHistory) ? statusHistory.slice(-10) : [],
         };
       }
       return {
@@ -237,15 +237,21 @@ function transformState(state, opts) {
           })()
         : undefined,
       // v1.11.33: hashrate without full history/week arrays. Charts need
-      // those arrays to render, so we ship just the LAST 2 entries from
+      // those arrays to render, so we ship just the LAST N entries from
       // each as historyTail/weekTail. Client appends new points to its
-      // existing arrays (deduped by ts). Chart stays live, payload tiny
-      // (~70 bytes vs 300KB+ for the full arrays).
+      // existing arrays (deduped by ts). Chart stays live, payload tiny.
+      // v1.11.38: tail size is now 10 (was 2). Reason: WS broadcasts every
+      // 3s, samples written every 60s. A 5-minute disconnect window misses
+      // 5 samples — a tail of 2 only catches 2, losing 3. Tail of 10
+      // covers ≥10 minutes of disconnect transparently. Cost: ~150 bytes
+      // extra per broadcast (10 entries × ~15 bytes vs 2 × 15). Trivial.
+      // The new "full state on connect" welcome message (above) is the
+      // primary defense; this is the secondary safety net.
       hashrate: stateHashrate ? {
         current:     stateHashrate.current     || 0,
         averages:    stateHashrate.averages    || {},
-        historyTail: Array.isArray(stateHashrate.history) ? stateHashrate.history.slice(-2) : [],
-        weekTail:    Array.isArray(stateHashrate.week)    ? stateHashrate.week.slice(-2)    : [],
+        historyTail: Array.isArray(stateHashrate.history) ? stateHashrate.history.slice(-10) : [],
+        weekTail:    Array.isArray(stateHashrate.week)    ? stateHashrate.week.slice(-10)    : [],
       } : undefined,
       // v1.11.34: shares.rejectReasons grows unbounded — accumulates every
       // unique rejection string ckpool ever emits. Production showed 46KB.
@@ -255,9 +261,11 @@ function transformState(state, opts) {
       // v1.11.36: shares.spsHistory holds 1440 entries (24h @ 1min sampling)
       // at ~32 bytes each = ~46KB. This was the REAL culprit hiding in
       // state.shares all along — v1.11.34's rejectReasons cap was correct
-      // but targeted the wrong field. Same fix as hashrate: ship last 2
+      // but targeted the wrong field. Same fix as hashrate: ship last N
       // entries as spsHistoryTail, client appends to its existing array.
       // StrikeVelocityChart consumes shares.spsHistory.
+      // v1.11.38: tail size is 10 (was 2), matching hashrate tails — covers
+      // ≥10 minute disconnects without dropping samples.
       shares: stateShares ? (() => {
         const { rejectReasons, spsHistory, ...rest_s } = stateShares;
         const top = rejectReasons
@@ -266,7 +274,7 @@ function transformState(state, opts) {
         return {
           ...rest_s,
           rejectReasons: Object.fromEntries(top),
-          spsHistoryTail: Array.isArray(spsHistory) ? spsHistory.slice(-2) : [],
+          spsHistoryTail: Array.isArray(spsHistory) ? spsHistory.slice(-10) : [],
         };
       })() : undefined,
       // snapshots omitted entirely in compact mode
