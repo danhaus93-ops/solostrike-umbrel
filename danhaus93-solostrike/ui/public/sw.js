@@ -7,7 +7,7 @@
 
 // Build marker: 1.8.3-rev22 (impliedHr uses session-scoped acceptedSdiffSum, not lifetime ckpool sum)
 
-const CACHE_NAME = 'solostrike-v1.11.45-c2';
+const CACHE_NAME = 'solostrike-v1.11.46-c1';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
