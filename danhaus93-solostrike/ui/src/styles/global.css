@@ -43,24 +43,65 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes blockBoom{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
-/* v1.11.39: TICKER — CSS @keyframes with iteration-synced text update.
-   Animation runs on GPU compositor thread, fully independent of main thread.
-   The Ticker component swaps text content imperatively at every animation
-   iteration boundary (the loop wrap point) — invisible to the eye because
-   doubled content makes -50% visually identical to 0%. Result: zero
-   visible "restart" stutter, ticker runs silky even during WS broadcasts,
-   JSON.parse load, React reconciliation, or backdrop-filter parent
-   re-rasterization. */
-@keyframes ss-ticker-scroll {
-  from { transform: translate3d(0, 0, 0); }
-  to   { transform: translate3d(-50%, 0, 0); }
+/* v1.11.40: streaming marquee. Each metric is its own DOM pill that flows
+   right-to-left independently. No textContent swaps on running elements,
+   no shared track, no possibility of flash. Per-pill animation runs on the
+   GPU compositor thread. max-width bounds the travel distance so perceived
+   speed stays consistent across mobile and desktop. */
+@keyframes ss-pill-flow {
+  from { transform: translate3d(720px, 0, 0); }
+  to   { transform: translate3d(-100%, 0, 0); }
 }
-.ss-ticker-track {
-  /* GPU-acceleration hints */
+.ss-marquee {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  height: 26px;
+  overflow: hidden;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+}
+.ss-marquee::before,
+.ss-marquee::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 24px;
+  z-index: 2;
+  pointer-events: none;
+}
+.ss-marquee::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--bg-deep), transparent);
+}
+.ss-marquee::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--bg-deep), transparent);
+}
+.ss-marquee-pill {
+  position: absolute;
+  top: 0; left: 0;
+  height: 26px;
+  line-height: 26px;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+  font-family: var(--fd);
+  font-size: 0.55rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
   will-change: transform;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transform: translate3d(0, 0, 0);
+}
+.ss-marquee-pill-lbl { color: var(--text-3); margin-right: 0.55em; }
+.ss-marquee-pill-val { color: var(--amber); font-weight: 600; }
+.ss-marquee-pill-sep { color: var(--text-3); margin-left: 1em; opacity: 0.5; }
+.ss-marquee-pill-event .ss-marquee-pill-lbl { color: var(--btc); }
+.ss-marquee-pill-event .ss-marquee-pill-val {
+  color: #ffd789;
+  text-shadow: 0 0 8px rgba(245,166,35,0.5);
 }
 /* v1.8.3-rev29: splash strike animation, retimed.
    Previous keyframe (rev15) put the impact frame at 55% of the cycle (770ms
@@ -625,7 +666,7 @@ body.ss-in-iframe .ss-app-header {
   height: 8px;
   flex-shrink: 0;
   vertical-align: middle;
-  /* v1.11.39: stacking context — no visual effect, but lets the browser
+  /* v1.11.40: stacking context — no visual effect, but lets the browser
      keep this dot's animation on its own compositor layer. */
   isolation: isolate;
 }
@@ -651,13 +692,13 @@ body.ss-in-iframe .ss-app-header {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: ssDotBreath 2.5s ease-in-out infinite;
-  /* v1.11.39: hint to GPU-promote so the opacity/transform animation
+  /* v1.11.40: hint to GPU-promote so the opacity/transform animation
      runs on the compositor thread without triggering main-thread paint. */
   will-change: transform, opacity;
 }
 .ss-status-dot-green::after {
   animation: ssDotPing 2.5s ease-out infinite;
-  /* v1.11.39: same — the ping ring expands via transform: scale, which is
+  /* v1.11.40: same — the ping ring expands via transform: scale, which is
      a compositor-cheap op when this element has its own layer. */
   will-change: transform, opacity;
 }
@@ -668,7 +709,7 @@ body.ss-in-iframe .ss-app-header {
   background: var(--amber);
   box-shadow: 0 0 6px var(--amber);
   animation: ssDotBreath 4s ease-in-out infinite;
-  /* v1.11.39: same compositor promotion as green dot. */
+  /* v1.11.40: same compositor promotion as green dot. */
   will-change: transform, opacity;
 }
 .ss-status-dot-amber::after {
@@ -782,7 +823,7 @@ body.ss-in-iframe .ss-app-header {
 }
 .ss-strikes-celebrate { animation: ssStrikesCelebrate 1.5s ease-out; display: inline-flex !important; }
 
-/* ── v1.11.39 ── Static Pulse strike markers (Performance Mode) ────────────
+/* ── v1.11.40 ── Static Pulse strike markers (Performance Mode) ────────────
    DOM-based strike markers for Performance Mode. Each marker has 3 expanding
    rings on staggered delays mirroring the original WebGL strike animation,
    plus a static dot at center. CSS keyframes run on the compositor thread —
@@ -800,12 +841,12 @@ body.ss-in-iframe .ss-app-header {
 }
 
 
-/* v1.11.39 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
+/* v1.11.40 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
    ALL peer dots are crimson #A8170E (no rings — pure pinpoints).
    Only OWN gets the gold echo pulse: 3 staggered #FFD700 rings, 2.5s period,
    1/3 phase offset, scale 0.5 → 3 with fade-out. Matches the WebGL globe
    marker code (App.jsx lines 9665-9697) byte-for-byte. */
-/* v1.11.39 — Echo applied to <g> wrappers, not raw <circle>. The <g>
+/* v1.11.40 — Echo applied to <g> wrappers, not raw <circle>. The <g>
    inherits its parent's translate so transform-origin: 0 0 means "rotate
    around the parent's translate point" which equals the circle's center.
    This works reliably on Safari iOS 16+ where transform-box: fill-box
@@ -813,7 +854,7 @@ body.ss-in-iframe .ss-app-header {
 
 }
 
-/* v1.11.39 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
+/* v1.11.40 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
    the scene stays calm as peer count grows. Peer cubes are static. */
 .ss-mesh-own-cube {
   animation: ssMeshOwnPulse 2.4s ease-in-out infinite;
@@ -832,7 +873,7 @@ body.ss-in-iframe .ss-app-header {
   }
 }
 
-/* v1.11.39 — Static Pulse Strikes (DOM divs). Markers are HTML divs that
+/* v1.11.40 — Static Pulse Strikes (DOM divs). Markers are HTML divs that
    stay circular in CSS pixels regardless of how the underlying map is
    stretched (object-fit: fill). Animations target CSS scale on inner
    <span> ring elements. Mirrors live globe markers byte-for-byte. */
