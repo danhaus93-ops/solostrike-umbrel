@@ -239,7 +239,7 @@ const LS_TICKER_ENABLED  = 'ss_ticker_enabled_v1';
 const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
-const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.39: Performance Mode toggle
+const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.40: Performance Mode toggle
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -330,7 +330,7 @@ function loadTickerMetrics() { try { const s = localStorage.getItem(LS_TICKER_ME
 function saveTickerMetrics(list) { try { localStorage.setItem(LS_TICKER_METRICS, JSON.stringify(list)); } catch {} }
 function loadMinimalMode()   { try { const v = localStorage.getItem(LS_MINIMAL_MODE); return v === 'true'; } catch { return false; } }
 function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, String(!!v)); } catch {} }
-// v1.11.39: Performance Mode — replaces animated Pulse/Hunt canvases with
+// v1.11.40: Performance Mode — replaces animated Pulse/Hunt canvases with
 // static baked frames. Strike pulse rings stay live (information-bearing).
 // Header pickaxe pulse + glow auto-suppressed (already handled via the
 // existing minimalMode ternary; performanceMode joins it).
@@ -422,16 +422,16 @@ const _ssDebug = {
   resources:     [],   // {ts, name, dur, size, type}  — only slow/large
   visibility:    { state: 'visible', transitions: 0, lastChangeTs: Date.now() },
   battery:       null, // { level, charging, chargingTime, dischargingTime } when supported
-  // v1.11.39 — ticker / stutter diagnosis streams
+  // v1.11.40 — ticker / stutter diagnosis streams
   tickerFrames:  [],   // {ts, dt, x, hw}      — sliding window, last ~150 rAF ticks
   longTaskList:  [],   // {ts, dur, attrib}    — last ~30 PerformanceObserver longtask entries
   wsEvents:      [],   // {ts, size, type}     — last ~50 WS message arrivals with byte size
   tickerStalls:  [],   // {ts, gap, x}         — detected ticker stalls (gap > 33ms between frames)
-  // v1.11.39 — WebSocket spawn tracking (duplicate-socket bug detection)
+  // v1.11.40 — WebSocket spawn tracking (duplicate-socket bug detection)
   wsSpawnCount:  0,    // total number of new WebSocket() calls since page load
   wsSpawnLog:    [],   // {ts, spawn, reason}  — last 20 spawn events with reason tag
 };
-// v1.11.39 FIX: expose _ssDebug to window so cross-module instrumentation
+// v1.11.40 FIX: expose _ssDebug to window so cross-module instrumentation
 // (in usePool.js, etc) can write to it. Without this, the previous tracking
 // in usePool.js silently no-op'd because `window._ssDebug` was undefined,
 // leaving wsSpawnCount=0 and wsSpawnLog=[] in every debug dump.
@@ -1182,116 +1182,61 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
   );
 }
 
-// ── Ticker ────────────────────────────────────────────────────────────────────
-// v1.11.39 (Option B): CSS @keyframes with iteration-synchronized text update.
-// Replaces the JS rAF version that caused visible "restart" stutters in sync
-// with WS broadcasts (every 3s).
-//
-// HOW IT WORKS:
-//   - Animation runs on GPU compositor thread (not main thread). No JS per
-//     frame. Survives any main-thread stall, JSON.parse load, React reflow,
-//     backdrop-filter layer re-rasterization, GC pauses, etc.
-//   - Content is doubled `[text][text]` and animation is `0% → -50%`. The
-//     visual content at -50% is identical to content at 0%, so the loop
-//     wrap is invisible to the eye.
-//   - `snapshotText` is held in a ref so React prop changes DO NOT
-//     re-render the track DOM element. The CSS animation stays alive
-//     indefinitely with stable element identity.
-//   - When new snapshotText arrives, it's QUEUED. On the next
-//     `animationiteration` event (fires at every loop wrap), we swap the
-//     DOM textContent imperatively. The swap lands at the exact moment
-//     the animation visually resets to 0% — so it just looks like the
-//     ticker naturally cycled with slightly updated numbers.
-//   - Result: zero visible "restart" event. Mining metrics tick at the
-//     natural loop boundary, invisible to the user.
-const Ticker = React.memo(function Ticker({ snapshotText, enabled, speedSec }) {
-  const trackRef = useRef(null);
-  const pendingTextRef = useRef(snapshotText || '');
-  const currentTextRef = useRef(snapshotText || '');
+// ── Ticker (streaming marquee) ────────────────────────────────────────────────
+// v1.11.40: each metric is its own DOM pill spawned every INTERVAL seconds.
+// Pills enter from the right (translate3d 720px → -100%), traverse, exit left.
+// No pill's textContent is ever modified — fresh data flows in via spawn rate.
+// Tight density (DURATION/5) keeps ~5 pills visible; max-width:720px bound
+// keeps perceived speed consistent across mobile and desktop.
+const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
+  const marqueeRef = useRef(null);
+  const pillsSourceRef = useRef(pillsSource);
+  useEffect(() => { pillsSourceRef.current = pillsSource; }, [pillsSource]);
+
   const duration = speedSec || DEFAULT_TICKER_SPEED;
+  const interval = Math.max(0.8, duration / 5);  // tight density: ~5 visible
 
-  // Apply text to the DOM (doubled, with spacer). Bypasses React reconciliation
-  // so the track element keeps the same identity → CSS animation never restarts.
-  const applyText = (text) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const spacer = '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'; // 6× &nbsp;
-    track.textContent = `${text}${spacer}${text}${spacer}`;
-    currentTextRef.current = text;
-  };
-
-  // Initial paint + iteration listener (mount once, never re-run during life)
   useEffect(() => {
     if (!enabled) return;
-    const track = trackRef.current;
-    if (!track) return;
-    applyText(pendingTextRef.current);
+    const marquee = marqueeRef.current;
+    if (!marquee) return;
 
-    // Swap pending text into DOM at every animation loop boundary.
-    // The boundary is where -50% wraps to 0% — content visually identical,
-    // so swapping textContent here is invisible to the eye.
-    const onIteration = () => {
-      if (pendingTextRef.current !== currentTextRef.current) {
-        applyText(pendingTextRef.current);
-      }
-      // v1.11.39: instrument iteration cadence for debug
-      if (typeof window !== 'undefined' && window._ssDebug?.tickerFrames) {
-        const dbg = window._ssDebug;
-        dbg.tickerFrames.push({
-          ts: Date.now(),
-          iter: true,
-          textLen: currentTextRef.current.length,
-        });
-        if (dbg.tickerFrames.length > 150) dbg.tickerFrames.shift();
-      }
+    const spawnPill = (delaySec = 0, eventData = null) => {
+      const data = eventData || (pillsSourceRef.current && pillsSourceRef.current());
+      if (!data) return;
+      const pill = document.createElement('span');
+      pill.className = 'ss-marquee-pill' + (eventData ? ' ss-marquee-pill-event' : '');
+      pill.style.animation = `ss-pill-flow ${duration}s linear ${delaySec}s forwards`;
+      const lbl = document.createElement('span');
+      lbl.className = 'ss-marquee-pill-lbl';
+      lbl.textContent = data.label || '';
+      const val = document.createElement('span');
+      val.className = 'ss-marquee-pill-val';
+      val.textContent = data.value || '';
+      const sep = document.createElement('span');
+      sep.className = 'ss-marquee-pill-sep';
+      sep.textContent = '·';
+      pill.appendChild(lbl);
+      pill.appendChild(val);
+      pill.appendChild(sep);
+      pill.addEventListener('animationend', () => pill.remove());
+      marquee.appendChild(pill);
     };
-    track.addEventListener('animationiteration', onIteration);
-    return () => track.removeEventListener('animationiteration', onIteration);
-  }, [enabled]);
 
-  // Queue new text when prop changes. Actual DOM swap happens at the
-  // next animation iteration boundary (invisible to the user).
-  useEffect(() => {
-    pendingTextRef.current = snapshotText || '';
-    // If no animation running yet (initial paint), apply immediately
-    if (!currentTextRef.current && snapshotText) {
-      applyText(snapshotText);
-    }
-  }, [snapshotText]);
+    // Pre-spawn so the screen has content immediately
+    const numVisible = Math.max(1, Math.floor(duration / interval));
+    for (let i = 1; i <= numVisible; i++) spawnPill(-i * interval);
 
-  if (!enabled || !snapshotText) return null;
+    // Steady-state spawn loop
+    const id = setInterval(() => spawnPill(0), interval * 1000);
+    return () => {
+      clearInterval(id);
+      while (marquee.firstChild) marquee.removeChild(marquee.firstChild);
+    };
+  }, [enabled, duration, interval]);
 
-  return (
-    <div style={{
-      width:'100%', boxSizing:'border-box', maxWidth:'100%', minWidth:0,
-      background:'var(--bg-deep)',
-      borderBottom:'1px solid var(--border)',
-      overflow:'hidden',
-      height:26,
-      display:'flex',
-      alignItems:'center',
-    }}>
-      <div
-        ref={trackRef}
-        className="ss-ticker-track"
-        style={{
-          whiteSpace:'nowrap',
-          fontFamily:'var(--fd)',
-          fontSize:'0.55rem',
-          letterSpacing:'0.15em',
-          color:'var(--text-2)',
-          textTransform:'uppercase',
-          display:'inline-block',
-          flexShrink:0,
-          willChange:'transform',
-          // GPU-compositor CSS animation — runs independent of main thread.
-          // Duration is set via inline style so user's speedSec preference
-          // takes effect without rebuilding the stylesheet.
-          animation: `ss-ticker-scroll ${duration}s linear infinite`,
-        }}
-      />
-    </div>
-  );
+  if (!enabled) return null;
+  return <div className="ss-marquee" ref={marqueeRef} />;
 });
 
 // ── Latest Block strip ────────────────────────────────────────────────────────
@@ -2630,7 +2575,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
   }, [hashrate]);
   useEffect(() => { huntAnimRef.current = huntAnim || 'noncefield'; }, [huntAnim]);
 
-  // v1.11.39: Performance Mode ref — checked inside the rAF body to bail
+  // v1.11.40: Performance Mode ref — checked inside the rAF body to bail
   // out of heavy draw work without restarting the loop. Live updates via
   // useEffect mean the toggle takes effect on the next frame (<16ms).
   const perfModeRef = useRef(!!performanceMode);
@@ -3322,7 +3267,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // v1.8.5-rev70e: clear to transparent so card shows through.
       ctx.clearRect(0, 0, W, H);
 
-      // v1.11.39: Performance Mode short-circuit. Skip all draw work — the
+      // v1.11.40: Performance Mode short-circuit. Skip all draw work — the
       // static <img> overlay in JSX covers the canvas surface. We still
       // schedule the next frame (cheap when there's nothing to draw) so
       // toggling Performance Mode off resumes animation instantly without
@@ -3405,7 +3350,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
         position: 'absolute', inset: 0,
         width: '100%', height: '100%',
       }}/>
-      {/* v1.11.39: Performance Mode static frame — overlays all canvases
+      {/* v1.11.40: Performance Mode static frame — overlays all canvases
           with a baked PNG matching the selected huntAnim. Loaded only when
           performanceMode is on, so it costs nothing for default users. */}
       {performanceMode && (
@@ -5932,7 +5877,7 @@ function DebugOverlay({ settings, onSettingsChange, appState }) {
 // All three persist to localStorage. The HOST value is also exported via
 // useStratumHost() so the footer ports and any other stratum URL builder
 // uses the same configured value.
-// v1.11.39: memoized to skip re-renders when props unchanged across WS broadcasts
+// v1.11.40: memoized to skip re-renders when props unchanged across WS broadcasts
 const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stratumHealth, startedAt }) {
   const [copied, setCopied] = useState('');
 
@@ -7381,7 +7326,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </div>
       )}
 
-      {/* v1.11.39: Performance Mode — freezes decorative animations while
+      {/* v1.11.40: Performance Mode — freezes decorative animations while
           keeping information-bearing animations (strike pulse) alive.
           Mirrors Minimal Mode UI pattern for visual consistency. */}
       <div style={firstSectionTitle}>▸ Performance Mode</div>
@@ -8095,7 +8040,7 @@ function useAnimatedNumber(value, durationMs = 600) {
 //     bolts/packets fire continuously. Burst button injects a wave.
 //   - Sliding logarithmic scrub: peerCount maps to slider via log scale
 //     so 1-2-8-20-50-200-1K-5K stages are roughly evenly spaced.
-// v1.11.39: memoized to skip re-renders when props unchanged across WS broadcasts
+// v1.11.40: memoized to skip re-renders when props unchanged across WS broadcasts
 const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClose }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -8507,7 +8452,7 @@ BlockSimulatorModal.displayName = "BlockSimulatorModal";
 
 
 
-// ── v1.11.39 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
+// ── v1.11.40 ── Static Pulse Strikes (Performance Mode overlay) ─────────────
 // DOM-based strike markers shown over the baked equirectangular world map
 // when performanceMode is on. Replaces the WebGL strikes that get frozen
 // when the canvas rAF is bailed out.
@@ -8529,7 +8474,7 @@ BlockSimulatorModal.displayName = "BlockSimulatorModal";
 // pre-filtered (no `filtered:true`) entries. We render up to PEER_CAP
 // markers to keep the DOM lightweight even if the network is huge.
 const PEER_CAP_STATIC = 60;
-// ── v1.11.39 ── Static Pulse Strikes — DOM divs ────────────────────────────
+// ── v1.11.40 ── Static Pulse Strikes — DOM divs ────────────────────────────
 // DOM-based peer markers using HTML divs with border-radius:50%. Unlike SVG
 // circles, DOM divs aren't subject to the parent's coordinate system — they
 // stay perfectly round in CSS pixels regardless of how the underlying map
@@ -8591,7 +8536,7 @@ function StaticPulseStrikes({ peers, ownPin }) {
   );
 }
 
-// ── v1.11.39 — Static Pulse Mesh helpers (restored) ────────────────────────
+// ── v1.11.40 — Static Pulse Mesh helpers (restored) ────────────────────────
 // Cube layout constants — must match constellation-cube.js byte-for-byte
 // so the static mesh visualization mirrors the live constellation animation.
 const CUBE_CORNERS = [
@@ -8790,7 +8735,7 @@ function StaticPulseMesh({ peers, ownPin }) {
 }
 
 
-// v1.11.39: memoized to skip re-renders when props unchanged across WS broadcasts
+// v1.11.40: memoized to skip re-renders when props unchanged across WS broadcasts
 const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
@@ -8882,7 +8827,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // the user to tap, and the next tap on the canvas converts screen coords
   // → 3D unit sphere → lat/lon → 5° grid snap → poolPin update.
   const [placingPin, setPlacingPin] = useState(false);
-  // v1.11.39 — Pinch-zoom + pan state for Performance Mode static
+  // v1.11.40 — Pinch-zoom + pan state for Performance Mode static
   // visualization. Applies to BOTH the static map (pulseAnim==='globe')
   // and the static mesh cube (pulseAnim==='block'). Zoom is clamped
   // 1.0×–5.0×. Pan keeps content within the visible container.
@@ -8913,7 +8858,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // (drag-rotate the WebGL camera, pinch-zoom).
   const pulseAnimRef = useRef(pulseAnim);
   useEffect(() => { pulseAnimRef.current = pulseAnim; }, [pulseAnim]);
-  // v1.11.39: Performance Mode ref — same pattern as NonceField. Live
+  // v1.11.40: Performance Mode ref — same pattern as NonceField. Live
   // updates via useEffect; rAF checks the ref each frame and bails out
   // when on, while still rescheduling the next frame.
   const perfModeRef = useRef(!!performanceMode);
@@ -8989,7 +8934,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // v1.11.39: Performance Mode uses a flat equirectangular map (not a
+    // v1.11.40: Performance Mode uses a flat equirectangular map (not a
     // globe disk). Use 2D projection instead of inverse orthographic math.
     // The visible map fills the container exactly (objectFit:contain on a
     // 2:1 aspect container = no letterbox), so canvas dimensions match
@@ -9000,13 +8945,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     // the bottom edge of the image. The inverse projection must use the
     // same range or pins drift south.
     if (perfModeRef.current) {
-      // v1.11.39: Suppress tap-to-pin if the user just finished a pinch
+      // v1.11.40: Suppress tap-to-pin if the user just finished a pinch
       // gesture (didPinchRef gets set on 2-finger touchend).
       if (didPinchRef.current) {
         didPinchRef.current = false;
         return;
       }
-      // v1.11.39: Inverse-transform click coords if user has zoomed/panned.
+      // v1.11.40: Inverse-transform click coords if user has zoomed/panned.
       // Wrapper transform is: translate(panX, panY) scale(zoom)
       // with origin 50% 50%. To recover pre-transform coords:
       //   cx = (clickX - W/2 - pan.x) / zoom + W/2
@@ -9014,7 +8959,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       const W = rect.width, H = rect.height;
       const cx = (clickX - W/2 - staticPan.x) / staticZoom + W/2;
       const cy = (clickY - H/2 - staticPan.y) / staticZoom + H/2;
-      // v1.11.39: Standard equirectangular [-90, +90] — keeps pin
+      // v1.11.40: Standard equirectangular [-90, +90] — keeps pin
       // placement aligned with the live globe's sphere projection.
       const lonDeg = (cx / W) * 360 - 180;
       const latDeg = 90 - (cy / H) * 180;
@@ -9090,7 +9035,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     setPlacingPin(false);
   }, [onPoolPinChange, staticZoom, staticPan]);
 
-  // v1.11.39 — Pinch-zoom + pan touch handlers for the Performance Mode
+  // v1.11.40 — Pinch-zoom + pan touch handlers for the Performance Mode
   // static visualization wrapper. Native touch events (not React synthetic)
   // because we need passive:false on touchmove to preventDefault during pinch.
   const staticWrapperRef = useRef(null);
@@ -9169,7 +9114,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       }
     };
 
-    // v1.11.39: Click → place pin in Performance Mode (when pulseAnim is
+    // v1.11.40: Click → place pin in Performance Mode (when pulseAnim is
     // globe). Uses container rect (NOT wrapper rect, which is transformed)
     // for accurate inverse projection.
     const onClick = (e) => {
@@ -10141,7 +10086,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       }
       ctx.clearRect(0, 0, W, H);
 
-      // v1.11.39: Performance Mode short-circuit. The static <img> overlay
+      // v1.11.40: Performance Mode short-circuit. The static <img> overlay
       // in JSX (below) replaces the globe/block animation. Schedule next
       // frame anyway so toggling Performance Mode off resumes instantly.
       if (perfModeRef.current) {
@@ -10584,7 +10529,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             All canvases inside are alpha-transparent. */}
         <div ref={containerRef} style={{
           width:'100%',
-          // v1.11.39: Compact layout — mirror the live globe sizing.
+          // v1.11.40: Compact layout — mirror the live globe sizing.
           // The non-perf branch uses height:88 (small embedded mode);
           // perf mode mirrors that single-height behavior with a small
           // bump for the map to be readable.
@@ -10625,8 +10570,8 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               display: pulseAnim === 'block' ? 'block' : 'none',
             }}
           />
-          {/* v1.11.39: Performance Mode static Pulse map (compact layout). */}
-          {/* v1.11.39 — Pinch-zoom wrapper (same as full layout below). */}
+          {/* v1.11.40: Performance Mode static Pulse map (compact layout). */}
+          {/* v1.11.40 — Pinch-zoom wrapper (same as full layout below). */}
           {performanceMode && (
             <div
               ref={staticWrapperRef}
@@ -10661,7 +10606,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               )}
             </div>
           )}
-          {/* v1.11.39: DOM strike markers — CSS-keyframe animated rings
+          {/* v1.11.40: DOM strike markers — CSS-keyframe animated rings
               positioned via equirectangular projection. Only mounted when
               performanceMode is on (zero cost otherwise). */}
 
@@ -10851,7 +10796,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           opening the strikers panel. */}
       <div
         style={{
-          // v1.11.39: Restored flex:1 always — the inner containerRef now
+          // v1.11.40: Restored flex:1 always — the inner containerRef now
           // flex-grows to fill the card's available height instead of
           // locking to 2:1 aspect ratio. Map image inside uses object-fit:
           // contain to scale up without distortion.
@@ -10863,7 +10808,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           (and other animations) sit directly on the card surface. */}
       <div ref={containerRef} style={{
         width:'100%',
-        // v1.11.39: Mirror the LIVE GLOBE sizing exactly — flex:1 with
+        // v1.11.40: Mirror the LIVE GLOBE sizing exactly — flex:1 with
         // minHeight:240, maxHeight:380. Previously locked perf mode to
         // aspect-ratio 2/1 which collapsed the container to ~half the
         // card height, leaving a huge dead-space gap below. The map
@@ -10902,11 +10847,11 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             display: pulseAnim === 'block' ? 'block' : 'none',
           }}
         />
-        {/* v1.11.39: Performance Mode static Pulse map. Overlays globe and
+        {/* v1.11.40: Performance Mode static Pulse map. Overlays globe and
             constellation WebGL canvases with a baked equirectangular world.
             Pointer events disabled so the 2D canvas below still handles
             pin placement. */}
-        {/* v1.11.39 — Pinch-zoom + pan wrapper. Map, mesh, and SVG strikes
+        {/* v1.11.40 — Pinch-zoom + pan wrapper. Map, mesh, and SVG strikes
             all transform together so they stay aligned at any zoom level.
             Inverse transform applied to handleCanvasTap for accurate pin
             placement when zoomed. Double-tap to reset. */}
@@ -12932,12 +12877,12 @@ function DebugTab({ settings, onSettingsChange }) {
           visibility:  _ssDebug.visibility,
           battery:     _ssDebug.battery,
           lastTap:     _ssDebug.lastTap,
-          // v1.11.39 — stutter diagnosis streams
+          // v1.11.40 — stutter diagnosis streams
           tickerFrames:  _ssDebug.tickerFrames  || [],
           tickerStalls:  _ssDebug.tickerStalls  || [],
           longTaskList:  _ssDebug.longTaskList  || [],
           wsEvents:      _ssDebug.wsEvents      || [],
-          // v1.11.39 — WS spawn tracking
+          // v1.11.40 — WS spawn tracking
           wsSpawnCount:  _ssDebug.wsSpawnCount  || 0,
           wsSpawnLog:    _ssDebug.wsSpawnLog    || [],
         },
@@ -13577,7 +13522,7 @@ export default function App() {
     enabled: loadTickerEnabled(), speedSec: loadTickerSpeed(), metricIds: loadTickerMetrics(),
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
-  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.39
+  const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.40
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
   const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
@@ -13684,7 +13629,7 @@ export default function App() {
   const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
-  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.39
+  const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.40
   const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   const onStripSettingsChange = useCallback((next) => {
@@ -13729,22 +13674,42 @@ export default function App() {
   const workers = useMemo(() => Object.values(poolState?.workers || {}), [poolState?.workers]);
 
   // Build ticker text
-  // v1.11.39: tickerText is recomputed on every poolState change, but the
+  // v1.11.40: tickerText is recomputed on every poolState change, but the
   // new CSS-keyframes Ticker (line 1195) only swaps the actual DOM text
   // at animation-iteration boundaries — so frequent updates here are
   // harmless and the ticker stays silky. The Ticker itself absorbs the
   // update lifecycle, no throttling needed.
-  const tickerText = useMemo(() => {
-    if (!tickerSettings.enabled || !tickerSettings.metricIds?.length) return '';
-    return tickerSettings.metricIds.map(id => {
-      const m = METRIC_MAP[id];
-      if (!m) return null;
-      const out = m.render(poolState||{}, aliases, currency, poolState?.uptime) || {};
-      const v = out.value != null ? out.value : '—';
-      const p = out.prefix != null ? out.prefix : m.label.toUpperCase();
-      return `${p} ${v}`;
-    }).filter(Boolean).join('   ·   ');
-  }, [tickerSettings, poolState, aliases, currency]);
+  // v1.11.40: pillsSource() returns one fresh metric per call (round-robin).
+  // Marquee invokes this every INTERVAL seconds to spawn a new pill carrying
+  // the CURRENT metric value. Refs keep the callback identity stable so the
+  // Marquee's spawn loop isn't torn down on every parent render.
+  const tickerPoolRef = useRef(poolState);
+  useEffect(() => { tickerPoolRef.current = poolState; }, [poolState]);
+  const tickerAliasesRef = useRef(aliases);
+  useEffect(() => { tickerAliasesRef.current = aliases; }, [aliases]);
+  const tickerCurrencyRef = useRef(currency);
+  useEffect(() => { tickerCurrencyRef.current = currency; }, [currency]);
+  const tickerMetricIdsRef = useRef(tickerSettings.metricIds);
+  useEffect(() => { tickerMetricIdsRef.current = tickerSettings.metricIds; }, [tickerSettings.metricIds]);
+  const tickerCursorRef = useRef(0);
+
+  const tickerPillsSource = useCallback(() => {
+    const ids = tickerMetricIdsRef.current || [];
+    if (!ids.length) return null;
+    for (let i = 0; i < ids.length; i++) {
+      const idx = tickerCursorRef.current % ids.length;
+      tickerCursorRef.current = (tickerCursorRef.current + 1) % ids.length;
+      const m = METRIC_MAP[ids[idx]];
+      if (!m) continue;
+      const ps = tickerPoolRef.current || {};
+      const out = m.render(ps, tickerAliasesRef.current, tickerCurrencyRef.current, ps?.uptime) || {};
+      return {
+        label: out.prefix != null ? String(out.prefix) : m.label.toUpperCase(),
+        value: out.value != null ? String(out.value) : '—',
+      };
+    }
+    return null;
+  }, []);
 
   // ── Stratum first-then-rotate effect (v1.7.17) ──────────────────────────
   // Must be declared BEFORE early returns to comply with Rules of Hooks.
@@ -14370,7 +14335,7 @@ export default function App() {
         />
         {!minimalMode && (
           <>
-            <Ticker snapshotText={tickerText} enabled={tickerSettings.enabled} speedSec={tickerSettings.speedSec}/>
+            <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>
             <LatestBlockStrip netBlocks={poolState?.netBlocks} blockReward={poolState?.blockReward}/>
             <CustomizableTopStrip
               state={poolState}
@@ -14409,7 +14374,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.39 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.40 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
