@@ -113,6 +113,31 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
     0 0 14px rgba(247,147,26,0.5);
   font-feature-settings: 'tnum' 1;
 }
+/* v1.11.45: per-metric color variants. Some metrics (NODE, SYNC, BTC,
+   STABILITY, PER MONTH, POOL SHARE, BLOCKS FOUND, etc.) tint their value
+   text via valClass returned by their render() function. */
+.ss-marquee-pill-val.cyan {
+  color: #00FFD1;
+  text-shadow:
+    0 0 6px rgba(0,255,209,0.7),
+    0 0 14px rgba(0,255,209,0.4);
+}
+.ss-marquee-pill-val.green {
+  color: #4AE055;
+  text-shadow:
+    0 0 6px rgba(74,224,85,0.7),
+    0 0 14px rgba(74,224,85,0.4);
+}
+.ss-marquee-pill-val.red {
+  color: #FF5555;
+  text-shadow:
+    0 0 6px rgba(255,85,85,0.7),
+    0 0 14px rgba(255,85,85,0.4);
+}
+.ss-marquee-pill-val.white {
+  color: #e8eaed;
+  text-shadow: 0 0 4px rgba(232,234,237,0.4);
+}
 .ss-marquee-pill-event .ss-marquee-pill-lbl {
   color: #FFD96B;
   text-shadow:
