@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { usePool } from './hooks/usePool.js';
 import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, fmtPct, fmtDurationMs, fmtSats, fmtBtc, fmtFiat, CURRENCIES, blockTimeAgo } from './utils.js';
-import { METRICS, METRIC_MAP, METRIC_CATEGORIES, DEFAULT_STRIP_METRICS, DEFAULT_CHUNK_SIZE, DEFAULT_FADE_MS } from './metrics.js';
+import { METRICS, METRIC_MAP, METRIC_CATEGORIES } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
@@ -244,7 +244,7 @@ const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
 const DEFAULT_TICKER_SPEED = 14;
-const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'worker_health', 'accept_rate', 'next_block_prize', 'btc_price', 'time_since_block', 'halving', 'blocks_found_total'];
+const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'hashrate_trend', 'stability', 'accept_rate', 'shares_per_min', 'best_share_today', 'worker_health', 'workers_offline', 'avg_share_age', 'top_performer', 'per_day', 'per_week', 'per_month', 'pool_share', 'next_block_prize', 'btc_price', 'mempool_txs', 'priority_fee', 'time_since_block', 'congestion', 'halving', 'latest_block', 'node_sync', 'node_peers', 'node_connected', 'private_mode', 'pool_uptime', 'blocks_found_total', 'pulse'];
 
 const ALL_CARDS = [
   { id:'hashrate',      label:'Firepower' },
@@ -314,11 +314,11 @@ function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(
 function loadNotes()   { try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveNotes(n)  { try { localStorage.setItem(LS_NOTES, JSON.stringify(n)); } catch {} }
 
-function loadStripMetrics() { try { const s = localStorage.getItem(LS_STRIP_METRICS); if (!s) return DEFAULT_STRIP_METRICS; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => METRIC_MAP[id]) : DEFAULT_STRIP_METRICS; } catch { return DEFAULT_STRIP_METRICS; } }
+function loadStripMetrics() { try { const s = localStorage.getItem(LS_STRIP_METRICS); if (!s) return []; const p = JSON.parse(s); return Array.isArray(p) ? p.filter(id => METRIC_MAP[id]) : []; } catch { return []; } }
 function saveStripMetrics(list) { try { localStorage.setItem(LS_STRIP_METRICS, JSON.stringify(list)); } catch {} }
-function loadStripChunk()    { try { const n = parseInt(localStorage.getItem(LS_STRIP_CHUNK), 10); return Number.isFinite(n) && n>=1 && n<=8 ? n : DEFAULT_CHUNK_SIZE; } catch { return DEFAULT_CHUNK_SIZE; } }
+function loadStripChunk()    { try { const n = parseInt(localStorage.getItem(LS_STRIP_CHUNK), 10); return Number.isFinite(n) && n>=1 && n<=8 ? n : 1; } catch { return 1; } }
 function saveStripChunk(n)   { try { localStorage.setItem(LS_STRIP_CHUNK, String(n)); } catch {} }
-function loadStripFade()     { try { const n = parseInt(localStorage.getItem(LS_STRIP_FADE), 10); return Number.isFinite(n) && n>=1000 && n<=20000 ? n : DEFAULT_FADE_MS; } catch { return DEFAULT_FADE_MS; } }
+function loadStripFade()     { try { const n = parseInt(localStorage.getItem(LS_STRIP_FADE), 10); return Number.isFinite(n) && n>=1000 && n<=20000 ? n : 5000; } catch { return 5000; } }
 function saveStripFade(n)    { try { localStorage.setItem(LS_STRIP_FADE, String(n)); } catch {} }
 function loadStripEnabled()  { try { const v = localStorage.getItem(LS_STRIP_ENABLED); return v === null ? true : v === 'true'; } catch { return true; } }
 function saveStripEnabled(v) { try { localStorage.setItem(LS_STRIP_ENABLED, String(!!v)); } catch {} }
@@ -1183,24 +1183,25 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
 }
 
 // ── Ticker (Times Square LED megaboard) ───────────────────────────────────────
-// v1.11.43: simplified time-based scheduling. The v1.11.42 RAF + per-frame
-// getBoundingClientRect collision-detection was added to handle pathologically
-// long pills (stratum_url at ~320px, "SoloStrike Pulse" verbose value). Those
-// metrics are now removed/shortened so all remaining pills are similarly
-// sized (~180-280px). With uniform widths, simple time-based scheduling
-// works perfectly and is much cheaper than 60 reads/sec of DOM measurement.
+// v1.11.44: unified ticker. Merges what were 3 separate strips (Ticker +
+// LatestBlockStrip + CustomizableTopStrip) into ONE scrolling marquee.
+// Includes a composite LATEST BLOCK pill that carries the outlined ₿ cube
+// glyph as it scrolls. Adds visibilitychange handling to prevent stacked
+// pills on app foreground (iOS Safari releases throttled setTimeouts in
+// a burst → multiple spawn()s fire at translate(cw) simultaneously).
 //
-// SPAWN LOOP:
-//   1. Spawn pill, measure its actual rendered offsetWidth.
-//   2. Animate via WAAPI from translate(containerWidth) to translate(-pillW).
-//      Duration = (containerWidth + pillW) / pxPerSec  → constant velocity.
+// ARCHITECTURE:
+//   1. Spawn pill, measure offsetWidth.
+//   2. WAAPI animate from translate(cw) to translate(-pillW).
+//      Duration = (cw + pillW) / pxPerSec  → constant velocity.
 //   3. Schedule next spawn after (pillW + GAP_PX) / pxPerSec ms.
-//      This is exactly long enough for the pill's left edge to reach
-//      the spawn point, guaranteeing uniform visual gap.
+//   4. On visibilitychange:hidden, cancel pending setTimeout.
+//   5. On visibilitychange:visible, wipe DOM + restart fresh spawn().
 //
-// SPEED: speedSec is seconds per viewport-width-traversal. PX_PER_SEC is
-//        derived from containerWidth / speedSec so a pill takes ~speedSec
-//        to cross the visible area regardless of device width.
+// COMPOSITE BLOCK PILL: pill data may include `glyph: true` from a metric's
+// render(). When set, we prepend an outlined ₿ cube (matching the original
+// LatestBlockStrip styling — 20x20 black bg, btc-orange border, soft glow,
+// 12x12 PNG of /btc-glyph.png inside).
 const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
   const marqueeRef = useRef(null);
   const pillsSourceRef = useRef(pillsSource);
@@ -1224,11 +1225,23 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
     const buildPill = (data, isEvent) => {
       const pill = document.createElement('span');
       pill.className = 'ss-marquee-pill' + (isEvent ? ' ss-marquee-pill-event' : '');
+      // Composite LATEST BLOCK pill carries the outlined ₿ cube glyph
+      if (data.glyph) {
+        const glyph = document.createElement('span');
+        glyph.className = 'ss-marquee-pill-glyph';
+        const img = document.createElement('img');
+        img.src = '/btc-glyph.png';
+        img.alt = '₿';
+        img.width = 12;
+        img.height = 12;
+        glyph.appendChild(img);
+        pill.appendChild(glyph);
+      }
       const lbl = document.createElement('span');
       lbl.className = 'ss-marquee-pill-lbl';
       lbl.textContent = data.label || '';
       const val = document.createElement('span');
-      val.className = 'ss-marquee-pill-val';
+      val.className = 'ss-marquee-pill-val' + (data.valClass ? ' ' + data.valClass : '');
       val.textContent = data.value || '';
       pill.appendChild(lbl);
       pill.appendChild(val);
@@ -1261,16 +1274,31 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
         pill.style.animation = `ss-pill-flow ${durationMs / 1000}s linear forwards`;
         pill.addEventListener('animationend', () => pill.remove());
       }
-      // Schedule next spawn after this pill's left edge has advanced
-      // by its own width plus the gap — uniform visual spacing.
       const nextMs = ((pillW + GAP_PX) / pps) * 1000;
       nextTimer = setTimeout(spawn, nextMs);
     };
+
+    // visibilitychange: iOS Safari pauses setTimeout while page is hidden,
+    // then releases ALL accumulated timers at once on foreground — causing
+    // multiple pills to spawn at translate(cw) simultaneously = stacked.
+    // Fix: kill the timer on hidden, restart fresh on visible.
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
+      } else if (document.visibilityState === 'visible') {
+        if (cancelled) return;
+        if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
+        while (marquee.firstChild) marquee.removeChild(marquee.firstChild);
+        spawn();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
 
     spawn();
 
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVis);
       if (nextTimer) clearTimeout(nextTimer);
       while (marquee.firstChild) marquee.removeChild(marquee.firstChild);
     };
@@ -1348,7 +1376,7 @@ function CustomizableTopStrip({ state, aliases, currency, uptime, enabled, metri
   useEffect(() => {
     if (groups.length <= 1) return;
     const fadeDuration = 400;
-    const holdDuration = Math.max(1000, (fadeMs || DEFAULT_FADE_MS) - fadeDuration * 2);
+    const holdDuration = Math.max(1000, (fadeMs || 5000) - fadeDuration * 2);
     const id = setInterval(() => {
       setVisible(false);
       setTimeout(() => {
@@ -7287,21 +7315,6 @@ function MainTab({addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,sa
 
 // ── Display tab ───────────────────────────────────────────────────────────────
 function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
-  const toggleMetric = (id) => {
-    const next = stripSettings.metricIds.includes(id) ? stripSettings.metricIds.filter(x => x !== id) : [...stripSettings.metricIds, id];
-    onStripSettingsChange({ ...stripSettings, metricIds: next });
-  };
-  const moveMetric = (id, dir) => {
-    const idx = stripSettings.metricIds.indexOf(id);
-    if (idx < 0) return;
-    const swap = idx + dir;
-    if (swap < 0 || swap >= stripSettings.metricIds.length) return;
-    const next = [...stripSettings.metricIds];
-    const tmp = next[idx];
-    next[idx] = next[swap];
-    next[swap] = tmp;
-    onStripSettingsChange({ ...stripSettings, metricIds: next });
-  };
   const toggleCard = (id) => {
     const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
     onVisibleCardsChange(next);
@@ -7336,9 +7349,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
     const next = [...current];
     const tmp = next[idx]; next[idx] = next[swap]; next[swap] = tmp;
     onTickerSettingsChange({ ...tickerSettings, metricIds: next });
-  };
-  const matchTickerToStrip = () => {
-    onTickerSettingsChange({ ...tickerSettings, metricIds: [...(stripSettings.metricIds || [])] });
   };
 
   const sectionTitle = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem', marginTop:'1rem' };
@@ -7441,62 +7451,6 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
       </div>
 
-      <div style={sectionTitle}>▸ Top Strip</div>
-
-      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Enable top strip</span>
-        <button onClick={()=>onStripSettingsChange({ ...stripSettings, enabled: !stripSettings.enabled })}
-          style={{width:40, height:22, borderRadius:11, background: stripSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
-          <div style={{position:'absolute', top:1, left: stripSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: stripSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
-        </button>
-      </div>
-
-      <div style={rowLabel}>Metrics (tap to toggle, ↑↓ to reorder)</div>
-      <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-        {METRIC_CATEGORIES.map(cat => (
-          <div key={cat}>
-            <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
-            {METRICS.filter(metric => metric.category === cat).map(metric => {
-              const on = stripSettings.metricIds.includes(metric.id);
-              const order = on ? stripSettings.metricIds.indexOf(metric.id) : -1;
-              return (
-                <div key={metric.id} style={{display:'flex', alignItems:'center', gap:6, padding:'5px 6px', borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                  <button onClick={()=>toggleMetric(metric.id)}
-                    style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
-                    {on?'✓':''}
-                  </button>
-                  <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
-                  {on && (
-                    <>
-                      <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
-                      <button onClick={()=>moveMetric(metric.id, -1)} style={{...btnBase, padding:'2px 6px'}}>↑</button>
-                      <button onClick={()=>moveMetric(metric.id, 1)} style={{...btnBase, padding:'2px 6px'}}>↓</button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Selected: <span style={{color:'var(--amber)'}}>{stripSettings.metricIds.length}</span> metric{stripSettings.metricIds.length===1?'':'s'}
-      </div>
-
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>Show how many at a time (fade between groups)</div>
-      <div style={{display:'flex', gap:6}}>
-        {[1,2,3,4].map(n => (
-          <button key={n} onClick={()=>onStripSettingsChange({ ...stripSettings, chunkSize: n })}
-            style={{flex:1, padding:'0.55rem', background: stripSettings.chunkSize===n?'var(--bg-raised)':'transparent', border:`1px solid ${stripSettings.chunkSize===n?'var(--border-hot)':'var(--border)'}`, color: stripSettings.chunkSize===n?'var(--amber)':'var(--text-2)', fontFamily:'var(--fd)', fontSize:'0.7rem', fontWeight:700, cursor:'pointer'}}>
-            {n}
-          </button>
-        ))}
-      </div>
-
-      <div style={{...rowLabel, marginTop:'0.9rem'}}>Fade interval: <span style={{color:'var(--amber)'}}>{(stripSettings.fadeMs/1000).toFixed(1)}s</span></div>
-      <input type="range" min="2000" max="15000" step="500" value={stripSettings.fadeMs} onChange={e=>onStripSettingsChange({ ...stripSettings, fadeMs: parseInt(e.target.value,10) })}
-        style={{width:'100%', accentColor:'var(--amber)'}}/>
-
       <div style={sectionTitle}>▸ Scrolling Ticker</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
@@ -7509,14 +7463,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
       {tickerSettings.enabled && (
         <>
-          <div style={{...rowLabel, marginTop:'0.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:6}}>
-            <span>Ticker metrics (tap to toggle, ↑↓ to reorder)</span>
-            <button onClick={matchTickerToStrip}
-              title="Copy top strip selection into ticker"
-              style={{padding:'3px 7px', background:'var(--bg-raised)', border:'1px solid var(--border)', color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer'}}>
-              ⤴ Match Top Strip
-            </button>
-          </div>
+          <div style={{...rowLabel, marginTop:'0.5rem'}}>Ticker metrics (tap to toggle, ↑↓ to reorder)</div>
           <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
             {METRIC_CATEGORIES.map(cat => (
               <div key={cat}>
@@ -14377,17 +14324,6 @@ export default function App() {
         {!minimalMode && (
           <>
             <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>
-            <LatestBlockStrip netBlocks={poolState?.netBlocks} blockReward={poolState?.blockReward}/>
-            <CustomizableTopStrip
-              state={poolState}
-              aliases={aliases}
-              currency={currency}
-              uptime={poolState?.uptime}
-              enabled={stripSettings.enabled}
-              metricIds={stripSettings.metricIds}
-              chunkSize={stripSettings.chunkSize}
-              fadeMs={stripSettings.fadeMs}
-            />
             <SyncWarningBanner sync={poolState?.sync}/>
           </>
         )}
@@ -14415,7 +14351,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.43 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.44 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
