@@ -223,13 +223,6 @@ export const METRICS = [
     }) },
   { id: 'blocks_found_total', label: 'Blocks Found', category: 'Session', color: 'var(--green)',
     render: (s) => ({ prefix: 'BLOCKS FOUND', value: `${(s.blocks || []).length}` }) },
-  { id: 'sats_earned', label: 'Satoshis Earned', category: 'Session', color: 'var(--amber)',
-    render: (s) => {
-      const total = (s.blocks || []).length * 3.125; // rough, each block = ~3.125 BTC subsidy
-      if (!total) return { prefix: 'EARNED', value: '0 sat' };
-      return { prefix: 'EARNED', value: fmtBtc(total, 3) };
-    } },
-
   // ── PULSE (v1.6.0) ──
   { id: 'pulse', label: 'Pulse', category: 'Pulse', color: 'var(--amber)',
     render: (s) => {
@@ -248,6 +241,23 @@ export const METRICS = [
         value: `${ns.pools} POOL${ns.pools===1?'':'S'} · ${hrText} · ${ns.workers || 0} MINERS`,
       };
     } },
+
+  // ── COMPOSITE (v1.11.44): latest block info as a single ticker pill ──
+  // Includes the outlined ₿ cube glyph (rendered inline in App.jsx Ticker
+  // when render() returns glyph:true), plus height, miner, age.
+  { id: 'latest_block', label: 'Latest Block', category: 'Network', color: 'var(--btc)',
+    render: (s) => {
+      const latest = s.netBlocks?.[0];
+      if (!latest) return { prefix: 'LATEST BLOCK', value: '—' };
+      const height = `#${fmtNum(latest.height)}`;
+      const miner = latest.pool || '—';
+      const age = latest.timestamp ? timeAgo(latest.timestamp * 1000).toUpperCase() : '—';
+      return {
+        prefix: 'LATEST BLOCK',
+        value: `${height} · ${miner} · ${age}`,
+        glyph: true,
+      };
+    } },
 ];
 
 // Map for quick lookup by id
@@ -256,7 +266,5 @@ export const METRIC_MAP = Object.fromEntries(METRICS.map(m => [m.id, m]));
 // Category order for the settings UI
 export const METRIC_CATEGORIES = ['Performance', 'Workers', 'Odds', 'Network', 'Infrastructure', 'Session', 'Pulse'];
 
-// Defaults
-export const DEFAULT_STRIP_METRICS = ['pool_hashrate', 'next_block_prize', 'accept_rate', 'worker_health', 'node_sync', 'hashrate_trend'];
 export const DEFAULT_CHUNK_SIZE   = 2;
 export const DEFAULT_FADE_MS      = 5000;
