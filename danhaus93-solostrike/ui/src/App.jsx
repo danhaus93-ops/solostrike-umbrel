@@ -1183,21 +1183,22 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
 }
 
 // ── Ticker (Times Square LED megaboard) ───────────────────────────────────────
-// v1.11.41: Web Animations API with per-pill pixel measurement guarantees
-// uniform velocity. Every pill moves at exactly PX_PER_SEC pixels/second
-// regardless of content width — narrow and wide pills can never collide.
+// v1.11.42: requestAnimationFrame-based collision detection guarantees zero
+// overlap regardless of pill content. Replaces v1.11.41's offsetWidth+timer
+// math which was systematically off on iOS Safari because emoji glyphs
+// (🏆 🟢 🟡 🔴) render 30-50px wider than offsetWidth reports.
 //
 // ARCHITECTURE:
-//   1. Spawn pill, append to DOM (positioned offscreen right)
-//   2. Measure pill.offsetWidth
-//   3. pill.animate() from translate(containerWidth) to translate(-pillWidth)
-//   4. Duration = (containerWidth + pillWidth) / PX_PER_SEC  ← constant velocity
-//   5. Schedule next spawn after (pillWidth + GAP_PX) / PX_PER_SEC ms
-//      → uniform visual gap regardless of pill width
+//   - Track the most recently spawned pill (lastPill).
+//   - Each animation frame, read lastPill.getBoundingClientRect() to find
+//     where it actually is on screen RIGHT NOW.
+//   - Only spawn the next pill when lastPill's right edge has cleared the
+//     container's right edge minus GAP_PX. We see real rendered positions,
+//     so emoji-width measurement errors can't cause collisions.
 //
-// SPEED: speedSec is seconds per viewport-width-traversal. PX_PER_SEC is
+// SPEED: speedSec controls per-pill traversal time. PX_PER_SEC is
 //        derived from containerWidth / speedSec, so a pill takes ~speedSec
-//        to cross the visible area independent of device width.
+//        to cross the visible area regardless of device width.
 // SPACING: GAP_PX defaults to 0 for the tight LED-megaboard look.
 const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
   const marqueeRef = useRef(null);
@@ -1213,7 +1214,8 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
     const marquee = marqueeRef.current;
     if (!marquee) return;
 
-    let nextTimer = null;
+    let rafId = null;
+    let lastPill = null;
     let cancelled = false;
 
     const containerWidth = () => marquee.clientWidth || 360;
@@ -1233,7 +1235,7 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       return pill;
     };
 
-    const spawnPill = (startedAgoMs = 0) => {
+    const spawnPill = () => {
       if (cancelled) return null;
       const data = pillsSourceRef.current && pillsSourceRef.current();
       if (!data) return null;
@@ -1243,6 +1245,7 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       const pill = buildPill(data, !!data.event);
       pill.style.transform = `translate3d(${cw}px, 0, 0)`;
       marquee.appendChild(pill);
+      // Force layout so getBoundingClientRect returns accurate values immediately
       const pillW = pill.offsetWidth;
       const travel = cw + pillW;
       const durationMs = (travel / pps) * 1000;
@@ -1254,47 +1257,39 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
           ],
           { duration: durationMs, easing: 'linear', fill: 'forwards' }
         );
-        if (startedAgoMs > 0) anim.currentTime = startedAgoMs;
         anim.onfinish = () => pill.remove();
       } catch (e) {
+        // Fallback for browsers without WAAPI
         pill.style.animation = `ss-pill-flow ${durationMs / 1000}s linear forwards`;
         pill.addEventListener('animationend', () => pill.remove());
       }
-      return pillW;
+      lastPill = pill;
+      return pill;
     };
 
-    const scheduleNext = (pillW) => {
-      if (cancelled || pillW == null) return;
-      const intervalMs = ((pillW + GAP_PX) / pxPerSec()) * 1000;
-      nextTimer = setTimeout(() => {
-        const w = spawnPill(0);
-        scheduleNext(w);
-      }, intervalMs);
-    };
-
-    const preSpawn = () => {
-      const cw = containerWidth();
-      const pps = pxPerSec();
-      let positionOffset = cw;
-      const targetCount = 4;
-      let lastPillW = 0;
-      for (let i = 0; i < targetCount; i++) {
-        const startedAgoMs = ((cw - positionOffset) / pps) * 1000;
-        const w = spawnPill(startedAgoMs);
-        if (w == null) break;
-        lastPillW = w;
-        positionOffset -= (w + GAP_PX);
-        if (positionOffset < -cw) break;
+    const tick = () => {
+      if (cancelled) return;
+      if (!lastPill || !lastPill.isConnected) {
+        // First spawn or last pill exited — spawn immediately
+        spawnPill();
+      } else {
+        // Measure where lastPill's right edge is RIGHT NOW
+        const pillRect = lastPill.getBoundingClientRect();
+        const containerRect = marquee.getBoundingClientRect();
+        const pillRightInContainer = pillRect.right - containerRect.left;
+        const threshold = containerRect.width - GAP_PX;
+        if (pillRightInContainer <= threshold) {
+          spawnPill();
+        }
       }
-      return lastPillW;
+      rafId = requestAnimationFrame(tick);
     };
 
-    const lastW = preSpawn();
-    scheduleNext(lastW);
+    rafId = requestAnimationFrame(tick);
 
     return () => {
       cancelled = true;
-      if (nextTimer) clearTimeout(nextTimer);
+      if (rafId) cancelAnimationFrame(rafId);
       while (marquee.firstChild) marquee.removeChild(marquee.firstChild);
     };
   }, [enabled, speed]);
@@ -14438,7 +14433,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.41 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.42 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
