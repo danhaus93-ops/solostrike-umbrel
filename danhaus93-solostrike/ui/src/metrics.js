@@ -84,15 +84,15 @@ export const METRICS = [
   { id: 'stability', label: 'Stability', category: 'Performance', color: 'var(--cyan)',
     render: (s) => {
       const cv = stabilityIndex(s.hashrate?.history);
-      if (cv == null) return { prefix: 'STABILITY', value: '—' };
+      if (cv == null) return { prefix: 'STABILITY', value: '—', valClass: 'cyan' };
       const label = cv < 0.1 ? 'ROCK SOLID' : cv < 0.25 ? 'STEADY' : cv < 0.5 ? 'FLUX' : 'VOLATILE';
-      return { prefix: 'STABILITY', value: label };
+      return { prefix: 'STABILITY', value: label, valClass: 'cyan' };
     } },
   { id: 'accept_rate', label: 'Accept Rate', category: 'Performance', color: 'var(--green)',
     render: (s) => {
       const a = s.shares?.accepted || 0, r = s.shares?.rejected || 0;
       const t = a + r || 1;
-      return { prefix: 'ACCEPT', value: `${((a/t)*100).toFixed(2)}%` };
+      return { prefix: 'ACCEPT', value: `${((a/t)*100).toFixed(2)}%`, valClass: 'green' };
     } },
   { id: 'shares_per_min', label: 'Shares/Min', category: 'Performance', color: 'var(--text-1)',
     render: (s) => {
@@ -116,8 +116,8 @@ export const METRICS = [
   { id: 'avg_share_age', label: 'Avg Share Age', category: 'Workers', color: 'var(--cyan)',
     render: (s) => {
       const avg = avgLastShareAge(s.workers);
-      if (avg == null) return { prefix: 'AVG AGE', value: '—' };
-      return { prefix: 'AVG AGE', value: fmtAgoShort(Date.now() - avg) };
+      if (avg == null) return { prefix: 'AVG AGE', value: '—', valClass: 'cyan' };
+      return { prefix: 'AVG AGE', value: fmtAgoShort(Date.now() - avg), valClass: 'cyan' };
     } },
   { id: 'top_performer', label: 'Top Performer', category: 'Workers', color: 'var(--amber)',
     render: (s, aliases) => {
@@ -141,12 +141,12 @@ export const METRICS = [
   { id: 'per_month', label: 'Per Month Odds', category: 'Odds', color: 'var(--cyan)',
     render: (s) => {
       const p = s.odds?.perMonth;
-      return { prefix: 'PER MONTH', value: p ? fmtPct(p*100, 2) : '—' };
+      return { prefix: 'PER MONTH', value: p ? fmtPct(p*100, 2) : '—', valClass: 'cyan' };
     } },
   { id: 'pool_share', label: 'Pool Share %', category: 'Odds', color: 'var(--cyan)',
     render: (s) => {
       const pool = s.hashrate?.current || 0, net = s.network?.hashrate || 0;
-      if (!pool || !net) return { prefix: 'POOL SHARE', value: '—' };
+      if (!pool || !net) return { prefix: 'POOL SHARE', value: '—', valClass: 'cyan' };
       // iter28: auto-scaled decimal precision instead of scientific notation
       const pct = (pool / net) * 100;
       let formatted;
@@ -155,7 +155,7 @@ export const METRICS = [
         const decimals = Math.min(10, Math.max(4, -Math.floor(Math.log10(pct)) + 1));
         formatted = pct.toFixed(decimals) + '%';
       }
-      return { prefix: 'POOL SHARE', value: formatted };
+      return { prefix: 'POOL SHARE', value: formatted, valClass: 'cyan' };
     } },
 
   // ── NETWORK ──
@@ -170,8 +170,8 @@ export const METRICS = [
   { id: 'btc_price', label: 'BTC Price', category: 'Network', color: 'var(--cyan)',
     render: (s, aliases, currency) => {
       const price = s.prices?.[currency || 'USD'];
-      if (s.privateMode) return { prefix: 'BTC', value: '🔒 hidden' };
-      return { prefix: 'BTC', value: price ? fmtFiat(price, currency || 'USD') : '—' };
+      if (s.privateMode) return { prefix: 'BTC', value: '🔒 hidden', valClass: 'cyan' };
+      return { prefix: 'BTC', value: price ? fmtFiat(price, currency || 'USD') : '—', valClass: 'cyan' };
     } },
   { id: 'mempool_txs', label: 'Mempool TXs', category: 'Network', color: 'var(--text-1)',
     render: (s) => ({ prefix: 'MEMPOOL', value: `${fmtNum(s.nodeInfo?.mempoolCount || 0)} TX` }) },
@@ -202,19 +202,19 @@ export const METRICS = [
   { id: 'node_sync', label: 'Node Sync %', category: 'Infrastructure', color: 'var(--green)',
     render: (s) => {
       const p = s.sync?.progress;
-      if (p == null) return { prefix: 'SYNC', value: '—' };
-      return { prefix: 'SYNC', value: p >= 0.9999 ? '✓ 100%' : `${(p*100).toFixed(2)}%` };
+      if (p == null) return { prefix: 'SYNC', value: '—', valClass: 'green' };
+      return { prefix: 'SYNC', value: p >= 0.9999 ? '✓ 100%' : `${(p*100).toFixed(2)}%`, valClass: 'green' };
     } },
   { id: 'node_peers', label: 'Node Peers', category: 'Infrastructure', color: 'var(--cyan)',
     render: (s) => {
       const n = s.nodeInfo;
-      if (!n) return { prefix: 'PEERS', value: '—' };
-      return { prefix: 'PEERS', value: `${n.peers||0} (${n.peersOut||0}↑ ${n.peersIn||0}↓)` };
+      if (!n) return { prefix: 'PEERS', value: '—', valClass: 'cyan' };
+      return { prefix: 'PEERS', value: `${n.peers||0} (${n.peersOut||0}↑ ${n.peersIn||0}↓)`, valClass: 'cyan' };
     } },
   { id: 'node_connected', label: 'Node Status', category: 'Infrastructure', color: 'var(--green)',
-    render: (s) => ({ prefix: 'NODE', value: s.nodeInfo?.connected ? '🟢 LIVE' : '🔴 DOWN' }) },
+    render: (s) => ({ prefix: 'NODE', value: s.nodeInfo?.connected ? '🟢 LIVE' : '🔴 DOWN', valClass: 'green' }) },
   { id: 'private_mode', label: 'Private Mode', category: 'Infrastructure', color: 'var(--cyan)',
-    render: (s) => ({ prefix: 'PRIVATE', value: s.privateMode ? '🔒 ON' : 'OFF' }) },
+    render: (s) => ({ prefix: 'PRIVATE', value: s.privateMode ? '🔒 ON' : 'OFF', valClass: 'cyan' }) },
 
   // ── SESSION ──
   { id: 'pool_uptime', label: 'Pool Uptime', category: 'Session', color: 'var(--text-1)',
@@ -222,7 +222,7 @@ export const METRICS = [
       prefix: 'UPTIME', value: uptime ? fmtUptime(uptime) : '—'
     }) },
   { id: 'blocks_found_total', label: 'Blocks Found', category: 'Session', color: 'var(--green)',
-    render: (s) => ({ prefix: 'BLOCKS FOUND', value: `${(s.blocks || []).length}` }) },
+    render: (s) => ({ prefix: 'BLOCKS FOUND', value: `${(s.blocks || []).length}`, valClass: 'green' }) },
   // ── PULSE (v1.6.0) ──
   { id: 'pulse', label: 'Pulse', category: 'Pulse', color: 'var(--amber)',
     render: (s) => {
@@ -248,15 +248,13 @@ export const METRICS = [
   { id: 'latest_block', label: 'Latest Block', category: 'Network', color: 'var(--btc)',
     render: (s) => {
       const latest = s.netBlocks?.[0];
-      if (!latest) return { prefix: 'LATEST BLOCK', value: '—' };
+      if (!latest) return { prefix: 'LATEST BLOCK', value: '—', glyph: true, valClass: 'cyan' };
       const height = `#${fmtNum(latest.height)}`;
       const miner = latest.pool || '—';
       const age = latest.timestamp ? timeAgo(latest.timestamp * 1000).toUpperCase() : '—';
-      return {
-        prefix: 'LATEST BLOCK',
+      return { prefix: 'LATEST BLOCK',
         value: `${height} · ${miner} · ${age}`,
-        glyph: true,
-      };
+        glyph: true, valClass: 'cyan' };
     } },
 ];
 
