@@ -99,25 +99,34 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   -webkit-backface-visibility: hidden;
 }
 .ss-marquee-pill-lbl {
-  color: var(--btc);
+  color: var(--amber);
   text-shadow:
-    0 0 8px rgba(247,147,26,0.9),
-    0 0 18px rgba(247,147,26,0.5);
+    0 0 8px rgba(245,166,35,0.7),
+    0 0 16px rgba(245,166,35,0.4);
   letter-spacing: 0.2em;
+  opacity: 0.85;
 }
 .ss-marquee-pill-val {
-  color: #ffd789;
+  color: var(--amber);
   text-shadow:
-    0 0 6px rgba(255,215,137,0.8),
-    0 0 14px rgba(247,147,26,0.4);
+    0 0 6px rgba(245,166,35,0.8),
+    0 0 14px rgba(245,166,35,0.5);
   font-feature-settings: 'tnum' 1;
+  font-weight: 700;
 }
 .ss-marquee-pill-event .ss-marquee-pill-lbl {
-  color: #ffd789;
+  color: var(--btc);
   text-shadow:
     0 0 10px rgba(247,147,26,1),
     0 0 22px rgba(247,147,26,0.8);
   animation: ss-pulse-glow 0.8s ease-in-out infinite;
+  opacity: 1;
+}
+.ss-marquee-pill-event .ss-marquee-pill-val {
+  color: var(--btc);
+  text-shadow:
+    0 0 8px rgba(247,147,26,1),
+    0 0 18px rgba(247,147,26,0.7);
 }
 @keyframes ss-pulse-glow {
   0%, 100% { filter: brightness(1); }
