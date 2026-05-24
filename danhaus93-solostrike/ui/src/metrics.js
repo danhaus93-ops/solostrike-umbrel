@@ -180,13 +180,7 @@ export const METRICS = [
       const f = s.mempool?.feeRate;
       return { prefix: 'FEE', value: f != null ? `${f} sat/vB` : '—' };
     } },
-  { id: 'time_since_block', label: 'Time Since Last Block', category: 'Network', color: 'var(--text-1)',
-    render: (s) => {
-      const latest = s.netBlocks?.[0];
-      if (!latest?.timestamp) return { prefix: 'LAST BLOCK', value: '—' };
-      return { prefix: 'LAST BLOCK', value: timeAgo(latest.timestamp * 1000) };
-    } },
-  { id: 'congestion', label: 'Mempool Congestion', category: 'Network', color: 'var(--amber)',
+    { id: 'congestion', label: 'Mempool Congestion', category: 'Network', color: 'var(--amber)',
     render: (s) => {
       const c = mempoolCongestion(s.mempool?.feeRate);
       const color = c === 'HIGH' ? '🔴' : c === 'MEDIUM' ? '🟡' : c === 'LOW' ? '🟢' : '—';
@@ -240,6 +234,17 @@ export const METRICS = [
         prefix: '📡 PULSE',
         value: `${ns.pools} POOL${ns.pools===1?'':'S'} · ${hrText} · ${ns.workers || 0} MINERS`,
       };
+    } },
+
+  // ── RETARGET (v1.11.46): difficulty change indicator ──
+  // Promoted from header into ticker. RED if positive (harder), GREEN if negative.
+  { id: 'retarget_pct', label: 'Difficulty Retarget', category: 'Network', color: 'var(--btc)',
+    render: (s) => {
+      const pct = s?.retarget?.difficultyChange;
+      if (pct == null) return { prefix: 'RETARGET', value: '—' };
+      const sign = pct > 0 ? '+' : '';
+      const valClass = pct > 0 ? 'red' : (pct < 0 ? 'green' : null);
+      return { prefix: 'RETARGET', value: `${sign}${pct.toFixed(2)}%`, valClass };
     } },
 
   // ── COMPOSITE (v1.11.44): latest block info as a single ticker pill ──
