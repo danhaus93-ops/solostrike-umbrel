@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.39 — privacy-aware)
+// SoloStrike API server (v1.11.40 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.39',
+  version: '1.11.40',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -636,7 +636,7 @@ wss.on('connection', (ws, req) => {
     return;
   }
   wsClients++;
-  // v1.11.39 FIX: on-connection welcome message ships FULL transformState
+  // v1.11.40 FIX: on-connection welcome message ships FULL transformState
   // (not compact). Reason: iOS aggressively backgrounds web/PWA tabs,
   // closing the WS every 6-7 minutes. Each reconnect previously got a
   // compact welcome with only 2-entry tails for spsHistory/hashrate.history/
@@ -1180,7 +1180,7 @@ app.get('/metrics', (req, res) => {
 
 setInterval(() => {
   if (wss.clients.size === 0) return;
-    // v1.11.39: diagnostic — log broadcast size every 60 seconds so we can
+    // v1.11.40: diagnostic — log broadcast size every 60 seconds so we can
   // verify the compact mode actually reduces payload. Remove after confirming.
   const _payload = JSON.stringify({ type: 'STATE_UPDATE', data: transformState(state, { compact: true }) });
   if (!global.__ssLastSizeLog || Date.now() - global.__ssLastSizeLog > 60000) {
