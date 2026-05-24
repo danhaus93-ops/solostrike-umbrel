@@ -215,11 +215,6 @@ export const METRICS = [
     render: (s) => ({ prefix: 'NODE', value: s.nodeInfo?.connected ? '🟢 LIVE' : '🔴 DOWN' }) },
   { id: 'private_mode', label: 'Private Mode', category: 'Infrastructure', color: 'var(--cyan)',
     render: (s) => ({ prefix: 'PRIVATE', value: s.privateMode ? '🔒 ON' : 'OFF' }) },
-  { id: 'stratum_url', label: 'Stratum URL', category: 'Infrastructure', color: 'var(--cyan)',
-    render: () => {
-      const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
-      return { prefix: '📡 STRATUM', value: `stratum+tcp://${host}:3333` };
-    } },
 
   // ── SESSION ──
   { id: 'pool_uptime', label: 'Pool Uptime', category: 'Session', color: 'var(--text-1)',
@@ -236,11 +231,11 @@ export const METRICS = [
     } },
 
   // ── PULSE (v1.6.0) ──
-  { id: 'pulse', label: 'SoloStrike Pulse', category: 'Pulse', color: 'var(--amber)',
+  { id: 'pulse', label: 'Pulse', category: 'Pulse', color: 'var(--amber)',
     render: (s) => {
       const ns = s.networkStats;
       if (!ns || !ns.enabled || !ns.pools) {
-        return { prefix: '📡 SOLOSTRIKE PULSE', value: 'SEE HOW MANY ARE SOLO MINING' };
+        return { prefix: '📡 PULSE', value: 'DISCOVERING' };
       }
       const hr = ns.hashrate || 0;
       let hrText;
@@ -249,7 +244,7 @@ export const METRICS = [
       else if (hr >= 1e9) hrText = (hr/1e9).toFixed(1) + ' GH/s';
       else hrText = (hr/1e6).toFixed(0) + ' MH/s';
       return {
-        prefix: '📡 SOLOSTRIKE PULSE',
+        prefix: '📡 PULSE',
         value: `${ns.pools} POOL${ns.pools===1?'':'S'} · ${hrText} · ${ns.workers || 0} MINERS`,
       };
     } },
