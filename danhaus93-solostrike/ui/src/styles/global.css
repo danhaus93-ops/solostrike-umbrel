@@ -168,13 +168,12 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   flex-shrink: 0;
 }
 .ss-marquee-pill-glyph img {
-  /* Nudge the ₿ glyph right ~2.5px — the character has a descender bar
-     creating visible whitespace on its right side, so dead-center
-     positioning looks slightly left-shifted. */
+  /* v1.11.46: was 2.5px (too right). 1px gives true visual center
+     while still compensating for ₿ char's descender-bar asymmetry. */
   width: 12px;
   height: 12px;
   display: block;
-  margin-left: 2.5px;
+  margin-left: 1px;
 }
 
 @keyframes ss-pulse-glow {
