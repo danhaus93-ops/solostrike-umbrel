@@ -244,7 +244,7 @@ const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
 const DEFAULT_TICKER_SPEED = 14;
-const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'hashrate_trend', 'stability', 'accept_rate', 'shares_per_min', 'best_share_today', 'worker_health', 'workers_offline', 'avg_share_age', 'top_performer', 'per_day', 'per_week', 'per_month', 'pool_share', 'next_block_prize', 'btc_price', 'mempool_txs', 'priority_fee', 'time_since_block', 'congestion', 'halving', 'latest_block', 'node_sync', 'node_peers', 'node_connected', 'private_mode', 'pool_uptime', 'blocks_found_total', 'pulse'];
+const DEFAULT_TICKER_METRICS = ['pool_hashrate', 'hashrate_trend', 'stability', 'accept_rate', 'shares_per_min', 'best_share_today', 'worker_health', 'workers_offline', 'avg_share_age', 'top_performer', 'per_day', 'per_week', 'per_month', 'pool_share', 'next_block_prize', 'btc_price', 'mempool_txs', 'priority_fee', 'congestion', 'halving', 'retarget_pct', 'latest_block', 'node_sync', 'node_peers', 'node_connected', 'private_mode', 'pool_uptime', 'blocks_found_total', 'pulse'];
 
 const ALL_CARDS = [
   { id:'hashrate',      label:'Firepower' },
@@ -1111,7 +1111,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ connected, status, onSettings, privateMode, minimalMode, performanceMode, zmq, blocksFound, retargetPct, retargetBlocks }) {
+function Header({ connected, status, onSettings, privateMode, minimalMode, performanceMode, zmq, blocksFound }) {
   const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
@@ -1123,8 +1123,6 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
   // same number. The card's framing — "do I want easy diff?" — is correct
   // from a solo miner's perspective and is now the consistent semantics
   // across the entire dashboard.
-  const retargetColor = (retargetPct == null) ? 'var(--text-2)' : (retargetPct > 0 ? 'var(--red)' : retargetPct < 0 ? 'var(--green)' : 'var(--text-2)');
-  const retargetSign = (retargetPct != null && retargetPct > 0) ? '+' : '';
   // v1.11.6: STRIKES celebration — when blocksFound increments (our install
   // just found a block!) pulse the badge dramatically. The rarest, most
   // important moment in solo mining gets a visceral visual reward.
@@ -1155,12 +1153,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
                 STRIKES <span style={{fontWeight:700}}>{blocksFound}</span>{blocksFound > 0 && <span>⚡</span>}
               </span>
             )}
-            {/* Difficulty retarget */}
-            {retargetPct != null && (
-              <span title={retargetBlocks != null ? `${retargetBlocks} blocks until retarget` : 'Difficulty retarget'} style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.08em', color:retargetColor, flexShrink:0, marginLeft:4 }}>
-                RETARGET <span style={{fontWeight:700}}>{retargetSign}{retargetPct.toFixed(2)}%</span>
-              </span>
-            )}
+            {/* RETARGET moved to ticker in v1.11.46 (id: 'retarget_pct') */}
           </>
         )}
       </div>
@@ -1248,6 +1241,17 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       return pill;
     };
 
+    // v1.11.46: RAF-based collision check — replaces the previous setTimeout
+    // scheduling which could fire early/burst on iOS Safari at fast speeds,
+    // causing pills to overlap at the right edge (e.g. "Foundry USA 36M AGO"
+    // stacked on top of "ACCEPT ✓ 100%").
+    //
+    // Instead of scheduling by theoretical math, we check on every animation
+    // frame whether the last spawned pill's right edge has actually cleared
+    // the container's right edge. Spawn only when geometry says it's safe.
+    let lastPill = null;
+    let rafId = null;
+
     const spawn = () => {
       if (cancelled) return;
       const data = pillsSourceRef.current && pillsSourceRef.current();
@@ -1274,31 +1278,43 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
         pill.style.animation = `ss-pill-flow ${durationMs / 1000}s linear forwards`;
         pill.addEventListener('animationend', () => pill.remove());
       }
-      const nextMs = ((pillW + GAP_PX) / pps) * 1000;
-      nextTimer = setTimeout(spawn, nextMs);
+      lastPill = pill;
     };
 
-    // visibilitychange: iOS Safari pauses setTimeout while page is hidden,
-    // then releases ALL accumulated timers at once on foreground — causing
-    // multiple pills to spawn at translate(cw) simultaneously = stacked.
-    // Fix: kill the timer on hidden, restart fresh on visible.
-    const onVis = () => {
-      if (document.visibilityState === 'hidden') {
-        if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
-      } else if (document.visibilityState === 'visible') {
-        if (cancelled) return;
-        if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
-        while (marquee.firstChild) marquee.removeChild(marquee.firstChild);
+    const tick = () => {
+      if (cancelled) return;
+      if (!lastPill || !lastPill.isConnected) {
         spawn();
+      } else {
+        const pillRect = lastPill.getBoundingClientRect();
+        const elRect = marquee.getBoundingClientRect();
+        // pill's right edge measured from container's left edge
+        const rightInContainer = pillRect.right - elRect.left;
+        // Spawn next pill only when current pill's right edge has fully
+        // cleared the container's right edge (plus GAP_PX padding)
+        if (rightInContainer <= elRect.width - GAP_PX) {
+          spawn();
+        }
       }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    // visibilitychange (v1.11.46): seamless resume. RAF auto-pauses when tab
+    // is hidden, and the collision check in tick() prevents stacked spawns
+    // even if iOS Safari released pending animations in a burst on resume.
+    // No DOM wipe — pills continue from wherever the WAAPI animation paused.
+    const onVis = () => {
+      // No-op: rely on RAF collision check for safety. WAAPI animations
+      // resume from their last position when tab becomes visible.
     };
     document.addEventListener('visibilitychange', onVis);
 
-    spawn();
+    rafId = requestAnimationFrame(tick);
 
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVis);
+      if (rafId) cancelAnimationFrame(rafId);
       if (nextTimer) clearTimeout(nextTimer);
       while (marquee.firstChild) marquee.removeChild(marquee.firstChild);
     };
@@ -14320,8 +14336,6 @@ export default function App() {
           performanceMode={performanceMode}
           zmq={poolState?.zmq}
           blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
-          retargetPct={poolState?.retarget?.difficultyChange ?? null}
-          retargetBlocks={poolState?.retarget?.remainingBlocks ?? null}
         />
         {!minimalMode && (
           <>
@@ -14353,7 +14367,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.45 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.46 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
