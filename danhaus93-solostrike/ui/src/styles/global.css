@@ -127,6 +127,31 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
     0 0 8px rgba(255,217,107,1),
     0 0 18px rgba(247,147,26,0.7);
 }
+.ss-marquee-pill-glyph {
+  /* v1.11.44: outlined ₿ cube for composite LATEST BLOCK pill.
+     Matches the original LatestBlockStrip styling — 20x20 black bg,
+     btc-orange border, soft glow — but as a square (not circle). */
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  background: #000;
+  border: 1px solid var(--btc-orange);
+  box-shadow: 0 0 8px var(--btc-orange-glow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ss-marquee-pill-glyph img {
+  /* Nudge the ₿ glyph right ~2.5px — the character has a descender bar
+     creating visible whitespace on its right side, so dead-center
+     positioning looks slightly left-shifted. */
+  width: 12px;
+  height: 12px;
+  display: block;
+  margin-left: 2.5px;
+}
+
 @keyframes ss-pulse-glow {
   0%, 100% { filter: brightness(1); }
   50%      { filter: brightness(1.3); }
