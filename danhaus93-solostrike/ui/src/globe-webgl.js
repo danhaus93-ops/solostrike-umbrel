@@ -426,13 +426,23 @@ export function bakeWorldMapTexture(rings, opts = {}) {
   const W = opts.width || 2048;
   const H = opts.height || 1024;
 
+  // v1.11.47: theme palette. Defaults reproduce deployed Classic colors.
+  // opts.palette = { ocean, land, polar, coastline, cities, polarFrost }
+  const _p = opts.palette || {};
+  const PAL_OCEAN     = _p.ocean     || 'rgb(15, 13, 9)';
+  const PAL_LAND      = _p.land      || 'rgb(245, 168, 50)';
+  const PAL_COASTLINE = _p.coastline || 'rgb(80, 40, 8)';
+  const PAL_CITIES    = _p.cities    || 'rgb(255, 240, 180)';
+  // Polar frost is blended in pixel pass — RGB triplet.
+  const PAL_FROST     = _p.frostRgb  || [220, 200, 170];
+
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
   const ctx = c.getContext('2d');
 
   // OCEAN — solid dark base. Shader will tint based on lighting.
-  ctx.fillStyle = 'rgb(15, 13, 9)';
+  ctx.fillStyle = PAL_OCEAN;
   ctx.fillRect(0, 0, W, H);
 
   // Track polar touches
@@ -480,8 +490,8 @@ export function bakeWorldMapTexture(rings, opts = {}) {
     }
   };
 
-  // 1) Fill all land with amber base
-  const LAND_BASE = 'rgb(245, 168, 50)';
+  // 1) Fill all land with themed base color
+  const LAND_BASE = PAL_LAND;
   for (const ring of rings) {
     if (ring.length < 3) continue;
     drawRingSplit(ring, LAND_BASE, null, 0);
@@ -524,10 +534,10 @@ export function bakeWorldMapTexture(rings, opts = {}) {
       const absLat = Math.abs(lat);
       if (absLat > 60) {
         const t = Math.min(1, (absLat - 60) / 25);  // 0 at 60°, 1 at 85°
-        // Pale frost color: rgb(220, 200, 170)
-        nr = nr * (1 - t) + 220 * t;
-        ng = ng * (1 - t) + 200 * t;
-        nb = nb * (1 - t) + 170 * t;
+        // v1.11.47: themed frost color (default rgb(220,200,170))
+        nr = nr * (1 - t) + PAL_FROST[0] * t;
+        ng = ng * (1 - t) + PAL_FROST[1] * t;
+        nb = nb * (1 - t) + PAL_FROST[2] * t;
       }
 
       data[i]   = Math.max(0, Math.min(255, nr));
@@ -540,14 +550,14 @@ export function bakeWorldMapTexture(rings, opts = {}) {
   // 4) Coastline ink — dark amber stroke along every coast.
   for (const ring of rings) {
     if (ring.length < 3) continue;
-    drawRingSplit(ring, null, 'rgb(80, 40, 8)', 1.5);
+    drawRingSplit(ring, null, PAL_COASTLINE, 1.5);
   }
 
   // 5) City lights — bright amber pinpoints scattered on land.
   // Sample by reading land pixels and dropping points.
   const cityImg = ctx.getImageData(0, 0, W, H);
   const cityData = cityImg.data;
-  ctx.fillStyle = 'rgb(255, 240, 180)';
+  ctx.fillStyle = PAL_CITIES;
   // Use seeded PRNG for stable lights across reloads
   let seed = 12345;
   const rand = () => {
