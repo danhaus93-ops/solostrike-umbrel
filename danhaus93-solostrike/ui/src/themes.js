@@ -437,9 +437,14 @@ export const THEMES = {
     bg: null,  // special-cased — uses 2D blueprint renderer instead
     special: 'lightMode',
     lightning: {
-      core:  [0.1, 0.1, 0.1],
+      // v1.11.51: white-hot core + Paper Light blue halo, designed to
+      // composite against the gray-blue lightning canvas bg (#C9D4E2)
+      // set by CSS for [data-theme="paper"]. WebGL shader uses additive
+      // blend so we need values bright enough to brighten that bg into a
+      // crisp white spike with theme-blue halo around it.
+      core:  [1.0, 1.0, 1.0],
       glow:  [0.12, 0.36, 0.62],
-      bloom: [0.06, 0.24, 0.50],
+      bloom: [0.05, 0.24, 0.50],
     },
     nonce: {
       bg:    [0.91, 0.94, 0.96],
