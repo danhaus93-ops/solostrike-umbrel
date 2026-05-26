@@ -30,6 +30,36 @@ function _ssGoldEcho() {
     : { rgb: '255, 215, 0',  hex: '#FFD700' }; // pure gold for dark themes
 }
 
+// v1.11.48: canvas-safe theme amber RGB triplet. Canvas 2D fillStyle /
+// strokeStyle / addColorStop / shadowColor do NOT support CSS var()
+// expressions — passing 'rgba(var(--amber-rgb), 0.5)' silently fails
+// (treated as invalid color, renders transparent). The v1.11.47 sed
+// sweep accidentally replaced amber in canvas drawing contexts too,
+// which is why the globe halo, coastlines, pool dots, and pin-placement
+// overlay all rendered invisible. Resolve to a real 'R,G,B' string via
+// getComputedStyle. Page reload on theme change keeps this fresh
+// (see onThemeChange) so no cache invalidation needed.
+function _ssAmberRgb() {
+  try {
+    const val = getComputedStyle(document.documentElement)
+      .getPropertyValue('--amber-rgb').trim();
+    if (val && /^\d+\s*,\s*\d+\s*,\s*\d+$/.test(val)) {
+      return val.replace(/\s+/g, '');
+    }
+  } catch (_) {}
+  return '245,166,35';
+}
+
+// v1.11.48: read current theme id from data-theme attribute for selecting
+// the matching pre-baked pulse-map-{themeId}.png in Performance Mode.
+function _ssCurrentThemeId() {
+  try {
+    return (document.documentElement.getAttribute('data-theme')) || 'classic';
+  } catch (_) {
+    return 'classic';
+  }
+}
+
 // v1.11.47: map theme.globe object → bakeWorldMapTexture palette format
 function _ssGlobePalette(theme) {
   if (!theme || !theme.globe) return undefined;
@@ -1468,7 +1498,9 @@ function CustomizableTopStrip({ state, aliases, currency, uptime, enabled, metri
   return (
     <div className="ss-hide-scrollbar" style={{
       ...STRIP_FULL_WIDTH,
-      background:'linear-gradient(90deg, rgba(0,255,209,0.04) 0%, rgba(6,7,8,0.95) 60%)',
+      /* v1.11.48: was hardcoded rgba(0,255,209,...) teal — now uses
+         theme accent via getComputedStyle on --cyan. */
+      background:'linear-gradient(90deg, rgba(var(--amber-rgb),0.04) 0%, rgba(6,7,8,0.95) 60%)',
       borderBottom:'1px solid var(--border)',
       padding:'0.5rem 1rem',
       display:'flex', alignItems:'center', gap:'0.75rem',
@@ -4049,8 +4081,10 @@ function drawBFMNonce(ctx, W, H, t, state) {
       ctx.beginPath(); ctx.arc(x, y, dotR * 0.35, 0, Math.PI * 2); ctx.fill();
     } else {
       const alpha = 0.35 + v * 0.65;
-      ctx.fillStyle = `rgba(var(--amber-rgb),${alpha})`;
-      ctx.shadowColor = 'rgba(var(--amber-rgb),0.7)';
+      // v1.11.48: canvas-safe theme amber (var() doesn't work in canvas)
+      const _ar = _ssAmberRgb();
+      ctx.fillStyle = `rgba(${_ar},${alpha})`;
+      ctx.shadowColor = `rgba(${_ar},0.7)`;
       ctx.shadowBlur = v > 0.7 ? 12 : 6;
       ctx.beginPath(); ctx.arc(x, y, dotR * (0.5 + v * 0.5), 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
@@ -9271,11 +9305,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // re-mounts only if pulseAnim changes to/from 'block'. Renders only
   // when pulseAnim === 'block' (canvas display:none otherwise — context
   // stays alive but no draw calls happen).
+  // v1.11.48: theme tick dependency removed — full page reload on theme
+  // change (see onThemeChange) makes re-creation here redundant and was
+  // racing the canvas mount, leaving the cube blank after switches.
   useEffect(() => {
     if (!constellationCanvasRef.current) return;
     if (pulseAnim !== 'block') return;
     const factory = createConstellationCube;
-    // v1.11.47: pass current theme so cube colors render in the active palette
     const renderer = factory(constellationCanvasRef.current, { theme: _ssCurrentTheme() });
     if (renderer && !renderer.failed) {
       constellationRendererRef.current = renderer;
@@ -9289,7 +9325,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         constellationRendererRef.current = null;
       }
     };
-  }, [pulseAnim, _pulsePanelThemeTick]);
+  }, [pulseAnim]);
 
   // Inverse orthographic projection — converts a tap on the canvas to
   // lat/lon (in degrees), un-rotated against the current globe rotation,
@@ -10070,10 +10106,12 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         const haloInner = atmRadius * 0.96;
         const haloOuter = atmRadius * 1.08;
         const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
-        halo.addColorStop(0.00, 'rgba(var(--amber-rgb),0.00)');
-        halo.addColorStop(0.18, 'rgba(var(--amber-rgb),0.22)');
-        halo.addColorStop(0.45, 'rgba(var(--amber-rgb),0.08)');
-        halo.addColorStop(1.00, 'rgba(var(--amber-rgb),0.00)');
+        // v1.11.48: canvas-safe theme amber
+        const _ar = _ssAmberRgb();
+        halo.addColorStop(0.00, `rgba(${_ar},0.00)`);
+        halo.addColorStop(0.18, `rgba(${_ar},0.22)`);
+        halo.addColorStop(0.45, `rgba(${_ar},0.08)`);
+        halo.addColorStop(1.00, `rgba(${_ar},0.00)`);
         ctx.fillStyle = halo;
         ctx.fillRect(0, 0, W, H);
       }
@@ -10105,13 +10143,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           const px = cx + x3 * radius;
           const py = cy - y3 * radius;
           const alpha = 0.04 + z3 * 0.06;
-          ctx.fillStyle = `rgba(var(--amber-rgb),${alpha})`;
+          ctx.fillStyle = `rgba(${_ssAmberRgb()},${alpha})`;
           ctx.fillRect(Math.floor(px), Math.floor(py), 1, 1);
         }
       }
 
       // 2) Globe rim — slightly brighter than before to anchor the disk
-      ctx.strokeStyle = 'rgba(var(--amber-rgb),0.28)';
+      ctx.strokeStyle = `rgba(${_ssAmberRgb()},0.28)`;
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
 
@@ -10178,7 +10216,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           // and just costs paint. Big landmasses get the warm wash so
           // continents read as solid gentle shapes.
           if (rings[r].length >= 12) {
-            ctx.fillStyle = 'rgba(var(--amber-rgb),0.06)';
+            ctx.fillStyle = `rgba(${_ssAmberRgb()},0.06)`;
             ctx.beginPath();
             let started = false;
             for (let i = 0; i < n; i++) {
@@ -10208,7 +10246,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         ctx.lineWidth = 1.4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(var(--amber-rgb),0.50)';
+        ctx.strokeStyle = `rgba(${_ssAmberRgb()},0.50)`;
         for (let r = 0; r < rings.length; r++) {
           const t = trigs[r];
           const n = t.n;
@@ -10409,12 +10447,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       if (placingPinRef.current) {
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = 'rgba(var(--amber-rgb),0.95)';
+        const _ar = _ssAmberRgb();
+        ctx.fillStyle = `rgba(${_ar},0.95)`;
         ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('TAP ANYWHERE ON THE GLOBE', cx, cy - 8);
-        ctx.fillStyle = 'rgba(var(--amber-rgb),0.55)';
+        ctx.fillStyle = `rgba(${_ar},0.55)`;
         ctx.font = '500 9px ui-monospace, SFMono-Regular, Menlo, monospace';
         ctx.fillText('Snapped to ~500km region', cx, cy + 8);
       }
@@ -10960,8 +10999,22 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               }}
             >
               {pulseAnim === 'globe' && (
-                /* v1.11.47: themed SVG globe replaces baked amber pulse-map.png */
-                <StaticPulseGlobe />
+                /* v1.11.48: pre-baked themed pulse-map. Each theme has its
+                   own PNG (pulse-map-{themeId}.png) baked from the live
+                   globe's bakeWorldMapTexture with the theme's palette.
+                   Page reload on theme change ensures the right one loads. */
+                <img
+                  src={`/static/pulse-map-${_ssCurrentThemeId()}.png`}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    position:'absolute', inset:0,
+                    width:'100%', height:'100%',
+                    objectFit:'fill',
+                    pointerEvents:'none',
+                    background:'var(--bg-void)',
+                  }}
+                />
               )}
               {pulseAnim === 'block' && (
                 <StaticPulseMesh peers={Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : []} ownPin={poolPin} />
@@ -11233,8 +11286,19 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             }}
           >
             {pulseAnim === 'globe' && (
-              /* v1.11.47: themed SVG globe replaces baked amber pulse-map.png */
-              <StaticPulseGlobe />
+              /* v1.11.48: themed pulse-map (see note above) */
+              <img
+                src={`/static/pulse-map-${_ssCurrentThemeId()}.png`}
+                alt=""
+                draggable={false}
+                style={{
+                  position:'absolute', inset:0,
+                  width:'100%', height:'100%',
+                  objectFit:'fill',
+                  pointerEvents:'none',
+                  background:'var(--bg-void)',
+                }}
+              />
             )}
             {pulseAnim === 'block' && (
               <StaticPulseMesh peers={Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : []} ownPin={poolPin} />
@@ -14112,37 +14176,16 @@ export default function App() {
     saveTheme(id);
     setThemeId(id);
     applyThemeCSS(id);
-    // v1.11.47: update <meta name="theme-color"> so OS-level chrome
-    // (PWA status bar, splash, Chrome tab strip) tracks the active theme.
     applyThemeColorMeta(id);
-    const newTheme = getThemeById(id);
-
-    // Notify WebGL renderers that support live theme update
-    try { window.__ssLightningGL && window.__ssLightningGL.setTheme && window.__ssLightningGL.setTheme(newTheme); } catch (e) {}
-    try { window.__ssNonceFieldGL && window.__ssNonceFieldGL.setTheme && window.__ssNonceFieldGL.setTheme(newTheme); } catch (e) {}
-    try { window.__ssAnimatedBg && window.__ssAnimatedBg.setTheme && window.__ssAnimatedBg.setTheme(newTheme); } catch (e) {}
-    // v1.11.47: re-bake the globe world-map texture with new palette
-    try {
-      const rings = window.__ssGlobeRings;
-      const renderer = window.__ssGlobeRenderer;
-      if (rings && renderer && renderer.isReady()) {
-        const texCanvas = bakeWorldMapTexture(rings, { palette: _ssGlobePalette(newTheme) });
-        renderer.setTexture(texCanvas);
-      }
-    } catch (e) { console.warn('Globe re-bake failed:', e); }
-
-    // Background renderer special case: dark↔Paper Light requires full rebuild
-    // (one is WebGL, the other is canvas 2D). Reload page to swap.
-    const prevTheme = themeRef.current;
-    const wasLightMode = prevTheme && prevTheme.special === 'lightMode';
-    const isLightMode  = newTheme && newTheme.special === 'lightMode';
-    if (wasLightMode !== isLightMode) {
-      setTimeout(() => { try { window.location.reload(); } catch (e) {} }, 100);
-    } else {
-      // Notify components that don't have setTheme (Pulse constellation cube)
-      // to re-create themselves with the new theme.
-      try { window.dispatchEvent(new CustomEvent('ss-theme-changed', { detail: { id } })); } catch (e) {}
-    }
+    // v1.11.48: ALWAYS reload page on theme change. Previously only
+    // reloaded on dark↔Paper Light transitions, but that left stale
+    // bakes in the WebGL globe texture (baked at boot with previous
+    // theme's palette), stale canvas color caches, and constellation
+    // cube state. A full reload re-resolves all CSS vars, re-bakes the
+    // globe with the new --amber-rgb / theme.globe, and rebuilds every
+    // WebGL renderer cleanly. localStorage still holds the new theme id
+    // (saveTheme above) so main.jsx applies it before any renderer runs.
+    setTimeout(() => { try { window.location.reload(); } catch (e) {} }, 80);
   }, []);
   // Pool pin location — user's approximate location on the Pulse globe.
   // localStorage is the source of truth; updates also POST to the API so
@@ -14765,7 +14808,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.47 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.48 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
