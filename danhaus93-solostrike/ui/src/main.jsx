@@ -4,21 +4,41 @@ import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import './styles/global.css'
 import { createAnimatedBackground } from './animated-bg-webgl.js'
+import { loadTheme, getThemeById, applyThemeCSS, applyThemeColorMeta } from './themes.js'
+
+// v1.11.47: apply the persisted theme BEFORE the animated bg initializes,
+// so the bg sees the correct theme.special flag (Paper Light needs the
+// 2D blueprint branch instead of WebGL).
+;(() => {
+  if (typeof document === 'undefined') return;
+  const themeId = loadTheme();
+  applyThemeCSS(themeId);
+  // v1.11.47: also sync the <meta name="theme-color"> on boot so the OS-level
+  // chrome (status bar background, PWA splash, etc.) matches the active theme.
+  // The static default in index.html (#F5A623 / Classic amber) covers the
+  // window before this script runs.
+  applyThemeColorMeta(themeId);
+  // Expose for App.jsx to read on mount
+  window.__ssCurrentThemeId = themeId;
+})();
 
 // rev63 premium pass — animated WebGL background mounted behind #root.
-// Canvas is appended directly to document.body so it sits as a sibling
-// to #root with `position:fixed; inset:0; z-index:-1`. App content
-// stacks on top automatically. Body bg-color is removed in global.css
-// so the canvas paint shows through.
 ;(() => {
   if (typeof document === 'undefined') return;
   const bgCanvas = document.createElement('canvas');
   bgCanvas.id = 'ss-animated-bg';
   bgCanvas.setAttribute('aria-hidden', 'true');
-  // Insert as the FIRST child of body so it renders before #root markup.
   document.body.insertBefore(bgCanvas, document.body.firstChild);
-  // Defer init to next tick so React mount isn't blocked by GL setup
-  setTimeout(() => createAnimatedBackground(bgCanvas), 0);
+  // v1.11.47: pass theme to bg renderer (handles Paper Light's blueprint branch)
+  setTimeout(() => {
+    const theme = getThemeById(window.__ssCurrentThemeId || 'classic');
+    const bgInstance = createAnimatedBackground(bgCanvas, { theme });
+    // Expose bg instance so App.jsx can call setTheme() on theme switch.
+    // For Paper Light <-> dark theme transitions the bg needs full rebuild
+    // (one is WebGL, the other is canvas 2D); App.jsx handles that via a
+    // page-level reload trigger if special flag differs.
+    window.__ssAnimatedBg = bgInstance;
+  }, 0);
 })();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
