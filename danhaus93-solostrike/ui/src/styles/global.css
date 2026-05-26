@@ -1,6 +1,11 @@
 :root {
   --bg-void:#060708;--bg-deep:#0b0d0f;--bg-surface:#101316;--bg-raised:#161b20;--bg-elevated:#1c2129;
   --amber:#F5A623;--amber-hot:#FF7A00;--amber-dim:#6B4710;
+  /* v1.11.47: --amber-rgb is the comma-separated RGB triplet of --amber.
+     Used by inline rgba() calls throughout App.jsx that need theme-aware
+     glow / shadow / border colors. Each :root[data-theme="..."] block
+     below MUST define its own --amber-rgb matching its --amber. */
+  --amber-rgb:245,166,35;
   --btc-orange:#F7931A;--btc-orange-glow:rgba(247,147,26,0.45);
   --cyan:#00FFD1;--red:#FF3B3B;--green:#39FF6A;
   --text-1:#EAD9C0;--text-2:#a89788;--text-3:#7a6d5e;
@@ -100,17 +105,15 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 }
 .ss-marquee-pill-lbl {
   color: #F7931A;
-  text-shadow:
-    0 0 8px rgba(247,147,26,0.8),
-    0 0 16px rgba(247,147,26,0.4);
+  /* v1.11.47: text-shadow removed — desktop rendering was blurry from
+     stacked 8px + 16px shadow layers. Routine metric pills now render
+     crisp at every resolution. Event pills (BLOCK FOUND etc.) keep their
+     glow below — that's an intentional celebration cue, not routine text. */
   letter-spacing: 0.18em;
   opacity: 0.8;
 }
 .ss-marquee-pill-val {
   color: #FFB84D;
-  text-shadow:
-    0 0 6px rgba(255,184,77,0.8),
-    0 0 14px rgba(247,147,26,0.5);
   font-feature-settings: 'tnum' 1;
 }
 /* v1.11.45: per-metric color variants. Some metrics (NODE, SYNC, BTC,
@@ -118,25 +121,15 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
    text via valClass returned by their render() function. */
 .ss-marquee-pill-val.cyan {
   color: #00FFD1;
-  text-shadow:
-    0 0 6px rgba(0,255,209,0.7),
-    0 0 14px rgba(0,255,209,0.4);
 }
 .ss-marquee-pill-val.green {
   color: #4AE055;
-  text-shadow:
-    0 0 6px rgba(74,224,85,0.7),
-    0 0 14px rgba(74,224,85,0.4);
 }
 .ss-marquee-pill-val.red {
   color: #FF5555;
-  text-shadow:
-    0 0 6px rgba(255,85,85,0.7),
-    0 0 14px rgba(255,85,85,0.4);
 }
 .ss-marquee-pill-val.white {
   color: #e8eaed;
-  text-shadow: 0 0 4px rgba(232,234,237,0.4);
 }
 .ss-marquee-pill-event .ss-marquee-pill-lbl {
   color: #FFD96B;
@@ -174,6 +167,19 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   height: 12px;
   display: block;
   margin-left: 1px;
+}
+
+/* v1.11.47 (C2): tight pill variant for the LATEST (composite ₿) pill.
+   Reduces gap + letter-spacing so the glyph reads as part of the same
+   visual unit as the LATEST label, instead of feeling like a separate
+   floating pill. Applied via .ss-pill-tight class set in buildPill()
+   whenever data.glyph is true. */
+.ss-marquee-pill.ss-pill-tight {
+  gap: 5px;
+  padding: 0 11px;
+}
+.ss-marquee-pill.ss-pill-tight .ss-marquee-pill-lbl {
+  letter-spacing: 0.10em;
 }
 
 @keyframes ss-pulse-glow {
@@ -914,8 +920,6 @@ body.ss-in-iframe .ss-app-header {
   0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 1; border-color: var(--amber-hot, #FF7A00); }
   100% { transform: translate(-50%, -50%) scale(3.0); opacity: 0; border-color: var(--amber, #F5A623); }
 }
-  100% { transform: translate(-50%, -50%) scale(1.67); opacity: 0; }
-}
 
 
 /* v1.11.41 — Static Pulse Strikes (SVG version). Mirrors live globe markers.
@@ -928,8 +932,6 @@ body.ss-in-iframe .ss-app-header {
    around the parent's translate point" which equals the circle's center.
    This works reliably on Safari iOS 16+ where transform-box: fill-box
    on <circle> renders statically. */
-
-}
 
 /* v1.11.41 — Static Pulse Mesh cube pulse. Only the OWN cube pulses so
    the scene stays calm as peer count grows. Peer cubes are static. */
@@ -985,6 +987,11 @@ body.ss-in-iframe .ss-app-header {
   border-radius: 50%;
   border: 1.2px solid rgba(255, 215, 0, 0.55);
 }
+/* v1.11.47: Paper Light needs darker goldenrod — pure gold disappears
+   on the near-white ocean (1.21 contrast → 4.38 with darker gold). */
+:root[data-theme="paper"] .ss-static-strike-marker.own .halo {
+  border-color: rgba(139, 105, 20, 0.85);
+}
 /* 3 gold echo rings — 2.5s period, 0.833s stagger (matches globe) */
 .ss-static-strike-marker.own .ring {
   position: absolute;
@@ -997,6 +1004,10 @@ body.ss-in-iframe .ss-app-header {
   will-change: transform, opacity;
   animation: ssDomGoldEcho 2.5s linear infinite;
 }
+/* v1.11.47: Paper Light gold echo override (see halo override above) */
+:root[data-theme="paper"] .ss-static-strike-marker.own .ring {
+  border-color: #8B6914;
+}
 .ss-static-strike-marker.own .ring.d1 { animation-delay: 0.833s; }
 .ss-static-strike-marker.own .ring.d2 { animation-delay: 1.666s; }
 @keyframes ssDomGoldEcho {
@@ -1004,3 +1015,107 @@ body.ss-in-iframe .ss-app-header {
   100% { transform: scale(3);    opacity: 0;    }
 }
 
+
+
+/* ═════════════════════════════════════════════════════════════════
+   v1.11.47 — Theme System
+   ─────────────────────────────────────────────────────────────────
+   The default :root above defines Classic Bitcoin colors. Each
+   :root[data-theme="..."] block below overrides only the variables
+   that change for that theme. Theme is set by themes.js via
+   document.documentElement.setAttribute('data-theme', id).
+   ═════════════════════════════════════════════════════════════════ */
+
+:root[data-theme="galaxy"] {
+  --bg-void:#0a0420;--bg-deep:#11062e;--bg-surface:#15082e;--bg-raised:#1d0d40;--bg-elevated:#26154e;
+  --amber:#C4B5FD;--amber-hot:#F472B6;--amber-dim:#6B5B95;
+  --amber-rgb:196,181,253;
+  --btc-orange:#F472B6;--btc-orange-glow:rgba(244,114,182,0.45);
+  --cyan:#67E8F9;--red:#FB7185;--green:#86EFAC;
+  --text-1:#E9E1FF;--text-2:#9F7AEA;--text-3:#6B5B95;
+  --border:rgba(196,181,253,0.15);--border-hot:rgba(244,114,182,0.40);
+  --glow-a:0 0 24px rgba(196,181,253,0.30);
+}
+
+:root[data-theme="matrix"] {
+  --bg-void:#000300;--bg-deep:#000a02;--bg-surface:#001a0d;--bg-raised:#002214;--bg-elevated:#002a1a;
+  --amber:#00FF41;--amber-hot:#5EFFCC;--amber-dim:#006B0A;
+  --amber-rgb:0,255,65;
+  --btc-orange:#00FF41;--btc-orange-glow:rgba(0,255,65,0.45);
+  --cyan:#5EFFCC;--red:#FF4444;--green:#00FF41;
+  --text-1:#C0FFD0;--text-2:#00CC30;--text-3:#006B0A;
+  --border:rgba(0,255,65,0.15);--border-hot:rgba(0,255,65,0.45);
+  --glow-a:0 0 24px rgba(0,255,65,0.35);
+}
+
+:root[data-theme="synth"] {
+  /* v1.11.47 contrast fix: amber #FF006E → #FF338C (4.44 → 4.95 AA) */
+  --bg-void:#1a0b3a;--bg-deep:#1e0d40;--bg-surface:#211048;--bg-raised:#2d1b4e;--bg-elevated:#382258;
+  --amber:#FF338C;--amber-hot:#FFFF00;--amber-dim:#5b3d8e;
+  --amber-rgb:255,51,140;
+  --btc-orange:#FF338C;--btc-orange-glow:rgba(255,51,140,0.55);
+  --cyan:#00F5FF;--red:#FF1744;--green:#39FF14;
+  --text-1:#FFD0EC;--text-2:#8B5CF6;--text-3:#5b3d8e;
+  --border:rgba(255,51,140,0.20);--border-hot:rgba(255,51,140,0.50);
+  --glow-a:0 0 24px rgba(255,51,140,0.40);
+}
+
+:root[data-theme="arctic"] {
+  --bg-void:#0F1419;--bg-deep:#131b25;--bg-surface:#171f29;--bg-raised:#1f2935;--bg-elevated:#283443;
+  --amber:#7DD3FC;--amber-hot:#E0F2FE;--amber-dim:#1E40AF;
+  --amber-rgb:125,211,252;
+  --btc-orange:#7DD3FC;--btc-orange-glow:rgba(125,211,252,0.45);
+  --cyan:#67E8F9;--red:#FCA5A5;--green:#6EE7B7;
+  --text-1:#E0F2FE;--text-2:#94A3B8;--text-3:#64748B;
+  --border:rgba(125,211,252,0.15);--border-hot:rgba(125,211,252,0.40);
+  --glow-a:0 0 24px rgba(125,211,252,0.30);
+}
+
+:root[data-theme="blood"] {
+  /* v1.11.47 contrast fix: btc-orange #DC2626 → #E53E3E (4.18 → 4.89 AA) */
+  --bg-void:#0a0000;--bg-deep:#150202;--bg-surface:#1a0606;--bg-raised:#220808;--bg-elevated:#2c0c0c;
+  --amber:#FCA5A5;--amber-hot:#F59E0B;--amber-dim:#7F1D1D;
+  --amber-rgb:252,165,165;
+  --btc-orange:#E53E3E;--btc-orange-glow:rgba(229,62,62,0.50);
+  --cyan:#FCD34D;--red:#EF4444;--green:#84CC16;
+  --text-1:#FECACA;--text-2:#E53E3E;--text-3:#7F1D1D;
+  --border:rgba(229,62,62,0.20);--border-hot:rgba(229,62,62,0.50);
+  --glow-a:0 0 24px rgba(229,62,62,0.35);
+}
+
+:root[data-theme="paper"] {
+  /* v1.11.47 contrast fix: cyan #0E7490 → #055569 (4.25 → 6.63 AA) */
+  --bg-void:#E8EFF5;--bg-deep:#DDE6EF;--bg-surface:#FFFFFF;--bg-raised:#F4F7FB;--bg-elevated:#FFFFFF;
+  --amber:#1E5C9E;--amber-hot:#0D3D7A;--amber-dim:#9CB4CC;
+  /* v1.11.47: critical for Paper Light — without this, 120 inline rgba()
+     references in App.jsx would render amber (245,166,35) on a near-white
+     background, leaking orange across cards, headers, borders, and glows. */
+  --amber-rgb:30,92,158;
+  --btc-orange:#1E5C9E;--btc-orange-glow:rgba(30,92,158,0.30);
+  --cyan:#055569;--red:#B91C1C;--green:#15803D;
+  --text-1:#1a1a1a;--text-2:#475569;--text-3:#94A3B8;
+  --border:rgba(30,92,158,0.20);--border-hot:rgba(30,92,158,0.50);
+  --glow-a:0 0 24px rgba(30,92,158,0.20);
+}
+
+:root[data-theme="emerald"] {
+  --bg-void:#051914;--bg-deep:#08221c;--bg-surface:#0a2e26;--bg-raised:#0d3a30;--bg-elevated:#11473b;
+  --amber:#FCD34D;--amber-hot:#FFFFFF;--amber-dim:#047857;
+  --amber-rgb:252,211,77;
+  --btc-orange:#10B981;--btc-orange-glow:rgba(16,185,129,0.45);
+  --cyan:#34D399;--red:#FB7185;--green:#34D399;
+  --text-1:#FEF3C7;--text-2:#34D399;--text-3:#047857;
+  --border:rgba(252,211,77,0.18);--border-hot:rgba(252,211,77,0.45);
+  --glow-a:0 0 24px rgba(252,211,77,0.30);
+}
+
+
+/* v1.11.47: Static Pulse Globe styles — themed via CSS vars on the class.
+   More reliable theme switching than inline SVG fill="var(--amber)" attribute. */
+.ss-static-globe-land {
+  fill: var(--amber);
+  fill-opacity: 0.85;
+  stroke: var(--amber-dim);
+  stroke-width: 1;
+  stroke-opacity: 0.65;
+}
