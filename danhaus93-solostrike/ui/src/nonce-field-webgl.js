@@ -57,6 +57,11 @@ precision highp float;
 varying vec2 uv;
 uniform float uT;
 uniform float uHashTHS;
+uniform vec3 uBtcBg;
+uniform vec3 uBtcDim;
+uniform vec3 uBtcMid;
+uniform vec3 uBtcDark;
+uniform vec3 uBtcLight;
 uniform float uStrike;
 uniform float uStrikeGold;
 uniform float uEnabled;
@@ -79,12 +84,12 @@ float cellAct(vec2 cId, float t, float hr) {
 }
 
 void main() {
-  // Bitcoin orange palette (anchored on #FB940D)
-  vec3 BTC_BG    = vec3(0.022, 0.018, 0.012);
-  vec3 BTC_DIM   = vec3(0.140, 0.085, 0.022);
-  vec3 BTC_MID   = vec3(0.984, 0.580, 0.051);
-  vec3 BTC_DARK  = vec3(0.480, 0.260, 0.030);
-  vec3 BTC_LIGHT = vec3(1.000, 0.820, 0.420);
+  // v1.11.47: theme-driven palette (was hardcoded Bitcoin #FB940D).
+  vec3 BTC_BG    = uBtcBg;
+  vec3 BTC_DIM   = uBtcDim;
+  vec3 BTC_MID   = uBtcMid;
+  vec3 BTC_DARK  = uBtcDark;
+  vec3 BTC_LIGHT = uBtcLight;
 
   vec2 p = uv;
   vec2 cId = floor(p * uGrid);
@@ -224,6 +229,15 @@ void main() {
 `;
 
 export function createNonceFieldWebGL(canvas, options) {
+  // v1.11.47: theme palette state. Defaults reproduce deployed Classic.
+  let currentNonce = (options && options.theme && options.theme.nonce) || {
+    bg:    [0.022, 0.018, 0.012],
+    dim:   [0.140, 0.085, 0.022],
+    mid:   [0.984, 0.580, 0.051],
+    dark:  [0.480, 0.260, 0.030],
+    light: [1.000, 0.820, 0.420],
+  };
+
   const opts = options || {};
   const mode = opts.mode === 'bfm' ? 'bfm' : 'hunt';
 
@@ -302,6 +316,12 @@ export function createNonceFieldWebGL(canvas, options) {
   const uBright = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBright') : null;
   const uShowScan = mode === 'hunt' ? gl.getUniformLocation(prog, 'uShowScan') : null;
   const uShowVig = mode === 'hunt' ? gl.getUniformLocation(prog, 'uShowVig') : null;
+  // v1.11.47: theme palette uniform locations
+  const uBtcBg    = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBtcBg')    : null;
+  const uBtcDim   = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBtcDim')   : null;
+  const uBtcMid   = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBtcMid')   : null;
+  const uBtcDark  = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBtcDark')  : null;
+  const uBtcLight = mode === 'hunt' ? gl.getUniformLocation(prog, 'uBtcLight') : null;
   const aLoc = gl.getAttribLocation(prog, 'a');
 
   // Internal state (hunt mode)
@@ -366,6 +386,12 @@ export function createNonceFieldWebGL(canvas, options) {
       gl.uniform1f(uBright, 1.0);
       gl.uniform1f(uShowScan, 1.0);
       gl.uniform1f(uShowVig, 1.0);
+      // v1.11.47: theme palette per-frame
+      gl.uniform3fv(uBtcBg,    currentNonce.bg);
+      gl.uniform3fv(uBtcDim,   currentNonce.dim);
+      gl.uniform3fv(uBtcMid,   currentNonce.mid);
+      gl.uniform3fv(uBtcDark,  currentNonce.dark);
+      gl.uniform3fv(uBtcLight, currentNonce.light);
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -389,5 +415,12 @@ export function createNonceFieldWebGL(canvas, options) {
     if (lc) { try { lc.loseContext(); } catch (_) {} }
   }
 
-  return { failed: false, step, triggerStrike, resize, destroy };
+  // v1.11.47: live theme palette update
+  function setTheme(newTheme) {
+    if (newTheme && newTheme.nonce) {
+      currentNonce = { ...currentNonce, ...newTheme.nonce };
+    }
+  }
+
+  return { failed: false, step, triggerStrike, resize, destroy, setTheme };
 }
