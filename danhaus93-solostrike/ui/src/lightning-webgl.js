@@ -50,6 +50,10 @@ precision mediump float;
 varying float vDist;
 varying float vLifeT;
 varying float vType;
+// v1.11.47: theme-driven palette. Defaults match Classic (deployed).
+uniform vec3 uCoreColor;
+uniform vec3 uGlowColor;
+uniform vec3 uBloomColor;
 void main() {
   float lifeAlpha = vLifeT < 0.25 ? 1.0 : pow(1.0 - (vLifeT - 0.25) / 0.75, 0.7);
   float d = abs(vDist);
@@ -59,18 +63,20 @@ void main() {
   float bloom  = exp(-d*d * 0.005);
 
   vec3 coreColor, glowColor, bloomColor;
+  // v1.11.47: theme palette. Preserves the 3-tier intensity scheme (main bolt
+  // bright, branches medium, mini-strikes warm) by blending uniforms.
   if (vType > 1.5) {
-    coreColor  = vec3(1.0, 1.0, 0.95);
-    glowColor  = vec3(1.0, 0.9, 0.55);
-    bloomColor = vec3(0.95, 0.65, 0.18);
+    coreColor  = uCoreColor;
+    glowColor  = uGlowColor;
+    bloomColor = uBloomColor;
   } else if (vType > 0.5) {
-    coreColor  = vec3(1.0, 0.97, 0.85);
-    glowColor  = vec3(1.0, 0.85, 0.5);
-    bloomColor = vec3(0.95, 0.65, 0.18);
+    coreColor  = mix(uGlowColor, uCoreColor, 0.7);
+    glowColor  = uGlowColor;
+    bloomColor = uBloomColor;
   } else {
-    coreColor  = vec3(1.0, 0.85, 0.55);
-    glowColor  = vec3(0.95, 0.65, 0.18);
-    bloomColor = vec3(0.7, 0.4, 0.08);
+    coreColor  = uGlowColor;
+    glowColor  = uBloomColor;
+    bloomColor = uBloomColor * 0.7;
   }
   vec3 finalRgb = coreColor * core + glowColor * (edge * 0.7 + glow * 0.4) + bloomColor * bloom * 0.18;
   float finalAlpha = (core + edge * 0.7 + glow * 0.35 + bloom * 0.08) * lifeAlpha;
@@ -220,6 +226,13 @@ function link(gl, vs, fs) {
 // ─── Public factory ────────────────────────────────────────────────
 
 export function createLightningWebGL(canvas, opts = {}) {
+  // v1.11.47: theme palette state. Defaults reproduce Classic colors exactly.
+  let currentLightning = (opts.theme && opts.theme.lightning) || {
+    core:  [1.0, 1.0, 0.95],
+    glow:  [1.0, 0.9, 0.55],
+    bloom: [0.95, 0.65, 0.18],
+  };
+
   const scale = opts.scale || 'hunt'; // 'hunt' or 'bfm'
 
   let gl;
@@ -264,6 +277,10 @@ export function createLightningWebGL(canvas, opts = {}) {
     aLifeT:      gl.getAttribLocation(boltProg, 'aLifeT'),
     aBoltType:   gl.getAttribLocation(boltProg, 'aBoltType'),
     uResolution: gl.getUniformLocation(boltProg, 'uResolution'),
+    // v1.11.47: theme palette uniforms
+    uCoreColor:  gl.getUniformLocation(boltProg, 'uCoreColor'),
+    uGlowColor:  gl.getUniformLocation(boltProg, 'uGlowColor'),
+    uBloomColor: gl.getUniformLocation(boltProg, 'uBloomColor'),
   };
   const cloudLocs = {
     aPos:        gl.getAttribLocation(cloudProg, 'aPos'),
@@ -555,6 +572,10 @@ export function createLightningWebGL(canvas, opts = {}) {
       gl.enableVertexAttribArray(boltLocs.aBoltType);
       gl.vertexAttribPointer(boltLocs.aBoltType, 1, gl.FLOAT, false, stride, 16);
       gl.uniform2f(boltLocs.uResolution, state.W, state.H);
+      // v1.11.47: per-frame theme palette
+      gl.uniform3fv(boltLocs.uCoreColor,  currentLightning.core);
+      gl.uniform3fv(boltLocs.uGlowColor,  currentLightning.glow);
+      gl.uniform3fv(boltLocs.uBloomColor, currentLightning.bloom);
       gl.drawArrays(gl.TRIANGLES, 0, boltVertLen);
     }
 
@@ -614,5 +635,12 @@ export function createLightningWebGL(canvas, opts = {}) {
     } catch {}
   }
 
-  return { failed: false, step, spawnBolt, resize, destroy };
+  // v1.11.47: live theme palette update
+  function setTheme(newTheme) {
+    if (newTheme && newTheme.lightning) {
+      currentLightning = { ...currentLightning, ...newTheme.lightning };
+    }
+  }
+
+  return { failed: false, step, spawnBolt, resize, destroy, setTheme };
 }
