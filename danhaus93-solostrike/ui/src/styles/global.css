@@ -135,6 +135,32 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 .ss-marquee-pill-val.white {
   color: var(--text-1);
 }
+
+/* v1.11.50: Paper Light has light text-1 issue ONLY inside the ticker.
+   The ticker bg is dark (rgba(6,7,8,0.95)) on every theme by design.
+   On dark themes, --text-1 is white/near-white → readable. On Paper Light,
+   --text-1 is #1a1a1a (near-black) → invisible on the dark ticker bg.
+   This override forces ticker pill text to bright colors ONLY on Paper
+   Light, ONLY inside the marquee. Touches no other theme, no other element. */
+:root[data-theme="paper"] .ss-marquee-pill-lbl {
+  color: #6FA8DC;   /* bright blue — readable on dark ticker bg */
+  opacity: 1;
+}
+:root[data-theme="paper"] .ss-marquee-pill-val {
+  color: #F0F4F8;   /* near-white — readable on dark ticker bg */
+}
+:root[data-theme="paper"] .ss-marquee-pill-val.cyan {
+  color: #67E8F9;   /* bright cyan — readable on dark ticker bg */
+}
+:root[data-theme="paper"] .ss-marquee-pill-val.green {
+  color: #6EE7B7;   /* bright green — readable on dark ticker bg */
+}
+:root[data-theme="paper"] .ss-marquee-pill-val.red {
+  color: #FCA5A5;   /* bright red — readable on dark ticker bg */
+}
+:root[data-theme="paper"] .ss-marquee-pill-val.white {
+  color: #F0F4F8;
+}
 .ss-marquee-pill-event .ss-marquee-pill-lbl {
   /* v1.11.48: was hardcoded #FFD96B; uses --amber-hot (theme bright accent) */
   color: var(--amber-hot);
