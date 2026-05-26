@@ -45,15 +45,31 @@ export function createConstellationCube(canvas, opts = {}) {
   // ─── Color palettes ──────────────────────────────────────────────────
   // Gold (your fleet — pool 0). Polished sun-lit gold, distinct from the
   // amber-orange peer palette so you can spot yourself instantly.
-  const GOLD_TOP   = [255, 224, 122];
-  const GOLD_LEFT  = [212, 164,  55];
-  const GOLD_RIGHT = [155, 110,  25];
-  const GOLD_DEEP  = [ 80,  55,  10];
+  // v1.11.47: themePalette structure (currently always null — cube colors
+  // intentionally stay amber across all themes for visual consistency with
+  // lightning sparks). The structure is kept for future expansion if face
+  // tones become theme-driven: { own: {top,left,right,deep}, peer: {...} }.
+  const themePalette = (opts.theme && opts.theme.constellationCube) || null;
+  const _g = themePalette && themePalette.own;
+  const _o = themePalette && themePalette.peer;
+  // Gold (own cube — sky-lit top, primary side, shadow, deep).
+  const GOLD_TOP   = (_g && _g.top)   || [255, 224, 122];
+  const GOLD_LEFT  = (_g && _g.left)  || [212, 164,  55];
+  const GOLD_RIGHT = (_g && _g.right) || [155, 110,  25];
+  const GOLD_DEEP  = (_g && _g.deep)  || [ 80,  55,  10];
   // Bitcoin orange (peers — matches icon.svg).
-  const ORANGE_TOP   = [255, 184,  80];
-  const ORANGE_LEFT  = [247, 147,  26];
-  const ORANGE_RIGHT = [180,  95,  15];
-  const ORANGE_DEEP  = [110,  55,   5];
+  const ORANGE_TOP   = (_o && _o.top)   || [255, 184,  80];
+  const ORANGE_LEFT  = (_o && _o.left)  || [247, 147,  26];
+  const ORANGE_RIGHT = (_o && _o.right) || [180,  95,  15];
+  const ORANGE_DEEP  = (_o && _o.deep)  || [110,  55,   5];
+
+  // v1.11.47: flash/spark palette (share-flash hits, peer rings). Default
+  // values reproduce deployed warm amber. Theme can override via
+  // themePalette.flash = { ring, sparkInner, sparkOuter, idleRing }
+  const _f = themePalette && themePalette.flash;
+  const FLASH_RING_RGB  = (_f && _f.ringRgb)       || [212, 164,  55];   // share-flash ring
+  const FLASH_INNER_RGB = (_f && _f.sparkInnerRgb) || [255, 200, 120];   // spark inner
+  const FLASH_IDLE_RGB  = (_f && _f.idleRingRgb)   || [ 71,  82,  97];   // idle blue-grey ring
   // Striker idle (blue).
   const STRIKER_TOP   = [120, 175, 255];
   const STRIKER_LEFT  = [ 76, 140, 255];
@@ -662,7 +678,7 @@ export function createConstellationCube(canvas, opts = {}) {
     if (peers.length < 500) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = 'rgba(212,164,55,0.25)';
+      ctx.strokeStyle = `rgba(${FLASH_RING_RGB[0]},${FLASH_RING_RGB[1]},${FLASH_RING_RGB[2]},0.25)`;
       ctx.lineWidth = 0.5;
       for (const wkr of workers) {
         const peerProj = projPeers[wkr.poolIdx];
@@ -679,7 +695,7 @@ export function createConstellationCube(canvas, opts = {}) {
     if (peers.length <= 8) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = 'rgba(71,82,97,0.45)';
+      ctx.strokeStyle = `rgba(${FLASH_IDLE_RGB[0]},${FLASH_IDLE_RGB[1]},${FLASH_IDLE_RGB[2]},0.45)`;
       ctx.lineWidth = 0.7;
       for (let i = 0; i < projPeers.length; i++) {
         for (let j = i + 1; j < projPeers.length; j++) {
@@ -781,8 +797,8 @@ export function createConstellationCube(canvas, opts = {}) {
           ctx.globalCompositeOperation = 'lighter';
           const haloR = 7 + ease * 9;
           const g = ctx.createRadialGradient(item.x, item.y, 0, item.x, item.y, haloR);
-          g.addColorStop(0, `rgba(255,200,120,${ease * 0.55 + 0.2})`);
-          g.addColorStop(1, 'rgba(255,200,120,0)');
+          g.addColorStop(0, `rgba(${FLASH_INNER_RGB[0]},${FLASH_INNER_RGB[1]},${FLASH_INNER_RGB[2]},${ease * 0.55 + 0.2})`);
+          g.addColorStop(1, `rgba(${FLASH_INNER_RGB[0]},${FLASH_INNER_RGB[1]},${FLASH_INNER_RGB[2]},0)`);
           ctx.fillStyle = g;
           ctx.beginPath();
           ctx.arc(item.x, item.y, haloR, 0, Math.PI * 2);
@@ -837,7 +853,7 @@ export function createConstellationCube(canvas, opts = {}) {
       if (!fromV || !toV) { plasmaBolts.splice(i, 1); continue; }
       const segs = makeJaggedPath(fromV.x, fromV.y, toV.x, toV.y, 14, 4);
       // Warm-amber bolt to match BTC palette (vs constellation-2d.js's blue)
-      ctx.strokeStyle = `rgba(255,200,130,${alpha * 0.85})`;
+      ctx.strokeStyle = `rgba(${FLASH_INNER_RGB[0]},${FLASH_INNER_RGB[1]},${FLASH_INNER_RGB[2]},${alpha * 0.85})`;
       ctx.lineWidth = 3.0;
       ctx.beginPath();
       for (let j = 0; j < segs.length; j += 2) {
@@ -875,8 +891,8 @@ export function createConstellationCube(canvas, opts = {}) {
       const y = wkr.y + (peerProj.y - wkr.y) * age;
       const haloR = 8;
       const g = ctx.createRadialGradient(x, y, 0, x, y, haloR);
-      g.addColorStop(0, 'rgba(255,200,120,0.65)');
-      g.addColorStop(1, 'rgba(255,200,120,0)');
+      g.addColorStop(0, `rgba(${FLASH_INNER_RGB[0]},${FLASH_INNER_RGB[1]},${FLASH_INNER_RGB[2]},0.65)`);
+      g.addColorStop(1, `rgba(${FLASH_INNER_RGB[0]},${FLASH_INNER_RGB[1]},${FLASH_INNER_RGB[2]},0)`);
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(x, y, haloR, 0, Math.PI * 2);
@@ -969,5 +985,13 @@ export function createConstellationCube(canvas, opts = {}) {
 
     // Read current zoom level (used by App.jsx for "Find Me" visibility logic).
     getZoom() { return zoom; },
+
+    // v1.11.47: theme palette change requires re-instantiation. The cube
+    // face colors are consts inside the closure for hot-loop performance;
+    // changing them mid-stream would require deep refactoring. App.jsx
+    // handles theme changes by destroying + re-creating the cube renderer.
+    setTheme(_newTheme) {
+      // No-op — caller must destroy() + recreate with new opts.theme.
+    },
   };
 }
