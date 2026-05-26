@@ -104,7 +104,8 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   -webkit-backface-visibility: hidden;
 }
 .ss-marquee-pill-lbl {
-  color: #F7931A;
+  /* v1.11.48: was hardcoded #F7931A bitcoin-orange; now follows theme amber */
+  color: var(--amber);
   /* v1.11.47: text-shadow removed — desktop rendering was blurry from
      stacked 8px + 16px shadow layers. Routine metric pills now render
      crisp at every resolution. Event pills (BLOCK FOUND etc.) keep their
@@ -113,37 +114,42 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
   opacity: 0.8;
 }
 .ss-marquee-pill-val {
-  color: #FFB84D;
+  /* v1.11.48: was hardcoded #FFB84D; uses theme text-1 for white-ish readable */
+  color: var(--text-1);
   font-feature-settings: 'tnum' 1;
 }
 /* v1.11.45: per-metric color variants. Some metrics (NODE, SYNC, BTC,
    STABILITY, PER MONTH, POOL SHARE, BLOCKS FOUND, etc.) tint their value
    text via valClass returned by their render() function. */
+/* v1.11.48: hex literals replaced with theme tokens so the marquee
+   follows the active palette. */
 .ss-marquee-pill-val.cyan {
-  color: #00FFD1;
+  color: var(--cyan);
 }
 .ss-marquee-pill-val.green {
-  color: #4AE055;
+  color: var(--green);
 }
 .ss-marquee-pill-val.red {
-  color: #FF5555;
+  color: var(--red);
 }
 .ss-marquee-pill-val.white {
-  color: #e8eaed;
+  color: var(--text-1);
 }
 .ss-marquee-pill-event .ss-marquee-pill-lbl {
-  color: #FFD96B;
+  /* v1.11.48: was hardcoded #FFD96B; uses --amber-hot (theme bright accent) */
+  color: var(--amber-hot);
   text-shadow:
-    0 0 10px rgba(255,217,107,1),
-    0 0 22px rgba(247,147,26,0.8);
+    0 0 10px rgba(var(--amber-rgb), 1),
+    0 0 22px rgba(var(--amber-rgb), 0.8);
   animation: ss-pulse-glow 0.8s ease-in-out infinite;
   opacity: 1;
 }
 .ss-marquee-pill-event .ss-marquee-pill-val {
-  color: #FFD96B;
+  /* v1.11.48: was hardcoded #FFD96B; uses --amber-hot */
+  color: var(--amber-hot);
   text-shadow:
-    0 0 8px rgba(255,217,107,1),
-    0 0 18px rgba(247,147,26,0.7);
+    0 0 8px rgba(var(--amber-rgb), 1),
+    0 0 18px rgba(var(--amber-rgb), 0.7);
 }
 .ss-marquee-pill-glyph {
   /* v1.11.44: outlined ₿ cube for composite LATEST BLOCK pill.
