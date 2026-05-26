@@ -3534,14 +3534,20 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // the card surface. 2D canvas now uses clearRect, lightning-webgl
       // clears with alpha 0, nonce-field shader outputs alpha=inBlock so
       // gaps between blocks reveal the card behind.
-      background: 'transparent',
+      // v1.11.51: Paper Light + lightning gets a gray-blue bg so the WebGL
+      // additive-blend bolts have something brighter than pure white to
+      // brighten against. Other modes (pickaxe, noncefield, ticker) and
+      // other themes keep transparent — card surface shows through as before.
+      background: (huntAnim === 'lightning' && _ssCurrentThemeId() === 'paper') ? '#C9D4E2' : 'transparent',
     }}>
       <canvas ref={canvasRef} style={{
         display: huntAnim === 'lightning' ? 'none' : 'block',
         width: '100%', height: '100%',
       }}/>
       {/* rev54: dedicated WebGL canvas for lightning mode. Layered separately
-          because once a canvas has a 2D context you can't get a WebGL one. */}
+          because once a canvas has a 2D context you can't get a WebGL one.
+          v1.11.51: container around this canvas gets a Paper-Light-only bg
+          so WebGL additive blending has something to brighten against. */}
       <canvas ref={lightningGLCanvasRef} style={{
         display: huntAnim === 'lightning' ? 'block' : 'none',
         position: 'absolute', inset: 0,
@@ -4851,7 +4857,12 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
         }}
       >✕</div>
 
-      <div ref={containerRef} style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+      <div ref={containerRef} style={{
+        flex: 1, minHeight: 0, position: 'relative',
+        // v1.11.51: Paper Light + lightning gets a gray-blue bg so WebGL
+        // additive-blend bolts brighten visibly (white-on-white is invisible).
+        background: (animType === 'lightning' && _ssCurrentThemeId() === 'paper') ? '#C9D4E2' : undefined,
+      }}>
         {/* rev54: WebGL canvas behind the 2D canvas. Visible only during
             lightning animType. Renders bolts/clouds/flash; 2D canvas on
             top renders BTC icon + halo + sparks + title text. */}
@@ -7706,14 +7717,14 @@ function ThemesTab({ themeId, onThemeChange }) {
               {/* Preview block */}
               <div style={{
                 background: t.css['--bg-void'],
-                padding: '0.7rem 0.6rem 0.4rem',
+                padding: '0.7rem 0.6rem 0.6rem',
                 position: 'relative',
                 minHeight: 60,
               }}>
                 <div style={{
                   fontFamily: 'var(--fd)', fontWeight: 700, fontSize: '0.85rem',
                   color: t.css['--amber'], letterSpacing: '0.08em',
-                }}>{t.label.split(' ')[0]}</div>
+                }}>{t.label}</div>
                 {selected && (
                   <span style={{
                     position: 'absolute', top: 4, right: 6,
@@ -7733,16 +7744,6 @@ function ThemesTab({ themeId, onThemeChange }) {
                   ))}
                 </div>
               </div>
-              {/* Footer label */}
-              <div style={{
-                background: t.css['--bg-raised'],
-                color: selected ? t.css['--amber'] : 'var(--text-2)',
-                fontFamily: 'var(--fd)', fontSize: '0.55rem',
-                letterSpacing: '0.13em', textTransform: 'uppercase',
-                fontWeight: 700, textAlign: 'center',
-                padding: '0.5rem 0.4rem',
-                borderTop: '1px solid var(--border)',
-              }}>{t.label}</div>
             </button>
           );
         })}
@@ -7751,9 +7752,7 @@ function ThemesTab({ themeId, onThemeChange }) {
         fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
         marginTop: '1rem', lineHeight: 1.5,
       }}>
-        Theme changes apply instantly to chrome (cards, text, borders).
-        Animations re-color on the next render. Paper Light uses a
-        blueprint-style background designed for light mode.
+        Theme changes apply instantly on app reload.
       </div>
       <div style={{
         fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-3)',
@@ -14808,7 +14807,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.50 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.51 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
