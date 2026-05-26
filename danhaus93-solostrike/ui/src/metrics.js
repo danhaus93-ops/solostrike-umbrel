@@ -253,11 +253,11 @@ export const METRICS = [
   { id: 'latest_block', label: 'Latest Block', category: 'Network', color: 'var(--btc)',
     render: (s) => {
       const latest = s.netBlocks?.[0];
-      if (!latest) return { prefix: 'LATEST BLOCK', value: '—', glyph: true, valClass: 'cyan' };
+      if (!latest) return { prefix: 'LATEST', value: '—', glyph: true, valClass: 'cyan' };
       const height = `#${fmtNum(latest.height)}`;
       const miner = latest.pool || '—';
       const age = latest.timestamp ? timeAgo(latest.timestamp * 1000).toUpperCase() : '—';
-      return { prefix: 'LATEST BLOCK',
+      return { prefix: 'LATEST',
         value: `${height} · ${miner} · ${age}`,
         glyph: true, valClass: 'cyan' };
     } },
