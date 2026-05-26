@@ -1,6 +1,6 @@
 # SoloStrike Trademark Policy
 
-**Effective: May 2026**
+**Effective: April2026**
 
 This document describes how the **SoloStrike** name, logo, icon, and visual identity may and may not be used.
 
