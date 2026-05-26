@@ -10,6 +10,48 @@ import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
+import { THEMES, THEME_IDS, getThemeById, loadTheme, saveTheme, applyThemeCSS, applyThemeColorMeta } from './themes.js';
+// v1.11.47: read current theme from document attribute. Used by WebGL
+// renderers that init outside the React tree.
+function _ssCurrentTheme() {
+  try {
+    const id = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) || 'classic';
+    return getThemeById(id);
+  } catch { return getThemeById('classic'); }
+}
+
+// v1.11.47: gold echo color — bright gold on dark themes, darker
+// goldenrod on Paper Light (otherwise it disappears on the near-white
+// ocean — 1.21 contrast ratio vs 4.38 with darker gold).
+function _ssGoldEcho() {
+  const t = _ssCurrentTheme();
+  return (t && t.special === 'lightMode')
+    ? { rgb: '139, 105, 20', hex: '#8B6914' }  // dark goldenrod for light mode
+    : { rgb: '255, 215, 0',  hex: '#FFD700' }; // pure gold for dark themes
+}
+
+// v1.11.47: map theme.globe object → bakeWorldMapTexture palette format
+function _ssGlobePalette(theme) {
+  if (!theme || !theme.globe) return undefined;
+  const g = theme.globe;
+  // Helper: 'rgb(r,g,b)' → [r,g,b]
+  const parseRgb = (str) => {
+    try {
+      const m = String(str).match(/\d+/g);
+      return m && m.length >= 3 ? [parseInt(m[0],10), parseInt(m[1],10), parseInt(m[2],10)] : [220,200,170];
+    } catch { return [220,200,170]; }
+  };
+  // Coastline default: dark version of land if not provided
+  const coastline = g.coastline || 'rgb(80, 40, 8)';
+  return {
+    ocean:     g.ocean,
+    land:      g.land,
+    coastline: coastline,
+    cities:    g.cities,
+    frostRgb:  parseRgb(g.polar || 'rgb(220,200,170)'),
+  };
+}
+
 
 // ── BTC glyph image (canvas-rendered animations use this in place of ₿) ──────
 // Loaded once at module level. Falls back to fillText('₿') if not yet ready or
@@ -128,19 +170,19 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 const card = {
   background:
     /* Hot amber edge along the top (centered, fading out at the sides) */
-    'linear-gradient(90deg, transparent 10%, rgba(245,166,35,0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
     /* Soft inner glow fading from the top edge into the card */
-    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(245,166,35,0.13) 0%, transparent 70%), ' +
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
     /* Base vertical fill */
     'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
-  border:'1px solid rgba(245,166,35,0.22)',
+  border:'1px solid rgba(var(--amber-rgb),0.22)',
   borderRadius:'16px',
   padding:'1.3rem',
   boxShadow:
-    'inset 0 1px 0 rgba(245,166,35,0.18), '   /* sheen along very top edge */ +
+    'inset 0 1px 0 rgba(var(--amber-rgb),0.18), '   /* sheen along very top edge */ +
     'inset 0 0 0 1px rgba(0,0,0,0.4), '       /* dark inner ring (depth) */ +
     '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
-    '0 0 32px rgba(245,166,35,0.06)',         /* faint amber halo */
+    '0 0 32px rgba(var(--amber-rgb),0.06)',         /* faint amber halo */
 };
 // v1.10.0 Visual polish #6: gradient header underline. Replaces the previous
 // flat marginBottom-only style with a fading amber-to-transparent line drawn
@@ -156,7 +198,7 @@ const cardTitle = {
   marginBottom: '0.7rem',
   paddingBottom: '0.45rem',
   backgroundImage:
-    'linear-gradient(90deg, rgba(245,166,35,0.55) 0%, rgba(245,166,35,0.45) 30%, rgba(245,166,35,0.12) 70%, rgba(245,166,35,0) 100%)',
+    'linear-gradient(90deg, rgba(var(--amber-rgb),0.55) 0%, rgba(var(--amber-rgb),0.45) 30%, rgba(var(--amber-rgb),0.12) 70%, rgba(var(--amber-rgb),0) 100%)',
   backgroundRepeat: 'no-repeat',
   backgroundSize: '100% 1px',
   backgroundPosition: 'bottom left',
@@ -182,7 +224,7 @@ const secTitle = {
   marginBottom: '0.5rem',
   paddingBottom: '0.35rem',
   backgroundImage:
-    'linear-gradient(90deg, rgba(245,166,35,0.55) 0%, rgba(245,166,35,0.45) 30%, rgba(245,166,35,0.12) 70%, rgba(245,166,35,0) 100%)',
+    'linear-gradient(90deg, rgba(var(--amber-rgb),0.55) 0%, rgba(var(--amber-rgb),0.45) 30%, rgba(var(--amber-rgb),0.12) 70%, rgba(var(--amber-rgb),0) 100%)',
   backgroundRepeat: 'no-repeat',
   backgroundSize: '100% 1px',
   backgroundPosition: 'bottom left',
@@ -896,7 +938,7 @@ function CopyablePort({ health, port, ssl }) {
           padding:'2px 6px', borderRadius:3,
           fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em',
           fontWeight:800, whiteSpace:'nowrap',
-          boxShadow:'0 2px 8px rgba(245,166,35,0.5)',
+          boxShadow:'0 2px 8px rgba(var(--amber-rgb),0.5)',
           animation:'fadeIn 0.18s ease both',
           pointerEvents:'none', zIndex:10,
         }}>✓ COPIED</span>
@@ -946,13 +988,13 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
       </svg>
     );
   } else {
-    bg     = 'linear-gradient(90deg, rgba(245,166,35,0.18), rgba(245,166,35,0.05))';
-    border = 'rgba(245,166,35,0.55)';
+    bg     = 'linear-gradient(90deg, rgba(var(--amber-rgb),0.18), rgba(var(--amber-rgb),0.05))';
+    border = 'rgba(var(--amber-rgb),0.55)';
     fg     = 'var(--amber)';
     label  = `V${version} — TAP TO UPDATE`;
     glyph  = (
       // Custom lightning-bolt SVG in amber
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink:0, color:'var(--amber)', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.55))', animation:'pulse 2.2s ease-in-out infinite', willChange:'opacity' }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink:0, color:'var(--amber)', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.55))', animation:'pulse 2.2s ease-in-out infinite', willChange:'opacity' }}>
         <path d="M13 2 L4 14 L11 14 L10 22 L20 9 L13 9 L13 2 Z"/>
       </svg>
     );
@@ -1100,7 +1142,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',
                 cursor: 'pointer',
-                boxShadow: '0 0 12px rgba(245,166,35,0.35)',
+                boxShadow: '0 0 12px rgba(var(--amber-rgb),0.35)',
               }}
             >Update Now & Reload</button>
           )}
@@ -1137,7 +1179,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
   return (
     <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.5rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.4rem' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:1, flexWrap:'wrap' }}>
-        <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{ width:18, height:18, objectFit:'contain', filter: (minimalMode||performanceMode)?'none':'drop-shadow(0 0 8px rgba(245,166,35,0.7))', animation: (minimalMode||performanceMode)?'none':'pulse 3s ease-in-out infinite', willChange: (minimalMode||performanceMode)?'auto':'opacity', flexShrink:0 }}/>
+        <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{ width:18, height:18, objectFit:'contain', filter: (minimalMode||performanceMode)?'none':'drop-shadow(0 0 8px rgba(var(--amber-rgb),0.7))', animation: (minimalMode||performanceMode)?'none':'pulse 3s ease-in-out infinite', willChange: (minimalMode||performanceMode)?'auto':'opacity', flexShrink:0 }}/>
         <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
         {!minimalMode && (
           <>
@@ -1149,7 +1191,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
             )}
             {/* Strikes counter — total blocks found by this install */}
             {blocksFound != null && (
-              <span key={strikesPulseKey} className={strikesPulseKey > 0 ? 'ss-strikes-celebrate' : ''} title="Total blocks struck" style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color: blocksFound > 0 ? 'var(--amber)' : 'var(--text-2)', textShadow: blocksFound > 0 ? '0 0 6px rgba(245,166,35,0.5)' : 'none', flexShrink:0, marginLeft:4 }}>
+              <span key={strikesPulseKey} className={strikesPulseKey > 0 ? 'ss-strikes-celebrate' : ''} title="Total blocks struck" style={{ display:'inline-flex', alignItems:'center', gap:3, fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color: blocksFound > 0 ? 'var(--amber)' : 'var(--text-2)', textShadow: blocksFound > 0 ? '0 0 6px rgba(var(--amber-rgb),0.5)' : 'none', flexShrink:0, marginLeft:4 }}>
                 STRIKES <span style={{fontWeight:700}}>{blocksFound}</span>{blocksFound > 0 && <span>⚡</span>}
               </span>
             )}
@@ -1218,8 +1260,16 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
     const buildPill = (data, isEvent) => {
       const pill = document.createElement('span');
       pill.className = 'ss-marquee-pill' + (isEvent ? ' ss-marquee-pill-event' : '');
-      // Composite LATEST BLOCK pill carries the outlined ₿ cube glyph
-      if (data.glyph) {
+      // v1.11.47 (C2): glyph now appears AFTER the label, not before.
+      // Label says "LATEST" (no longer "LATEST BLOCK") — glyph implies block.
+      // Pill gets ss-pill-tight class for compact letter-spacing + gap.
+      const hasGlyph = !!data.glyph;
+      if (hasGlyph) pill.classList.add('ss-pill-tight');
+      const lbl = document.createElement('span');
+      lbl.className = 'ss-marquee-pill-lbl';
+      lbl.textContent = data.label || '';
+      pill.appendChild(lbl);
+      if (hasGlyph) {
         const glyph = document.createElement('span');
         glyph.className = 'ss-marquee-pill-glyph';
         const img = document.createElement('img');
@@ -1230,13 +1280,9 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
         glyph.appendChild(img);
         pill.appendChild(glyph);
       }
-      const lbl = document.createElement('span');
-      lbl.className = 'ss-marquee-pill-lbl';
-      lbl.textContent = data.label || '';
       const val = document.createElement('span');
       val.className = 'ss-marquee-pill-val' + (data.valClass ? ' ' + data.valClass : '');
       val.textContent = data.value || '';
-      pill.appendChild(lbl);
       pill.appendChild(val);
       return pill;
     };
@@ -1252,6 +1298,12 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
     let lastPill = null;
     let rafId = null;
 
+    // v1.11.47: hardened spawn — addresses same-X overlap bug.
+    // 1. Dynamic startX = max(cw, lastPillRight + 1) guarantees pill B
+    //    spawns to the right of pill A's right edge.
+    // 2. No inline pill.style.transform — animation owns position.
+    // 3. CSS fallback uses CSS variables for dynamic startX/endX.
+    const SAFETY_GAP_PX = 1;  // invisible, prevents floating-point fringe cases
     const spawn = () => {
       if (cancelled) return;
       const data = pillsSourceRef.current && pillsSourceRef.current();
@@ -1260,21 +1312,31 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       const cw = containerWidth();
       const pps = pxPerSec();
       const pill = buildPill(data, !!data.event);
-      pill.style.transform = `translate3d(${cw}px, 0, 0)`;
       marquee.appendChild(pill);
       const pillW = pill.offsetWidth;
-      const travel = cw + pillW;
+      let startX = cw;
+      if (lastPill && lastPill.isConnected) {
+        const lpRect = lastPill.getBoundingClientRect();
+        const mqRect = marquee.getBoundingClientRect();
+        const lastPillRightInContainer = lpRect.right - mqRect.left;
+        const safeStart = lastPillRightInContainer + SAFETY_GAP_PX;
+        if (safeStart > startX) startX = safeStart;
+      }
+      const travel = startX + pillW;
       const durationMs = (travel / pps) * 1000;
       try {
         const anim = pill.animate(
           [
-            { transform: `translate3d(${cw}px, 0, 0)` },
+            { transform: `translate3d(${startX}px, 0, 0)` },
             { transform: `translate3d(${-pillW}px, 0, 0)` },
           ],
           { duration: durationMs, easing: 'linear', fill: 'forwards' }
         );
         anim.onfinish = () => pill.remove();
       } catch (e) {
+        pill.style.setProperty('--start-x', startX + 'px');
+        pill.style.setProperty('--end-x', (-pillW) + 'px');
+        pill.style.transform = `translate3d(${startX}px, 0, 0)`;
         pill.style.animation = `ss-pill-flow ${durationMs / 1000}s linear forwards`;
         pill.addEventListener('animationend', () => pill.remove());
       }
@@ -1288,11 +1350,8 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       } else {
         const pillRect = lastPill.getBoundingClientRect();
         const elRect = marquee.getBoundingClientRect();
-        // pill's right edge measured from container's left edge
         const rightInContainer = pillRect.right - elRect.left;
-        // Spawn next pill only when current pill's right edge has fully
-        // cleared the container's right edge (plus GAP_PX padding)
-        if (rightInContainer <= elRect.width - GAP_PX) {
+        if (rightInContainer <= elRect.width - SAFETY_GAP_PX) {
           spawn();
         }
       }
@@ -1332,7 +1391,7 @@ function LatestBlockStrip({ netBlocks, blockReward }) {
   return (
     <div className="ss-hide-scrollbar" style={{
       ...STRIP_FULL_WIDTH,
-      background:'linear-gradient(90deg, rgba(245,166,35,0.06) 0%, rgba(6,7,8,0.95) 60%)',
+      background:'linear-gradient(90deg, rgba(var(--amber-rgb),0.06) 0%, rgba(6,7,8,0.95) 60%)',
       borderBottom:'1px solid var(--border)',
       padding:'0.55rem 1rem',
       display:'flex', alignItems:'center', gap:'0.75rem',
@@ -1676,8 +1735,8 @@ function OfflineToasts({ workers, aliases }) {
           background:'rgba(28, 18, 4, 0.96)',
           backdropFilter:'blur(8px)',
           WebkitBackdropFilter:'blur(8px)',
-          border:'1px solid rgba(245,166,35,0.55)',
-          boxShadow:'0 4px 18px rgba(0,0,0,0.6), 0 0 14px rgba(245,166,35,0.18)',
+          border:'1px solid rgba(var(--amber-rgb),0.55)',
+          boxShadow:'0 4px 18px rgba(0,0,0,0.6), 0 0 14px rgba(var(--amber-rgb),0.18)',
           borderRadius:6,
           animation:'slideUp 0.3s ease both',
         }}>
@@ -1686,7 +1745,7 @@ function OfflineToasts({ workers, aliases }) {
             padding:'0.5rem 0.75rem', cursor: offlineCount > 1 ? 'pointer' : 'default',
             WebkitTapHighlightColor:'transparent',
           }}>
-            <span style={{color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'1rem', filter:'drop-shadow(0 0 4px rgba(245,166,35,0.5))'}}>⚠</span>
+            <span style={{color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'1rem', filter:'drop-shadow(0 0 4px rgba(var(--amber-rgb),0.5))'}}>⚠</span>
             <span style={{flex:1, minWidth:0, fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--amber)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
               {offlineCount === 1
                 ? `${offlineBanners[0].displayName} OFFLINE`
@@ -1703,13 +1762,13 @@ function OfflineToasts({ workers, aliases }) {
           </div>
           {offlineCount > 1 && !collapsed && (
             <div style={{
-              borderTop:'1px solid rgba(245,166,35,0.3)', background:'rgba(0,0,0,0.25)',
+              borderTop:'1px solid rgba(var(--amber-rgb),0.3)', background:'rgba(0,0,0,0.25)',
               maxHeight:'40vh', overflowY:'auto',
             }}>
               {offlineBanners.map(b => (
                 <div key={b.name} style={{
                   display:'flex', alignItems:'center', gap:'0.5rem',
-                  padding:'0.4rem 0.75rem', borderBottom:'1px dashed rgba(245,166,35,0.15)',
+                  padding:'0.4rem 0.75rem', borderBottom:'1px dashed rgba(var(--amber-rgb),0.15)',
                   fontFamily:'var(--fm)', fontSize:'0.62rem',
                 }}>
                   <span style={{flex:1, color:'var(--text-1)', fontWeight:600}}>
@@ -1808,7 +1867,7 @@ function HashrateAverages({ averages, current, peak, range, onRangeChange }) {
     <div style={{
       marginTop: '0.85rem',
       paddingTop: '0.7rem',
-      borderTop: '1px dashed rgba(245,166,35,0.18)',
+      borderTop: '1px dashed rgba(var(--amber-rgb),0.18)',
     }}>
       <div style={{
         display:'flex', justifyContent:'space-between', alignItems:'baseline',
@@ -1843,7 +1902,7 @@ function HashrateAverages({ averages, current, peak, range, onRangeChange }) {
               aria-pressed={isActive}
               style={{
                 background: isActive ? 'var(--bg-raised)' : 'transparent',
-                border: `1px solid ${isActive ? 'var(--border-hot, rgba(245,166,35,0.45))' : 'transparent'}`,
+                border: `1px solid ${isActive ? 'var(--border-hot, rgba(var(--amber-rgb),0.45))' : 'transparent'}`,
                 color: isActive ? 'var(--amber)' : 'var(--text-2)',
                 fontFamily: 'var(--fd)', fontSize: '0.6rem', fontWeight: 700,
                 letterSpacing: '0.08em',
@@ -1853,7 +1912,7 @@ function HashrateAverages({ averages, current, peak, range, onRangeChange }) {
                 lineHeight: 1.1,
                 width: '100%',
                 boxSizing: 'border-box',
-                textShadow: isActive ? '0 0 6px rgba(245,166,35,0.4)' : 'none',
+                textShadow: isActive ? '0 0 6px rgba(var(--amber-rgb),0.4)' : 'none',
               }}>
               {r.label}
             </button>
@@ -1884,8 +1943,8 @@ function HashrateAverages({ averages, current, peak, range, onRangeChange }) {
                   width:`${pct}%`,
                   height:'100%',
                   background: isActive
-                    ? 'linear-gradient(90deg, rgba(245,166,35,0.55), #FFD27A)'
-                    : 'linear-gradient(90deg, rgba(245,166,35,0.35), var(--amber))',
+                    ? 'linear-gradient(90deg, rgba(var(--amber-rgb),0.55), #FFD27A)'
+                    : 'linear-gradient(90deg, rgba(var(--amber-rgb),0.35), var(--amber))',
                   transition:'width 0.5s ease, background 0.3s ease',
                 }}/>
               </div>
@@ -1995,12 +2054,12 @@ function StrikeVelocityChart({ spsHistory, currentSps, hashrate, compact = false
         onClick={() => setRange(key)}
         style={{
           background: isActive ? 'var(--bg-raised)' : 'transparent',
-          border: `1px solid ${isActive ? 'var(--border-hot, rgba(245,166,35,0.45))' : 'var(--border)'}`,
+          border: `1px solid ${isActive ? 'var(--border-hot, rgba(var(--amber-rgb),0.45))' : 'var(--border)'}`,
           color: isActive ? 'var(--amber)' : 'var(--text-2)',
           fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:700,
           letterSpacing:'0.08em', padding:'3px 9px', cursor:'pointer',
           textTransform:'uppercase',
-          textShadow: isActive ? '0 0 6px rgba(245,166,35,0.4)' : 'none',
+          textShadow: isActive ? '0 0 6px rgba(var(--amber-rgb),0.4)' : 'none',
         }}
       >{label}</button>
     );
@@ -2184,10 +2243,10 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
             metallic. text-shadow doesn't apply to clipped text so glow
             comes from filter:drop-shadow on the wrapper. */}
         <span style={{
-          background:'linear-gradient(180deg, #FFD27F 0%, #F5A623 50%, #B27414 100%)',
+          background:'linear-gradient(180deg, var(--amber-hot) 0%, var(--amber) 50%, var(--amber-dim) 100%)',
           WebkitBackgroundClip:'text', backgroundClip:'text',
           WebkitTextFillColor:'transparent',
-          filter:'drop-shadow(0 0 30px rgba(245,166,35,0.35))',
+          filter:'drop-shadow(0 0 30px rgba(var(--amber-rgb),0.35))',
         }}>{p0}</span>
         <span style={{ fontSize: compact ? '0.85rem' : '1rem', color:'var(--amber-dim)', marginLeft:4 }}>{p1}</span>
         <HashrateTrend history={history} current={current}/>
@@ -2201,8 +2260,8 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
           <AreaChart data={data} margin={{top:18, right:22, left:8, bottom:4}}>
             <defs>
               <linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#F5A623" stopOpacity={0.28}/>
-                <stop offset="95%" stopColor="#F5A623" stopOpacity={0.02}/>
+                <stop offset="5%" stopColor="var(--amber)" stopOpacity={0.28}/>
+                <stop offset="95%" stopColor="var(--amber)" stopOpacity={0.02}/>
               </linearGradient>
             </defs>
             <XAxis hide dataKey="ts"/>
@@ -2211,13 +2270,13 @@ function HashrateChart({ history, week, current, averages, compact = false }) {
               if(!active||!payload?.length) return null;
               const p = payload[0].payload;
               return (
-                <div style={{background:'var(--bg-elevated, #1a1b1e)',border:'1px solid var(--border-hot, rgba(245,166,35,0.4))',padding:'5px 10px',fontSize:'0.7rem',fontFamily:'var(--fm)'}}>
+                <div style={{background:'var(--bg-elevated, #1a1b1e)',border:'1px solid var(--border-hot, rgba(var(--amber-rgb),0.4))',padding:'5px 10px',fontSize:'0.7rem',fontFamily:'var(--fm)'}}>
                   <div style={{color:'var(--amber)',fontWeight:600}}>{fmtHr(p.hr)}</div>
                   <div style={{color:'var(--text-2)',fontSize:'0.6rem',marginTop:2}}>{timeAgo(p.ts)}</div>
                 </div>
               );
             }}/>
-            <Area type="monotone" dataKey="hr" stroke="#F5A623" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
+            <Area type="monotone" dataKey="hr" stroke="var(--amber)" strokeWidth={2} fill="url(#hrG)" dot={false} isAnimationActive={false}/>
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -2412,7 +2471,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
 function classifyShareTier(pctOfBlock) {
   if (pctOfBlock >= 10)   return { label:'LEGENDARY', color:'#ff5252', glow:true,  bgTint:'rgba(255,82,82,0.06)',  borderTint:'rgba(255,82,82,0.40)' };
   if (pctOfBlock >= 1)    return { label:'EPIC',      color:'#ff8a3d', glow:true,  bgTint:'rgba(255,138,61,0.06)', borderTint:'rgba(255,138,61,0.35)' };
-  if (pctOfBlock >= 0.1)  return { label:'RARE',      color:'var(--amber)', glow:false, bgTint:'rgba(245,166,35,0.05)', borderTint:'rgba(245,166,35,0.25)' };
+  if (pctOfBlock >= 0.1)  return { label:'RARE',      color:'var(--amber)', glow:false, bgTint:'rgba(var(--amber-rgb),0.05)', borderTint:'rgba(var(--amber-rgb),0.25)' };
   if (pctOfBlock >= 0.01) return { label:'GOOD',      color:'var(--cyan)',  glow:false, bgTint:'rgba(0,255,209,0.04)',  borderTint:'rgba(0,255,209,0.18)' };
   return                       { label:'NORMAL',    color:'var(--text-2)', glow:false, bgTint:'transparent',         borderTint:'var(--border)' };
 }
@@ -2537,9 +2596,9 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
       )}
       <div style={{height:1,background:'var(--border)',margin:'0.7rem 0',flexShrink:0}}/>
       {blockReward && (
-        <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(245,166,35,0.25)'}}>
+        <div style={{...statRow, background:'var(--bg-deep)', borderColor:'rgba(var(--amber-rgb),0.25)'}}>
           <span style={{...label, color:'var(--amber)'}}>🏆 Next Block Prize</span>
-          <span style={{fontFamily:'var(--fd)',fontSize:'1.2rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 12px rgba(245,166,35,0.4)',textAlign:'right'}}>
+          <span style={{fontFamily:'var(--fd)',fontSize:'1.2rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 12px rgba(var(--amber-rgb),0.4)',textAlign:'right'}}>
             {fmtBtc(blockReward.totalBtc, 3)}
             {rewardUsd!=null && <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--green)',fontWeight:600,marginTop:2,textShadow:'0 0 8px rgba(57,255,106,0.2)'}}>{fmtFiat(rewardUsd, currency)}</div>}
           </span>
@@ -3227,7 +3286,27 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
         }
       }
 
-      ctx.fillStyle = 'rgba(20, 22, 26, 0.85)';
+      // v1.11.47: themed ticker bg + colors. Read from document attribute
+      // each frame — accommodates theme switches without component remount.
+      let tkPal;
+      try {
+        const tid = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) || 'classic';
+        const tt = THEMES[tid] || THEMES.classic;
+        tkPal = tt.ticker || {
+          bg:    'rgba(20, 22, 26, 0.85)',
+          head:  [240, 180, 80],
+          trail: [160, 110, 45],
+          gold:  [255, 215, 90],
+        };
+      } catch (e) {
+        tkPal = {
+          bg:    'rgba(20, 22, 26, 0.85)',
+          head:  [240, 180, 80],
+          trail: [160, 110, 45],
+          gold:  [255, 215, 90],
+        };
+      }
+      ctx.fillStyle = tkPal.bg;
       ctx.fillRect(0, 0, W, H);
       ctx.font = '11px "JetBrains Mono", monospace';
       ctx.textBaseline = 'top';
@@ -3244,7 +3323,7 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
             const isGold = d.isWinner || (d.goldIdx === i && d.y > 0);
             if (isGold) {
               const winnerFade = d.isWinner ? Math.max(0.6, 1 - d.winnerLife / 1.2) : 1;
-              r = 255; g = 215; b = 90;
+              r = tkPal.gold[0]; g = tkPal.gold[1]; b = tkPal.gold[2];
               a = (i === len - 1 ? 1 : 0.7 - fromHead * 0.6) * winnerFade;
               ctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
               ctx.shadowBlur = 6;
@@ -3255,8 +3334,8 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
               // because they're more saturated yellow vs the warmer amber
               // here, plus they get the shadowBlur halo. Whole ticker now
               // reads as a warm cascade rather than a cyberpunk Matrix.
-              if (i === len - 1) { r = 240; g = 180; b = 80; a = 0.90; }
-              else { r = 160; g = 110; b = 45; a = (1 - fromHead * 0.85) * 0.60; }
+              if (i === len - 1) { r = tkPal.head[0];  g = tkPal.head[1];  b = tkPal.head[2];  a = 0.90; }
+              else                { r = tkPal.trail[0]; g = tkPal.trail[1]; b = tkPal.trail[2]; a = (1 - fromHead * 0.85) * 0.60; }
               ctx.shadowBlur = 0;
             }
             ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
@@ -3309,8 +3388,11 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // If init fails, fall through to 2D drawLightning (keeps old behavior).
       if (a === 'lightning') {
         if (!lightningGLRef.current && lightningGLCanvasRef.current) {
-          const r = createLightningWebGL(lightningGLCanvasRef.current, { scale: 'hunt' });
-          if (r && !r.failed) lightningGLRef.current = r;
+          const r = createLightningWebGL(lightningGLCanvasRef.current, { scale: 'hunt', theme: _ssCurrentTheme() });
+          if (r && !r.failed) {
+            lightningGLRef.current = r;
+            window.__ssLightningGL = r;  // v1.11.47: expose for onThemeChange
+          }
           else lightningGLRef.current = { failed: true };
         }
         if (lightningGLRef.current && !lightningGLRef.current.failed) {
@@ -3327,8 +3409,11 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // fails. Block-found spikes are forwarded to the renderer's strike fn.
       if (a === 'noncefield') {
         if (!nonceFieldGLRef.current && nonceFieldGLCanvasRef.current) {
-          const r = createNonceFieldWebGL(nonceFieldGLCanvasRef.current, { mode: 'hunt' });
-          if (r && !r.failed) nonceFieldGLRef.current = r;
+          const r = createNonceFieldWebGL(nonceFieldGLCanvasRef.current, { mode: 'hunt', theme: _ssCurrentTheme() });
+          if (r && !r.failed) {
+            nonceFieldGLRef.current = r;
+            window.__ssNonceFieldGL = r;  // v1.11.47: expose for onThemeChange
+          }
           else nonceFieldGLRef.current = { failed: true };
         }
         if (nonceFieldGLRef.current && !nonceFieldGLRef.current.failed) {
@@ -3382,11 +3467,13 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // rev54: tear down WebGL on unmount
       if (lightningGLRef.current && !lightningGLRef.current.failed) {
         try { lightningGLRef.current.destroy(); } catch {}
+        if (window.__ssLightningGL === lightningGLRef.current) window.__ssLightningGL = null;
         lightningGLRef.current = null;
       }
       // rev55+: same for noncefield WebGL
       if (nonceFieldGLRef.current && !nonceFieldGLRef.current.failed) {
         try { nonceFieldGLRef.current.destroy(); } catch {}
+        if (window.__ssNonceFieldGL === nonceFieldGLRef.current) window.__ssNonceFieldGL = null;
         nonceFieldGLRef.current = null;
       }
     };
@@ -3523,7 +3610,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
             <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
               Per-Block Odds
             </span>
-            <span style={{fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(245,166,35,0.4)', fontVariantNumeric:'tabular-nums'}}>
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(var(--amber-rgb),0.4)', fontVariantNumeric:'tabular-nums'}}>
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
             </span>
           </div>
@@ -3534,7 +3621,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
 
         {/* Block reward — COMPACT: 2-row inline layout to free up vertical space for the animation */}
         <div style={{
-          background:'linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.02) 100%)',
+          background:'linear-gradient(135deg, rgba(var(--amber-rgb),0.08) 0%, rgba(var(--amber-rgb),0.02) 100%)',
           border:'1px solid var(--amber)',
           padding:'0.45rem 0.7rem',
           flexShrink:0,
@@ -3551,10 +3638,10 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
                 /* rev62 premium pass — same metallic gold gradient as the
                    live hashrate. Block reward is the second-most stared-at
                    number; gradient unifies them as a hero pair. */
-                background:'linear-gradient(180deg, #FFD27F 0%, #F5A623 50%, #B27414 100%)',
+                background:'linear-gradient(180deg, var(--amber-hot) 0%, var(--amber) 50%, var(--amber-dim) 100%)',
                 WebkitBackgroundClip:'text', backgroundClip:'text',
                 WebkitTextFillColor:'transparent',
-                filter:'drop-shadow(0 0 8px rgba(245,166,35,0.4))',
+                filter:'drop-shadow(0 0 8px rgba(var(--amber-rgb),0.4))',
               }}>
                 {totalBtc > 0 ? totalBtc.toFixed(4) : '—'}<span style={{fontSize:'0.65rem', marginLeft:2, WebkitTextFillColor:'var(--amber-dim)'}}>BTC</span>
               </span>
@@ -3567,7 +3654,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
           </div>
           {/* Row 2: subsidy · fees (only if data present) */}
           {(subsidyBtc > 0 || feesBtc > 0) && (
-            <div style={{display:'flex', gap:10, justifyContent:'center', alignItems:'baseline', marginTop:5, paddingTop:5, borderTop:'1px dashed rgba(245,166,35,0.18)', fontSize:'0.65rem'}}>
+            <div style={{display:'flex', gap:10, justifyContent:'center', alignItems:'baseline', marginTop:5, paddingTop:5, borderTop:'1px dashed rgba(var(--amber-rgb),0.18)', fontSize:'0.65rem'}}>
               <span style={{color:'var(--text-2)', letterSpacing:'0.08em', textTransform:'uppercase'}}>Subsidy</span>
               <span style={{fontFamily:'var(--fm)', color:'var(--text-1)', fontWeight:600}}>{subsidyBtc.toFixed(3)}</span>
               <span style={{color:'var(--text-3)'}}>·</span>
@@ -3962,8 +4049,8 @@ function drawBFMNonce(ctx, W, H, t, state) {
       ctx.beginPath(); ctx.arc(x, y, dotR * 0.35, 0, Math.PI * 2); ctx.fill();
     } else {
       const alpha = 0.35 + v * 0.65;
-      ctx.fillStyle = `rgba(245,166,35,${alpha})`;
-      ctx.shadowColor = 'rgba(245,166,35,0.7)';
+      ctx.fillStyle = `rgba(var(--amber-rgb),${alpha})`;
+      ctx.shadowColor = 'rgba(var(--amber-rgb),0.7)';
       ctx.shadowBlur = v > 0.7 ? 12 : 6;
       ctx.beginPath(); ctx.arc(x, y, dotR * (0.5 + v * 0.5), 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
@@ -4575,7 +4662,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
         // renders only the BTC icon, halo, sparks, and title text.
         if (animType === 'lightning') {
           if (!lightningGLRef.current && lightningGLCanvasRef.current) {
-            const r2 = createLightningWebGL(lightningGLCanvasRef.current, { scale: 'bfm' });
+            const r2 = createLightningWebGL(lightningGLCanvasRef.current, { scale: 'bfm', theme: _ssCurrentTheme() });
             if (r2 && !r2.failed) lightningGLRef.current = r2;
             else lightningGLRef.current = { failed: true };
           }
@@ -4613,7 +4700,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
         // mode='bfm' to switch shader programs (matches lightning pattern).
         if (animType === 'noncefield') {
           if (!bfmNonceGLRef.current && bfmNonceGLCanvasRef.current) {
-            const r3 = createNonceFieldWebGL(bfmNonceGLCanvasRef.current, { mode: 'bfm' });
+            const r3 = createNonceFieldWebGL(bfmNonceGLCanvasRef.current, { mode: 'bfm', theme: _ssCurrentTheme() });
             if (r3 && !r3.failed) bfmNonceGLRef.current = r3;
             else bfmNonceGLRef.current = { failed: true };
           }
@@ -4652,6 +4739,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
       // rev54: tear down WebGL on unmount
       if (lightningGLRef.current && !lightningGLRef.current.failed) {
         try { lightningGLRef.current.destroy(); } catch {}
+        if (window.__ssLightningGL === lightningGLRef.current) window.__ssLightningGL = null;
         lightningGLRef.current = null;
       }
       // rev57: same for noncefield BFM WebGL
@@ -4724,7 +4812,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
           width: 36, height: 36,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'var(--text-3, #7a6d5e)', fontSize: 22,
-          border: '1px solid rgba(245,166,35,0.18)', borderRadius: 18,
+          border: '1px solid rgba(var(--amber-rgb),0.18)', borderRadius: 18,
           background: 'rgba(0,0,0,0.4)', cursor: 'pointer', userSelect: 'none',
         }}
       >✕</div>
@@ -4754,7 +4842,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
       </div>
 
       <div style={{
-        height: 1, background: 'linear-gradient(90deg, transparent, rgba(245,166,35,0.3), transparent)',
+        height: 1, background: 'linear-gradient(90deg, transparent, rgba(var(--amber-rgb),0.3), transparent)',
         margin: '0 24px',
       }} />
 
@@ -4762,7 +4850,7 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
         <div style={{ fontFamily: 'var(--fd)', fontSize: 10, letterSpacing: '0.18em', color: 'var(--text-2)', textTransform: 'uppercase' }}>
           Block Height
         </div>
-        <div style={{ fontFamily: 'var(--fd)', fontSize: 28, fontWeight: 800, color: 'var(--amber)', textShadow: '0 0 12px rgba(245,166,35,0.4)', lineHeight: 1, letterSpacing: '0.02em' }}>
+        <div style={{ fontFamily: 'var(--fd)', fontSize: 28, fontWeight: 800, color: 'var(--amber)', textShadow: '0 0 12px rgba(var(--amber-rgb),0.4)', lineHeight: 1, letterSpacing: '0.02em' }}>
           {heightStr}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
@@ -4782,13 +4870,13 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
           onClick={handleDismiss}
           style={{
             width: '100%', padding: 16,
-            background: 'linear-gradient(180deg, rgba(245,166,35,0.15), rgba(245,166,35,0.06))',
+            background: 'linear-gradient(180deg, rgba(var(--amber-rgb),0.15), rgba(var(--amber-rgb),0.06))',
             border: '1px solid var(--amber)',
             color: 'var(--amber)',
             fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 700,
             letterSpacing: '0.18em', textTransform: 'uppercase',
             cursor: 'pointer',
-            boxShadow: '0 0 18px rgba(245,166,35,0.18)',
+            boxShadow: '0 0 18px rgba(var(--amber-rgb),0.18)',
           }}
         >Continue</button>
       </div>
@@ -6216,7 +6304,7 @@ function PoolUptimeStrip({ startedAt }) {
     <div style={{
       marginTop:'0.7rem',
       paddingTop:'0.55rem',
-      borderTop:'1px dashed rgba(245,166,35,0.18)',
+      borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
       display:'grid',
       gridTemplateColumns:'1fr 1fr',
       gap:'0.5rem',
@@ -6249,7 +6337,7 @@ function LuckGauge({ luck }) {
     <div style={{...card, display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Hot Streak</div>
       <div style={{position:'relative', height:22, background:'var(--bg-deep)', border:'1px solid var(--border)', overflow:'hidden', marginBottom:8, flexShrink:0}}>
-        <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg, var(--amber-glow, rgba(245,166,35,0.4)) 0%, var(--amber) 100%)', boxShadow:'0 0 8px rgba(245,166,35,0.4)', transition:'width 0.4s ease' }}/>
+        <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg, var(--amber-glow, rgba(var(--amber-rgb),0.4)) 0%, var(--amber) 100%)', boxShadow:'0 0 8px rgba(var(--amber-rgb),0.4)', transition:'width 0.4s ease' }}/>
         <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'var(--fd)', fontSize:'0.72rem', letterSpacing:'0.1em', color:'#000', fontWeight:700, mixBlendMode:'screen'}}>
           {pct.toFixed(1)}% to next
         </div>
@@ -6262,7 +6350,7 @@ function LuckGauge({ luck }) {
         <span style={label}>Found</span>
         <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--cyan)'}}>{luck.blocksFound||0}</span>
       </div>
-      <div style={{...statRow, borderColor:'var(--border-hot, rgba(245,166,35,0.3))'}}>
+      <div style={{...statRow, borderColor:'var(--border-hot, rgba(var(--amber-rgb),0.3))'}}>
         <span style={label}>Streak</span>
         <span style={{fontFamily:'var(--fm)',fontSize:'0.85rem',color:luckColor,fontWeight:600}}>{luckLabel}</span>
       </div>
@@ -6592,7 +6680,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
         )}
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Best Difficulty</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(245,166,35,0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
         </div>
         <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
           <span>{spsLabel}</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
@@ -6622,7 +6710,7 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
             const on = w.status !== 'offline';
             const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
             return (
-              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(245,166,35,0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
+              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(var(--amber-rgb),0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:3}}>
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:22, flexShrink:0}}>#{i+1}</span>
                   <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
@@ -6638,7 +6726,7 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
           })}
           <div style={{...statRow,marginTop:'0.4rem',borderColor:'var(--border-hot)',flexShrink:0}}>
             <span style={label}>Pool Best</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(245,166,35,0.4)'}}>{fmtDiff(poolBest || 0)}</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(var(--amber-rgb),0.4)'}}>{fmtDiff(poolBest || 0)}</span>
           </div>
         </div>
       )}
@@ -6661,7 +6749,7 @@ function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
           const color = p.isSolo ? 'var(--amber)' : (i===0 ? 'var(--cyan)' : 'var(--text-1)');
           return (
             <div key={p.name} style={{padding: compact ? '0.4rem 0.7rem' : '0.5rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(0,255,209,0.2)':'var(--border)'}`,position:'relative',overflow:'hidden', minWidth:0}}>
-              <div style={{position:'absolute',inset:0,width:`${pct}%`,background:p.isSolo?'rgba(245,166,35,0.06)':'rgba(0,255,209,0.04)',transition:'width 0.6s ease'}}/>
+              <div style={{position:'absolute',inset:0,width:`${pct}%`,background:p.isSolo?'rgba(var(--amber-rgb),0.06)':'rgba(0,255,209,0.04)',transition:'width 0.6s ease'}}/>
               <div style={{position:'relative',display:'flex',alignItems:'center',gap:'0.6rem'}}>
                 <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--cyan)':'var(--text-2)',width:18, flexShrink:0}}>#{i+1}</span>
                 <div style={{flex:1,minWidth:0,fontFamily:'var(--fd)',fontSize: compact ? '0.66rem' : '0.72rem',color,letterSpacing:'0.05em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textTransform:'uppercase'}}>
@@ -6729,7 +6817,7 @@ function RecentBlocksPanel({ netBlocks }) {
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ The Ledger — Solo Winners ⚡</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
-          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(245,166,35,0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(245,166,35,0.12)':'none', minWidth:0}}>
+          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(var(--amber-rgb),0.12)':'none', minWidth:0}}>
             <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -6769,7 +6857,7 @@ function BlockAlert({ show, block, onDismiss }) {
     <>
       <Confetti/>
       <div onClick={onDismiss} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',cursor:'pointer'}}>
-        <div style={{textAlign:'center',background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',padding:'2.4rem 2rem',maxWidth:420,boxShadow:'0 0 50px rgba(245,166,35,0.5)'}}>
+        <div style={{textAlign:'center',background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',padding:'2.4rem 2rem',maxWidth:420,boxShadow:'0 0 50px rgba(var(--amber-rgb),0.5)'}}>
           <div style={{fontSize:60,animation:'pulse 1.2s infinite',willChange:'opacity'}}>⚡</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>BLOCK STRUCK!</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'1.05rem',color:'var(--text-1)',marginTop:8}}>Block #{fmtNum(block.height||0)}</div>
@@ -6797,7 +6885,7 @@ function SetupForm({ saveConfig }) {
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'1.5rem'}}>
       <div style={{maxWidth:500, width:'100%', background:'var(--bg-surface)', border:'1px solid var(--amber)', padding:'1.8rem'}}>
         <h2 style={{fontFamily:'var(--fd)', color:'var(--amber)', letterSpacing:'0.1em', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'0.5rem'}}>
-          <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1.2rem', height:'1.2rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.5))', flexShrink:0}}/>
+          <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1.2rem', height:'1.2rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.5))', flexShrink:0}}/>
           SoloStrike Setup
         </h2>
         <p style={{color:'var(--text-2)', fontSize:'0.78rem', marginTop:8, lineHeight:1.5}}>Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.</p>
@@ -7209,7 +7297,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
@@ -7232,7 +7320,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
       <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--border)',maxWidth:680,width:'100%',padding:'1.4rem',marginTop:'2rem',marginBottom:'2rem'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
           <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.85rem',letterSpacing:'0.18em',color:'var(--amber)', display:'flex', alignItems:'center', gap:'0.5rem'}}>
-            <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1rem', height:'1rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.5))', flexShrink:0}}/>
+            <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1rem', height:'1rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.5))', flexShrink:0}}/>
             Settings
           </h3>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem',lineHeight:1,padding:0}}>✕</button>
@@ -7245,6 +7333,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             ['privacy','Privacy'],
             ['pulse','Pulse'],
             ['hunt','Hunt'],
+            ['themes','Themes'],
             ['aliases','Aliases'],
             ['webhooks','Webhooks'],
             ['debug','Debug'],
@@ -7283,6 +7372,9 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         )}
         {tab==='hunt' && (
           <HuntTab huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange} onPreviewCelebration={onPreviewCelebration}/>
+        )}
+        {tab==='themes' && (
+          <ThemesTab themeId={themeId} onThemeChange={onThemeChange}/>
         )}
         {tab==='aliases' && (
           <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
@@ -7416,7 +7508,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       )}
 
       <div style={sectionTitle}>▸ Card Layout (Mobile)</div>
-      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: carouselEnabled?'rgba(245,166,35,0.06)':'var(--bg-raised)', border:`1px solid ${carouselEnabled?'rgba(245,166,35,0.35)':'var(--border)'}`}}>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: carouselEnabled?'rgba(var(--amber-rgb),0.06)':'var(--bg-raised)', border:`1px solid ${carouselEnabled?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
           <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: carouselEnabled?'var(--amber)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>
             {carouselEnabled ? 'Carousel · Swipe' : 'Vertical · Scroll'}
@@ -7536,6 +7628,109 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 }
 
 // ── Hunt tab — animation chooser for The Hunt card ────────────────────────────
+// ── Themes tab — v1.11.47 theme picker ────────────────────────────────────────
+function ThemesTab({ themeId, onThemeChange }) {
+  return (
+    <>
+      <div style={{
+        fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
+        color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
+      }}>
+        Theme — Visual Style
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '0.5rem',
+      }}>
+        {THEME_IDS.map(id => {
+          const t = THEMES[id];
+          const selected = themeId === id;
+          const swatches = [
+            t.css['--amber'],
+            t.css['--btc-orange'],
+            t.css['--cyan'],
+            t.css['--green'],
+            t.css['--red'],
+          ];
+          return (
+            <button
+              key={id}
+              onClick={() => onThemeChange(id)}
+              style={{
+                position: 'relative',
+                background: t.css['--bg-surface'],
+                border: `${selected ? 2 : 1}px solid ${selected ? t.css['--amber'] : 'var(--border)'}`,
+                cursor: 'pointer',
+                padding: 0,
+                borderRadius: 4,
+                overflow: 'hidden',
+                textAlign: 'left',
+                transition: 'border 0.15s ease',
+              }}
+            >
+              {/* Preview block */}
+              <div style={{
+                background: t.css['--bg-void'],
+                padding: '0.7rem 0.6rem 0.4rem',
+                position: 'relative',
+                minHeight: 60,
+              }}>
+                <div style={{
+                  fontFamily: 'var(--fd)', fontWeight: 700, fontSize: '0.85rem',
+                  color: t.css['--amber'], letterSpacing: '0.08em',
+                }}>{t.label.split(' ')[0]}</div>
+                {selected && (
+                  <span style={{
+                    position: 'absolute', top: 4, right: 6,
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: t.css['--amber'], color: t.css['--bg-void'],
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem', fontWeight: 700,
+                  }}>✓</span>
+                )}
+                <div style={{
+                  display: 'flex', gap: 2, marginTop: 8, paddingBottom: 2,
+                }}>
+                  {swatches.map((c, i) => (
+                    <div key={i} style={{
+                      flex: 1, height: 8, borderRadius: 1, background: c,
+                    }}/>
+                  ))}
+                </div>
+              </div>
+              {/* Footer label */}
+              <div style={{
+                background: t.css['--bg-raised'],
+                color: selected ? t.css['--amber'] : 'var(--text-2)',
+                fontFamily: 'var(--fd)', fontSize: '0.55rem',
+                letterSpacing: '0.13em', textTransform: 'uppercase',
+                fontWeight: 700, textAlign: 'center',
+                padding: '0.5rem 0.4rem',
+                borderTop: '1px solid var(--border)',
+              }}>{t.label}</div>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{
+        fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+        marginTop: '1rem', lineHeight: 1.5,
+      }}>
+        Theme changes apply instantly to chrome (cards, text, borders).
+        Animations re-color on the next render. Paper Light uses a
+        blueprint-style background designed for light mode.
+      </div>
+      <div style={{
+        fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-3)',
+        marginTop: '1rem', textAlign: 'center', lineHeight: 1.4,
+      }}>
+        Changes save automatically and persist on this device
+      </div>
+    </>
+  );
+}
+
 function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
   return (
     <>
@@ -7553,7 +7748,7 @@ function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
             key={opt.id}
             onClick={() => onHuntAnimChange(opt.id)}
             style={{
-              background: huntAnim === opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+              background: huntAnim === opt.id ? 'rgba(var(--amber-rgb),0.18)' : 'transparent',
               border: `1px solid ${huntAnim === opt.id ? 'var(--amber)' : 'var(--border)'}`,
               color: huntAnim === opt.id ? 'var(--amber)' : 'var(--text-2)',
               fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.08em',
@@ -7588,7 +7783,7 @@ function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
             onClick={onPreviewCelebration}
             style={{
               width: '100%', padding: '0.7rem 1rem',
-              background: 'linear-gradient(180deg, rgba(245,166,35,0.10), rgba(245,166,35,0.04))',
+              background: 'linear-gradient(180deg, rgba(var(--amber-rgb),0.10), rgba(var(--amber-rgb),0.04))',
               border: '1px solid var(--amber)',
               color: 'var(--amber)',
               fontFamily: 'var(--fd)', fontSize: '0.7rem', fontWeight: 700,
@@ -7768,12 +7963,12 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
               </div>
             )}
             {torMode === 'unreachable' && (
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(245,166,35,0.06)',border:'1px dashed rgba(245,166,35,0.4)',marginTop:6,lineHeight:1.5}}>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px dashed rgba(var(--amber-rgb),0.4)',marginTop:6,lineHeight:1.5}}>
                 ⚠ Tor unreachable: <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{torError || 'check Umbrel Tor service'}</span>. Pulse continues broadcasting direct.
               </div>
             )}
             {torOn && torMode === 'direct' && (
-              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(245,166,35,0.06)',border:'1px dashed rgba(245,166,35,0.4)',marginTop:6}}>
+              <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px dashed rgba(var(--amber-rgb),0.4)',marginTop:6}}>
                 🟡 Tor degraded — broadcasts using direct routing. Auto-recovery every 5 min.
               </div>
             )}
@@ -7813,12 +8008,12 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
           {/* Backup display modal-style overlay */}
           {backup && (
             <div onClick={()=>setBackup(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
-              <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',maxWidth:560,width:'100%',padding:'1.25rem',boxShadow:'0 0 30px rgba(245,166,35,0.3)'}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',maxWidth:560,width:'100%',padding:'1.25rem',boxShadow:'0 0 30px rgba(var(--amber-rgb),0.3)'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
                   <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.18em',color:'var(--amber)'}}>🔑 Identity Backup</h3>
                   <button onClick={()=>setBackup(null)} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem'}}>✕</button>
                 </div>
-                <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--amber)',padding:'0.55rem',background:'rgba(245,166,35,0.06)',border:'1px solid rgba(245,166,35,0.3)',marginBottom:12,lineHeight:1.5}}>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--amber)',padding:'0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px solid rgba(var(--amber-rgb),0.3)',marginBottom:12,lineHeight:1.5}}>
                   ⚠ {backup.warning}
                 </div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Public Key</div>
@@ -7842,7 +8037,7 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
-              <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.35)' }}>{ns.pools || 0}</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.35)' }}>{ns.pools || 0}</div>
             </div>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
@@ -7850,7 +8045,7 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
             </div>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
-              <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.35)' }}>{ns.workers || 0}</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.35)' }}>{ns.workers || 0}</div>
             </div>
           </div>
 
@@ -7910,7 +8105,7 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
                 key={opt.id}
                 onClick={() => onPulseAnimChange(opt.id)}
                 style={{
-                  background: pulseAnim === opt.id ? 'rgba(245,166,35,0.18)' : 'transparent',
+                  background: pulseAnim === opt.id ? 'rgba(var(--amber-rgb),0.18)' : 'transparent',
                   border: `1px solid ${pulseAnim === opt.id ? 'var(--amber)' : 'var(--border)'}`,
                   color: pulseAnim === opt.id ? 'var(--amber)' : 'var(--text-2)',
                   fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.08em',
@@ -7939,7 +8134,7 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
         <div style={{
           marginTop: 18, padding: '0.8rem',
           border: '1px solid var(--border)', borderRadius: 4,
-          background: 'rgba(245,166,35,0.04)',
+          background: 'rgba(var(--amber-rgb),0.04)',
         }}>
           <div style={{
             fontFamily: 'var(--fd)', fontSize: '0.72rem', letterSpacing: '0.08em',
@@ -8092,7 +8287,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const r = createConstellationCube(canvas);
+    const r = createConstellationCube(canvas, { theme: _ssCurrentTheme() });
     rendererRef.current = r;
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -8540,6 +8735,162 @@ function StaticPulseStrikes({ peers, ownPin }) {
   );
 }
 
+// ── v1.11.47 — Static Pulse Globe (themed SVG replacement for pulse-map.png) ──
+// Replaces the baked amber pulse-map.png with an SVG world map that themes
+// correctly. Uses the SAME world-atlas-land-50m.json dataset that the live
+// WebGL globe uses, so the coastlines are identical. Same standard
+// equirectangular projection [-90, +90] as StaticPulseStrikes, so pin
+// marker overlays align correctly. Same 2:1 aspect ratio as pulse-map.png.
+const _ssWorldAtlasCache = { data: null, fetching: false, listeners: [] };
+
+function fetchWorldAtlasOnce() {
+  return new Promise((resolve) => {
+    if (_ssWorldAtlasCache.data) {
+      resolve(_ssWorldAtlasCache.data);
+      return;
+    }
+    // v1.11.47: fast path — if the live WebGL globe has already loaded
+    // and decoded the rings, reuse them. Avoids duplicate fetch + decode
+    // when user toggles perf mode after the live globe finished loading.
+    if (typeof window !== 'undefined' && Array.isArray(window.__ssGlobeRings) && window.__ssGlobeRings.length > 0) {
+      _ssWorldAtlasCache.data = window.__ssGlobeRings;
+      resolve(window.__ssGlobeRings);
+      return;
+    }
+    _ssWorldAtlasCache.listeners.push(resolve);
+    if (_ssWorldAtlasCache.fetching) return;
+    _ssWorldAtlasCache.fetching = true;
+    const finish = (data) => {
+      _ssWorldAtlasCache.data = data;
+      _ssWorldAtlasCache.fetching = false;
+      const ls = _ssWorldAtlasCache.listeners.splice(0);
+      // v1.11.47: isolate listener errors so one bad subscriber doesn't
+      // poison the cache or prevent other subscribers from being notified.
+      for (const fn of ls) {
+        try { fn(data); } catch (e) { /* listener threw — ignore */ }
+      }
+    };
+    fetch('/world-atlas-land-50m.json')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('local atlas missing')))
+      .catch(() => fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()))
+      .then(topo => {
+        // TopoJSON decoding — matches the live globe's logic byte-for-byte.
+        // Defensive: if any field is missing/malformed, finish with empty
+        // array (caller renders empty ocean — same as if fetch failed).
+        if (!topo || !topo.transform || !topo.arcs || !topo.objects ||
+            !topo.objects.land || !topo.objects.land.geometries) {
+          finish([]);
+          return;
+        }
+        // v1.11.47: stricter type checks — arcs and geometries MUST be arrays
+        // for the for-of loops to work; objects or strings would throw at runtime.
+        if (!Array.isArray(topo.arcs) || !Array.isArray(topo.objects.land.geometries)) {
+          finish([]);
+          return;
+        }
+        const { scale, translate } = topo.transform;
+        if (!Array.isArray(scale) || !Array.isArray(translate)) {
+          finish([]);
+          return;
+        }
+        const decodedArcs = topo.arcs.map(arc => {
+          let x = 0, y = 0;
+          return arc.map(([dx, dy]) => {
+            x += dx; y += dy;
+            return [x * scale[0] + translate[0], y * scale[1] + translate[1]];
+          });
+        });
+        const arcsToRing = (arcIdxs) => {
+          const ring = [];
+          for (const idx of arcIdxs) {
+            const reverse = idx < 0;
+            const arc = decodedArcs[reverse ? ~idx : idx];
+            if (!arc) continue;
+            const pts = reverse ? arc.slice().reverse() : arc;
+            if (ring.length === 0) ring.push(...pts);
+            else ring.push(...pts.slice(1));
+          }
+          return ring;
+        };
+        const rings = [];
+        for (const geom of topo.objects.land.geometries) {
+          if (!geom || !geom.arcs) continue;
+          if (geom.type === 'Polygon') {
+            geom.arcs.forEach(a => rings.push(arcsToRing(a)));
+          } else if (geom.type === 'MultiPolygon') {
+            geom.arcs.forEach(p => p.forEach(a => rings.push(arcsToRing(a))));
+          }
+        }
+        finish(rings);
+      })
+      .catch(() => finish([]));
+  });
+}
+
+const StaticPulseGlobe = React.memo(function StaticPulseGlobe() {
+  const [rings, setRings] = useState(_ssWorldAtlasCache.data || null);
+  useEffect(() => {
+    // Skip if cache already populated (instant render on remount).
+    if (_ssWorldAtlasCache.data) {
+      if (!rings) setRings(_ssWorldAtlasCache.data);
+      return;
+    }
+    let cancelled = false;
+    fetchWorldAtlasOnce().then(data => {
+      if (!cancelled) setRings(data);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // SVG viewBox uses the same 2:1 ratio as pulse-map.png (2400×1200).
+  // We use 360×180 as the viewBox so [lon, lat] coordinates map 1:1 via
+  // (lon + 180, 90 - lat).
+  return (
+    <svg
+      viewBox="0 0 360 180"
+      preserveAspectRatio="none"
+      width="100%"
+      height="100%"
+      className="ss-static-globe-svg"
+      style={{
+        position: 'absolute', inset: 0,
+        width: '100%', height: '100%',
+        background: 'var(--bg-void)',
+        pointerEvents: 'none',
+        display: 'block',
+      }}
+      aria-hidden="true"
+    >
+      {rings && (() => {
+        // v1.11.47: combine all 1400+ rings into a single <path> element.
+        // The browser renders 1 DOM element instead of 1400, and React
+        // diffing handles 1 prop instead of 1400 elements. Significant
+        // first-paint improvement on slower devices.
+        let d = '';
+        for (let i = 0; i < rings.length; i++) {
+          const ring = rings[i];
+          if (!ring || ring.length < 2) continue;
+          for (let j = 0; j < ring.length; j++) {
+            const [lon, lat] = ring[j];
+            const x = lon + 180;
+            const y = 90 - lat;
+            d += (j === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
+          }
+          d += 'Z';
+        }
+        return (
+          <path
+            d={d}
+            className="ss-static-globe-land"
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })()}
+    </svg>
+  );
+});
+
 // ── v1.11.41 — Static Pulse Mesh helpers (restored) ────────────────────────
 // Cube layout constants — must match constellation-cube.js byte-for-byte
 // so the static mesh visualization mirrors the live constellation animation.
@@ -8609,9 +8960,12 @@ function meshProject(v) {
 
 // Build 6 faces of a cube at (cx,cy) with depth-sorted ordering
 function buildCubeFaces(cx, cy, sizePx, isOwn) {
+  // v1.11.47: themed face palettes. Own cube uses amber-hot/amber/amber-dim
+  // for visual hierarchy. Peer cubes use btc-orange and amber-dim.
+  // SVG fill accepts CSS var() in all modern browsers.
   const PAL = isOwn
-    ? { top:'#FFE07A', left:'#D4A437', right:'#9B6E19', deep:'#50370A' }
-    : { top:'#FFB350', left:'#F7931A', right:'#B45F0F', deep:'#6E3705' };
+    ? { top:'var(--amber-hot)', left:'var(--amber)',       right:'var(--amber-dim)',  deep:'var(--amber-dim)' }
+    : { top:'var(--btc-orange)', left:'var(--btc-orange)', right:'var(--amber-dim)',  deep:'var(--amber-dim)' };
   const s = sizePx;
   const localVerts = [
     {x:-s, y:-s, z:-s}, {x: s, y:-s, z:-s},
@@ -8708,7 +9062,7 @@ function StaticPulseMesh({ peers, ownPin }) {
   return (
     <div style={{
       position:'absolute', inset:0, pointerEvents:'none', zIndex:1,
-      background:'radial-gradient(circle at center, rgba(245,166,35,0.08), var(--bg-void) 75%)',
+      background:'radial-gradient(circle at center, rgba(var(--amber-rgb),0.08), var(--bg-void) 75%)',
     }}>
       <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid meet"
         style={{ position:'absolute', inset:0, width:'100%', height:'100%' }}>
@@ -8741,6 +9095,14 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
 const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
+  // v1.11.47: re-create constellation cube when theme changes.
+  const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
+  useEffect(() => {
+    const onTheme = () => _setPulsePanelThemeTick(t => t + 1);
+    window.addEventListener('ss-theme-changed', onTheme);
+    return () => window.removeEventListener('ss-theme-changed', onTheme);
+  }, []);
+
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
   const enabled = !!ns.enabled;
 
@@ -8899,6 +9261,9 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         webglRendererRef.current = null;
       }
       webglTextureReadyRef.current = false;
+      // v1.11.47: clear theme-system globe refs to prevent stale re-bake attempts
+      if (window.__ssGlobeRenderer) window.__ssGlobeRenderer = null;
+      if (window.__ssGlobeRings)    window.__ssGlobeRings    = null;
     };
   }, []);
 
@@ -8910,7 +9275,8 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     if (!constellationCanvasRef.current) return;
     if (pulseAnim !== 'block') return;
     const factory = createConstellationCube;
-    const renderer = factory(constellationCanvasRef.current);
+    // v1.11.47: pass current theme so cube colors render in the active palette
+    const renderer = factory(constellationCanvasRef.current, { theme: _ssCurrentTheme() });
     if (renderer && !renderer.failed) {
       constellationRendererRef.current = renderer;
     } else {
@@ -8923,7 +9289,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         constellationRendererRef.current = null;
       }
     };
-  }, [pulseAnim]);
+  }, [pulseAnim, _pulsePanelThemeTick]);
 
   // Inverse orthographic projection — converts a tap on the canvas to
   // lat/lon (in degrees), un-rotated against the current globe rotation,
@@ -9624,9 +9990,12 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             try {
               const renderer = webglRendererRef.current;
               if (renderer && renderer.isReady()) {
-                const texCanvas = bakeWorldMapTexture(rings);
+                const texCanvas = bakeWorldMapTexture(rings, { palette: _ssGlobePalette(_ssCurrentTheme()) });
                 renderer.setTexture(texCanvas);
                 webglTextureReadyRef.current = true;
+                // v1.11.47: stash rings + renderer ref for theme re-bake
+                window.__ssGlobeRings = rings;
+                window.__ssGlobeRenderer = renderer;
               }
             } catch (e) {
               console.warn('WebGL texture bake failed:', e);
@@ -9701,10 +10070,10 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         const haloInner = atmRadius * 0.96;
         const haloOuter = atmRadius * 1.08;
         const halo = ctx.createRadialGradient(cx, cy, haloInner, cx, cy, haloOuter);
-        halo.addColorStop(0.00, 'rgba(245,166,35,0.00)');
-        halo.addColorStop(0.18, 'rgba(245,166,35,0.22)');
-        halo.addColorStop(0.45, 'rgba(245,166,35,0.08)');
-        halo.addColorStop(1.00, 'rgba(245,166,35,0.00)');
+        halo.addColorStop(0.00, 'rgba(var(--amber-rgb),0.00)');
+        halo.addColorStop(0.18, 'rgba(var(--amber-rgb),0.22)');
+        halo.addColorStop(0.45, 'rgba(var(--amber-rgb),0.08)');
+        halo.addColorStop(1.00, 'rgba(var(--amber-rgb),0.00)');
         ctx.fillStyle = halo;
         ctx.fillRect(0, 0, W, H);
       }
@@ -9736,13 +10105,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           const px = cx + x3 * radius;
           const py = cy - y3 * radius;
           const alpha = 0.04 + z3 * 0.06;
-          ctx.fillStyle = `rgba(245,166,35,${alpha})`;
+          ctx.fillStyle = `rgba(var(--amber-rgb),${alpha})`;
           ctx.fillRect(Math.floor(px), Math.floor(py), 1, 1);
         }
       }
 
       // 2) Globe rim — slightly brighter than before to anchor the disk
-      ctx.strokeStyle = 'rgba(245,166,35,0.28)';
+      ctx.strokeStyle = 'rgba(var(--amber-rgb),0.28)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.stroke();
 
@@ -9809,7 +10178,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           // and just costs paint. Big landmasses get the warm wash so
           // continents read as solid gentle shapes.
           if (rings[r].length >= 12) {
-            ctx.fillStyle = 'rgba(245,166,35,0.06)';
+            ctx.fillStyle = 'rgba(var(--amber-rgb),0.06)';
             ctx.beginPath();
             let started = false;
             for (let i = 0; i < n; i++) {
@@ -9839,7 +10208,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         ctx.lineWidth = 1.4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(245,166,35,0.50)';
+        ctx.strokeStyle = 'rgba(var(--amber-rgb),0.50)';
         for (let r = 0; r < rings.length; r++) {
           const t = trigs[r];
           const n = t.n;
@@ -10017,18 +10386,20 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           // and the third is just emerging — no gap, no break.
           const PULSE_PERIOD_S = 2.5;
           const baseT = (canvas._globeT || 0);
+          // v1.11.47: theme-aware gold (darker for Paper Light)
+          const _goldRgb = _ssGoldEcho().rgb;
           for (let i = 0; i < 3; i++) {
             const offset = i / 3;                                          // 0, 0.33, 0.66
             const phase = ((baseT / PULSE_PERIOD_S) + offset) % 1;          // 0..1
             const ringR = 6 + phase * 14;                                   // 6 → 20 px
             const ringAlpha = 0.85 * (1 - phase);                           // fade out
-            ctx.strokeStyle = `rgba(255, 215, 0, ${ringAlpha.toFixed(3)})`; // pure gold
+            ctx.strokeStyle = `rgba(${_goldRgb}, ${ringAlpha.toFixed(3)})`; // theme-aware gold
             ctx.lineWidth = 1.4;
             ctx.beginPath(); ctx.arc(px, py, ringR, 0, Math.PI*2); ctx.stroke();
           }
           // Inner static halo — gold marker around the pin between pulses
           // so the "I am you" identity is always visible.
-          ctx.strokeStyle = 'rgba(255, 215, 0, 0.55)';
+          ctx.strokeStyle = `rgba(${_goldRgb}, 0.55)`;
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
         }
@@ -10038,12 +10409,12 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       if (placingPinRef.current) {
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = 'rgba(245,166,35,0.95)';
+        ctx.fillStyle = 'rgba(var(--amber-rgb),0.95)';
         ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('TAP ANYWHERE ON THE GLOBE', cx, cy - 8);
-        ctx.fillStyle = 'rgba(245,166,35,0.55)';
+        ctx.fillStyle = 'rgba(var(--amber-rgb),0.55)';
         ctx.font = '500 9px ui-monospace, SFMono-Regular, Menlo, monospace';
         ctx.fillText('Snapped to ~500km region', cx, cy + 8);
       }
@@ -10456,13 +10827,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       transform:'rotate(-12deg)',
       fontFamily:'var(--fd)', fontSize:'0.6rem', fontWeight:800,
       letterSpacing:'0.18em', textTransform:'uppercase',
-      color:'rgba(245,166,35,0.65)',
-      border:'2px solid rgba(245,166,35,0.5)',
+      color:'rgba(var(--amber-rgb),0.65)',
+      border:'2px solid rgba(var(--amber-rgb),0.5)',
       padding:'3px 8px',
       pointerEvents:'none',
-      textShadow:'0 0 8px rgba(245,166,35,0.6)',
-      boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
-      background:'rgba(245,166,35,0.03)',
+      textShadow:'0 0 8px rgba(var(--amber-rgb),0.6)',
+      boxShadow:'0 0 12px rgba(var(--amber-rgb),0.25), inset 0 0 8px rgba(var(--amber-rgb),0.15)',
+      background:'rgba(var(--amber-rgb),0.03)',
       lineHeight:1.2,
       textAlign:'center',
       animation:'pulse 4s ease-in-out infinite',
@@ -10495,7 +10866,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               border:'none', cursor:'pointer',
               fontFamily:'var(--fd)', fontSize:'0.65rem', fontWeight:700,
               letterSpacing:'0.12em', textTransform:'uppercase',
-              boxShadow:'0 0 14px rgba(245,166,35,0.35)',
+              boxShadow:'0 0 14px rgba(var(--amber-rgb),0.35)',
             }}>
             JOIN PULSE
           </button>
@@ -10589,18 +10960,8 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               }}
             >
               {pulseAnim === 'globe' && (
-                <img
-                  src="/static/pulse-map.png"
-                  alt=""
-                  draggable={false}
-                  style={{
-                    position:'absolute', inset:0,
-                    width:'100%', height:'100%',
-                    objectFit:'fill',
-                    pointerEvents:'none',
-                    background:'var(--bg-void)',
-                  }}
-                />
+                /* v1.11.47: themed SVG globe replaces baked amber pulse-map.png */
+                <StaticPulseGlobe />
               )}
               {pulseAnim === 'block' && (
                 <StaticPulseMesh peers={Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : []} ownPin={poolPin} />
@@ -10647,7 +11008,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
                 fontSize:'1rem', lineHeight:1,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 zIndex:5,
-                textShadow: placingPin ? '0 0 6px rgba(225,80,80,0.7)' : '0 0 6px rgba(245,166,35,0.6)',
+                textShadow: placingPin ? '0 0 6px rgba(225,80,80,0.7)' : '0 0 6px rgba(var(--amber-rgb),0.6)',
               }}
               aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
               title={placingPin ? 'Cancel' : (poolPin ? 'Move pin' : 'Pin my pool')}
@@ -10721,7 +11082,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.pools || 0}</div>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.pools || 0}</div>
           </div>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
@@ -10729,7 +11090,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           </div>
           <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.workers || 0}</div>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.workers || 0}</div>
           </div>
         </div>
 
@@ -10747,7 +11108,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
           title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
           style={{
-          borderTop:'1px dashed rgba(245,166,35,0.18)',
+          borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
           paddingTop:'0.4rem',
           fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
           lineHeight:1.4, paddingRight:'4rem',
@@ -10872,18 +11233,8 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             }}
           >
             {pulseAnim === 'globe' && (
-              <img
-                src="/static/pulse-map.png"
-                alt=""
-                draggable={false}
-                style={{
-                  position:'absolute', inset:0,
-                  width:'100%', height:'100%',
-                  objectFit:'fill',
-                  pointerEvents:'none',
-                  background:'var(--bg-void)',
-                }}
-              />
+              /* v1.11.47: themed SVG globe replaces baked amber pulse-map.png */
+              <StaticPulseGlobe />
             )}
             {pulseAnim === 'block' && (
               <StaticPulseMesh peers={Array.isArray(ns.peers) ? ns.peers.filter(p => p && !p.filtered) : []} ownPin={poolPin} />
@@ -10923,7 +11274,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               fontSize:'1.15rem', lineHeight:1,
               display:'flex', alignItems:'center', justifyContent:'center',
               zIndex:5,
-              textShadow: placingPin ? '0 0 8px rgba(225,80,80,0.7)' : '0 0 8px rgba(245,166,35,0.6)',
+              textShadow: placingPin ? '0 0 8px rgba(225,80,80,0.7)' : '0 0 8px rgba(var(--amber-rgb),0.6)',
             }}
             aria-label={placingPin ? 'Cancel pin placement' : (poolPin ? 'Move pin' : 'Pin my pool')}
             title={placingPin ? 'Cancel' : (poolPin ? 'Move pin' : 'Pin my pool')}
@@ -11001,7 +11352,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
         <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
-          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.pools || 0}</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.pools || 0}</div>
         </div>
         <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
@@ -11009,7 +11360,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         </div>
         <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
-          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(245,166,35,0.4)' }}>{ns.workers || 0}</div>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.workers || 0}</div>
         </div>
       </div>
 
@@ -11026,7 +11377,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         onKeyDown={onOpenStrikers ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenStrikers(); } } : undefined}
         title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
         style={{
-        borderTop:'1px dashed rgba(245,166,35,0.18)',
+        borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
         paddingTop:'0.5rem',
         fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)',
         lineHeight:1.5, paddingRight:'4rem' /* leave room for the rotated stamp */,
@@ -11087,7 +11438,7 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
 
       {/* Divider */}
       <div style={{
-        height:1, background:'linear-gradient(90deg, transparent, rgba(245,166,35,0.25), transparent)',
+        height:1, background:'linear-gradient(90deg, transparent, rgba(var(--amber-rgb),0.25), transparent)',
         margin:'0.7rem 0',
         flexShrink:0,
       }}/>
@@ -11427,7 +11778,7 @@ function StrikersModal({ networkStats, onClose }) {
         <div style={{
           display:'flex', height:12, borderRadius:4, overflow:'hidden',
           background:'rgba(20,20,22,0.6)',
-          border:'1px solid rgba(245,166,35,0.18)',
+          border:'1px solid rgba(var(--amber-rgb),0.18)',
           boxShadow:'0 0 12px rgba(245,100,25,0.15)',
         }}>
           {ranked.map((p, i) => {
@@ -11519,9 +11870,9 @@ function StrikersModal({ networkStats, onClose }) {
         style={{
         display:'flex', alignItems:'center', justifyContent:'space-between',
         padding: isOwn ? '0.7rem 0.8rem' : '0.6rem 0.8rem',
-        background: isOwn ? 'rgba(245,166,35,0.08)' : 'var(--bg-raised)',
+        background: isOwn ? 'rgba(var(--amber-rgb),0.08)' : 'var(--bg-raised)',
         border: isOwn ? '1px solid var(--amber)' : '1px solid var(--border)',
-        boxShadow: isOwn ? '0 0 12px rgba(245,166,35,0.2)' : 'none',
+        boxShadow: isOwn ? '0 0 12px rgba(var(--amber-rgb),0.2)' : 'none',
         marginBottom: isOwn ? '0.5rem' : '0.35rem',
         opacity: p.filtered && !isOwn ? 0.55 : 1,
         position:'relative',
@@ -11557,8 +11908,8 @@ function StrikersModal({ networkStats, onClose }) {
             )}
             {ranked.length >= 2 && (
               <span style={{
-                fontFamily:'var(--fd)', fontSize:'0.55rem', color:'rgba(245,166,35,0.65)',
-                background:'rgba(245,166,35,0.1)', border:'1px solid rgba(245,166,35,0.2)',
+                fontFamily:'var(--fd)', fontSize:'0.55rem', color:'rgba(var(--amber-rgb),0.65)',
+                background:'rgba(var(--amber-rgb),0.1)', border:'1px solid rgba(var(--amber-rgb),0.2)',
                 padding:'1px 6px', letterSpacing:'0.06em', borderRadius:2,
               }}>
                 #{rank + 1}
@@ -11573,8 +11924,8 @@ function StrikersModal({ networkStats, onClose }) {
                 className={isOwn && newlyEarnedBadges.has(b) ? 'ss-badge-unlock' : ''}
                 style={{
                   fontSize:'0.7rem', lineHeight:1,
-                  background:'rgba(245,166,35,0.08)',
-                  border:'1px solid rgba(245,166,35,0.2)',
+                  background:'rgba(var(--amber-rgb),0.08)',
+                  border:'1px solid rgba(var(--amber-rgb),0.2)',
                   borderRadius:2, padding:'1px 4px',
                   display: 'inline-block',
                 }}
@@ -11590,7 +11941,7 @@ function StrikersModal({ networkStats, onClose }) {
             {p.workers} worker{p.workers===1?'':'s'} · v{p.version || '?'}
             {joined && (<> · <span title="Joined">{joined}</span></>)}
             {dispHash > 0 && ranked.length >= 2 && (
-              <> · <span style={{color:'rgba(245,166,35,0.65)'}}>{pct.toFixed(1)}% of network</span></>
+              <> · <span style={{color:'rgba(var(--amber-rgb),0.65)'}}>{pct.toFixed(1)}% of network</span></>
             )}
           </div>
         </div>
@@ -11807,7 +12158,7 @@ function StrikersModal({ networkStats, onClose }) {
               <div style={{
                 textAlign:'center', padding:'1.5rem 0.5rem',
                 background:'var(--bg-raised)',
-                border:'1px dashed rgba(245,166,35,0.18)',
+                border:'1px dashed rgba(var(--amber-rgb),0.18)',
                 marginBottom:'0.35rem',
               }}>
                 <div style={{
@@ -11832,7 +12183,7 @@ function StrikersModal({ networkStats, onClose }) {
                 <div style={{
                   textAlign:'center', padding:'1rem 0.5rem',
                   background:'var(--bg-raised)',
-                  border:'1px dashed rgba(245,166,35,0.18)',
+                  border:'1px dashed rgba(var(--amber-rgb),0.18)',
                   marginTop:'0.35rem',
                 }}>
                   <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', lineHeight:1.5}}>
@@ -11851,7 +12202,7 @@ function StrikersModal({ networkStats, onClose }) {
           <RecentStrikesTicker/>
 
           <div style={{
-            borderTop:'1px dashed rgba(245,166,35,0.18)',
+            borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
             paddingTop:'0.7rem',
             fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
             lineHeight:1.5,
@@ -11869,13 +12220,13 @@ function StrikersModal({ networkStats, onClose }) {
             transform:'rotate(-12deg)',
             fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
             letterSpacing:'0.18em', textTransform:'uppercase',
-            color:'rgba(245,166,35,0.65)',
-            border:'2px solid rgba(245,166,35,0.5)',
+            color:'rgba(var(--amber-rgb),0.65)',
+            border:'2px solid rgba(var(--amber-rgb),0.5)',
             padding:'4px 10px',
             pointerEvents:'none',
-            textShadow:'0 0 8px rgba(245,166,35,0.6)',
-            boxShadow:'0 0 12px rgba(245,166,35,0.25), inset 0 0 8px rgba(245,166,35,0.15)',
-            background:'rgba(245,166,35,0.03)',
+            textShadow:'0 0 8px rgba(var(--amber-rgb),0.6)',
+            boxShadow:'0 0 12px rgba(var(--amber-rgb),0.25), inset 0 0 8px rgba(var(--amber-rgb),0.15)',
+            background:'rgba(var(--amber-rgb),0.03)',
             lineHeight:1.2,
             textAlign:'center',
             animation:'pulse 4s ease-in-out infinite',
@@ -11903,7 +12254,7 @@ function StrikersModal({ networkStats, onClose }) {
             style={{
               background:'var(--bg-surface)', border:'1px solid var(--border-hot)',
               maxWidth:380, padding:'1.5rem', borderRadius:6,
-              boxShadow:'0 0 40px rgba(245,166,35,0.2)',
+              boxShadow:'0 0 40px rgba(var(--amber-rgb),0.2)',
             }}
           >
             <div style={{
@@ -11970,8 +12321,8 @@ function StrikersModal({ networkStats, onClose }) {
                   </span>
                   {geo && <span style={{fontSize:'1.1rem'}}>{geo.flag}</span>}
                   <span style={{
-                    color:'rgba(245,166,35,0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
-                    background:'rgba(245,166,35,0.1)', border:'1px solid rgba(245,166,35,0.2)',
+                    color:'rgba(var(--amber-rgb),0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
+                    background:'rgba(var(--amber-rgb),0.1)', border:'1px solid rgba(var(--amber-rgb),0.2)',
                     padding:'2px 8px', borderRadius:2, letterSpacing:'0.08em',
                   }}>RANK #{rank + 1}</span>
                 </div>
@@ -12244,8 +12595,8 @@ function ReckoningModal({ poolState, currency, onClose }) {
             width: `${visualBar}%`,
             height: '100%',
             background: accent === 'var(--amber)'
-              ? 'linear-gradient(90deg, rgba(245,166,35,0.4), var(--amber))'
-              : 'linear-gradient(90deg, rgba(245,166,35,0.2), rgba(245,166,35,0.6))',
+              ? 'linear-gradient(90deg, rgba(var(--amber-rgb),0.4), var(--amber))'
+              : 'linear-gradient(90deg, rgba(var(--amber-rgb),0.2), rgba(var(--amber-rgb),0.6))',
             transition: 'width 0.4s ease',
           }} />
         </div>
@@ -12281,13 +12632,13 @@ function ReckoningModal({ poolState, currency, onClose }) {
               <div style={section}>
                 <div style={secTitle}>▸ If You Struck Right Now</div>
                 <div style={{
-                  background:'linear-gradient(135deg, rgba(245,166,35,0.08) 0%, rgba(245,166,35,0.02) 100%)',
+                  background:'linear-gradient(135deg, rgba(var(--amber-rgb),0.08) 0%, rgba(var(--amber-rgb),0.02) 100%)',
                   border:'1px solid var(--amber)',
-                  boxShadow:'0 0 14px rgba(245,166,35,0.18)',
+                  boxShadow:'0 0 14px rgba(var(--amber-rgb),0.18)',
                   padding:'1rem',
                   textAlign:'center',
                 }}>
-                  <div style={{ fontFamily:'var(--fd)', fontSize:'2rem', fontWeight:800, color:'var(--amber)', lineHeight:1.1, textShadow:'0 0 12px rgba(245,166,35,0.5)' }}>
+                  <div style={{ fontFamily:'var(--fd)', fontSize:'2rem', fontWeight:800, color:'var(--amber)', lineHeight:1.1, textShadow:'0 0 12px rgba(var(--amber-rgb),0.5)' }}>
                     {rewardBtc.toFixed(3)} <span style={{fontSize:'1rem'}}>BTC</span>
                   </div>
                   {fiatPrice > 0 && (
@@ -12348,7 +12699,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                     <div style={{
                       marginTop:'0.55rem',
                       paddingTop:'0.55rem',
-                      borderTop:'1px dashed rgba(245,166,35,0.18)',
+                      borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
                       fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)',
                       textAlign:'center', lineHeight:1.5,
                     }}>
@@ -12546,7 +12897,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                             </div>
                           </div>
                           <div style={{
-                            marginTop:9, paddingTop:9, borderTop:'1px dashed rgba(245,166,35,0.18)',
+                            marginTop:9, paddingTop:9, borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
                             textAlign:'center',
                           }}>
                             <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:3}}>
@@ -12589,7 +12940,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
 
               {/* Footer description */}
               <div style={{
-                borderTop:'1px dashed rgba(245,166,35,0.18)',
+                borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
                 paddingTop:'0.7rem',
                 fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)',
                 lineHeight:1.5,
@@ -13747,6 +14098,52 @@ export default function App() {
     saveHuntAnim(v);
     setHuntAnim(v);
   }, []);
+
+  // ── v1.11.47: Theme system ──────────────────────────────────────────────
+  // themeId persisted in localStorage 'ss_theme_v1'; default 'classic'.
+  // themeRef lets non-React render loops (drawTicker, etc.) read current theme
+  // without re-creating closures.
+  const [themeId, setThemeId] = useState(() => loadTheme());
+  const themeRef = useRef(getThemeById(themeId));
+  useEffect(() => { themeRef.current = getThemeById(themeId); }, [themeId]);
+
+  const onThemeChange = useCallback((id) => {
+    if (!THEMES[id]) return;
+    saveTheme(id);
+    setThemeId(id);
+    applyThemeCSS(id);
+    // v1.11.47: update <meta name="theme-color"> so OS-level chrome
+    // (PWA status bar, splash, Chrome tab strip) tracks the active theme.
+    applyThemeColorMeta(id);
+    const newTheme = getThemeById(id);
+
+    // Notify WebGL renderers that support live theme update
+    try { window.__ssLightningGL && window.__ssLightningGL.setTheme && window.__ssLightningGL.setTheme(newTheme); } catch (e) {}
+    try { window.__ssNonceFieldGL && window.__ssNonceFieldGL.setTheme && window.__ssNonceFieldGL.setTheme(newTheme); } catch (e) {}
+    try { window.__ssAnimatedBg && window.__ssAnimatedBg.setTheme && window.__ssAnimatedBg.setTheme(newTheme); } catch (e) {}
+    // v1.11.47: re-bake the globe world-map texture with new palette
+    try {
+      const rings = window.__ssGlobeRings;
+      const renderer = window.__ssGlobeRenderer;
+      if (rings && renderer && renderer.isReady()) {
+        const texCanvas = bakeWorldMapTexture(rings, { palette: _ssGlobePalette(newTheme) });
+        renderer.setTexture(texCanvas);
+      }
+    } catch (e) { console.warn('Globe re-bake failed:', e); }
+
+    // Background renderer special case: dark↔Paper Light requires full rebuild
+    // (one is WebGL, the other is canvas 2D). Reload page to swap.
+    const prevTheme = themeRef.current;
+    const wasLightMode = prevTheme && prevTheme.special === 'lightMode';
+    const isLightMode  = newTheme && newTheme.special === 'lightMode';
+    if (wasLightMode !== isLightMode) {
+      setTimeout(() => { try { window.location.reload(); } catch (e) {} }, 100);
+    } else {
+      // Notify components that don't have setTheme (Pulse constellation cube)
+      // to re-create themselves with the new theme.
+      try { window.dispatchEvent(new CustomEvent('ss-theme-changed', { detail: { id } })); } catch (e) {}
+    }
+  }, []);
   // Pool pin location — user's approximate location on the Pulse globe.
   // localStorage is the source of truth; updates also POST to the API so
   // the next nostr broadcast includes it.
@@ -14166,7 +14563,7 @@ export default function App() {
             transformOrigin:'bottom right',
             animation:'pickaxeStrike 1.4s ease-in-out infinite',
             animationDelay:'0s',
-            filter:'drop-shadow(0 0 14px rgba(245,166,35,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
+            filter:'drop-shadow(0 0 14px rgba(var(--amber-rgb),0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
             zIndex:3,
           }}>
             <img
@@ -14183,7 +14580,7 @@ export default function App() {
           fontWeight:700,
           color:'var(--amber)',
           letterSpacing:'0.4em',
-          textShadow:'0 0 14px rgba(245,166,35,0.35)',
+          textShadow:'0 0 14px rgba(var(--amber-rgb),0.35)',
         }}>
           SOLOSTRIKE
         </div>
@@ -14237,6 +14634,7 @@ export default function App() {
             huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
             debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
+            themeId={themeId} onThemeChange={onThemeChange}
           />
         )}
       </>
@@ -14367,7 +14765,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.46 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.47 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -14428,6 +14826,7 @@ export default function App() {
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
           onPreviewCelebration={onPreviewCelebration}
           debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
+            themeId={themeId} onThemeChange={onThemeChange}
         />
       )}
       {blockFoundCelebration && (
