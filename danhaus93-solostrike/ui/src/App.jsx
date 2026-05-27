@@ -3538,7 +3538,10 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       // additive-blend bolts have something brighter than pure white to
       // brighten against. Other modes (pickaxe, noncefield, ticker) and
       // other themes keep transparent — card surface shows through as before.
-      background: (huntAnim === 'lightning' && _ssCurrentThemeId() === 'paper') ? '#C9D4E2' : 'transparent',
+      // v1.11.52: bg darkened from #C9D4E2 → #8FB1D1 (sky blue, luminance
+      // 0.42 vs 0.65). White bolt cores now have 58% headroom to read as
+      // actual white spikes instead of fuzzy near-white smears.
+      background: (huntAnim === 'lightning' && _ssCurrentThemeId() === 'paper') ? '#8FB1D1' : 'transparent',
     }}>
       <canvas ref={canvasRef} style={{
         display: huntAnim === 'lightning' ? 'none' : 'block',
@@ -4861,7 +4864,8 @@ function BlockFoundModal({ animType, block, prices, currency, onDismiss }) {
         flex: 1, minHeight: 0, position: 'relative',
         // v1.11.51: Paper Light + lightning gets a gray-blue bg so WebGL
         // additive-blend bolts brighten visibly (white-on-white is invisible).
-        background: (animType === 'lightning' && _ssCurrentThemeId() === 'paper') ? '#C9D4E2' : undefined,
+        // v1.11.52: darkened from #C9D4E2 → #8FB1D1 for crisper bolts.
+        background: (animType === 'lightning' && _ssCurrentThemeId() === 'paper') ? '#8FB1D1' : undefined,
       }}>
         {/* rev54: WebGL canvas behind the 2D canvas. Visible only during
             lightning animType. Renders bolts/clouds/flash; 2D canvas on
@@ -14381,14 +14385,18 @@ export default function App() {
       // which the rev69 overlay confirms matches 100dvh exactly in both modes
       // (win 812 == 100dvh 812 in PWA; win 628 == 100dvh 628 in Safari browser).
       //
-      // DOTS_RESERVE=30: dots are position:fixed at bottom 40px+safeAreaInsetBottom
-      // and float over content anyway; we just need enough clearance that text in
-      // the bottom of the card doesn't sit directly behind them. PWA's effective
-      // reserve under the 296 fallback was 27px (812-210-59-516); 30 stays within
-      // 3px of the current PWA layout while recovering 113px in Safari browser.
+      // v1.11.52: DOTS_RESERVE reduced from 30 to 0. Dots are position:fixed
+      // floating over content, so they don't need their own reserved space
+      // in the carousel layout. Removing the reserve lets the carousel
+      // extend all the way down to the footer top edge, giving the card's
+      // 32px drop shadow room to render below the card before being clipped
+      // by .ss-carousel's overflow-y: hidden. The card itself stays the same
+      // visual size and position — bottom padding on .ss-carousel > * is
+      // bumped from 4px to 34px to push the card up to its original screen
+      // position. Net effect: card unchanged visually, shadow has space.
       const vh = window.innerHeight;
       if (vh > 0) {
-        const DOTS_RESERVE = 30;
+        const DOTS_RESERVE = 0;
         const target = Math.max(200, Math.round(vh - headerH - footerH - DOTS_RESERVE));
         carouselEl.style.setProperty('--carousel-h', target + 'px');
       }
@@ -14807,7 +14815,7 @@ export default function App() {
         )}
       </main>
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.51 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v1.11.52 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
