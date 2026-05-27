@@ -544,7 +544,17 @@ body * {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 0.65rem 0.65rem 4px 0.65rem;
+  /* v1.11.52: bottom padding bumped from 4px to 32px. The carousel itself
+     was grown to extend to the footer top edge (DOTS_RESERVE: 30 → 0 in
+     App.jsx). This 32px of padding below the card matches the card's
+     drop-shadow extent (0 8px 24px → 8px offset + 24px blur = 32px below
+     card). Result: shadow extends EXACTLY to the carousel bottom edge =
+     footer top edge, no gap. Card position shifted up 2px from original
+     (was 4px above carousel bottom, now 32px above the grown bottom which
+     is 30px lower than before → net card position 2px higher than before).
+     Dots are position:fixed at bottom 40px so they overlap the shadow zone
+     and remain in the same viewport position regardless. */
+  padding: 0.65rem 0.65rem 32px 0.65rem;
   box-sizing: border-box;
 }
 .ss-carousel > *::-webkit-scrollbar { width: 0; }
