@@ -1,6 +1,6 @@
 {
   "name": "solostrike-api",
-  "version": "1.11.52",
+  "version": "1.11.53",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js"
