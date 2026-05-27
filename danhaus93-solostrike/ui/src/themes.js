@@ -445,6 +445,13 @@ export const THEMES = {
       core:  [1.0, 1.0, 1.0],
       glow:  [0.12, 0.36, 0.62],
       bloom: [0.05, 0.24, 0.50],
+      // v1.11.53: tightness multiplier for glow + bloom falloffs. 1.0 is
+      // default (used by all dark themes). Higher = sharper bolts. On
+      // Paper Light's pale bg the wide soft halos made each bolt segment
+      // look like a smeary brush stroke; multiple forks overlapping their
+      // halos looked like scribbles. 3.0 cuts the visible halo width to
+      // ~1/sqrt(3) ≈ 58% of original, making bolts read as crisp lines.
+      tightness: 3.0,
     },
     nonce: {
       bg:    [0.91, 0.94, 0.96],
