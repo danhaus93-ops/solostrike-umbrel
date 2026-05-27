@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.52 — privacy-aware)
+// SoloStrike API server (v1.11.53 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.52',
+  version: '1.11.53',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -929,13 +929,18 @@ app.get('/api/widget/four-stats', (req, res) => {
     while (rate >= 1000 && i < units.length - 1) { rate /= 1000; i++; }
     return { text: rate.toFixed(2), subtext: units[i] };
   };
+  // v1.11.53: align with UI's fmtDiff() in utils.js — use SI prefixes (K/M/G/T/P),
+  // 2 decimals, space before unit. Previous version used K/M/B/T with 1 decimal
+  // and no space, which differed from the main dashboard ('5.22 G' vs '5.2B').
+  // A tester flagged the inconsistency; matching the UI formatter for consistency.
   const formatCompact = (n) => {
     if (!n || n < 0 || !Number.isFinite(n)) return '0';
     if (n < 1000) return Math.round(n).toString();
-    if (n < 1e6) return (n / 1e3).toFixed(1) + 'K';
-    if (n < 1e9) return (n / 1e6).toFixed(1) + 'M';
-    if (n < 1e12) return (n / 1e9).toFixed(1) + 'B';
-    return (n / 1e12).toFixed(1) + 'T';
+    if (n < 1e6)  return (n / 1e3).toFixed(2) + ' K';
+    if (n < 1e9)  return (n / 1e6).toFixed(2) + ' M';
+    if (n < 1e12) return (n / 1e9).toFixed(2) + ' G';
+    if (n < 1e15) return (n / 1e12).toFixed(2) + ' T';
+    return (n / 1e15).toFixed(2) + ' P';
   };
   try {
     const s = transformState(state);
