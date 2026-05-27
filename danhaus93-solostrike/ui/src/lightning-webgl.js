@@ -54,13 +54,18 @@ varying float vType;
 uniform vec3 uCoreColor;
 uniform vec3 uGlowColor;
 uniform vec3 uBloomColor;
+// v1.11.53: bolt tightness multiplier. Defaults to 1.0 (preserves dark-theme
+// behavior). Paper Light sets it higher (~3.0) to tighten the glow + bloom
+// halos, making bolts crisp lines instead of soft brush strokes — which
+// looked messy on Paper Light's pale sky-blue bg.
+uniform float uBoltTightness;
 void main() {
   float lifeAlpha = vLifeT < 0.25 ? 1.0 : pow(1.0 - (vLifeT - 0.25) / 0.75, 0.7);
   float d = abs(vDist);
   float core   = exp(-d*d * 6.0);
   float edge   = exp(-d*d * 0.5);
-  float glow   = exp(-d*d * 0.04);
-  float bloom  = exp(-d*d * 0.005);
+  float glow   = exp(-d*d * 0.04  * uBoltTightness);
+  float bloom  = exp(-d*d * 0.005 * uBoltTightness);
 
   vec3 coreColor, glowColor, bloomColor;
   // v1.11.47: theme palette. Preserves the 3-tier intensity scheme (main bolt
@@ -281,6 +286,8 @@ export function createLightningWebGL(canvas, opts = {}) {
     uCoreColor:  gl.getUniformLocation(boltProg, 'uCoreColor'),
     uGlowColor:  gl.getUniformLocation(boltProg, 'uGlowColor'),
     uBloomColor: gl.getUniformLocation(boltProg, 'uBloomColor'),
+    // v1.11.53: bolt tightness — 1.0 default, higher = sharper bolts
+    uBoltTightness: gl.getUniformLocation(boltProg, 'uBoltTightness'),
   };
   const cloudLocs = {
     aPos:        gl.getAttribLocation(cloudProg, 'aPos'),
@@ -576,6 +583,9 @@ export function createLightningWebGL(canvas, opts = {}) {
       gl.uniform3fv(boltLocs.uCoreColor,  currentLightning.core);
       gl.uniform3fv(boltLocs.uGlowColor,  currentLightning.glow);
       gl.uniform3fv(boltLocs.uBloomColor, currentLightning.bloom);
+      // v1.11.53: per-frame tightness. Defaults to 1.0 (preserves dark-theme
+      // appearance). Paper Light sets it ~3.0 to tighten halos.
+      gl.uniform1f(boltLocs.uBoltTightness, currentLightning.tightness || 1.0);
       gl.drawArrays(gl.TRIANGLES, 0, boltVertLen);
     }
 
