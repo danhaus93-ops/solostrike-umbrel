@@ -27,7 +27,9 @@ services:
 
   ckpool:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a@sha256:4e6b8f4f9c7d74c2111a6e082a2bbdc936fa510989a81e7cef714d1da944336b
-    restart: unless-stopped
+    restart: on-failure
+    security_opt:
+      - no-new-privileges:true
     stop_grace_period: 1m
     command: ["--btcsolo", "--log-shares", "--config", "/etc/ckpool/ckpool.conf"]
     # v1.11.13 — Healthcheck verifies the pid file AND listener socket exist.
@@ -75,8 +77,10 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.52@sha256:0bbb63a306018cb4a9526e88150db67f2293efe0c166f9caa8b62869d21ef612
-    restart: unless-stopped
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.51@sha256:8aa440b0a95e9d1c80e1060290789a055fc60bd8466684a321b00a3a591c0837
+    restart: on-failure
+    security_opt:
+      - no-new-privileges:true
     # v1.8.4: wait for ckpool to be healthy. stunnel forwards to ckpool:3333
     # so connecting to a half-booted ckpool would drop early SSL miners.
     depends_on:
@@ -88,8 +92,10 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.52@sha256:1b4bcc4a0fe6144fe3aa1616431ee7e91d628bd686d1b53b474b6d0f42946af1
-    restart: unless-stopped
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.51@sha256:402979f1dc58461b1157709427454cb0402c20b1354b4b2c083004f93fd605d6
+    restart: on-failure
+    security_opt:
+      - no-new-privileges:true
     stop_grace_period: 30s
     # v1.8.4: wait for ckpool to be HEALTHY, not just started. Combined
     # with the ckpool healthcheck above, this prevents the API from
@@ -128,8 +134,10 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.52@sha256:e9c865882e87d2b8ed0b98df0a6f01e061a23b40c029fe03ed36ffe4037d30b2
-    restart: unless-stopped
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.51@sha256:660d76c249c5bec422c4ca0e8f176f1c09e67d5a7ffb549c2d64fbe9999c1bd9
+    restart: on-failure
+    security_opt:
+      - no-new-privileges:true
     container_name: danhaus93-solostrike_ui_1
     depends_on:
       - api
