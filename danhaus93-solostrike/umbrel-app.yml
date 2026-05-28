@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.57"
+version: "1.11.58"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,36 +88,45 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.11.57 — Hotfix: fresh installs failed because the init container's
-  ckpool.conf generator never ran.
+  v1.11.58 — Hotfix for three issues found after v1.11.57 installed.
 
 
-  FIXED (1.11.57)
+  FIXED (1.11.58)
 
 
-  • CRITICAL: the init-permissions script used single-$ shell variables
-    ($CONF, $BTC_ADDR, ${BITCOIN_RPC_*}). Docker Compose interpolates
-    $VARIABLE in the compose file — including inside command scripts —
-    at parse time, so those resolved to empty before the container ran.
-    Result: `cat > "" ` failed with "can't create", the init container
-    exited 1, ckpool's depends_on never satisfied, and the whole app
-    rolled back to "Install" on every fresh install. All shell variables
-    are now escaped as $$ so they reach the in-container shell intact.
-    Verified by simulating Compose interpolation and running the result
-    under busybox (the real container shell).
+  • TLS port 4333 was down (red in the UI). The init-permissions
+    container chowned the entire /data tree to UID 1000, but stunnel
+    runs as UID 65534 (nobody) and could not write its TLS certificate
+    into /data/stunnel. init-permissions now chowns per-service:
+    ckpool + config to 1000, stunnel to 65534. TLS stratum works again.
 
 
-  • UI container now runs as non-root: nginx-unprivileged (UID 101) on
-    port 8080, paired with APP_PORT 8080. This was the last container
-    running as root. ALL runtime containers (ckpool, api, stunnel, ui)
-    are now non-root with no-new-privileges. Config and non-root runtime
-    behavior (REST proxy + WebSocket + static + SPA fallback) verified in
-    sandbox; the real-image build + app_proxy routing are confirmed on
-    install.
+  • Payout address was not written into ckpool.conf. The api only wrote
+    ckpool.conf on an address *change*; re-submitting the same address
+    (or setting it before a restart) skipped the write. The api now
+    syncs ckpool.conf from the saved address on every startup, and the
+    init container reads the address from config.json (where the api
+    stores it) rather than persist.json. Note: payouts always route to
+    each miner's username address in --btcsolo mode; this keeps the
+    config's fallback address correct too. Takes effect in ckpool on its
+    next restart.
 
 
-  v1.11.56 — (did not install on fresh systems; superseded by 1.11.57)
-  ckpool.conf auto-generation + api address injection + UI non-root.
+  • Status stuck on "STARTING". Setting the address after boot left the
+    status at "starting" because the one-shot startup timer had already
+    run. The address endpoints now move straight to "running".
+
+
+  • API sometimes needed a manual restart on cold install. The api
+    awaited several bitcoind/mempool/price polls before binding its
+    port, so a slow or not-yet-ready Bitcoin RPC at boot delayed the api
+    from serving (it looked dead until restarted). Those initial polls
+    are now fire-and-forget; the api binds immediately and fills in node
+    data as the polls resolve.
+
+
+  v1.11.57 — Fixed fresh-install crash (Compose ate $-vars in the init
+  script) and re-applied non-root UI (nginx-unprivileged).
 
 
   v1.11.54 — Critical hotfix for v1.11.53 dashboard regression.
