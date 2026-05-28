@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.54 — privacy-aware)
+// SoloStrike API server (v1.11.55 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -106,7 +106,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.54',
+  version: '1.11.55',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
