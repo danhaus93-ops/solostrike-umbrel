@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.53"
+version: "1.11.54"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,6 +88,28 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.11.54 — Critical hotfix for v1.11.53 dashboard regression.
+
+
+  BUG FIX (1.11.54)
+
+
+  • Dashboard showed 0 H/s and no workers even when miners were
+    actively connected to the pool. Root cause: v1.11.53 changed the
+    api container to run as UID 1000 (node) for security hardening,
+    but ckpool still runs as UID 0 (root) and writes sharelog files
+    as root. The api could not read those files, so the dashboard
+    had no mining data to display. Fix: align ckpool to also run as
+    UID 1000 via `user: "1000:1000"` in docker-compose.yml. Both
+    containers now share the same uid → api reads everything ckpool
+    writes natively. ckpool's startup unchanged otherwise.
+
+
+  • Users on v1.11.53 should update to v1.11.54 immediately if your
+    dashboard is showing 0 H/s. After update, no manual chown is
+    required — Umbrel will recreate volumes with proper ownership.
+
+
   v1.11.11 — Version display fix + trademark policy.
 
 
