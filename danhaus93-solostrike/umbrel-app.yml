@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.54"
+version: "1.11.55"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,6 +88,30 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
+  v1.11.55 — Install-and-go fix for non-root containers.
+
+
+  ADDED (1.11.55)
+
+
+  • New init-permissions container that runs once at startup, chowns
+    SoloStrike's host data directories to UID 1000, then exits. This
+    eliminates the manual SSH chown step that v1.11.54 required on
+    fresh installs. The runtime containers (ckpool, api, stunnel) all
+    run as UID 1000 for security hardening, but Umbrel creates host
+    data dirs as root — without this init container, the runtime
+    containers would hit permission denied on first boot. The init
+    container is a one-shot using a pinned alpine:3.20 image (3.6 MB),
+    runs in ~1 second, and exits cleanly. Pattern matches what Umbrel
+    itself uses internally for app data directory permissions.
+
+
+  • SoloStrike is now truly install-and-go from Umbrel App Store with
+    no manual setup steps. After installation, all containers boot
+    automatically with correct permissions and start mining as soon
+    as a miner connects to the stratum port.
+
+
   v1.11.54 — Critical hotfix for v1.11.53 dashboard regression.
 
 
