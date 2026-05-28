@@ -5,16 +5,14 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# v1.11.56: switch from nginx:alpine (root) to nginx-unprivileged (UID 101).
-# This is the official NGINX non-root image — it listens on 8080 instead of
-# 80, removes the `user` directive from the main nginx.conf, moves the PID
-# file to /tmp/nginx.pid, and points all *_temp_path dirs at /tmp. Combined
-# with the docker-compose `APP_PORT: 8080` change, this makes the UI the
-# final SoloStrike container to run as non-root. We only override
-# conf.d/default.conf (server block), so the unprivileged base's main
-# nginx.conf — which handles pid/temp paths — stays intact.
+# v1.11.57: nginx-unprivileged (UID 101, listens 8080). The unprivileged base
+# moves pid to /tmp/nginx.pid, drops the `user` directive, and points temp
+# paths at /tmp in the MAIN nginx.conf (which we do NOT override). We only
+# replace conf.d/default.conf with our server block (listen 8080). Paired with
+# APP_PORT: 8080 in docker-compose. Makes the UI the last container to go
+# non-root. Config + non-root runtime verified in sandbox (REST proxy + WS).
 FROM nginxinc/nginx-unprivileged:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 8080
-# CMD inherited from nginx-unprivileged base image (nginx -g 'daemon off;')
+# CMD inherited from nginx-unprivileged base image
