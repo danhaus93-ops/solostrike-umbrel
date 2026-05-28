@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.57 — privacy-aware)
+// SoloStrike API server (v1.11.58 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -108,7 +108,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.57',
+  version: '1.11.58',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -876,7 +876,7 @@ app.post('/api/setup', async (req, res) => {
     cfg.payoutAddress = t;
     await saveConfig();
     await writeCkpoolConf();
-    if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
+    if (cfg.payoutAddress && (state.status === 'no_address' || state.status === 'starting')) state.status = 'running';
     res.json({ ok: true });
     broadcast({ type: 'CONFIG', data: cfgPrivate() });
   } catch (e) {
@@ -904,7 +904,7 @@ app.post('/api/config', async (req, res) => {
     }
     await saveConfig();
     if (addressChanged) await writeCkpoolConf();
-    if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
+    if (cfg.payoutAddress && (state.status === 'no_address' || state.status === 'starting')) state.status = 'running';
     res.json({ ok: true, ...cfgPublic() });
     broadcast({ type: 'CONFIG', data: cfgPrivate() });
   } catch (e) {
@@ -1332,6 +1332,14 @@ async function main() {
   state.privateMode = !!cfg.privateMode;
   state.payoutAddress = cfg.payoutAddress || null;
 
+  // v1.11.58: sync ckpool.conf to the saved payout address on every boot.
+  // Fixes the case where the address was saved (config.json) but ckpool.conf
+  // still held the init placeholder — e.g. the address was set before a
+  // restart, or re-submitted unchanged (which skipped the per-request write).
+  // Idempotent and safe; takes effect in ckpool on its next restart. Payouts
+  // already route via miner username regardless (--btcsolo).
+  await writeCkpoolConf();
+
   try {
     const loaded = await loadSnapshots(CONFIG_DIR);
     if (loaded) state.snapshots = loaded;
@@ -1342,10 +1350,17 @@ async function main() {
   setInterval(pollBlocks,   120000);
   setInterval(pollPrices,   300000);
 
-  await pollBitcoind();
-  await pollMempool();
-  await pollBlocks();
-  await pollPrices();
+  // v1.11.58: fire-and-forget the initial polls instead of awaiting them.
+  // These were previously awaited before server.listen(), so a slow or
+  // not-yet-ready bitcoind RPC at cold boot stalled the api from binding
+  // its port — the app looked dead until a manual restart. The setInterval
+  // above already schedules recurring polls; these immediate calls just
+  // populate state ASAP in the background, and the UI renders each value
+  // as it resolves. .catch guards prevent unhandled rejections.
+  pollBitcoind().catch(() => {});
+  pollMempool().catch(() => {});
+  pollBlocks().catch(() => {});
+  pollPrices().catch(() => {});
 
   if (!cfg.payoutAddress) {
     state.status = 'no_address';
