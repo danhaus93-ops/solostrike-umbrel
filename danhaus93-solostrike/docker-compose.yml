@@ -4,8 +4,7 @@ services:
   app_proxy:
     environment:
       APP_HOST: danhaus93-solostrike_ui_1
-      # v1.11.56: UI now runs nginx-unprivileged (non-root, UID 101) which
-      # listens on 8080 instead of 80. APP_PORT updated to match.
+      # v1.11.57: UI runs nginx-unprivileged (non-root, UID 101) on 8080.
       APP_PORT: 8080
       # v1.8.4: narrow auth whitelist — exposes ONLY read-only stats and the
       # home-screen widget endpoint without an Umbrel session token. The
@@ -64,6 +63,13 @@ services:
       - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
     volumes:
       - ${APP_DATA_DIR}/data:/data
+    # IMPORTANT: every shell variable below uses $$ (double-dollar), not $.
+    # Docker Compose interpolates $VAR / ${VAR} in the compose file — including
+    # inside this command script — at parse time. A single $ would be eaten by
+    # Compose (resolved to empty) before the container runs. $$ escapes to a
+    # literal $ so the in-container shell does the expansion. The container env
+    # vars (BITCOIN_RPC_*) are defined in the `environment:` block above and are
+    # expanded by the shell at runtime via $${...}.
     command:
       - sh
       - -c
@@ -78,7 +84,7 @@ services:
 
         # Step 2: generate ckpool.conf if missing
         CONF=/data/ckpool/config/ckpool.conf
-        if [ ! -f "$CONF" ]; then
+        if [ ! -f "$$CONF" ]; then
           # Try to read payoutAddress from api's persist file (if user
           # already completed the onboarding wizard in a prior install
           # whose data was preserved). Fall back to a known unspendable
@@ -88,22 +94,22 @@ services:
           # never used for real payouts.
           BTC_ADDR=""
           if [ -f /data/config/persist.json ]; then
-            BTC_ADDR=$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/persist.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+            BTC_ADDR=$$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/persist.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
           fi
-          if [ -z "$BTC_ADDR" ]; then
+          if [ -z "$$BTC_ADDR" ]; then
             # Genesis block coinbase (Satoshi). Valid P2PKH format, unspendable.
             BTC_ADDR="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
           fi
-          cat > "$CONF" <<EOF
+          cat > "$$CONF" <<EOF
         {
           "btcd" : [
             {
-              "url" : "${BITCOIN_RPC_HOST}:${BITCOIN_RPC_PORT}",
-              "auth" : "${BITCOIN_RPC_USER}",
-              "pass" : "${BITCOIN_RPC_PASS}"
+              "url" : "$${BITCOIN_RPC_HOST}:$${BITCOIN_RPC_PORT}",
+              "auth" : "$${BITCOIN_RPC_USER}",
+              "pass" : "$${BITCOIN_RPC_PASS}"
             }
           ],
-          "btcaddress" : "${BTC_ADDR}",
+          "btcaddress" : "$${BTC_ADDR}",
           "btcsig" : "SoloStrike on Umbrel/",
           "blockpoll" : 50,
           "update_interval" : 20,
@@ -115,12 +121,12 @@ services:
           "startdiff" : 10000,
           "maxdiff" : 0,
           "logdir" : "/var/log/ckpool",
-          "zmqblock" : "${BITCOIN_ZMQ_HASHBLOCK}"
+          "zmqblock" : "$${BITCOIN_ZMQ_HASHBLOCK}"
         }
         EOF
-          chown 1000:1000 "$CONF"
-          chmod 640 "$CONF"
-          echo "[init-permissions] generated ckpool.conf with btcaddress=$BTC_ADDR"
+          chown 1000:1000 "$$CONF"
+          chmod 640 "$$CONF"
+          echo "[init-permissions] generated ckpool.conf with btcaddress=$$BTC_ADDR"
         else
           echo "[init-permissions] ckpool.conf already exists, preserving"
         fi
@@ -193,7 +199,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.56@sha256:b43588a8495be33fda9c8cb87c69f41a357521243deee8c2602bf8b5c84efc53
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.56@sha256:73aef6f4358ee71ee92b4afda91787bad12eb3b7e4c85e7b25927fc88a6b3e47
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -208,7 +214,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.56@sha256:8ee91c590ab0ee0e1a18b4cbd11bb797eb676325386dcf3e5d63c8ba8425244e
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.56@sha256:85bdc3869fde1056490aa42399aef51949c91ddd67d301cff4621b5c53f9f0ee
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -250,7 +256,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.56@sha256:afcb090b2e98ec090f8fef0f7ee11435c5eb9a00cd3894eb5d7efd188affc789
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.56@sha256:62ae062639fcdc3629b93b1c57015037b0f0c0b39e3363d79477124cc0f19a01
     restart: on-failure
     security_opt:
       - no-new-privileges:true
