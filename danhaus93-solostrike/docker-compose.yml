@@ -199,7 +199,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.57@sha256:82d00a649b274735a75df711f55c5fdb19d3e380cd829a334a6fefd40889975c
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.57@sha256:b2be7f485d7284c06d009a525d2b6296ed5f338cb3a6b50a6aac816a06eb87cb
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -214,7 +214,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.57@sha256:22e9ede07a41436fa7151ed9d487017f818214bb5334098c1fa58089792bb6a6
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.57@sha256:f9994f32e31020788d1337a69237e0fb947a15879557dbe50a8de7876a964bf2
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -256,7 +256,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.57@sha256:4b7982d374b34427d7b02f35d46dcfb52f7e78c80758372c2888ebf6aed78ad7
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.57@sha256:f0e27b66e76c139542e4e10ffa3f00aba58e9764d320ecb2bcff11c22e395cf9
     restart: on-failure
     security_opt:
       - no-new-privileges:true
