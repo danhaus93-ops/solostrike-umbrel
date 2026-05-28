@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.56"
+version: "1.11.57"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,44 +88,36 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.11.56 — Completes install-and-go + final non-root hardening.
+  v1.11.57 — Hotfix: fresh installs failed because the init container's
+  ckpool.conf generator never ran.
 
 
-  ADDED (1.11.56)
+  FIXED (1.11.57)
 
 
-  • ckpool.conf auto-generation. The init-permissions container (added
-    in v1.11.55 for directory ownership) now also generates
-    /data/ckpool/config/ckpool.conf on fresh installs if it's missing.
-    The upstream ckpool-solo image has no entrypoint that creates this
-    file, so without it ckpool would crash-loop on a clean install.
-    The config is built from the Bitcoin Core RPC environment variables
-    Umbrel provides. SoloStrike is now fully install-and-go with zero
-    manual setup steps.
+  • CRITICAL: the init-permissions script used single-$ shell variables
+    ($CONF, $BTC_ADDR, ${BITCOIN_RPC_*}). Docker Compose interpolates
+    $VARIABLE in the compose file — including inside command scripts —
+    at parse time, so those resolved to empty before the container ran.
+    Result: `cat > "" ` failed with "can't create", the init container
+    exited 1, ckpool's depends_on never satisfied, and the whole app
+    rolled back to "Install" on every fresh install. All shell variables
+    are now escaped as $$ so they reach the in-container shell intact.
+    Verified by simulating Compose interpolation and running the result
+    under busybox (the real container shell).
 
 
-  • UI container now runs as non-root. Switched the UI image base from
-    nginx:alpine (root) to the official nginxinc/nginx-unprivileged
-    image (UID 101), listening on port 8080. This was the last
-    SoloStrike container still running as root. ALL runtime containers
-    (ckpool, api, stunnel, ui) now run as non-root with
-    no-new-privileges enforced.
+  • UI container now runs as non-root: nginx-unprivileged (UID 101) on
+    port 8080, paired with APP_PORT 8080. This was the last container
+    running as root. ALL runtime containers (ckpool, api, stunnel, ui)
+    are now non-root with no-new-privileges. Config and non-root runtime
+    behavior (REST proxy + WebSocket + static + SPA fallback) verified in
+    sandbox; the real-image build + app_proxy routing are confirmed on
+    install.
 
 
-  SECURITY POSTURE (as of 1.11.56)
-
-
-  • ckpool + api: UID 1000 (node)
-  • stunnel: UID 65534 (nobody)
-  • ui: UID 101 (nginx)
-  • init-permissions: root, but runs ~1s at boot then exits
-  • no-new-privileges on all runtime services
-  • All images SHA256-pinned, multi-arch, CI-built
-
-
-  v1.11.55 — Added init-permissions container for directory ownership
-  on fresh installs (non-root containers couldn't write to root-owned
-  host dirs created by Umbrel's installer).
+  v1.11.56 — (did not install on fresh systems; superseded by 1.11.57)
+  ckpool.conf auto-generation + api address injection + UI non-root.
 
 
   v1.11.54 — Critical hotfix for v1.11.53 dashboard regression.
