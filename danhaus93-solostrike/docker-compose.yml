@@ -77,24 +77,30 @@ services:
         set -e
         echo "[init-permissions] starting"
 
-        # Step 1: ensure data dirs exist and are owned by UID 1000
+        # Step 1: ensure data dirs exist and are owned by the correct UIDs.
+        # ckpool + api run as UID 1000; stunnel runs as UID 65534 (nobody) and
+        # must own /data/stunnel to write its TLS cert. A blanket
+        # chown -R 1000:1000 /data (v1.11.55-57) broke stunnel's cert
+        # generation → TLS port 4333 down. Chown per-service instead.
         mkdir -p /data/ckpool/config /data/ckpool/logs /data/config /data/stunnel
-        chown -R 1000:1000 /data
-        echo "[init-permissions] chowned /data tree to 1000:1000"
+        chown 1000:1000 /data
+        chown -R 1000:1000 /data/ckpool /data/config
+        chown -R 65534:65534 /data/stunnel
+        echo "[init-permissions] chowned: ckpool+config=1000, stunnel=65534"
 
         # Step 2: generate ckpool.conf if missing
         CONF=/data/ckpool/config/ckpool.conf
         if [ ! -f "$$CONF" ]; then
-          # Try to read payoutAddress from api's persist file (if user
-          # already completed the onboarding wizard in a prior install
-          # whose data was preserved). Fall back to a known unspendable
-          # placeholder address — ckpool needs a valid-format btcaddress
-          # to start, but --btcsolo mode takes the actual payout address
-          # from each miner's stratum username, so the placeholder is
+          # Try to read payoutAddress from api's saved config (set via the
+          # onboarding wizard in a prior install whose data was preserved).
+          # The api persists it to config.json (NOT persist.json). Fall back
+          # to a known unspendable placeholder — ckpool needs a valid-format
+          # btcaddress to start, but --btcsolo mode takes the real payout
+          # address from each miner's stratum username, so the placeholder is
           # never used for real payouts.
           BTC_ADDR=""
-          if [ -f /data/config/persist.json ]; then
-            BTC_ADDR=$$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/persist.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+          if [ -f /data/config/config.json ]; then
+            BTC_ADDR=$$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/config.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
           fi
           if [ -z "$$BTC_ADDR" ]; then
             # Genesis block coinbase (Satoshi). Valid P2PKH format, unspendable.
@@ -199,7 +205,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.57@sha256:c1c8deb6bebe8ffd3be67d9c8a1c381142f47214911dfa1e0cf61f073afb1c81
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.57@sha256:3448645fafad5575a1ac5db31ba3e79aa17cb2af8670cc34bc11cfe3fe145993
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -214,7 +220,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.57@sha256:3af55744b89b442125d2482bd6bc7d9995477a90823c803f63e87465cf6b9691
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.57@sha256:de695e38794804e6117fefacac558f1ed38b2db39b87e768725ac6d9449c19f5
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -256,7 +262,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.57@sha256:a35298e555f2d4212924e7d5ab71308767466e6da9127d53ae7e8e13f9eb7aa9
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.57@sha256:49df645305b441252280893041567607b52e83d2785f47d7ca68062589bc4952
     restart: on-failure
     security_opt:
       - no-new-privileges:true
