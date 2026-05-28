@@ -452,6 +452,9 @@ export const THEMES = {
       // halos looked like scribbles. 3.0 cuts the visible halo width to
       // ~1/sqrt(3) ≈ 58% of original, making bolts read as crisp lines.
       tightness: 3.0,
+      // v1.11.60: every bolt gets a white-hot core (no darker mini-strikes),
+      // so the bolts read uniformly bright on the pale background.
+      whiteCore: true,
     },
     nonce: {
       bg:    [0.91, 0.94, 0.96],
