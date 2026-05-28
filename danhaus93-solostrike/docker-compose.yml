@@ -52,9 +52,9 @@ services:
   # Container exits in ~1 second and shows as "Exited (0)" in docker ps -a.
   # Runs on every app boot — idempotent, safe to re-execute.
   init-permissions:
-    image: alpine:3.20@sha256:dabf91b69c191a1a0a1628fd6bdd029c0c4018041c7f052870bb13c5a222ae76
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     user: "0:0"
-    restart: "no"
+    restart: on-failure
     environment:
       - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP}
       - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT}
@@ -205,7 +205,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.59@sha256:2cfc5488335fe372790fc0d3e2ba399fefa4045a84e6f3281e48b6ddd70bd166
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.57@sha256:3448645fafad5575a1ac5db31ba3e79aa17cb2af8670cc34bc11cfe3fe145993
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -220,7 +220,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.59@sha256:af1471d90c9e334187ff58e5f650556b1a767a2b74d1d800fe5c617c62068dbd
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.57@sha256:de695e38794804e6117fefacac558f1ed38b2db39b87e768725ac6d9449c19f5
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -262,7 +262,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.59@sha256:02bfa831b76556500114dddacde8403967c07a34b51f77a4885346076e339cba
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.57@sha256:49df645305b441252280893041567607b52e83d2785f47d7ca68062589bc4952
     restart: on-failure
     security_opt:
       - no-new-privileges:true
