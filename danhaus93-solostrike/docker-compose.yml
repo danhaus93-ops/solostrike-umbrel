@@ -25,6 +25,31 @@ services:
       # ends in /* to mean "this prefix is fine to expose entirely".
       PROXY_AUTH_WHITELIST: /api/widget/four-stats,/api/health,/api/health/detailed,/api/state,/api/stratum-health,/metrics
 
+  # ═════════════════════════════════════════════════════════════════════
+  # init-permissions — one-shot init container (v1.11.55)
+  # ═════════════════════════════════════════════════════════════════════
+  # Runs as root, chowns SoloStrike's host data dirs to UID 1000 (which is
+  # what ckpool, api, and stunnel run as), then exits. ckpool/api/stunnel
+  # wait for this to complete successfully before starting.
+  #
+  # Why this exists: Umbrel creates app data dirs as root on first install.
+  # In v1.11.54 the runtime containers run as UID 1000 (security hardening),
+  # which means they couldn't write to root-owned host dirs on a fresh
+  # install — the user would have to manually chown via SSH. This init
+  # container automates that step so the app is truly install-and-go.
+  #
+  # The container exits cleanly within ~1 second of startup and shows as
+  # "Exited (0)" in `docker ps -a`. It is NOT a long-running service —
+  # `restart: "no"` ensures it doesn't keep cycling. On every Umbrel app
+  # restart, init-permissions runs once before the main services boot.
+  init-permissions:
+    image: alpine:3.20@sha256:dabf91b69c191a1a0a1628fd6bdd029c0c4018041c7f052870bb13c5a222ae76
+    user: "0:0"
+    restart: "no"
+    command: ["sh", "-c", "chown -R 1000:1000 /data && echo '[init-permissions] data dirs chowned to 1000:1000'"]
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+
   ckpool:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a@sha256:4e6b8f4f9c7d74c2111a6e082a2bbdc936fa510989a81e7cef714d1da944336b
     # v1.11.54: run ckpool as UID 1000 (matches api's `node` user) so sharelog
@@ -33,6 +58,13 @@ services:
     # files created by ckpool (UID 0). Both containers now share UID 1000 →
     # api can read everything ckpool writes natively, no chown needed.
     user: "1000:1000"
+    # v1.11.55: wait for init-permissions to chown host dirs to 1000:1000
+    # before booting. Required for fresh installs where Umbrel creates host
+    # data dirs as root — without this dependency, ckpool-as-1000 hits
+    # permission denied trying to write to root-owned mounts.
+    depends_on:
+      init-permissions:
+        condition: service_completed_successfully
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -83,7 +115,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.54@sha256:390472be2b9f5c0504f21aaf761c94afe4acd8fb6d95e3be2341dc31ccf9ab19
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.53@sha256:9f9b66754382ea09c62f829ff3065bf6eb05a6cb4ebe0e60a4aeb3651b22cec4
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -98,7 +130,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.54@sha256:60c6b87f2fbfa1ca7157c0c85639a72e2f72c7a7fc4b976f0fda4a69ac66f5f3
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.53@sha256:484d7aa1bcd08029b295c6598b67b0b5db4d221e6cbd066f232cda05525c39a2
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -140,7 +172,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.54@sha256:baf34a9b1e7fb5d4b30ba6545827b2c06d2dbc4aa373c8eb06f8ae37f2b463d0
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.53@sha256:d912d8887fc2486818188a2db2c17f040284c417732961d12211fa478b175e4a
     restart: on-failure
     security_opt:
       - no-new-privileges:true
