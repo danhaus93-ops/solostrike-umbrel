@@ -59,6 +59,10 @@ uniform vec3 uBloomColor;
 // halos, making bolts crisp lines instead of soft brush strokes — which
 // looked messy on Paper Light's pale sky-blue bg.
 uniform float uBoltTightness;
+// v1.11.60: when 1.0, every bolt tier uses the white-hot core + blue halo
+// (no per-tier color shift). Paper Light sets this so bolts read uniformly
+// bright instead of mini-strikes appearing as darker solid blue.
+uniform float uForceWhiteCore;
 void main() {
   float lifeAlpha = vLifeT < 0.25 ? 1.0 : pow(1.0 - (vLifeT - 0.25) / 0.75, 0.7);
   float d = abs(vDist);
@@ -70,7 +74,13 @@ void main() {
   vec3 coreColor, glowColor, bloomColor;
   // v1.11.47: theme palette. Preserves the 3-tier intensity scheme (main bolt
   // bright, branches medium, mini-strikes warm) by blending uniforms.
-  if (vType > 1.5) {
+  // v1.11.60: uForceWhiteCore short-circuits the tier shift so every bolt gets
+  // the white-hot core + blue halo (Paper Light wants uniform-bright bolts).
+  if (uForceWhiteCore > 0.5) {
+    coreColor  = uCoreColor;
+    glowColor  = uGlowColor;
+    bloomColor = uBloomColor;
+  } else if (vType > 1.5) {
     coreColor  = uCoreColor;
     glowColor  = uGlowColor;
     bloomColor = uBloomColor;
@@ -288,6 +298,8 @@ export function createLightningWebGL(canvas, opts = {}) {
     uBloomColor: gl.getUniformLocation(boltProg, 'uBloomColor'),
     // v1.11.53: bolt tightness — 1.0 default, higher = sharper bolts
     uBoltTightness: gl.getUniformLocation(boltProg, 'uBoltTightness'),
+    // v1.11.60: force white-hot core on all bolt tiers (Paper Light)
+    uForceWhiteCore: gl.getUniformLocation(boltProg, 'uForceWhiteCore'),
   };
   const cloudLocs = {
     aPos:        gl.getAttribLocation(cloudProg, 'aPos'),
@@ -586,6 +598,9 @@ export function createLightningWebGL(canvas, opts = {}) {
       // v1.11.53: per-frame tightness. Defaults to 1.0 (preserves dark-theme
       // appearance). Paper Light sets it ~3.0 to tighten halos.
       gl.uniform1f(boltLocs.uBoltTightness, currentLightning.tightness || 1.0);
+      // v1.11.60: 1.0 = uniform white-hot cores on every bolt (Paper Light),
+      // 0.0 = original per-tier color scheme (Classic and all other themes).
+      gl.uniform1f(boltLocs.uForceWhiteCore, currentLightning.whiteCore ? 1.0 : 0.0);
       gl.drawArrays(gl.TRIANGLES, 0, boltVertLen);
     }
 
