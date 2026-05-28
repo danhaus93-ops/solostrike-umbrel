@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "1.11.58"
+version: "1.11.59"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,48 +88,27 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v1.11.58 — Hotfix for three issues found after v1.11.57 installed.
+  v1.11.59 — Hotfix: home-screen widget showed empty values.
 
 
-  FIXED (1.11.58)
+  FIXED (1.11.59)
 
 
-  • TLS port 4333 was down (red in the UI). The init-permissions
-    container chowned the entire /data tree to UID 1000, but stunnel
-    runs as UID 65534 (nobody) and could not write its TLS certificate
-    into /data/stunnel. init-permissions now chowns per-service:
-    ckpool + config to 1000, stunnel to 65534. TLS stratum works again.
+  • The four-stats widget endpoint was hardcoded to "ui:80", but v1.11.57
+    moved the UI to nginx-unprivileged on port 8080. The dashboard
+    (routed via app_proxy) was unaffected, but the widget fetched
+    directly from ui:80 — which nothing listens on anymore — so it
+    rendered blank. Endpoint updated to "ui:8080". Same port-move
+    oversight as the dashboard APP_PORT, now consistent.
 
 
-  • Payout address was not written into ckpool.conf. The api only wrote
-    ckpool.conf on an address *change*; re-submitting the same address
-    (or setting it before a restart) skipped the write. The api now
-    syncs ckpool.conf from the saved address on every startup, and the
-    init container reads the address from config.json (where the api
-    stores it) rather than persist.json. Note: payouts always route to
-    each miner's username address in --btcsolo mode; this keeps the
-    config's fallback address correct too. Takes effect in ckpool on its
-    next restart.
+  v1.11.58 — Fixed TLS 4333 (stunnel cert perms), payout address not
+  written to ckpool.conf, "STARTING" status, and api needing a restart
+  on cold boot.
 
 
-  • Status stuck on "STARTING". Setting the address after boot left the
-    status at "starting" because the one-shot startup timer had already
-    run. The address endpoints now move straight to "running".
-
-
-  • API sometimes needed a manual restart on cold install. The api
-    awaited several bitcoind/mempool/price polls before binding its
-    port, so a slow or not-yet-ready Bitcoin RPC at boot delayed the api
-    from serving (it looked dead until restarted). Those initial polls
-    are now fire-and-forget; the api binds immediately and fills in node
-    data as the polls resolve.
-
-
-  v1.11.57 — Fixed fresh-install crash (Compose ate $-vars in the init
-  script) and re-applied non-root UI (nginx-unprivileged).
-
-
-  v1.11.54 — Critical hotfix for v1.11.53 dashboard regression.
+  v1.11.57 — Fixed fresh-install crash (Compose $-var interpolation) and
+  re-applied non-root UI (nginx-unprivileged on 8080).
 
 
   BUG FIX (1.11.54)
@@ -460,7 +439,7 @@ widgets:
     type: "four-stats"
     name: "SoloStrike Stats"
     refresh: "10s"
-    endpoint: "ui:80/api/widget/four-stats"
+    endpoint: "ui:8080/api/widget/four-stats"
     items:
       - label: "Pool Hashrate"
         jsonPath: "items[0].text"
