@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.55 — privacy-aware)
+// SoloStrike API server (v1.11.56 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
@@ -46,6 +46,8 @@ const { startNetworkStats } = require('./network-stats');
 
 const PORT          = parseInt(process.env.PORT, 10) || 3001;
 const CKPOOL_LOG_DIR = process.env.CKPOOL_LOG_DIR || '/var/log/ckpool';
+const CKPOOL_CONFIG_DIR = process.env.CKPOOL_CONFIG_DIR || '/etc/ckpool';
+const CKPOOL_CONFIG_FILE = path.join(CKPOOL_CONFIG_DIR, 'ckpool.conf');
 const CONFIG_DIR     = process.env.CONFIG_DIR || '/app/config';
 const CONFIG_FILE    = path.join(CONFIG_DIR, 'config.json');
 const PERSIST_FILE   = path.join(CONFIG_DIR, 'persist.json');
@@ -106,7 +108,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.55',
+  version: '1.11.56',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -157,6 +159,58 @@ async function saveConfig() {
     await fs.ensureDir(CONFIG_DIR);
     await fs.writeJson(CONFIG_FILE, cfg, { spaces: 2 });
   } catch (e) { console.error('saveConfig failed:', e.message); }
+}
+
+// v1.11.56: write the user's payout address into ckpool.conf.
+//
+// Background: on a fresh install the init-permissions container generates
+// ckpool.conf with a placeholder btcaddress (the user hasn't run the
+// onboarding wizard yet when init runs). This function rewrites ckpool.conf
+// with the real address once the user provides it, so the config's
+// btcaddress matches reality.
+//
+// Note on payouts: ckpool runs in --btcsolo mode, where the payout address
+// is taken from each miner's stratum USERNAME (e.g. "bc1q...workername"),
+// NOT from this config field. So payouts already route correctly to the
+// miner-supplied address regardless of what's here. The btcaddress field
+// is the FALLBACK used only if a miner connects without a valid-address
+// username — keeping it set to the user's real address means even that
+// fallback pays the user, never the placeholder.
+//
+// Note on timing: ckpool reads its config only at process start, so a
+// rewrite here takes effect on the next ckpool restart (app update/reboot).
+// We intentionally do NOT try to restart ckpool from the api — that would
+// require Docker socket access, which we avoid for security. The api has
+// /etc/ckpool mounted read-write (see docker-compose) and runs as the same
+// UID (1000) that owns the file, so the write itself always succeeds.
+async function writeCkpoolConf() {
+  try {
+    if (!cfg.payoutAddress) return; // nothing to write yet
+    const conf = {
+      btcd: [{
+        url:  `${RPC_HOST}:${RPC_PORT}`,
+        auth: RPC_USER,
+        pass: RPC_PASS,
+      }],
+      btcaddress:      cfg.payoutAddress,
+      btcsig:          process.env.POOL_SIGNATURE || 'SoloStrike on Umbrel/',
+      blockpoll:       parseInt(process.env.BLOCKPOLL || '50', 10),
+      update_interval: parseInt(process.env.UPDATE_INTERVAL || '20', 10),
+      serverurl:       ['0.0.0.0:3333', '0.0.0.0:3334'],
+      mindiff:         parseInt(process.env.MIN_DIFFICULTY || '1', 10),
+      startdiff:       parseInt(process.env.START_DIFFICULTY || '10000', 10),
+      maxdiff:         parseInt(process.env.MAX_DIFFICULTY || '0', 10),
+      logdir:          '/var/log/ckpool',
+      zmqblock:        ZMQ_HASHBLOCK_URL || '',
+    };
+    await fs.ensureDir(CKPOOL_CONFIG_DIR);
+    await fs.writeJson(CKPOOL_CONFIG_FILE, conf, { spaces: 2 });
+    console.log(`[ckpool-conf] wrote ${CKPOOL_CONFIG_FILE} with btcaddress=${cfg.payoutAddress} (takes effect on next ckpool restart)`);
+  } catch (e) {
+    // Non-fatal: persist.json still has the address, payouts still work via
+    // miner username. Log and continue so the wizard never errors out.
+    console.error('[ckpool-conf] writeCkpoolConf failed:', e.message);
+  }
 }
 async function loadPersist() {
   try {
@@ -821,6 +875,7 @@ app.post('/api/setup', async (req, res) => {
     if (!isValidBtcAddress(t)) return res.status(400).json({ error: 'Invalid BTC address' });
     cfg.payoutAddress = t;
     await saveConfig();
+    await writeCkpoolConf();
     if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
     res.json({ ok: true });
     broadcast({ type: 'CONFIG', data: cfgPrivate() });
@@ -835,9 +890,11 @@ app.post('/api/config', async (req, res) => {
     // v1.11.4: poolName removed from accepted fields — UI no longer exposes it.
     // Webhook payloads now hardcode 'SoloStrike' as the pool value (see line ~271).
     const { payoutAddress, privateMode } = req.body || {};
+    let addressChanged = false;
     if (payoutAddress != null) {
       const t = String(payoutAddress).trim();
       if (!isValidBtcAddress(t)) return res.status(400).json({ error: 'Invalid BTC address' });
+      if (t !== cfg.payoutAddress) addressChanged = true;
       cfg.payoutAddress = t;
       state.payoutAddress = t;
     }
@@ -846,6 +903,7 @@ app.post('/api/config', async (req, res) => {
       state.privateMode = privateMode;
     }
     await saveConfig();
+    if (addressChanged) await writeCkpoolConf();
     if (state.status === 'no_address' && cfg.payoutAddress) state.status = 'starting';
     res.json({ ok: true, ...cfgPublic() });
     broadcast({ type: 'CONFIG', data: cfgPrivate() });
