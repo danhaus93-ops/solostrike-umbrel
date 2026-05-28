@@ -3,21 +3,23 @@ name: Build & Push Docker Images
 on:
   push:
     branches: [main, master]
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
-      - '.gitignore'
-      - 'docs/**'
-      - '.github/**'
+    # v1.11.61: trigger ONLY when umbrel-app.yml changes. The version is read
+    # from umbrel-app.yml, so building on source pushes (while the version is
+    # still the old number) produced multiple pin commits for the SAME version
+    # that raced and conflicted on the same docker-compose.yml image lines.
+    # Push all source + docker-compose.yml first (no CI fires), then push
+    # umbrel-app.yml LAST — that single push bumps the version and triggers
+    # exactly one build that pins cleanly.
+    paths:
+      - '**/umbrel-app.yml'
   workflow_dispatch:
 
-# Serialize workflow runs per branch to prevent concurrent pin-digests jobs
-# from racing each other on docker-compose.yml. Each run completes (including
-# the bot's auto-commit) before the next starts. cancel-in-progress: false
-# means queued runs wait, they don't overwrite each other.
+# One run at a time per branch. cancel-in-progress: true means a newer push
+# supersedes (cancels) an in-flight older run instead of queuing it behind —
+# so a stale run can never land an old-version pin after a newer one.
 concurrency:
   group: build-and-pin-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
