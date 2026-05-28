@@ -4,7 +4,9 @@ services:
   app_proxy:
     environment:
       APP_HOST: danhaus93-solostrike_ui_1
-      APP_PORT: 80
+      # v1.11.56: UI now runs nginx-unprivileged (non-root, UID 101) which
+      # listens on 8080 instead of 80. APP_PORT updated to match.
+      APP_PORT: 8080
       # v1.8.4: narrow auth whitelist — exposes ONLY read-only stats and the
       # home-screen widget endpoint without an Umbrel session token. The
       # widget loader has no session, so without whitelisting /api/widget/*
@@ -26,29 +28,104 @@ services:
       PROXY_AUTH_WHITELIST: /api/widget/four-stats,/api/health,/api/health/detailed,/api/state,/api/stratum-health,/metrics
 
   # ═════════════════════════════════════════════════════════════════════
-  # init-permissions — one-shot init container (v1.11.55)
+  # init-permissions — one-shot install bootstrap (v1.11.55 chown, v1.11.56 conf-gen)
   # ═════════════════════════════════════════════════════════════════════
-  # Runs as root, chowns SoloStrike's host data dirs to UID 1000 (which is
-  # what ckpool, api, and stunnel run as), then exits. ckpool/api/stunnel
-  # wait for this to complete successfully before starting.
+  # Runs as root, does TWO things needed for fresh-install correctness,
+  # then exits. ckpool/api/stunnel wait for this to complete successfully
+  # via depends_on: condition: service_completed_successfully.
   #
-  # Why this exists: Umbrel creates app data dirs as root on first install.
-  # In v1.11.54 the runtime containers run as UID 1000 (security hardening),
-  # which means they couldn't write to root-owned host dirs on a fresh
-  # install — the user would have to manually chown via SSH. This init
-  # container automates that step so the app is truly install-and-go.
+  # 1. CHOWNS /data to UID 1000 — runtime containers run as 1000 (security
+  #    hardening) but Umbrel creates host dirs as root. Without chown,
+  #    ckpool/api hit permission denied on first boot.
   #
-  # The container exits cleanly within ~1 second of startup and shows as
-  # "Exited (0)" in `docker ps -a`. It is NOT a long-running service —
-  # `restart: "no"` ensures it doesn't keep cycling. On every Umbrel app
-  # restart, init-permissions runs once before the main services boot.
+  # 2. GENERATES /data/ckpool/config/ckpool.conf if missing — ckpool exits
+  #    immediately if its config doesn't exist. The upstream ckpool-solo
+  #    image has no entrypoint script that creates this file. Without
+  #    this step, fresh installs would crash-loop ckpool forever.
+  #
+  # The btcaddress field is a placeholder; in --btcsolo mode (see ckpool
+  # `command:` below) the actual payout address is taken from each miner's
+  # stratum username (e.g., "bc1q...workername"). The wizard collects the
+  # display address and stores it in /data/config/persist.json; if that
+  # file exists from a previous install, we use its address here for
+  # cosmetic consistency, but mining still works regardless.
+  #
+  # Container exits in ~1 second and shows as "Exited (0)" in docker ps -a.
+  # Runs on every app boot — idempotent, safe to re-execute.
   init-permissions:
     image: alpine:3.20@sha256:dabf91b69c191a1a0a1628fd6bdd029c0c4018041c7f052870bb13c5a222ae76
     user: "0:0"
     restart: "no"
-    command: ["sh", "-c", "chown -R 1000:1000 /data && echo '[init-permissions] data dirs chowned to 1000:1000'"]
+    environment:
+      - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP}
+      - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT}
+      - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
+      - BITCOIN_RPC_PASS=${APP_BITCOIN_RPC_PASS}
+      - BITCOIN_ZMQ_HASHBLOCK=tcp://${APP_BITCOIN_NODE_IP}:${APP_BITCOIN_ZMQ_HASHBLOCK_PORT}
     volumes:
       - ${APP_DATA_DIR}/data:/data
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "[init-permissions] starting"
+
+        # Step 1: ensure data dirs exist and are owned by UID 1000
+        mkdir -p /data/ckpool/config /data/ckpool/logs /data/config /data/stunnel
+        chown -R 1000:1000 /data
+        echo "[init-permissions] chowned /data tree to 1000:1000"
+
+        # Step 2: generate ckpool.conf if missing
+        CONF=/data/ckpool/config/ckpool.conf
+        if [ ! -f "$CONF" ]; then
+          # Try to read payoutAddress from api's persist file (if user
+          # already completed the onboarding wizard in a prior install
+          # whose data was preserved). Fall back to a known unspendable
+          # placeholder address — ckpool needs a valid-format btcaddress
+          # to start, but --btcsolo mode takes the actual payout address
+          # from each miner's stratum username, so the placeholder is
+          # never used for real payouts.
+          BTC_ADDR=""
+          if [ -f /data/config/persist.json ]; then
+            BTC_ADDR=$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/persist.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+          fi
+          if [ -z "$BTC_ADDR" ]; then
+            # Genesis block coinbase (Satoshi). Valid P2PKH format, unspendable.
+            BTC_ADDR="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+          fi
+          cat > "$CONF" <<EOF
+        {
+          "btcd" : [
+            {
+              "url" : "${BITCOIN_RPC_HOST}:${BITCOIN_RPC_PORT}",
+              "auth" : "${BITCOIN_RPC_USER}",
+              "pass" : "${BITCOIN_RPC_PASS}"
+            }
+          ],
+          "btcaddress" : "${BTC_ADDR}",
+          "btcsig" : "SoloStrike on Umbrel/",
+          "blockpoll" : 50,
+          "update_interval" : 20,
+          "serverurl" : [
+            "0.0.0.0:3333",
+            "0.0.0.0:3334"
+          ],
+          "mindiff" : 1,
+          "startdiff" : 10000,
+          "maxdiff" : 0,
+          "logdir" : "/var/log/ckpool",
+          "zmqblock" : "${BITCOIN_ZMQ_HASHBLOCK}"
+        }
+        EOF
+          chown 1000:1000 "$CONF"
+          chmod 640 "$CONF"
+          echo "[init-permissions] generated ckpool.conf with btcaddress=$BTC_ADDR"
+        else
+          echo "[init-permissions] ckpool.conf already exists, preserving"
+        fi
+
+        echo "[init-permissions] complete"
 
   ckpool:
     image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a@sha256:4e6b8f4f9c7d74c2111a6e082a2bbdc936fa510989a81e7cef714d1da944336b
@@ -59,9 +136,10 @@ services:
     # api can read everything ckpool writes natively, no chown needed.
     user: "1000:1000"
     # v1.11.55: wait for init-permissions to chown host dirs to 1000:1000
-    # before booting. Required for fresh installs where Umbrel creates host
-    # data dirs as root — without this dependency, ckpool-as-1000 hits
-    # permission denied trying to write to root-owned mounts.
+    # AND generate ckpool.conf if missing. Required for fresh installs where
+    # (a) Umbrel creates host data dirs as root and (b) no ckpool.conf exists
+    # because the upstream ckpool-solo image has no config-generation
+    # entrypoint. Both are handled by init-permissions before ckpool starts.
     depends_on:
       init-permissions:
         condition: service_completed_successfully
@@ -115,7 +193,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.55@sha256:8fc7f7b852db1ccd4096081a2a73a7164611ac87bb38efcb2695dfeb6922b93c
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v1.11.54@sha256:89342dcd1856f003e7da72685bb96a5d4e4d464b54f827095ea55b46e8beee16
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -130,7 +208,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.55@sha256:9a0345db0594545d5145be47ceebce4e79806d3a44f9f9a3cc584080983c5812
+    image: ghcr.io/danhaus93-ops/solostrike-api:v1.11.54@sha256:74096477aaf8fa44fb02836ccd0b660ef34dadd9109fb353b77ac890e3ee3521
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -172,7 +250,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.55@sha256:728eba34a8b290ef50b74e4412e2f6e797a70116fd3983dbb23599df96e30518
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v1.11.54@sha256:bc82c06c3bca217e8fbc3ea18b5a10cb904b88848d56bc4b96dafc34b71f0152
     restart: on-failure
     security_opt:
       - no-new-privileges:true
