@@ -142,18 +142,35 @@ export function usePool() {
               const oldSpsHistory = Array.isArray(oldShares.spsHistory) ? oldShares.spsHistory : [];
               const newTail = Array.isArray(newData.shares.spsHistoryTail) ? newData.shares.spsHistoryTail : [];
 
+              // v1.12.0: bestHistory (Best Share Trend) merges identically.
+              const oldBestHistory = Array.isArray(oldShares.bestHistory) ? oldShares.bestHistory : [];
+              const newBestTail = Array.isArray(newData.shares.bestHistoryTail) ? newData.shares.bestHistoryTail : [];
+              const mergeBest = () => {
+                if (newBestTail.length) {
+                  const lastTs = oldBestHistory.length ? oldBestHistory[oldBestHistory.length - 1].ts : 0;
+                  const fresh = newBestTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastTs);
+                  return fresh.length ? [...oldBestHistory, ...fresh].slice(-1440) : oldBestHistory;
+                }
+                return newData.shares.bestHistory || oldBestHistory;
+              };
+
               if (newTail.length) {
                 const lastTs = oldSpsHistory.length ? oldSpsHistory[oldSpsHistory.length - 1].ts : 0;
                 const fresh = newTail.filter(e => e && Number.isFinite(e.ts) && e.ts > lastTs);
                 const newSpsHistory = fresh.length
                   ? [...oldSpsHistory, ...fresh].slice(-1440)
                   : oldSpsHistory;
-                // Drop spsHistoryTail from output, restore spsHistory
-                const { spsHistoryTail, ...sharesRest } = newData.shares;
-                merged.shares = { ...sharesRest, spsHistory: newSpsHistory };
+                // Drop *Tail fields from output, restore full arrays
+                const { spsHistoryTail, bestHistoryTail, ...sharesRest } = newData.shares;
+                merged.shares = { ...sharesRest, spsHistory: newSpsHistory, bestHistory: mergeBest() };
               } else if (oldSpsHistory.length && !newData.shares.spsHistory) {
                 // No new tail and no full array — preserve old
-                merged.shares = { ...newData.shares, spsHistory: oldSpsHistory };
+                const { bestHistoryTail, ...sharesRest } = newData.shares;
+                merged.shares = { ...sharesRest, spsHistory: oldSpsHistory, bestHistory: mergeBest() };
+              } else {
+                // full arrays present (initial /api/state) — still fold bestHistory
+                const { bestHistoryTail, ...sharesRest } = newData.shares;
+                merged.shares = { ...sharesRest, bestHistory: mergeBest() };
               }
             } else if (p.shares) {
               merged.shares = p.shares;
