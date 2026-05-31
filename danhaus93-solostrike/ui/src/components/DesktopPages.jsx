@@ -65,12 +65,12 @@ function useIsNarrow(){ const [n,setN]=useState(()=>typeof window!=='undefined'&
 
 /* ============================ CSS (ported 1:1) ============================ */
 const CSS = `
-.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
-.ssdesk .scaler{width:1280px;height:860px;transform-origin:center center;flex:none;overflow:hidden}
-.ssdesk .pages{display:flex;width:3840px;height:860px;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
-.ssdesk .pages.p2{transform:translateX(-1280px)}.ssdesk .pages.p3{transform:translateX(-2560px)}
-.ssdesk .viewport{width:1280px;flex:0 0 1280px;height:860px;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 168px minmax(0,1fr) auto auto;padding:14px 20px;row-gap:8px}
-.ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto 1fr 1fr auto}
+.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
+.ssdesk .scaler{width:100%;height:100%;overflow:hidden}
+.ssdesk .pages{display:flex;width:300%;height:100%;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
+.ssdesk .pages.p2{transform:translateX(-33.3333%)}.ssdesk .pages.p3{transform:translateX(-66.6667%)}
+.ssdesk .viewport{flex:0 0 33.3333%;width:33.3333%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 180px minmax(0,1fr) auto auto;padding:14px 20px;row-gap:10px}
+.ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
 
@@ -93,7 +93,7 @@ const CSS = `
 
 .ssdesk .band{display:grid;gap:16px;min-height:0}
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
-.ssdesk .b-feat{grid-template-columns:260px 300px 1fr;min-height:0;overflow:hidden}
+.ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 7px;padding-bottom:.35rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
@@ -120,8 +120,8 @@ const CSS = `
 .ssdesk .sv-leg{display:flex;gap:10px;font-family:var(--fd);font-size:.46rem;color:var(--text-2)}.ssdesk .sv-leg b{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:3px}
 
 .ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
-.ssdesk .slot-globe{width:100%;aspect-ratio:1/1;max-height:220px;flex:0 1 auto;position:relative;display:flex;align-items:center;justify-content:center;overflow:visible}
-.ssdesk .slot-hunt{width:100%;flex:1;min-height:120px;position:relative;overflow:hidden}
+.ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ssdesk .slot-hunt{width:100%;flex:1;min-height:0;position:relative;overflow:hidden}
 .ssdesk .slot-globe>*,.ssdesk .slot-hunt>*{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;border-radius:0!important;padding:0!important;margin:0!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
@@ -222,8 +222,8 @@ const CSS = `
 .ssdesk .fs-inner{width:min(1100px,94vw);height:min(86vh,820px);background:linear-gradient(180deg,var(--bg-raised),var(--bg-surface));border:1px solid var(--border-hot);border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden}
 .ssdesk .fs-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--hair);font-family:var(--fd);font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);flex:none}
 .ssdesk .fs-close{background:none;border:none;color:var(--text-2);cursor:pointer;font-size:1.3rem;line-height:1}
-.ssdesk .fs-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px}
-.ssdesk .fs-stage>*{position:absolute!important;inset:14px!important;width:auto!important;height:auto!important;background:transparent!important;border:none!important;box-shadow:none!important}
+.ssdesk .fs-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden}
+.ssdesk .fs-stage>*{position:relative!important;width:100%!important;height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important;margin:0!important}
 `;
 
 /* ---------- AppHead (real ticker in marquee slot) ---------- */
@@ -398,7 +398,7 @@ export default function DesktopPages({
   useEffect(()=>{ const on=e=>{if(e.key==='ArrowRight')go(page+1);if(e.key==='ArrowLeft')go(page-1);}; window.addEventListener('keydown',on); return()=>window.removeEventListener('keydown',on); },[page,go]);
   useEffect(()=>{ const el=document.getElementById('ssdesk-css'); if(el)el.remove(); const s=document.createElement('style');s.id='ssdesk-css';s.textContent=CSS;document.head.appendChild(s); },[]);
   useEffect(()=>{
-    const fit=()=>{ const f=fitRef.current,sc=scalerRef.current; if(!f||!sc)return; const k=Math.min(f.clientWidth/1280,f.clientHeight/860); sc.style.transform=`scale(${k})`; };
+    const fit=()=>{ const sc=scalerRef.current; if(sc) sc.style.transform=''; };
     fit(); window.addEventListener('resize',fit); return()=>window.removeEventListener('resize',fit);
   },[narrow]);
 
@@ -523,7 +523,9 @@ export default function DesktopPages({
                   {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">waiting</span></div>}
                 </div>
               </div>
-              <div className="col health-col"><div className="ch">System Health</div><div className="health-mount">{cardComponents['health']||null}</div></div>
+              <div className="col clk" onClick={M('System Health')}><div className="ch">System Health</div>
+                <div className="status">{healthItems.map(([l,ok],i)=><div className={`st${ok?'':' bad'}`} key={i}><span className="dot"/>{l}</div>)}</div>
+              </div>
             </div>
           </div>
 
