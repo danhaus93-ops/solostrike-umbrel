@@ -25,6 +25,7 @@ function hrShort(h){ if(h==null||h<=0)return '—'; const u=['H','K','M','G','T'
 function fmtTH(h){ return TH(h).toFixed(1); }
 function fmtUptime(s){ if(s==null)return '—'; if(s<60)return Math.floor(s)+'s'; if(s<3600)return Math.floor(s/60)+'m'; if(s<86400)return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; return Math.floor(s/86400)+'d '+Math.floor((s%86400)/3600)+'h'; }
 function fmtNum(n){ return n==null?'—':Number(n).toLocaleString(); }
+const avgKeyFor = lab => ({'1M':'hr1m','5M':'hr5m','15M':'hr15m','1H':'hr1h','6H':'hr6h','24H':'hr1d','7D':'hr7d'}[lab]||'hr1h');
 
 /* ---------- area-chart path (firepower / tsLine style) ---------- */
 function linePath(vals, W=400, H=70, pad=0){
@@ -68,7 +69,7 @@ const CSS = `
 .ssdesk .scaler{width:1280px;height:860px;transform-origin:center center;flex:none;overflow:hidden;border-radius:14px}
 .ssdesk .pages{display:flex;width:3840px;height:860px;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
 .ssdesk .pages.p2{transform:translateX(-1280px)}.ssdesk .pages.p3{transform:translateX(-2560px)}
-.ssdesk .viewport{width:1280px;flex:0 0 1280px;height:860px;background:radial-gradient(1100px 600px at 72% -12%,rgba(var(--amber-rgb),0.10),transparent 60%),radial-gradient(800px 520px at -10% 112%,rgba(0,255,209,0.05),transparent 55%),var(--bg-void);border:1px solid var(--border-hot);border-radius:14px;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 180px 1fr auto auto;padding:14px 20px;row-gap:10px}
+.ssdesk .viewport{width:1280px;flex:0 0 1280px;height:860px;background:radial-gradient(1100px 600px at 72% -12%,rgba(var(--amber-rgb),0.10),transparent 60%),radial-gradient(800px 520px at -10% 112%,rgba(0,255,209,0.05),transparent 55%),var(--bg-void);border:1px solid var(--border-hot);border-radius:14px;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 168px minmax(0,1fr) auto auto;padding:14px 20px;row-gap:8px}
 .ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto 1fr 1fr auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
@@ -119,8 +120,8 @@ const CSS = `
 .ssdesk .sv-leg{display:flex;gap:10px;font-family:var(--fd);font-size:.46rem;color:var(--text-2)}.ssdesk .sv-leg b{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:3px}
 
 .ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
-.ssdesk .slot-globe{width:150px;height:150px;flex:none;position:relative;display:flex;align-items:center;justify-content:center}
-.ssdesk .slot-hunt{width:100%;height:64px;flex:none;position:relative;overflow:hidden}
+.ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
+.ssdesk .slot-hunt{width:100%;flex:1;min-height:0;position:relative;overflow:hidden}
 .ssdesk .slot-globe>*,.ssdesk .slot-hunt>*{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;border-radius:0!important;padding:0!important;margin:0!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
@@ -143,7 +144,7 @@ const CSS = `
 .ssdesk .miner .hash{margin-left:auto;font-family:var(--fd);font-size:.62rem;color:var(--amber);flex-shrink:0}
 .ssdesk .tele{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;border-top:1px solid rgba(var(--amber-rgb),0.06);padding-top:3px}
 .ssdesk .tele div{font-size:.42rem;color:var(--text-2);text-align:center;line-height:1.2;overflow:hidden}.ssdesk .tele b{display:block;font-family:var(--fd);font-size:.54rem;color:var(--text-1);white-space:nowrap}.ssdesk .tele .warm b{color:var(--amber)}.ssdesk .tele .hot b{color:var(--red)}
-.ssdesk .uptime{display:flex;height:4px;gap:1px;margin-top:4px}.ssdesk .uptime i{flex:1 1 0;min-width:0;border-radius:.5px;background:var(--bg-deep)}.ssdesk .uptime i.on{background:rgba(57,255,106,0.65)}.ssdesk .uptime i.dn{background:rgba(232,67,67,0.7)}
+.ssdesk .uptime{display:flex;height:5px;gap:1px;margin-top:4px;width:100%;min-width:0}.ssdesk .uptime i{flex:1 1 0;min-width:0;border-radius:.5px;background:var(--bg-deep)}.ssdesk .uptime i.on{background:rgba(57,255,106,0.65)}.ssdesk .uptime i.dn{background:rgba(232,67,67,0.7)}
 
 .ssdesk .col{padding:0 12px;border-left:1px solid var(--hair);min-width:0}.ssdesk .col:first-child{padding-left:0;border-left:0}
 .ssdesk .col .ch{font-family:var(--fd);font-size:.5rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin-bottom:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -164,7 +165,12 @@ const CSS = `
 .ssdesk .spsrow .sv{font-family:var(--fd);font-size:.72rem;font-weight:700;color:var(--cyan);width:64px;text-align:right}
 .ssdesk .tschart{width:100%;display:block}.ssdesk .tschart svg{display:block;width:100%;height:100%}
 .ssdesk .tsc-cap{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--fd);font-size:9px;letter-spacing:.04em;padding:3px 2px 0;margin-top:2px}.ssdesk .tsc-cap .lo,.ssdesk .tsc-cap .hi{color:var(--text-3);opacity:.8}.ssdesk .tsc-cap .now{font-weight:700;font-size:11px}
-.ssdesk .donutwrap{display:flex;align-items:center;gap:14px;flex:1;justify-content:center}.ssdesk .donutwrap svg{width:104px;height:104px;flex:none}
+.ssdesk .donutwrap{display:flex;align-items:center;gap:14px;flex:1;justify-content:center}
+.ssdesk .donut-cg{position:relative;width:104px;height:104px;flex:none}
+.ssdesk .donut-ring{width:100%;height:100%;border-radius:50%}
+.ssdesk .donut-hole{position:absolute;inset:22%;border-radius:50%;background:var(--bg-void);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ssdesk .donut-hole .dn-tot{font-family:var(--fd);font-size:1.3rem;font-weight:700;color:var(--text-1);line-height:1}
+.ssdesk .donut-hole .dn-lbl{font-family:var(--fd);font-size:.45rem;letter-spacing:.1em;color:var(--text-3);text-transform:uppercase}
 .ssdesk .donutlegend{display:flex;flex-direction:column;gap:7px}.ssdesk .dlg{display:flex;align-items:center;gap:7px;font-size:.64rem;color:var(--text-2)}.ssdesk .dlg .sw{width:9px;height:9px;border-radius:2px}.ssdesk .dlg b{color:var(--text-1);font-family:var(--fd);margin-left:3px}
 
 .ssdesk .wtable{width:100%;border-collapse:collapse;font-size:.62rem}
@@ -187,8 +193,28 @@ const CSS = `
 
 .ssdesk .nav{position:absolute;top:50%;transform:translateY(-50%);z-index:55;width:30px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:none;border:none;color:var(--amber);font-size:30px;line-height:1;opacity:.35;transition:opacity .18s;user-select:none;text-shadow:0 0 12px rgba(var(--amber-rgb),.55)}
 .ssdesk .nav:hover{opacity:.95}.ssdesk .nav.l{left:10px}.ssdesk .nav.r{right:10px}.ssdesk .nav.hidden{opacity:0;pointer-events:none}
-.ssdesk .pagedots{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:55;display:flex;gap:8px}
+.ssdesk .pagedots{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:55;display:flex;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(11,13,15,.55);backdrop-filter:blur(4px);opacity:1;transition:opacity .6s ease}
+.ssdesk .pagedots.hide{opacity:0;pointer-events:none}
 .ssdesk .pagedots i{width:8px;height:8px;border-radius:50%;background:rgba(var(--amber-rgb),.3);cursor:pointer}.ssdesk .pagedots i.on{width:20px;border-radius:4px;background:var(--amber);box-shadow:0 0 8px var(--amber)}
+
+/* clickable trend avg cells */
+.ssdesk .avg.clk-avg{cursor:pointer;border-radius:5px;padding:1px;transition:background .12s}
+.ssdesk .avg.clk-avg:hover{background:rgba(var(--amber-rgb),.08)}
+.ssdesk .avg.clk-avg.on{background:rgba(var(--amber-rgb),.12);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),.3)}
+.ssdesk .sv-rng span{cursor:pointer}
+
+/* expand button on pulse/hunt labels */
+.ssdesk .zlabel-row{display:flex;align-items:center;justify-content:space-between}
+.ssdesk .expand-btn{background:rgba(var(--amber-rgb),.08);border:1px solid var(--border-hot);color:var(--amber);cursor:pointer;font-size:.7rem;line-height:1;border-radius:5px;padding:2px 7px;flex:none;transition:background .12s}
+.ssdesk .expand-btn:hover{background:rgba(var(--amber-rgb),.2)}
+
+/* fullscreen overlay for globe / hunt */
+.ssdesk .fs-overlay{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.82);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:3vh 3vw}
+.ssdesk .fs-inner{width:min(1100px,94vw);height:min(86vh,820px);background:linear-gradient(180deg,var(--bg-raised),var(--bg-surface));border:1px solid var(--border-hot);border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden}
+.ssdesk .fs-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--hair);font-family:var(--fd);font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);flex:none}
+.ssdesk .fs-close{background:none;border:none;color:var(--text-2);cursor:pointer;font-size:1.3rem;line-height:1}
+.ssdesk .fs-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px}
+.ssdesk .fs-stage>*{position:absolute!important;inset:14px!important;width:auto!important;height:auto!important;background:transparent!important;border:none!important;box-shadow:none!important}
 `;
 
 /* ---------- AppHead (real ticker in marquee slot) ---------- */
@@ -225,13 +251,13 @@ function Crew({ workers, aliases, displayName, onWorkerClick }){
         const fan=Number.isFinite(live.fanPct)?live.fanPct+'%':(Number.isFinite(live.fanRpm)?fmtNum(live.fanRpm):'—');
         const fw=(live.firmwareVersion||w.minerVendor||'—').toString().split(' ')[0];
         const acc=Number.isFinite(w.acceptRate)?(w.acceptRate*100).toFixed(1)+'%':'—';
-        const hist=(Array.isArray(w.statusHistory)?w.statusHistory:[]).slice(-40);
+        const SLOTS=96; const samples=(Array.isArray(w.statusHistory)?w.statusHistory:[]).slice(-SLOTS); const ph=SLOTS-samples.length;
         const name=(displayName?displayName(w.name,aliases):w.name)||'—';
         return (
           <div key={w.name||i} className={`miner${on?'':' off'}`} onClick={()=>onWorkerClick&&onWorkerClick(w)} title={w.minerType||''}>
             <div className="top"><span className="dot"/><span className="nm">{name}</span><span className="hash">{on?hrShort(w.hashrate):'off'}</span></div>
             <div className="tele"><div className={tcls}><b>{tC!=null?tC+'°':'—'}</b>temp</div><div><b>{fan}</b>fan</div><div><b>{fw}</b>fw</div><div><b>{acc}</b>acc</div></div>
-            <div className="uptime">{(hist.length?hist:Array.from({length:40})).map((h,j)=>{const up=h?(typeof h==='object'?(h.status!=='offline'&&h.status!=='disconnected'):!!h):on;return <i key={j} className={up?'on':(h?'dn':'')}/>;})}</div>
+            <div className="uptime" title={`Uptime over last 24h · ${samples.length}/${SLOTS} samples`}>{Array.from({length:SLOTS}).map((_,j)=>{const isPh=j<ph;const s=isPh?null:samples[j-ph];const cls=isPh?'':(s&&s.status==='online'?'on':'dn');return <i key={j} className={cls}/>;})}</div>
           </div>
         );
       })}
@@ -316,19 +342,16 @@ function Gauges({ windows, pct }){
 
 /* ---------- Donut (real connection states) ---------- */
 function Donut({ pool }){
-  const tot0=pool?.workers||0;
-  const idle=pool?.idle||0, disc=pool?.disconnected||0;
-  const active=Math.max(0,tot0-idle-disc);
-  const tot=active+idle+disc||1;
-  const segs=[[active,'var(--green)'],[idle,'var(--amber)'],[disc,'var(--red)']];
-  const r=44,c=2*Math.PI*r; let off=0;
+  const active=Math.max(0,(pool?.workers||0)-(pool?.idle||0)-(pool?.disconnected||0));
+  const idle=pool?.idle||0, disc=pool?.disconnected||0; const total=active+idle+disc||1;
+  const segs=[['Active',active,'var(--green)'],['Idle',idle,'var(--amber)'],['Disconnected',disc,'var(--red)']];
+  let acc=0; const stops=segs.map(([,n,c])=>{const s=(acc/total)*100;acc+=n;const e=(acc/total)*100;return `${c} ${s}% ${e}%`;}).join(', ');
   return (
     <div className="donutwrap">
-      <svg viewBox="0 0 120 120">
-        {segs.map(([val,col],i)=>{const len=c*(val/tot);const el=<circle key={i} cx="60" cy="60" r={r} fill="none" stroke={col} strokeWidth="14" strokeDasharray={`${len} ${c-len}`} strokeDashoffset={-off} transform="rotate(-90 60 60)"/>;off+=len;return el;})}
-        <text x="60" y="58" textAnchor="middle" fontFamily="var(--fd)" fontSize="20" fontWeight="700" fill="var(--text-1)">{active+idle+disc}</text>
-        <text x="60" y="74" textAnchor="middle" fontFamily="var(--fd)" fontSize="7" letterSpacing="1.5" fill="var(--text-3)">WORKERS</text>
-      </svg>
+      <div className="donut-cg">
+        <div className="donut-ring" style={{background:`conic-gradient(${stops})`}}/>
+        <div className="donut-hole"><span className="dn-tot">{active+idle+disc}</span><span className="dn-lbl">workers</span></div>
+      </div>
       <div className="donutlegend">
         <div className="dlg"><span className="sw" style={{background:'var(--green)'}}/>Active <b>{active}</b></div>
         <div className="dlg"><span className="sw" style={{background:'var(--amber)'}}/>Idle <b>{idle}</b></div>
@@ -349,17 +372,24 @@ export default function DesktopPages({
   const narrow=useIsNarrow();
   const now=useNow();
   const [page,setPage]=useState(0);
+  const [dotsVisible,setDotsVisible]=useState(true);
+  const dotsTimer=useRef(null);
+  const pokeDots=useCallback(()=>{ setDotsVisible(true); clearTimeout(dotsTimer.current); dotsTimer.current=setTimeout(()=>setDotsVisible(false),2500); },[]);
+  const [fsCard,setFsCard]=useState(null); // 'pulse' | 'hunt' | null — fullscreen overlay
+  const [svRange,setSvRange]=useState('1H'); // strike-velocity window
+  const [fpTrend,setFpTrend]=useState('live'); // firepower trend window
   const NP=3;
   const startX=useRef(null);
   const fitRef=useRef(null);
   const scalerRef=useRef(null);
-  const go=useCallback(p=>setPage(Math.max(0,Math.min(NP-1,p))),[]);
+  const go=useCallback(p=>{setPage(Math.max(0,Math.min(NP-1,p)));},[]);
   const M=(name)=>()=>openModal&&openModal(name);
 
+  useEffect(()=>{ pokeDots(); return ()=>clearTimeout(dotsTimer.current); },[page,pokeDots]);
   useEffect(()=>{ const on=e=>{if(e.key==='ArrowRight')go(page+1);if(e.key==='ArrowLeft')go(page-1);}; window.addEventListener('keydown',on); return()=>window.removeEventListener('keydown',on); },[page,go]);
   useEffect(()=>{ const el=document.getElementById('ssdesk-css'); if(el)el.remove(); const s=document.createElement('style');s.id='ssdesk-css';s.textContent=CSS;document.head.appendChild(s); },[]);
   useEffect(()=>{
-    const fit=()=>{ const f=fitRef.current,sc=scalerRef.current; if(!f||!sc)return; const k=Math.min(f.clientWidth/1280,f.clientHeight/860,1); sc.style.transform=`scale(${k})`; };
+    const fit=()=>{ const f=fitRef.current,sc=scalerRef.current; if(!f||!sc)return; const k=Math.min(f.clientWidth/1280,f.clientHeight/860); sc.style.transform=`scale(${k})`; };
     fit(); window.addEventListener('resize',fit); return()=>window.removeEventListener('resize',fit);
   },[narrow]);
 
@@ -367,7 +397,7 @@ export default function DesktopPages({
 
   /* ---- real data ---- */
   const hr=poolState?.hashrate||{}, pool=poolState?.pool||{}, shares=poolState?.shares||{}, ns=poolState?.networkStats||{};
-  const net=poolState?.network||{}, snap=poolState?.snapshots||{}, odds=poolState?.odds||{}, reward=poolState?.blockReward||{}, mp=poolState?.mempool||{};
+  const net=poolState?.network||{}, snap=poolState?.snapshots||{}, odds=poolState?.odds||{}, reward=poolState?.blockReward||{}, mp=poolState?.mempool||{}, retarget=poolState?.retarget||{};
   const blocks=Array.isArray(poolState?.netBlocks)?poolState.netBlocks:(Array.isArray(poolState?.blocks)?poolState.blocks:[]);
   const cur=hr.current||0, peak=pool.hashratePeak||hr.peak||0;
   const windows=pool.hashrateWindows||{}, wpct=pool.hashrateWindowPct||{};
@@ -386,22 +416,23 @@ export default function DesktopPages({
   const spsMax=Math.max(...spsHist.map(p=>p.sps||0),1);
 
   // share stats
-  const acc=Number.isFinite(shares.acceptRate)?(shares.acceptRate*100).toFixed(2)+'%':'—';
-  const rej=Number.isFinite(shares.rejectRate)?(shares.rejectRate*100).toFixed(2)+'%':'—';
+  const _ta=shares.acceptedCount||0, _tr=shares.rejectedCount||0, _ts=shares.stale||0, _gt=_ta+_tr+_ts;
+  const acc=_gt>0?((_ta/_gt)*100).toFixed(2)+'%':'—';
+  const rej=_gt>0?((_tr/_gt)*100).toFixed(2)+'%':'—';
 
   // health flags
   const H=stratumHealth||{};
   const healthItems=[['API',true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :4333',H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],['ZMQ synced',zmqOk]];
 
   // top miners
-  const topMiners=[...(workers||[])].sort((a,b)=>(b.bestshare||0)-(a.bestshare||0)).slice(0,3);
+  const topMiners=[...(workers||[])].filter(w=>(w.bestshare||0)>0).sort((a,b)=>(b.bestshare||0)-(a.bestshare||0)).slice(0,3);
 
   // closest calls
   const cc=Array.isArray(snap.closestCalls)?snap.closestCalls:[];
 
   return (
     <div className="ssdesk" ref={fitRef}
-      onTouchStart={e=>{startX.current=e.touches[0].clientX;}}
+      onTouchStart={e=>{startX.current=e.touches[0].clientX;pokeDots();}}
       onTouchEnd={e=>{if(startX.current==null)return;const dx=e.changedTouches[0].clientX-startX.current;if(Math.abs(dx)>60)go(dx<0?page+1:page-1);startX.current=null;}}>
       <div className="scaler" ref={scalerRef}>
         <div className={`pages${page===1?' p2':page===2?' p3':''}`}>
@@ -412,18 +443,18 @@ export default function DesktopPages({
 
             {/* BAND 1 */}
             <div className="band b-charts">
-              <div className="panel clk" onClick={M('Firepower')}>
-                <div className="zlabel">Firepower — Live</div>
+              <div className="panel">
+                <div className="zlabel">Firepower — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}</div>
                 <div className="fp">
-                  <div className="fp-top"><span className="fp-num goldnum">{fmtTH(cur)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
+                  <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur))}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
                   <div className="fp-chart"><svg viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--amber)" stopOpacity="0.28"/><stop offset="95%" stopColor="var(--amber)" stopOpacity="0.02"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)"/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="2"/></>}</svg></div>
-                  <div className="avgs">{avgW.map(([l,k],i)=>{const v=windows[k];return <div className={`avg${i===0?' on':''}`} key={k}><div className="al">{l}</div><div className="bar"><i style={{width:`${Math.min(100,((v||0)/wmax)*100)}%`}}/></div><div className="av">{Number.isFinite(v)?fmtTH(v):'—'}</div></div>;})}</div>
+                  <div className="avgs">{avgW.map(([l,k])=>{const v=windows[k];return <div className={`avg clk-avg${fpTrend===l?' on':''}`} key={k} onClick={()=>setFpTrend(fpTrend===l?'live':l)} title={`Show ${l} trend`}><div className="al">{l}</div><div className="bar"><i style={{width:`${Math.min(100,((v||0)/wmax)*100)}%`}}/></div><div className="av">{Number.isFinite(v)?fmtTH(v):'—'}</div></div>;})}</div>
                 </div>
               </div>
               <div className="panel">
                 <div className="zlabel">Strike Velocity</div>
                 <div className="sv">
-                  <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng"><span className="on">1H</span><span>6H</span><span>24H</span></div></div>
+                  <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
                   {spsHist.length===0
                     ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
                     : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`}}/>)}</div>}
@@ -435,9 +466,9 @@ export default function DesktopPages({
             {/* BAND 2 — Pulse (REAL globe) · Hunt (REAL) · Crew */}
             <div className="band b-feat">
               <div className="panel">
-                <div className="zlabel">Solostrike Pulse</div>
-                <div className="body clk" onClick={M('Solostrike Pulse')}>
-                  <div className="slot-globe">{cardComponents['pulse']||null}</div>
+                <div className="zlabel zlabel-row">Solostrike Pulse<button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
+                <div className="body">
+                  <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
                   <div className="pulse-read">
                     <div className="pr"><div className="prl">Strikers</div><div className="prv">{ns.peers?.length??ns.strikers??'—'}</div></div>
                     <div className="pr"><div className="prl">Net Pulse</div><div className="prv">{ns.networkHashrate?hrShort(ns.networkHashrate):(net.hashrate?hrShort(net.hashrate):'—')}</div></div>
@@ -446,13 +477,13 @@ export default function DesktopPages({
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel">The Hunt</div>
-                <div className="body clk" onClick={M('The Hunt')}>
-                  <div className="slot-hunt">{cardComponents['hunt']||null}</div>
+                <div className="zlabel zlabel-row">The Hunt<button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
+                <div className="body">
+                  <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
                   <div className="hunt-face">
-                    <div className="hf-reward"><span className="lbl">Block Reward</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{(reward.total??reward.btc??3.125).toFixed?.(4)||reward.total||'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
-                    <div className="hf-sub">subsidy <b>{reward.subsidy??3.125}</b> · fees <span className="fee">+{(reward.fees??0).toFixed?.(4)||reward.fees||0}</span></div>
-                    <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.fastFee??mp.fast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.medFee??mp.medium??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.lowFee??mp.low??'—'}</div><div className="ftu">sat/vB</div></div></div>
+                    <div className="hf-reward"><span className="lbl">Block Reward</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
+                    <div className="hf-sub">subsidy <b>{reward.subsidy??'—'}</b> · fees <span className="fee">{reward.feesBtc!=null?'+'+reward.feesBtc.toFixed(4):(reward.totalBtc!=null&&reward.subsidy!=null?'+'+(reward.totalBtc-reward.subsidy).toFixed(4):'—')}</span></div>
+                    <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
                     <div className="hf-odds"><div className="o"><div className="ol">Yearly</div><div className="ov">{odds.yearly!=null?(odds.yearly*100).toFixed(2)+'%':'—'}</div></div><div className="o"><div className="ol">Daily</div><div className="ov">{odds.daily!=null?(odds.daily*100).toFixed(3)+'%':'—'}</div></div><div className="o"><div className="ol">Sats/d</div><div className="ov">{odds.satsPerDay??'—'}</div></div></div>
                   </div>
                 </div>
@@ -465,13 +496,13 @@ export default function DesktopPages({
 
             {/* BAND 3 — 8 data cols */}
             <div className="band b-data">
-              <div className="col"><div className="ch">Bitcoin Network</div>{DL('Difficulty',net.difficulty?(net.difficulty/1e12).toFixed(1)+' T':'—')}{DL('Hashrate',net.hashrate?hrShort(net.hashrate):'—')}{DL('Mempool',fmtNum(mp.count??net.mempoolTx))}{DL('Retarget',net.retargetPct!=null?(net.retargetPct>0?'+':'')+net.retargetPct.toFixed(1)+'%':'—','green')}</div>
-              <div className="col"><div className="ch">Bitcoin Node</div>{DL('Status',poolState?.nodeInfo?.connected!==false?'LIVE':'—','green')}{DL('Height',fmtNum(net.height))}{DL('Peers',poolState?.nodeInfo?.peers??'—')}{DL('ZMQ',zmqOk?'● sync':'○','green')}</div>
-              <div className="col clk" onClick={M('Stratum Connection')}><div className="ch">Stratum</div>{DL('TCP',':3333','cyan')}{DL('Alt',':3334')}{DL('TLS',':4333','cyan')}{DL('Accept',acc,'green')}</div>
+              <div className="col"><div className="ch">Bitcoin Network</div>{DL('Difficulty',net.difficulty?hrShort(net.difficulty):'—')}{DL('Hashrate',net.hashrate?hrShort(net.hashrate):'—')}{DL('Mempool',mp.count!=null?fmtNum(mp.count):'—')}{DL('Retarget',retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(1)+'%':'—',retarget.difficultyChange>=0?'red':'green')}</div>
+              <div className="col"><div className="ch">Bitcoin Node</div>{DL('Status',poolState?.nodeInfo?.connected?'LIVE':'—',poolState?.nodeInfo?.connected?'green':'')}{DL('Height',net.height!=null?fmtNum(net.height):'—')}{DL('Peers',poolState?.nodeInfo?.peers!=null?fmtNum(poolState.nodeInfo.peers):'—')}{DL('ZMQ',zmqOk?'● sync':'○',zmqOk?'green':'')}</div>
+              <div className="col"><div className="ch">Stratum</div>{DL('TCP',':3333','cyan')}{DL('Alt',':3334')}{DL('TLS',':4333','cyan')}{DL('Workers',`${liveW}/${totW}`)}</div>
               <div className="col"><div className="ch">Strikes</div>{DL('Closest',cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL('Workers',`${liveW}/${totW}`)}{DL('Solo 30d',snap.soloBlocks30d??'—','amber')}{DL('Yours',snap.totalStrikes??0,'amber')}</div>
-              <div className="col"><div className="ch">Near Strikes</div>{cc.length?cc.slice(0,4).map((c,i)=>DL('#'+(i+1),c.pct!=null?c.pct.toFixed(4)+'%':'—',i===0?'cyan':'')):DL('—','—')}</div>
-              <div className="col"><div className="ch">Top Miners</div>{topMiners.length?topMiners.map((w,i)=>DL((i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,7),hrShort(w.bestshare),i===0?'amber':'cyan')):DL('—','—')}{DL('Pool best',poolState?.bestshare?hrShort(poolState.bestshare):'—')}</div>
-              <div className="col clk" onClick={M('Claim Jumpers + Solo Strikes')}><div className="ch">Claim Jumpers</div>{(Array.isArray(poolState?.topFinders)?poolState.topFinders:[]).slice(0,2).map((f,i)=><div className="barrow" key={i}><span className="nm">{f.name||f.pool||'—'}</span><span className="ct">{f.count??f.blocks??'—'}</span></div>)}<div className="barrow"><span className="nm">You<span className="solo">SOLO</span></span><span className="ct">{snap.totalStrikes??0}</span></div>{DL('Solo 30d',snap.soloBlocks30d??'—','amber')}</div>
+              <div className="col"><div className="ch">Near Strikes</div>{cc.length?cc.slice(0,4).map((c,i)=>{const netDiff=net.difficulty>0?net.difficulty:null;const pct=netDiff?(c.diff/netDiff)*100:null;return DL('#'+(i+1)+' '+((displayName?displayName(c.workerName,aliases):c.workerName)||'').slice(0,6),pct!=null?pct.toFixed(4)+'%':hrShort(c.diff),i===0?'cyan':'');}):<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No near-misses yet.</div>}</div>
+              <div className="col"><div className="ch">Top Miners</div>{topMiners.length?<>{topMiners.map((w,i)=>DL((i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,7),hrShort(w.bestshare),i===0?'amber':'cyan'))}{DL('Pool best',poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>:<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No shares submitted yet.</div>}</div>
+              <div className="col"><div className="ch">Claim Jumpers</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];return tf.length?<>{tf.slice(0,4).map((f,i)=><div className="barrow" key={i}><span className="nm">{f.name||'—'}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="ct">{f.count??0}</span></div>)}</>:<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>Awaiting block data…</div>;})()}</div>
               <div className="col clk" onClick={M('Share Stats')}><div className="ch">Share Stats</div>{DL('Total',shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL('Best',poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL('Accept',acc,'green')}{DL('Reject',rej)}</div>
             </div>
 
@@ -504,7 +535,7 @@ export default function DesktopPages({
               <FleetTable workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">General Info</div>{DL('Pool runtime',poolState?.uptimeSec?fmtUptime(poolState.uptimeSec):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL('Accept',acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">General Info</div>{DL('Pool runtime',poolState?.shareStatsStartedAt?fmtUptime((Date.now()-poolState.shareStatsStartedAt)/1000):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL('Accept',acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
               <div className="col"><div className="ch">Shares Since Last Block</div>{DL('Accepted',shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL('Rejected',fmtNum(shares.rejectedCount))}{DL('Accept',acc,'cyan')}{DL('Reject',rej)}</div>
               <div className="col"><div className="ch">Best Share — Trend</div><TsLine data={(Array.isArray(shares.bestHistory)?shares.bestHistory:[]).map(b=>b.best).filter(Number.isFinite)} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
               <div className="col"><div className="ch">Users + Workers History</div><TsLine data={(Array.isArray(pool.workersHistory)?pool.workersHistory:[]).map(p=>p.workers).filter(Number.isFinite)} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
@@ -535,12 +566,17 @@ export default function DesktopPages({
               <div className="panel"><div className="zlabel">Reject Reasons — Trend (24h)</div>
                 <div className="rejtrend">{(()=>{const rr=shares.rejectReasons||{};const ent=Object.entries(rr).sort((a,b)=>b[1]-a[1]).slice(0,3);const tot=ent.reduce((s,[,n])=>s+n,0)||1;const cols=['var(--amber)','var(--cyan)','var(--text-2)'];return ent.length?<>{ent.map(([n,c],i)=>{const p=Math.round((c/tot)*100);return <div className="rejrow" key={n}><span className="rl">{n}</span><span className="rbar"><i style={{width:p+'%',background:cols[i]}}/></span><span className="rv">{p}%</span></div>;})}<div style={{fontSize:'.54rem',color:'var(--text-3)',marginTop:2}}>of {fmtNum(shares.rejectedCount)} rejected shares · last 24h</div></>:<div style={{fontSize:'.6rem',color:'var(--text-3)'}}>No rejected shares recorded.</div>;})()}</div>
               </div>
-              <div className="panel"><div className="zlabel">Mempool Fee — Trend</div><TsLine data={(Array.isArray(net.feeHistory)?net.feeHistory:[]).filter(Number.isFinite)} color="var(--chart2)" H={100} fmt={v=>Math.round(v)} unit="sat/vB"/></div>
+              <div className="panel"><div className="zlabel">Mempool Fee</div>
+                <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:8,flex:1}}>
+                  <div className="hf-fees" style={{borderTop:0}}><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)',color:'var(--text-2)'}}><span>Mempool</span><span style={{color:'var(--text-1)'}}>{mp.count!=null?fmtNum(mp.count)+' tx':'—'}</span></div>
+                </div>
+              </div>
               <div className="panel"><div className="zlabel">Difficulty Retarget</div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:9,flex:1}}>
-                  <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.7rem',fontWeight:700,color:net.retargetPct>=0?'var(--red)':'var(--green)',lineHeight:1}}>{net.retargetPct!=null?(net.retargetPct>0?'+':'')+net.retargetPct.toFixed(2)+'%':'—'}</div><div style={{fontSize:'.55rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>estimated change</div>{net.lastRetargetPct!=null&&<div style={{fontFamily:'var(--fm)',fontSize:'.62rem',color:'var(--text-2)',marginTop:4}}>Last epoch: <span style={{color:'var(--green)',fontWeight:600}}>{(net.lastRetargetPct>0?'+':'')+net.lastRetargetPct.toFixed(2)+'%'}</span></div>}</div>
-                  {net.epochProgress!=null&&<div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>Epoch progress</span><span style={{color:'var(--cyan)'}}>{(net.epochProgress*100).toFixed(1)}%</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${net.epochProgress*100}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>}
-                  {net.blocksUntilRetarget!=null&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>Remaining Blocks <b style={{color:'var(--text-1)',fontWeight:600}}>{fmtNum(net.blocksUntilRetarget)}</b></span>{net.retargetEta&&<span style={{color:'var(--text-2)'}}>ETA <b style={{color:'var(--amber)',fontWeight:600}}>{net.retargetEta}</b></span>}</div>}
+                  <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.7rem',fontWeight:700,color:retarget.difficultyChange>=0?'var(--red)':'var(--green)',lineHeight:1}}>{retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(2)+'%':'—'}</div><div style={{fontSize:'.55rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>estimated change</div>{retarget.prevDifficultyChange!=null&&<div style={{fontFamily:'var(--fm)',fontSize:'.62rem',color:'var(--text-2)',marginTop:4}}>Last epoch: <span style={{color:retarget.prevDifficultyChange>=0?'var(--red)':'var(--green)',fontWeight:600}}>{(retarget.prevDifficultyChange>=0?'+':'')+retarget.prevDifficultyChange.toFixed(2)+'%'}</span></div>}</div>
+                  {retarget.progressPercent!=null&&<div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>Epoch progress</span><span style={{color:'var(--cyan)'}}>{retarget.progressPercent.toFixed(1)}%</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0,Math.min(100,retarget.progressPercent))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>}
+                  {retarget.remainingBlocks!=null&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>Remaining Blocks <b style={{color:'var(--text-1)',fontWeight:600}}>{fmtNum(retarget.remainingBlocks)}</b></span></div>}
                 </div>
               </div>
             </div>
@@ -557,7 +593,16 @@ export default function DesktopPages({
 
       <button className={`nav l${page===0?' hidden':''}`} onClick={()=>go(page-1)}>❮</button>
       <button className={`nav r${page===NP-1?' hidden':''}`} onClick={()=>go(page+1)}>❯</button>
-      <div className="pagedots">{[0,1,2].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
+      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
+
+      {fsCard && (
+        <div className="fs-overlay" onClick={e=>{if(e.target===e.currentTarget)setFsCard(null);}}>
+          <div className="fs-inner">
+            <div className="fs-head"><span>{fsCard==='pulse'?'Solostrike Pulse':'The Hunt'}</span><button className="fs-close" onClick={()=>setFsCard(null)}>✕</button></div>
+            <div className="fs-stage">{cardComponents[fsCard]||null}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
