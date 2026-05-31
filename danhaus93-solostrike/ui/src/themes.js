@@ -415,7 +415,7 @@ export const THEMES = {
 
   paper: {
     id: 'paper',
-    label: 'Paper Light',
+    label: 'Paper Bright',
     description: 'Blueprint · battery friendly',
     css: {
       '--bg-void':        '#E8EFF5',

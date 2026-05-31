@@ -11,6 +11,11 @@ import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
 import { THEMES, THEME_IDS, getThemeById, loadTheme, saveTheme, applyThemeCSS, applyThemeColorMeta } from './themes.js';
+import DesktopPages from './components/DesktopPages.jsx';
+import {
+  PoolHashrateWindows, SpsWindows, ConnectionStates, BlockEffortPanel,
+  HashrateStability, RejectTrend, BestShareTrend, FleetEfficiency, PoolReliability,
+} from './components/AnalyticsCards.jsx';
 // v1.11.47: read current theme from document attribute. Used by WebGL
 // renderers that init outside the React tree.
 function _ssCurrentTheme() {
@@ -300,6 +305,7 @@ const TEMP_RED_C   = 80;
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LS_CARD_ORDER      = 'ss_card_order_v1';
+const LS_DESKTOP_PAGES   = 'ss_desktop_pages_v1';  // v1.12.0 per-page desktop order
 const LS_CURRENCY        = 'ss_currency_v1';
 const LS_ALIASES         = 'ss_worker_aliases_v1';
 const LS_NOTES           = 'ss_worker_notes_v1';
@@ -335,6 +341,16 @@ const ALL_CARDS = [
   { id:'jumpers',       label:'Claim Jumpers + Solo Strikes' },
   { id:'recent',        label:'The Ledger' },
   { id:'health',        label:'System Health' },
+  // v1.12.0 analytics cards (Pool Internals + Luck & Analytics)
+  { id:'hashwindows',   label:'Hashrate Windows' },
+  { id:'spswindows',    label:'SPS Windows' },
+  { id:'connstates',    label:'Connection States' },
+  { id:'besttrend',     label:'Best Share Trend' },
+  { id:'effort',        label:'Block Effort / Luck' },
+  { id:'stability',     label:'Hashrate Stability' },
+  { id:'rejects',       label:'Reject Reasons' },
+  { id:'fleeteff',      label:'Fleet Efficiency' },
+  { id:'reliability',   label:'Reliability' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
@@ -381,6 +397,8 @@ function migrateCardIds(arr) {
   return out;
 }
 
+function loadDesktopPages() { try { const s = localStorage.getItem(LS_DESKTOP_PAGES); const p = s ? JSON.parse(s) : null; return Array.isArray(p) ? p : null; } catch { return null; } }
+function saveDesktopPages(arr) { try { localStorage.setItem(LS_DESKTOP_PAGES, JSON.stringify(arr)); } catch {} }
 function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
 function loadNotes()   { try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
@@ -13946,6 +13964,9 @@ export default function App() {
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.41
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
+  // v1.12.0: persisted desktop 3-page order (array of 3 id-arrays) or null.
+  const [desktopPages, setDesktopPages] = useState(() => loadDesktopPages());
+  const onDesktopPagesChange = useCallback((next) => { setDesktopPages(next); saveDesktopPages(next); }, []);
   // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
   const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
   const onDebugSettingsChange = useCallback((next) => {
@@ -14047,7 +14068,12 @@ export default function App() {
   }, [updateTier, updateVersion]);
 
   const onCurrencyChange = (c) => { setCurrencyState(c); saveCurrency(c); };
-  const onResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
+  const onResetLayout = () => {
+    setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER);
+    // v1.12.0: also reset desktop 3-page order back to editorial defaults
+    setDesktopPages(null);
+    try { localStorage.removeItem(LS_DESKTOP_PAGES); } catch {}
+  };
   const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
@@ -14748,6 +14774,16 @@ export default function App() {
     />,
     recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
     health: <HealthStatusCard onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
+    // ── v1.12.0 analytics cards ───────────────────────────────────────────
+    hashwindows: <PoolHashrateWindows pool={poolState?.pool} themeKey={themeId} />,
+    spswindows:  <SpsWindows pool={poolState?.pool} />,
+    connstates:  <ConnectionStates pool={poolState?.pool} />,
+    besttrend:   <BestShareTrend snapshots={poolState?.snapshots} bestHistory={poolState?.shares?.bestHistory} themeKey={themeId} />,
+    effort:      <BlockEffortPanel snapshots={poolState?.snapshots} sharesThisRound={Math.max(0,(poolState?.shares?.accepted||0)-(poolState?._sharesAtLastBlock||0))} networkDifficulty={poolState?.network?.difficulty} />,
+    stability:   <HashrateStability hashrate={poolState?.hashrate} themeKey={themeId} />,
+    rejects:     <RejectTrend shares={poolState?.shares} />,
+    fleeteff:    <FleetEfficiency workers={workers} />,
+    reliability: <PoolReliability pool={poolState?.pool} workers={workers} />,
   };
 
   const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
@@ -14793,24 +14829,35 @@ export default function App() {
         )}
       </div>
 
-      <main style={{padding: useCarousel ? 0 : '0.65rem'}} className={useCarousel ? 'ss-carousel-wrap' : ''}>
-        <div
-          ref={carouselRef}
-          className={useCarousel ? 'ss-carousel' : 'ss-grid'}
-        >
-          {renderableOrder.map(id => (
-            <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
-              <ErrorBoundary label={id}>
-                {cardComponents[id]}
-              </ErrorBoundary>
-            </DraggableCard>
-          ))}
-        </div>
-        {useCarousel && (
-          <CarouselDots
-            count={renderableOrder.length}
-            activeIndex={activeIndex}
-            onJump={jumpToCard}
+      <main style={{padding:0, display:'flex', flexDirection:'column', minHeight:0, flex:1}} className={useCarousel ? 'ss-carousel-wrap' : 'ss-desktop-pages-wrap'}>
+        {useCarousel ? (
+          <>
+            <div ref={carouselRef} className="ss-carousel">
+              {renderableOrder.map(id => (
+                <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
+                  <ErrorBoundary label={id}>
+                    {cardComponents[id]}
+                  </ErrorBoundary>
+                </DraggableCard>
+              ))}
+            </div>
+            <CarouselDots
+              count={renderableOrder.length}
+              activeIndex={activeIndex}
+              onJump={jumpToCard}
+            />
+          </>
+        ) : (
+          // v1.12.0: desktop/tablet 3-page layout. Wraps every card component
+          // in its own ErrorBoundary so one failing card can't blank a page.
+          <DesktopPages
+            cardComponents={Object.fromEntries(Object.keys(cardComponents).map(id => [id,
+              <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
+            ]))}
+            order={renderableOrder}
+            visibleSet={visibleSet}
+            persistedOrder={desktopPages}
+            onOrderChange={onDesktopPagesChange}
           />
         )}
       </main>
