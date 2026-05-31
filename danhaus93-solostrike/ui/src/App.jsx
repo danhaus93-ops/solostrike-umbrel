@@ -1301,10 +1301,12 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
 // render(). When set, we prepend an outlined ₿ cube (matching the original
 // LatestBlockStrip styling — 20x20 black bg, btc-orange border, soft glow,
 // 12x12 PNG of /btc-glyph.png inside).
-const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
+const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec, lang = 'en' }) {
   const marqueeRef = useRef(null);
   const pillsSourceRef = useRef(pillsSource);
   const spawnCountRef = useRef(0);
+  const ttRef = useRef(makeTT(lang));
+  useEffect(() => { ttRef.current = makeTT(lang); }, [lang]);
   useEffect(() => { pillsSourceRef.current = pillsSource; }, [pillsSource]);
 
   const speed = speedSec || DEFAULT_TICKER_SPEED;
@@ -1331,7 +1333,7 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       if (hasGlyph) pill.classList.add('ss-pill-tight');
       const lbl = document.createElement('span');
       lbl.className = 'ss-marquee-pill-lbl';
-      lbl.textContent = data.label || '';
+      lbl.textContent = ttRef.current(data.label || '') || '';
       pill.appendChild(lbl);
       if (hasGlyph) {
         const glyph = document.createElement('span');
@@ -1346,7 +1348,7 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       }
       const val = document.createElement('span');
       val.className = 'ss-marquee-pill-val' + (data.valClass ? ' ' + data.valClass : '');
-      val.textContent = data.value || '';
+      val.textContent = ttRef.current(data.value || '') || '';
       pill.appendChild(val);
       return pill;
     };
@@ -3621,7 +3623,8 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
   );
 }
 
-function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, performanceMode, onOpen }) {
+function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, performanceMode, onOpen, lang = 'en' }) {
+  const tt = useMemo(() => makeTT(lang), [lang]);
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
   // iter27c: `scale` (logarithmic mapping for the odds SVG fill width)
   // is no longer needed — replaced by the NonceField canvas component.
@@ -3655,13 +3658,13 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
       title={onOpen ? 'Tap to open The Reckoning' : undefined}
     >
       <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
-        <span>▸ The Hunt</span>
+        <span>▸ {tt('The Hunt')}</span>
         {onOpen && (
           <span style={{
             fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em',
             color:'var(--amber)', textTransform:'uppercase',
           }}>
-            ▸ Tap for the Reckoning
+            ▸ {tt('Tap for the Reckoning')}
           </span>
         )}
       </div>
@@ -3683,7 +3686,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
         <div style={{display:'flex', flexDirection:'column', flex:1, minHeight:240}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6, flexShrink:0}}>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
-              Per-Block Odds
+              {tt('Per-Block Odds')}
             </span>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(var(--amber-rgb),0.4)', fontVariantNumeric:'tabular-nums'}}>
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
@@ -3705,7 +3708,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
           <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:10}}>
             <div style={{display:'flex', alignItems:'baseline', gap:8, flex:1, minWidth:0}}>
               <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-2)', whiteSpace:'nowrap'}}>
-                BLOCK REWARD
+                {tt('Block Reward')}
               </span>
               <span style={{
                 fontFamily:'var(--fd)', fontSize:'1.05rem', fontWeight:800, lineHeight:1,
@@ -7382,6 +7385,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 // ── Settings Modal ────────────────────────────────────────────────────────────
 function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, lang = 'en', onLangChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
   const [tab, setTab] = useState('main');
+  const tt = useMemo(() => makeTT(lang), [lang]);
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
   // where 'SoloStrike' is now hardcoded server-side. No user-facing effect lost.
@@ -7404,7 +7408,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
           <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.85rem',letterSpacing:'0.18em',color:'var(--amber)', display:'flex', alignItems:'center', gap:'0.5rem'}}>
             <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1rem', height:'1rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.5))', flexShrink:0}}/>
-            Settings
+            {tt('Settings')}
           </h3>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem',lineHeight:1,padding:0}}>✕</button>
         </div>
@@ -7428,7 +7432,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
               color:tab===id?'var(--amber)':'var(--text-2)',
               fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.12em',
               cursor:'pointer', textTransform:'uppercase'
-            }}>{label}</button>
+            }}>{tt(label)}</button>
           ))}
         </div>
 
@@ -9220,7 +9224,8 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
+const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en' }) {
+  const tt = useMemo(() => makeTT(lang), [lang]);
   // v1.11.47: re-create constellation cube when theme changes.
   const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
   useEffect(() => {
@@ -10979,14 +10984,14 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     return (
       <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
         <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
-          <span>▸ SoloStrike Pulse</span>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>OFF</span>
+          <span>▸ {tt('Pulse')}</span>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>{tt('OFF')}</span>
         </div>
         <div style={{textAlign:'center', padding:'1.5rem 0.75rem', color:'var(--text-2)'}}>
           <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>Pulse is offline</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>{tt('Pulse is offline')}</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)', lineHeight:1.5, maxWidth:300, margin:'0 auto'}}>
-            See how many other solo pools are running, combined hashrate, and miner count across the network.
+            {tt('See how many other solo pools are running, combined hashrate, and miner count across the network.')}
           </div>
           <button
             onClick={onOpenSettings}
@@ -10999,7 +11004,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               letterSpacing:'0.12em', textTransform:'uppercase',
               boxShadow:'0 0 14px rgba(var(--amber-rgb),0.35)',
             }}>
-            JOIN PULSE
+            {tt('JOIN PULSE')}
           </button>
         </div>
         <StampSolo/>
@@ -11021,7 +11026,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom:'0.4rem', cursor: onOpenStrikers ? 'pointer' : 'default'}}
           title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
         >
-          <span>▸ SoloStrike Pulse</span>
+          <span>▸ {tt('Pulse')}</span>
           <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
             <span style={{width:5, height:5, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite', willChange:'opacity'}}/>
             LIVE
@@ -11293,7 +11298,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0, cursor: onOpenStrikers ? 'pointer' : 'default'}}
         title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
       >
-        <span>▸ SoloStrike Pulse</span>
+        <span>▸ {tt('Pulse')}</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
           <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite', willChange:'opacity'}}/>
           LIVE
@@ -14865,12 +14870,13 @@ export default function App() {
       lastShareAt={poolState?.shares?.lastShareAt}
       acceptedCount={poolState?.shares?.acceptedCount}
       workers={poolState?.workers}
+      lang={lang}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
     stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
-    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)}/>,
+    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
@@ -14938,7 +14944,7 @@ export default function App() {
         )}
         {showChrome && !minimalMode && (
           <>
-            <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>
+            <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec} lang={lang}/>
             <SyncWarningBanner sync={poolState?.sync}/>
           </>
         )}
@@ -14994,7 +15000,7 @@ export default function App() {
             cardComponents={Object.fromEntries(Object.keys(cardComponents).map(id => [id,
               <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
             ]))}
-            ticker={<Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>}
+            ticker={<Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec} lang={lang}/>}
             onOpenSettings={()=>setShowSettings(true)}
             status={status === 'connected' ? 'Mining Live' : (status || 'Mining Live')}
             zmq={poolState?.zmq}
