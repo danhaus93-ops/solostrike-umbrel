@@ -65,11 +65,11 @@ function useIsNarrow(){ const [n,setN]=useState(()=>typeof window!=='undefined'&
 
 /* ============================ CSS (ported 1:1) ============================ */
 const CSS = `
-.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#000}
-.ssdesk .scaler{width:1280px;height:860px;transform-origin:center center;flex:none;overflow:hidden;border-radius:14px}
+.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
+.ssdesk .scaler{width:1280px;height:860px;transform-origin:center center;flex:none;overflow:hidden}
 .ssdesk .pages{display:flex;width:3840px;height:860px;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
 .ssdesk .pages.p2{transform:translateX(-1280px)}.ssdesk .pages.p3{transform:translateX(-2560px)}
-.ssdesk .viewport{width:1280px;flex:0 0 1280px;height:860px;background:radial-gradient(1100px 600px at 72% -12%,rgba(var(--amber-rgb),0.10),transparent 60%),radial-gradient(800px 520px at -10% 112%,rgba(0,255,209,0.05),transparent 55%),var(--bg-void);border:1px solid var(--border-hot);border-radius:14px;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 168px minmax(0,1fr) auto auto;padding:14px 20px;row-gap:8px}
+.ssdesk .viewport{width:1280px;flex:0 0 1280px;height:860px;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 168px minmax(0,1fr) auto auto;padding:14px 20px;row-gap:8px}
 .ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto 1fr 1fr auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
@@ -93,7 +93,7 @@ const CSS = `
 
 .ssdesk .band{display:grid;gap:16px;min-height:0}
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
-.ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
+.ssdesk .b-feat{grid-template-columns:260px 300px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 7px;padding-bottom:.35rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
@@ -120,8 +120,8 @@ const CSS = `
 .ssdesk .sv-leg{display:flex;gap:10px;font-family:var(--fd);font-size:.46rem;color:var(--text-2)}.ssdesk .sv-leg b{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:3px}
 
 .ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
-.ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
-.ssdesk .slot-hunt{width:100%;flex:1;min-height:0;position:relative;overflow:hidden}
+.ssdesk .slot-globe{width:100%;aspect-ratio:1/1;max-height:220px;flex:0 1 auto;position:relative;display:flex;align-items:center;justify-content:center;overflow:visible}
+.ssdesk .slot-hunt{width:100%;flex:1;min-height:120px;position:relative;overflow:hidden}
 .ssdesk .slot-globe>*,.ssdesk .slot-hunt>*{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;border-radius:0!important;padding:0!important;margin:0!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
@@ -201,6 +201,15 @@ const CSS = `
 .ssdesk .avg.clk-avg{cursor:pointer;border-radius:5px;padding:1px;transition:background .12s}
 .ssdesk .avg.clk-avg:hover{background:rgba(var(--amber-rgb),.08)}
 .ssdesk .avg.clk-avg.on{background:rgba(var(--amber-rgb),.12);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),.3)}
+/* compact segmented trend control */
+.ssdesk .fp-seg{display:flex;gap:3px;flex:none}
+.ssdesk .fp-seg span{font-family:var(--fd);font-size:.46rem;font-weight:700;letter-spacing:.05em;padding:2px 6px;border-radius:4px;border:1px solid var(--border-hot);color:var(--text-2);cursor:pointer;transition:all .12s}
+.ssdesk .fp-seg span:hover{color:var(--amber)}
+.ssdesk .fp-seg span.on{color:var(--amber);background:rgba(var(--amber-rgb),.12);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),.3)}
+/* health card mount (real HealthStatusCard) */
+.ssdesk .health-col{overflow:hidden}
+.ssdesk .health-mount{min-height:0;overflow:hidden;flex:1}
+.ssdesk .health-mount>*{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important;height:auto!important}
 .ssdesk .sv-rng span{cursor:pointer}
 
 /* expand button on pulse/hunt labels */
@@ -444,11 +453,11 @@ export default function DesktopPages({
             {/* BAND 1 */}
             <div className="band b-charts">
               <div className="panel">
-                <div className="zlabel">Firepower — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}</div>
+                <div className="zlabel zlabel-row">Firepower — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
                 <div className="fp">
                   <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur))}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
                   <div className="fp-chart"><svg viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--amber)" stopOpacity="0.28"/><stop offset="95%" stopColor="var(--amber)" stopOpacity="0.02"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)"/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="2"/></>}</svg></div>
-                  <div className="avgs">{avgW.map(([l,k])=>{const v=windows[k];return <div className={`avg clk-avg${fpTrend===l?' on':''}`} key={k} onClick={()=>setFpTrend(fpTrend===l?'live':l)} title={`Show ${l} trend`}><div className="al">{l}</div><div className="bar"><i style={{width:`${Math.min(100,((v||0)/wmax)*100)}%`}}/></div><div className="av">{Number.isFinite(v)?fmtTH(v):'—'}</div></div>;})}</div>
+                  <div className="avgs">{avgW.map(([l,k])=>{const v=windows[k];return <div className="avg" key={k}><div className="al">{l}</div><div className="bar"><i style={{width:`${Math.min(100,((v||0)/wmax)*100)}%`}}/></div><div className="av">{Number.isFinite(v)?fmtTH(v):'—'}</div></div>;})}</div>
                 </div>
               </div>
               <div className="panel">
@@ -514,9 +523,7 @@ export default function DesktopPages({
                   {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">waiting</span></div>}
                 </div>
               </div>
-              <div className="col clk" onClick={M('System Health')}><div className="ch">System Health</div>
-                <div className="status">{healthItems.map(([l,ok],i)=><div className={`st${ok?'':' bad'}`} key={i}><span className="dot"/>{l}</div>)}</div>
-              </div>
+              <div className="col health-col"><div className="ch">System Health</div><div className="health-mount">{cardComponents['health']||null}</div></div>
             </div>
           </div>
 
@@ -535,10 +542,10 @@ export default function DesktopPages({
               <FleetTable workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">General Info</div>{DL('Pool runtime',poolState?.shareStatsStartedAt?fmtUptime((Date.now()-poolState.shareStatsStartedAt)/1000):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL('Accept',acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">General Info</div>{DL('Pool runtime',pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL('Accept',acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
               <div className="col"><div className="ch">Shares Since Last Block</div>{DL('Accepted',shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL('Rejected',fmtNum(shares.rejectedCount))}{DL('Accept',acc,'cyan')}{DL('Reject',rej)}</div>
-              <div className="col"><div className="ch">Best Share — Trend</div><TsLine data={(Array.isArray(shares.bestHistory)?shares.bestHistory:[]).map(b=>b.best).filter(Number.isFinite)} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
-              <div className="col"><div className="ch">Users + Workers History</div><TsLine data={(Array.isArray(pool.workersHistory)?pool.workersHistory:[]).map(p=>p.workers).filter(Number.isFinite)} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
+              <div className="col"><div className="ch">Best Share — Trend</div><TsLine data={(()=>{const a=Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[]);return a.map(b=>b.best).filter(Number.isFinite);})()} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
+              <div className="col"><div className="ch">Users + Workers History</div><TsLine data={(()=>{const a=Array.isArray(pool.workersHistory)?pool.workersHistory:(Array.isArray(pool.workersHistoryTail)?pool.workersHistoryTail:[]);return a.map(p=>p.workers).filter(Number.isFinite);})()} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
             </div>
           </div>
 
@@ -566,10 +573,11 @@ export default function DesktopPages({
               <div className="panel"><div className="zlabel">Reject Reasons — Trend (24h)</div>
                 <div className="rejtrend">{(()=>{const rr=shares.rejectReasons||{};const ent=Object.entries(rr).sort((a,b)=>b[1]-a[1]).slice(0,3);const tot=ent.reduce((s,[,n])=>s+n,0)||1;const cols=['var(--amber)','var(--cyan)','var(--text-2)'];return ent.length?<>{ent.map(([n,c],i)=>{const p=Math.round((c/tot)*100);return <div className="rejrow" key={n}><span className="rl">{n}</span><span className="rbar"><i style={{width:p+'%',background:cols[i]}}/></span><span className="rv">{p}%</span></div>;})}<div style={{fontSize:'.54rem',color:'var(--text-3)',marginTop:2}}>of {fmtNum(shares.rejectedCount)} rejected shares · last 24h</div></>:<div style={{fontSize:'.6rem',color:'var(--text-3)'}}>No rejected shares recorded.</div>;})()}</div>
               </div>
-              <div className="panel"><div className="zlabel">Mempool Fee</div>
-                <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:8,flex:1}}>
+              <div className="panel"><div className="zlabel">Mempool Conditions</div>
+                <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:10,flex:1}}>
                   <div className="hf-fees" style={{borderTop:0}}><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)',color:'var(--text-2)'}}><span>Mempool</span><span style={{color:'var(--text-1)'}}>{mp.count!=null?fmtNum(mp.count)+' tx':'—'}</span></div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'.62rem',fontFamily:'var(--fm)',color:'var(--text-2)'}}><span>Unconfirmed</span><span style={{color:'var(--text-1)'}}>{mp.count!=null?fmtNum(mp.count)+' tx':'—'}</span></div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'.62rem',fontFamily:'var(--fm)',color:'var(--text-2)'}}><span>Block reward now</span><span style={{color:'var(--amber)'}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4)+' BTC':'—'}</span></div>
                 </div>
               </div>
               <div className="panel"><div className="zlabel">Difficulty Retarget</div>
