@@ -14,11 +14,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 const CSS = `
-.ssdesk{position:relative;width:100%;height:100%;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;
+.ssdesk{position:relative;width:100%;height:calc(100dvh - 34px);min-height:0;display:flex;flex-direction:column;overflow:hidden;
   --hair:rgba(var(--amber-rgb),0.14);
   background:radial-gradient(1100px 600px at 72% -12%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -10% 112%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
 .ssdesk .ssd-head{display:flex;align-items:center;gap:.5rem;flex:0 0 auto;min-height:42px;padding:6px 16px;border-bottom:1px solid var(--hair)}
-.ssdesk .ssd-pick{font-size:16px;filter:drop-shadow(0 0 8px rgba(var(--amber-rgb),0.7))}
+.ssdesk .ssd-pick{width:16px;height:16px;object-fit:contain;display:block;flex:none;filter:drop-shadow(0 0 8px rgba(var(--amber-rgb),0.7))}
 .ssdesk .ssd-wm{font-family:var(--fd);font-size:.92rem;font-weight:700;letter-spacing:.06em;color:var(--amber);text-transform:uppercase}
 .ssdesk .ssd-div{width:1px;height:16px;background:rgba(var(--amber-rgb),0.2)}
 .ssdesk .ssd-status{font-family:var(--fd);font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--green);text-shadow:0 0 6px var(--green);white-space:nowrap}
@@ -115,8 +115,8 @@ function hrShort(h){ if(!h||h<=0)return '—'; const u=['H','K','M','G','T','P',
 function fmtTH(h){ return TH(h).toFixed(1); }
 
 function useNow(){ const [t,setT]=useState(()=>new Date()); useEffect(()=>{const id=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(id);},[]); return t; }
-function useIsNarrow(){ const [n,setN]=useState(()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 767px)').matches);
-  useEffect(()=>{ if(typeof window==='undefined')return; const mq=window.matchMedia('(max-width: 767px)'); const on=e=>setN(e.matches);
+function useIsNarrow(){ const [n,setN]=useState(()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 599px)').matches);
+  useEffect(()=>{ if(typeof window==='undefined')return; const mq=window.matchMedia('(max-width: 599px)'); const on=e=>setN(e.matches);
     mq.addEventListener?mq.addEventListener('change',on):mq.addListener(on); return()=>{mq.removeEventListener?mq.removeEventListener('change',on):mq.removeListener(on);}; },[]); return n; }
 
 // area-chart path from history [{hr}]
@@ -245,7 +245,7 @@ export default function DesktopPages({
       onTouchEnd={e=>{if(startX.current==null)return;const dx=e.changedTouches[0].clientX-startX.current;if(Math.abs(dx)>60)go(dx<0?page+1:page-1);startX.current=null;}}>
 
       <div className="ssd-head">
-        <span className="ssd-pick">⛏</span><span className="ssd-wm">SoloStrike</span><span className="ssd-div"/>
+        <img className="ssd-pick" src="/pickaxe-icon.png" alt="⛏" draggable={false}/><span className="ssd-wm">SoloStrike</span><span className="ssd-div"/>
         <span className="ssd-status">{page===1?'Pool Internals':page===2?'Luck & Analytics':status}</span>
         <span className="ssd-zmq">{page===1?'ckpool':page===2?'stats':`ZMQ ${zmqOk?'●':'○'}`}</span>
         <span className="ssd-pl">{page===0?<>STRIKES <b>{snap.totalStrikes??0}</b></>:<>PAGE <b>{page+1} / 3</b></>}</span>
