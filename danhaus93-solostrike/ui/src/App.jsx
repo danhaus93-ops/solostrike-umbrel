@@ -12153,6 +12153,18 @@ function StrikersModal({ networkStats, onClose }) {
             )}
           </div>
 
+          {/* v1.11.x (ported from Gavin's fixes): honesty disclaimer — Pulse figures
+              are self-reported by opt-in nodes over nostr and are not verified (no
+              outlier filtering), so individual broadcasts can be approximate or
+              inflated. Matches the "approximate, not exact" voice of the Pulse card. */}
+          <div style={{
+            fontFamily:'var(--fm)', fontSize:'0.58rem', lineHeight:1.5,
+            color:'var(--text-3)', marginBottom:'0.9rem',
+            paddingBottom:'0.6rem', borderBottom:'1px solid var(--border)',
+          }}>
+            Hashrate is self-reported, not verified — figures are approximate and an ambient community snapshot, not exact measurements.
+          </div>
+
           <DistributionBar/>
 
           {/* v1.11.2: personal hashrate goal tracker */}
@@ -12289,7 +12301,7 @@ function StrikersModal({ networkStats, onClose }) {
           <div style={{
             borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
             paddingTop:'0.7rem',
-            display:'flex', alignItems:'flex-start', gap:'1rem',
+            display:'flex', alignItems:'flex-end', gap:'1rem',
           }}>
             <div style={{
               flex:1, minWidth:0,
@@ -12301,11 +12313,12 @@ function StrikersModal({ networkStats, onClose }) {
                 Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
               </div>
             </div>
-            {/* v1.12.0: SOLO stamp is now IN-FLOW (was position:absolute, which
-                floated it over the last roster row when the list was long).
-                Sits to the right of the census text, can never overlap. */}
+            {/* v1.12.0-fix2: SOLO stamp pinned to the BOTTOM-RIGHT of the footer
+                block. Was alignSelf:center (sat too high). Now flex-end so it
+                anchors to the bottom edge, flush in the corner. */}
             <div style={{
-              flexShrink:0, alignSelf:'center',
+              flexShrink:0, alignSelf:'flex-end',
+              marginLeft:'auto', marginTop:'auto',
               transform:'rotate(-12deg)',
               fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
               letterSpacing:'0.18em', textTransform:'uppercase',
@@ -14876,6 +14889,19 @@ export default function App() {
             visibleSet={visibleSet}
             persistedOrder={desktopPages}
             onOrderChange={onDesktopPagesChange}
+            poolState={poolState}
+            workers={workers}
+            aliases={aliases}
+            stratumHealth={stratumHealth}
+            displayName={displayName}
+            onSelectWorker={setSelectedWorker}
+            onOpen={(name) => {
+              if (name === 'sharestats') setShowShareStats(true);
+              else if (name === 'pulse') setShowStrikers(true);
+              else if (name === 'hunt') setSimulatorOpen(true);
+              else if (name === 'health') setHealthDetailSnapshot(stratumHealth || {});
+              // 'stratum' and 'jumpers' have no dedicated modal yet — no-op
+            }}
           />
         )}
       </main>
