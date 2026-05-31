@@ -36,6 +36,31 @@ const cardTitle = {
 const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.45rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const valMono = { fontFamily:'var(--fm)', fontSize:'0.8rem', color:'var(--text-1)', fontWeight:600 };
+// v1.12.0-fix: card chrome matching App.jsx's `card` const. The analytics
+// components previously returned bare <div>s with no panel background, so on
+// the mobile carousel (where the .ss-card wrapper provides no fill) the
+// dashboard background bled through. Wrapping each card's content in cardShell
+// gives them the same amber-edged panel as every other card, on both mobile
+// and desktop.
+const cardShell = {
+  background:
+    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
+    'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
+  border:'1px solid rgba(var(--amber-rgb),0.22)',
+  borderRadius:'16px',
+  padding:'1.3rem',
+  boxShadow:
+    'inset 0 1px 0 rgba(var(--amber-rgb),0.18), inset 0 0 0 1px rgba(0,0,0,0.4), ' +
+    '0 8px 24px rgba(0,0,0,0.6), 0 0 32px rgba(var(--amber-rgb),0.06)',
+  minWidth:0, maxWidth:'100%', overflow:'hidden',
+  display:'flex', flexDirection:'column', height:'100%', boxSizing:'border-box',
+};
+// Wrap helper — applies the shell unless `bare` (used by DesktopPages which
+// supplies its own wrapper).
+function Shell({ children }) {
+  return <div style={cardShell} className="fade-in ss-card-chrome">{children}</div>;
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 function resolveVar(varExpr) {
@@ -141,6 +166,7 @@ export function PoolHashrateWindows({ pool, themeKey }) {
     ['7D', w.hr7d, pct.hr7d],
   ];
   return (
+      <Shell>
     <div>
       <div style={cardTitle}>▸ Hashrate Windows — % of Pool Peak</div>
       <div style={{ display:'flex', flexDirection:'column', gap:'0.3rem' }}>
@@ -157,7 +183,8 @@ export function PoolHashrateWindows({ pool, themeKey }) {
         ))}
       </div>
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── SPS Windows (Page 2) ────────────────────────────────────────────────────
@@ -167,6 +194,7 @@ export function SpsWindows({ pool }) {
   const max = Math.max(...rows.map(r => r[1]||0), 1);
   const fmtK = (v)=> v >= 1000 ? (v/1000).toFixed(2)+'k sh/s' : (v||0).toFixed(1)+' sh/s';
   return (
+      <Shell>
     <div>
       <div style={cardTitle}>▸ Shares / Second — Windows</div>
       <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem' }}>
@@ -181,7 +209,8 @@ export function SpsWindows({ pool }) {
         ))}
       </div>
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── Connection States donut (Page 2) ────────────────────────────────────────
@@ -202,6 +231,7 @@ export function ConnectionStates({ pool }) {
     return `${c} ${start}% ${end}%`;
   }).join(', ');
   return (
+      <Shell>
     <div>
       <div style={cardTitle}>▸ Connection States</div>
       <div style={{ display:'flex', alignItems:'center', gap:'1.2rem' }}>
@@ -225,7 +255,8 @@ export function ConnectionStates({ pool }) {
         </div>
       </div>
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── Block Effort / Luck (Page 3) ────────────────────────────────────────────
@@ -247,6 +278,7 @@ export function BlockEffortPanel({ snapshots, sharesThisRound, networkDifficulty
   bars.push({ lab: 'NOW', pct: openPct });
 
   return (
+      <Shell>
     <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
       <div style={cardTitle}>▸ Block Effort / Luck <span style={{ color:'var(--text-3)', fontSize:'0.85em', letterSpacing:0, textTransform:'none' }}>(shares-to-find vs expected · &lt;100% = lucky)</span></div>
       <div style={{ flex:1, display:'flex', alignItems:'flex-end', gap:6, minHeight:90, paddingTop:8 }}>
@@ -268,7 +300,8 @@ export function BlockEffortPanel({ snapshots, sharesThisRound, networkDifficulty
         </div>
       )}
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── Hashrate Stability (Page 3) ─────────────────────────────────────────────
@@ -286,6 +319,7 @@ export function HashrateStability({ hashrate, themeKey }) {
     return { mean, std, consistency, min, max, dips };
   }, [pts]);
   return (
+      <Shell>
     <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
       <div style={cardTitle}>▸ Hashrate Stability</div>
       <div style={{ display:'flex', alignItems:'baseline', gap:10, marginBottom:8 }}>
@@ -303,7 +337,8 @@ export function HashrateStability({ hashrate, themeKey }) {
         </div>
       )}
     </div>
-  );
+      </Shell>
+    );
 }
 function Stat({ k, v, color, border }) {
   return (
@@ -321,6 +356,7 @@ export function RejectTrend({ shares }) {
   const total = entries.reduce((a,[,n])=>a+n,0) || 1;
   const colors = ['var(--amber)','var(--cyan)','var(--text-2)','var(--red)'];
   return (
+      <Shell>
     <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
       <div style={cardTitle}>▸ Reject Reasons</div>
       {entries.length === 0 ? (
@@ -342,7 +378,8 @@ export function RejectTrend({ shares }) {
         </div>
       )}
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── Best Share Trend (Page 2) ───────────────────────────────────────────────
@@ -353,11 +390,13 @@ export function BestShareTrend({ snapshots, bestHistory, themeKey }) {
     : (Array.isArray(bestHistory) ? bestHistory : []);
   const pts = series.map(p => (p.best || 0) / 1e15); // → P (peta) units
   return (
+      <Shell>
     <div>
       <div style={cardTitle}>▸ Best Share — Trend</div>
       <TrendChart points={pts} colorVar="var(--chart1)" fmt={(v)=>v.toFixed(2)} unit="P" height={62} themeKey={themeKey} />
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── Fleet Efficiency (Page 3) ───────────────────────────────────────────────
@@ -375,6 +414,7 @@ export function FleetEfficiency({ workers }) {
   const best = rigs.length ? Math.min(...rigs.map(r=>r.jth)) : null;
   const worst = rigs.length ? Math.max(...rigs.map(r=>r.jth)) : null;
   return (
+      <Shell>
     <div>
       <div style={cardTitle}>▸ Fleet Efficiency</div>
       {rigs.length === 0 ? (
@@ -390,7 +430,8 @@ export function FleetEfficiency({ workers }) {
         </>
       )}
     </div>
-  );
+      </Shell>
+    );
 }
 
 // ── Pool Uptime / Reliability (Page 3) ──────────────────────────────────────
@@ -399,6 +440,7 @@ export function PoolReliability({ pool, workers }) {
   const total = (Array.isArray(workers) ? workers : []).length || 1;
   const pct = ((online/total)*100).toFixed(1);
   return (
+      <Shell>
     <div>
       <div style={cardTitle}>▸ Reliability</div>
       <div style={statRow}><span style={label}>Pool uptime</span><span style={valMono}>{fmtDuration(pool?.runtimeSec)}</span></div>
@@ -406,5 +448,6 @@ export function PoolReliability({ pool, workers }) {
       <div style={statRow}><span style={label}>Online %</span><span style={valMono}>{pct}%</span></div>
       <div style={statRow}><span style={label}>Idle / Disc.</span><span style={valMono}>{pool?.idle||0} / {pool?.disconnected||0}</span></div>
     </div>
-  );
+      </Shell>
+    );
 }
