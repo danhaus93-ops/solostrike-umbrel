@@ -75,6 +75,8 @@ function startStatusPoller(state, broadcast, logDir) {
   // this in-memory buffer feeds the live Best Share — Trend chart.
   const BEST_INTERVAL_MS = 60 * 1000;
   let lastBestPush = 0;
+  const WORKERS_INTERVAL_MS = 60 * 1000;
+  let lastWorkersPush = 0;
 
   // v1.11.8: decouple poll cadence from broadcast cadence.
   // Poll ckpool's status files every 2s for fresh internal state, but
@@ -94,6 +96,7 @@ function startStatusPoller(state, broadcast, logDir) {
   // and the UI never read undefined.
   if (!state.pool) state.pool = {};
   if (!Array.isArray(state.shares.bestHistory)) state.shares.bestHistory = [];
+  if (!Array.isArray(state.pool.workersHistory)) state.pool.workersHistory = [];
 
   function cleanupStaleWorkers() {
     const now = Date.now();
@@ -225,6 +228,17 @@ function startStatusPoller(state, broadcast, logDir) {
             state.pool.runtimeSec   = parseRuntimeSeconds(summary);
             state.pool.lastUpdate   = summary.lastupdate || summary.lastUpdate || Math.floor(now / 1000);
             state.pool.lastPolledAt = now;
+            // v1.12.x: rolling workers+users history for the Page-2 trend.
+            // {ts, workers, users}. One sample/min, 24h cap — mirrors bestHistory.
+            (() => {
+              if (!Array.isArray(state.pool.workersHistory)) state.pool.workersHistory = [];
+              if (now - lastWorkersPush < WORKERS_INTERVAL_MS) return;
+              state.pool.workersHistory.push({ ts: now, workers: state.pool.workers || 0, users: state.pool.users || 0 });
+              if (state.pool.workersHistory.length > HISTORY_MAX_POINTS) {
+                state.pool.workersHistory.splice(0, state.pool.workersHistory.length - HISTORY_MAX_POINTS);
+              }
+              lastWorkersPush = now;
+            })();
             // ───────────────────────────────────────────────────────────────
 
 // v1.5.11: share-watcher owns acceptedCount/rejectedCount/stale fields

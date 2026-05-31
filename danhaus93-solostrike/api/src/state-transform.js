@@ -147,6 +147,7 @@ function transformState(state, opts) {
     //   sharelogCursors = 21KB (server-only bookkeeping, UI never reads)
     //   workers         = 57KB (statusHistory at 3.7KB × N workers)
     shares: stateShares,
+    pool: statePool,
     sharelogCursors: _stateSharelogCursors,  // dropped entirely from output
     ...rest
   } = state;
@@ -167,6 +168,10 @@ function transformState(state, opts) {
   }
   return {
     ...rest,
+    pool: statePool ? (compact ? (() => {
+      const { workersHistory, ...rest_p } = statePool;
+      return { ...rest_p, workersHistoryTail: Array.isArray(workersHistory) ? workersHistory.slice(-10) : [] };
+    })() : statePool) : undefined,
     // v1.10.1 SECURITY: expose only `hasAddress: boolean` (not the address
     // itself). UI's onboarding-detection check (`if (!poolState.payoutAddress)`)
     // is updated to use this boolean. Components needing the actual address
