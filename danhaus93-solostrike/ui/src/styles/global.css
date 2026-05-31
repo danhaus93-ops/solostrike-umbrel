@@ -392,6 +392,12 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 @media (min-width:640px){.ss-grid{gap:0.875rem;grid-template-columns:repeat(2,1fr)}}
 @media (min-width:1024px){.ss-grid{grid-template-columns:repeat(4,1fr)}}
 
+/* v1.12.x: Desktop Card Mode — old cards in a multi-column grid filling width */
+.ss-desktop-card-grid{display:grid;gap:0.875rem;grid-template-columns:repeat(2,1fr);grid-auto-rows:min-content;align-content:start;width:100%;flex:1;min-height:0;overflow-y:auto;padding:0.25rem;box-sizing:border-box}
+@media (min-width:1200px){.ss-desktop-card-grid{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:1700px){.ss-desktop-card-grid{grid-template-columns:repeat(4,1fr)}}
+.ss-desktop-card-grid > *{min-width:0}
+
 /* v1.11.12: vertical fit on desktop — cap card height at viewport-minus-chrome
  * so dashboard fits in one screen without body scroll. Cards with internal
  * scroll regions (The Crew's worker list with its flex:1 + overflowY:auto +
