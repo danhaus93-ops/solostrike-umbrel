@@ -27,6 +27,15 @@ function fmtTH(h){ return TH(h).toFixed(1); }
 function fmtUptime(s){ if(s==null)return '—'; if(s<60)return Math.floor(s)+'s'; if(s<3600)return Math.floor(s/60)+'m'; if(s<86400)return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; return Math.floor(s/86400)+'d '+Math.floor((s%86400)/3600)+'h'; }
 function fmtNum(n){ return n==null?'—':Number(n).toLocaleString(); }
 const avgKeyFor = lab => ({'1M':'hr1m','5M':'hr5m','15M':'hr15m','1H':'hr1h','6H':'hr6h','24H':'hr1d','7D':'hr7d'}[lab]||'hr1h');
+// v1.12.x: stable color per mining pool for the Ledger chips
+function poolColor(name){
+  const m={foundry:'#f5a623',antpool:'#ff5252',viabtc:'#3da6ff',f2pool:'#00ffd1',sbi:'#b06bff',mara:'#39ff6a',spiderpool:'#ff8a3d',luxor:'#ffe14d',binance:'#f3ba2f',braiins:'#7cc4ff',slush:'#7cc4ff',ocean:'#3da6ff'};
+  const n=(name||'').toLowerCase();
+  const key=Object.keys(m).find(k=>n.includes(k));
+  if(key)return m[key];
+  let h=0; for(let i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))>>>0;
+  return `hsl(${h%360},65%,60%)`;
+}
 
 /* ---------- area-chart path (firepower / tsLine style) ---------- */
 function linePath(vals, W=400, H=70, pad=0){
@@ -66,11 +75,29 @@ function useIsNarrow(){ const [n,setN]=useState(()=>typeof window!=='undefined'&
 
 /* ============================ CSS (ported 1:1) ============================ */
 const CSS = `
-.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
-.ssdesk .scaler{width:100%;height:100%;overflow:hidden}
+.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
+.ssdesk .scaler{width:100%;flex:1;min-height:0;overflow:hidden}
 .ssdesk .pages{display:flex;width:100%;height:100%;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
-.ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}
-.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 180px minmax(0,1fr) auto auto;padding:14px 20px;row-gap:10px}
+.ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}.ssdesk .pages.p4{transform:translateX(-300%)}
+.ssdesk .viewport.vitals{grid-template-rows:auto minmax(0,1.25fr) minmax(0,1fr);row-gap:16px}
+.ssdesk .viewport.vitals .b-data{align-self:stretch}
+.ssdesk .viewport.vitals .b-data .col{display:flex;flex-direction:column}
+.ssdesk .viewport.vitals .b-data .col .ch{margin-bottom:10px}
+.ssdesk .viewport.vitals .b-data .col .dl{flex:1 1 0;align-items:center;font-size:.74rem}
+.ssdesk .viewport.vitals .band:last-of-type{align-self:stretch}
+.ssdesk .viewport.vitals .band:last-of-type .col{display:flex;flex-direction:column}
+.ssdesk .viewport.vitals .band:last-of-type .ch{margin-bottom:10px}
+.ssdesk .viewport.vitals .band:last-of-type .status{margin-top:auto;font-size:.66rem;gap:10px}
+.ssdesk .ss-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:5px 18px;border-top:1px solid var(--border);background:rgba(6,7,8,.92);backdrop-filter:blur(10px);font-family:var(--fd);font-size:.54rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);white-space:nowrap;overflow:hidden}
+.ssdesk .ss-foot .ff-brand{color:var(--text-3)}
+.ssdesk .ss-foot .ff-gh{display:inline-flex;align-items:center;color:var(--text-2);text-decoration:none;padding:2px 6px;flex:none}
+.ssdesk .ss-foot .ff-gh:hover{color:var(--amber)}
+.ssdesk .ss-foot .ff-r{display:flex;align-items:center;gap:6px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis}
+.ssdesk .ss-foot .port{color:var(--amber);font-weight:700;cursor:pointer}
+.ssdesk .ss-foot .port:hover{text-decoration:underline}
+.ssdesk .ss-foot .tls{padding:1px 5px;border-radius:3px;font-size:.5rem;letter-spacing:.14em;color:var(--cyan);border:1px solid rgba(0,255,209,0.45);background:rgba(0,255,209,0.05)}
+.ssdesk .ss-foot b{color:var(--text-1);font-weight:700}
+.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 180px minmax(0,1fr) auto auto;padding:14px 10px;row-gap:10px}
 .ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
@@ -118,11 +145,19 @@ const CSS = `
 .ssdesk .sv-rng{display:flex;gap:4px}.ssdesk .sv-rng span{font-family:var(--fd);font-size:.48rem;font-weight:700;padding:2px 6px;border-radius:5px;border:1px solid var(--border-hot);color:var(--text-2)}.ssdesk .sv-rng span.on{color:var(--amber);background:rgba(var(--amber-rgb),.08)}
 .ssdesk .sv-hist{flex:1;min-height:40px;display:flex;align-items:flex-end;gap:2px}.ssdesk .sv-hist i{flex:1;border-radius:1px 1px 0 0;background:var(--green)}.ssdesk .sv-hist i.out{background:var(--amber)}.ssdesk .sv-hist i.down{background:var(--red)}
 .ssdesk .sv-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-family:var(--fd);font-size:.6rem;letter-spacing:.1em}
-.ssdesk .sv-leg{display:flex;gap:10px;font-family:var(--fd);font-size:.46rem;color:var(--text-2)}.ssdesk .sv-leg b{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:3px}
+.ssdesk .sv-leg{display:flex;align-items:center;gap:10px;font-family:var(--fd);font-size:.46rem;color:var(--text-2);flex-wrap:wrap}.ssdesk .sv-leg b{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:3px}
+.ssdesk .sv-median{margin-left:auto;color:var(--text-2);white-space:nowrap}
+.ssdesk .sv-samples{font-family:var(--fd);font-size:.5rem;font-weight:600;letter-spacing:.06em;color:var(--text-2);text-transform:uppercase}
 
 .ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
 .ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .ssdesk .slot-hunt{width:100%;flex:1;min-height:0;position:relative;overflow:hidden}
+/* mounted Pulse/Hunt panels render their own "▸ Title" as first child — hide it
+   (our zlabel above already provides a translated, deduped title). */
+.ssdesk .slot-globe > * > *:first-child,
+.ssdesk .slot-hunt  > * > *:first-child{display:none!important}
+/* let the panel body fill the freed space */
+.ssdesk .slot-globe > *,.ssdesk .slot-hunt > *{height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important}
 .ssdesk .slot-globe>*,.ssdesk .slot-hunt>*{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;border-radius:0!important;padding:0!important;margin:0!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
@@ -155,6 +190,17 @@ const CSS = `
 .ssdesk .st .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);flex:none}.ssdesk .st.warn .dot{background:var(--amber);box-shadow:0 0 6px var(--amber)}.ssdesk .st.bad .dot{background:var(--red);box-shadow:0 0 6px var(--red)}
 .ssdesk .barrow{display:flex;align-items:center;gap:5px;padding:2px 0;font-size:.56rem}.ssdesk .barrow .nm{color:var(--text-1);font-family:var(--fd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}.ssdesk .barrow .ct{color:var(--amber);font-family:var(--fd);font-weight:700;flex-shrink:0}
 .ssdesk .solo{font-size:.42rem;color:var(--amber);border:1px solid var(--amber);padding:0 3px;margin-left:4px}
+/* v1.12.x Vitals visuals */
+.ssdesk .dbar{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:.56rem}
+.ssdesk .dbar .dnm{color:var(--text-1);font-family:var(--fd);flex:0 0 auto;max-width:54px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ssdesk .dbar .dtrack{flex:1;height:6px;background:var(--bg-deep);border-radius:3px;overflow:hidden;min-width:0}
+.ssdesk .dbar .dtrack i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,rgba(0,255,209,.3),var(--cyan))}
+.ssdesk .dbar .dtrack i.hot{background:linear-gradient(90deg,rgba(var(--amber-rgb),.4),var(--amber));box-shadow:0 0 6px rgba(var(--amber-rgb),.5)}
+.ssdesk .dbar .dval{color:var(--text-2);font-family:var(--fm);font-size:.52rem;flex:none}
+.ssdesk .accbar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:9px;background:var(--bg-deep)}
+.ssdesk .accbar i.acc{background:linear-gradient(90deg,rgba(57,255,106,.5),var(--green))}
+.ssdesk .accbar i.rej{background:var(--red)}
+.ssdesk .lchip{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:5px;vertical-align:middle;flex:none}
 
 .ssdesk .gauges{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;flex:1;align-content:center}
 .ssdesk .gauge{display:flex;flex-direction:column;align-items:center;gap:3px}.ssdesk .gauge svg{width:100%;max-width:84px}
@@ -194,7 +240,7 @@ const CSS = `
 
 .ssdesk .nav{position:absolute;top:50%;transform:translateY(-50%);z-index:55;width:30px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:none;border:none;color:var(--amber);font-size:30px;line-height:1;opacity:.35;transition:opacity .18s;user-select:none;text-shadow:0 0 12px rgba(var(--amber-rgb),.55)}
 .ssdesk .nav:hover{opacity:.95}.ssdesk .nav.l{left:10px}.ssdesk .nav.r{right:10px}.ssdesk .nav.hidden{opacity:0;pointer-events:none}
-.ssdesk .pagedots{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:55;display:flex;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(11,13,15,.55);backdrop-filter:blur(4px);opacity:1;transition:opacity .6s ease}
+.ssdesk .pagedots{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);z-index:55;display:flex;gap:8px;padding:6px 10px;border-radius:12px;background:rgba(11,13,15,.55);backdrop-filter:blur(4px);opacity:1;transition:opacity .6s ease}
 .ssdesk .pagedots.hide{opacity:0;pointer-events:none}
 .ssdesk .pagedots i{width:8px;height:8px;border-radius:50%;background:rgba(var(--amber-rgb),.3);cursor:pointer}.ssdesk .pagedots i.on{width:20px;border-radius:4px;background:var(--amber);box-shadow:0 0 8px var(--amber)}
 
@@ -229,8 +275,8 @@ const CSS = `
 
 /* ---------- AppHead (real ticker in marquee slot) ---------- */
 function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
-  const statusTxt = page===1?'Pool Internals':page===2?'Luck & Analytics':status;
-  const zmqTxt = page===1?'ckpool':page===2?'stats':`ZMQ ${zmqOk?'●':'○'}`;
+  const statusTxt = page===1?_tt('Vitals'):page===2?_tt('Pool Internals'):page===3?_tt('Luck & Analytics'):_tt(status);
+  const zmqTxt = page===1?'node':page===2?'ckpool':page===3?'stats':`ZMQ ${zmqOk?'●':'○'}`;
   return (
     <div className="apphead">
       <div className="ah-left">
@@ -238,11 +284,11 @@ function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
         <span className="ah-wordmark">SoloStrike</span><span className="ah-div"/>
         <span className="ah-status">{statusTxt}</span>
         <span className="ah-zmq">{zmqTxt}</span>
-        <span className="ah-strikes">{page===0?<>STRIKES <b>{strikes}</b></>:<>PAGE <b>{page+1} / 3</b></>}</span>
+        <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 4</b></>}</span>
       </div>
       <div className="ah-mq">{ticker}</div>
       <div className="ah-right">
-        <div className="ah-clock"><span className="lv">LIVE</span><span className="tm">{now.toLocaleTimeString('en-US',{hour12:false})}</span></div>
+        <div className="ah-clock"><span className="lv">{_tt('LIVE')}</span><span className="tm">{now.toLocaleTimeString('en-US',{hour12:false})}</span></div>
         <button className="ah-gear" title="Settings" onClick={onOpenSettings}>⚙</button>
       </div>
     </div>
@@ -364,9 +410,9 @@ function Donut({ pool }){
         <div className="donut-hole"><span className="dn-tot">{real}</span><span className="dn-lbl">workers</span></div>
       </div>
       <div className="donutlegend">
-        <div className="dlg"><span className="sw" style={{background:'var(--green)'}}/>Active <b>{active}</b></div>
-        <div className="dlg"><span className="sw" style={{background:'var(--amber)'}}/>Idle <b>{idle}</b></div>
-        <div className="dlg"><span className="sw" style={{background:'var(--red)'}}/>Disconnected <b>{disc}</b></div>
+        <div className="dlg"><span className="sw" style={{background:'var(--green)'}}/>{_tt('Active')} <b>{active}</b></div>
+        <div className="dlg"><span className="sw" style={{background:'var(--amber)'}}/>{_tt('Idle')} <b>{idle}</b></div>
+        <div className="dlg"><span className="sw" style={{background:'var(--red)'}}/>{_tt('Disconnected')} <b>{disc}</b></div>
       </div>
     </div>
   );
@@ -392,7 +438,7 @@ export default function DesktopPages({
   const [fsCard,setFsCard]=useState(null); // 'pulse' | 'hunt' | null — fullscreen overlay
   const [svRange,setSvRange]=useState('1H'); // strike-velocity window
   const [fpTrend,setFpTrend]=useState('live'); // firepower trend window
-  const NP=3;
+  const NP=4;
   const startX=useRef(null);
   const fitRef=useRef(null);
   const scalerRef=useRef(null);
@@ -418,16 +464,32 @@ export default function DesktopPages({
   const liveW=(workers||[]).filter(w=>(w.hashrate||0)>0 && w.status!=='offline').length, totW=(workers||[]).length;
   const zmqOk=zmq&&(zmq.connected||zmq.synced||zmq===true);
 
-  // firepower chart + avgs
-  const hrHist=(Array.isArray(hr.history)?hr.history:[]).map(h=>h.hr).filter(Number.isFinite);
+  // firepower chart + avgs — window the history by the selected trend so the
+  // graph (not just the headline) redraws when the LIVE/1H/24H/7D pills change.
+  const hrHistFull=(Array.isArray(hr.history)?hr.history:[]).filter(h=>h&&Number.isFinite(h.hr));
+  const FP_WIN_MS={'live':null,'1H':3600e3,'24H':24*3600e3,'7D':7*24*3600e3};
+  const fpCut=FP_WIN_MS[fpTrend];
+  const hrHistW=(fpCut==null)?hrHistFull:(()=>{const now=Date.now();const w=hrHistFull.filter(h=>h.ts&&(now-h.ts)<=fpCut);return w.length>=2?w:hrHistFull;})();
+  const hrHist=hrHistW.map(h=>h.hr).filter(Number.isFinite);
   const fp=linePath(hrHist);
   const avgW=[['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr1d'],['7D','hr7d']];
   const wmax=Math.max(cur,...Object.values(windows).filter(Number.isFinite),1);
 
-  // strike velocity
+  // strike velocity — window spsHistory by the selected range pill (1H/6H/24H).
   const sps=shares.sps1m||0;
-  const spsHist=(Array.isArray(shares.spsHistory)?shares.spsHistory:[]).slice(-64);
+  const spsFull=(Array.isArray(shares.spsHistory)?shares.spsHistory:[]).filter(p=>p&&Number.isFinite(p.sps));
+  const SV_WIN_MS={'1H':3600e3,'6H':6*3600e3,'24H':24*3600e3};
+  const svCut=SV_WIN_MS[svRange]||3600e3;
+  const spsWindowed=(()=>{const now=Date.now();const w=spsFull.filter(p=>p.ts&&(now-p.ts)<=svCut);return w.length?w:spsFull;})();
+  const spsHist=spsWindowed.slice(-96);
   const spsMax=Math.max(...spsHist.map(p=>p.sps||0),1);
+  // v1.12.x: match production mobile SV readouts — median (for coloring +
+  // footer), per-bar anomaly color, and "each bar = N min".
+  const svSorted=spsHist.map(p=>p.sps||0).filter(v=>v>0).sort((a,b)=>a-b);
+  const svMedian=svSorted.length?svSorted[Math.floor(svSorted.length/2)]:(sps||0);
+  const svBarMin={'1H':1,'6H':4,'24H':11}[svRange]||1;
+  const svColor=v=>{ if(v<=0)return 'var(--red)'; if(svMedian<=0)return 'var(--amber)'; if(v>svMedian*1.5||v<svMedian*0.5)return 'var(--amber)'; return 'var(--green)'; };
+  const svFmt=v=>v>0?(v>=1?v.toFixed(1)+'/s':(v*60).toFixed(1)+'/m'):'—';
 
   // share stats
   const _ta=shares.acceptedCount||0, _tr=shares.rejectedCount||0, _ts=shares.stale||0, _gt=_ta+_tr+_ts;
@@ -449,7 +511,7 @@ export default function DesktopPages({
       onTouchStart={e=>{startX.current=e.touches[0].clientX;pokeDots();}}
       onTouchEnd={e=>{if(startX.current==null)return;const dx=e.changedTouches[0].clientX-startX.current;if(Math.abs(dx)>60)go(dx<0?page+1:page-1);startX.current=null;}}>
       <div className="scaler" ref={scalerRef}>
-        <div className={`pages${page===1?' p2':page===2?' p3':''}`}>
+        <div className={`pages${page===1?' p2':page===2?' p3':page===3?' p4':''}`}>
 
           {/* ============ PAGE 1 — LIVE ============ */}
           <div className="viewport">
@@ -462,17 +524,16 @@ export default function DesktopPages({
                 <div className="fp">
                   <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur))}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
                   <div className="fp-chart"><svg viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--amber)" stopOpacity="0.28"/><stop offset="95%" stopColor="var(--amber)" stopOpacity="0.02"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)"/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="2"/></>}</svg></div>
-                  <div className="avgs">{avgW.map(([l,k])=>{const v=windows[k];return <div className="avg" key={k}><div className="al">{l}</div><div className="bar"><i style={{width:`${Math.min(100,((v||0)/wmax)*100)}%`}}/></div><div className="av">{Number.isFinite(v)?fmtTH(v):'—'}</div></div>;})}</div>
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel">{tt('Strike Velocity')}</div>
+                <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} samples</span>}</div>
                 <div className="sv">
                   <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
                   {spsHist.length===0
                     ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
-                    : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`}}/>)}</div>}
-                  <div className="sv-leg"><span><b style={{background:'var(--green)'}}/>normal</span><span><b style={{background:'var(--amber)'}}/>spike/dip</span><span><b style={{background:'var(--red)'}}/>downtime</span></div>
+                    : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
+                  <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>normal</span><span><b style={{background:'var(--amber)'}}/>anomaly</span><span><b style={{background:'var(--red)'}}/>offline</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
                 </div>
               </div>
             </div>
@@ -480,13 +541,13 @@ export default function DesktopPages({
             {/* BAND 2 — Pulse (REAL globe) · Hunt (REAL) · Crew */}
             <div className="band b-feat">
               <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Solostrike Pulse')}<button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
+                <div className="zlabel zlabel-row">{tt('Pulse')}<button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
                   <div className="pulse-read">
-                    <div className="pr"><div className="prl">Strikers</div><div className="prv">{ns.peers?.length??ns.strikers??'—'}</div></div>
-                    <div className="pr"><div className="prl">Net Pulse</div><div className="prv">{ns.networkHashrate?hrShort(ns.networkHashrate):(net.hashrate?hrShort(net.hashrate):'—')}</div></div>
-                    <div className="pr"><div className="prl">Your Pin</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolState?.poolPin?'PINNED':'—'}</div></div>
+                    <div className="pr"><div className="prl">{_tt('Strikers')}</div><div className="prv">{ns.peers?.length??ns.strikers??'—'}</div></div>
+                    <div className="pr"><div className="prl">{_tt('Net Pulse')}</div><div className="prv">{ns.networkHashrate?hrShort(ns.networkHashrate):(net.hashrate?hrShort(net.hashrate):'—')}</div></div>
+                    <div className="pr"><div className="prl">{_tt('Your Pin')}</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolState?.poolPin?'PINNED':'—'}</div></div>
                   </div>
                 </div>
               </div>
@@ -495,8 +556,8 @@ export default function DesktopPages({
                 <div className="body">
                   <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
                   <div className="hunt-face">
-                    <div className="hf-reward"><span className="lbl">Block Reward</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
-                    <div className="hf-sub">subsidy <b>{reward.subsidy??'—'}</b> · fees <span className="fee">{reward.feesBtc!=null?'+'+reward.feesBtc.toFixed(4):(reward.totalBtc!=null&&reward.subsidy!=null?'+'+(reward.totalBtc-reward.subsidy).toFixed(4):'—')}</span></div>
+                    <div className="hf-reward"><span className="lbl">{_tt('Block Reward')}</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
+                    <div className="hf-sub">{_tt('subsidy')} <b>{reward.subsidy??'—'}</b> · {_tt('fees')} <span className="fee">{reward.feesBtc!=null?'+'+reward.feesBtc.toFixed(4):(reward.totalBtc!=null&&reward.subsidy!=null?'+'+(reward.totalBtc-reward.subsidy).toFixed(4):'—')}</span></div>
                     <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
                     <div className="hf-odds"><div className="o"><div className="ol">Yearly</div><div className="ov">{odds.yearly!=null?(odds.yearly*100).toFixed(2)+'%':'—'}</div></div><div className="o"><div className="ol">Daily</div><div className="ov">{odds.daily!=null?(odds.daily*100).toFixed(3)+'%':'—'}</div></div><div className="o"><div className="ol">Sats/d</div><div className="ov">{odds.satsPerDay??'—'}</div></div></div>
                   </div>
@@ -507,24 +568,29 @@ export default function DesktopPages({
                 <Crew workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
               </div>
             </div>
+          </div>
+
+          {/* ============ PAGE 2 — VITALS ============ */}
+          <div className="viewport vitals">
+            <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
             {/* BAND 3 — 8 data cols */}
             <div className="band b-data">
               <div className="col"><div className="ch">{tt('Bitcoin Network')}</div>{DL('Difficulty',net.difficulty?hrShort(net.difficulty):'—')}{DL('Hashrate',net.hashrate?hrShort(net.hashrate):'—')}{DL('Mempool',mp.count!=null?fmtNum(mp.count):'—')}{DL('Retarget',retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(1)+'%':'—',retarget.difficultyChange>=0?'red':'green')}</div>
-              <div className="col"><div className="ch">{tt('Bitcoin Node')}</div>{DL('Status',poolState?.nodeInfo?.connected?'LIVE':'—',poolState?.nodeInfo?.connected?'green':'')}{DL('Height',net.height!=null?fmtNum(net.height):'—')}{DL('Peers',poolState?.nodeInfo?.peers!=null?fmtNum(poolState.nodeInfo.peers):'—')}{DL('ZMQ',zmqOk?'● sync':'○',zmqOk?'green':'')}</div>
+              <div className="col"><div className="ch">{tt('Bitcoin Node')}</div>{DL(_tt('Status'),poolState?.nodeInfo?.connected?'LIVE':'—',poolState?.nodeInfo?.connected?'green':'')}{DL(_tt('Height'),net.height!=null?fmtNum(net.height):'—')}{DL(_tt('Peers'),poolState?.nodeInfo?.peers!=null?fmtNum(poolState.nodeInfo.peers):'—')}{DL('ZMQ',zmqOk?'● sync':'○',zmqOk?'green':'')}</div>
               <div className="col"><div className="ch">{tt('Stratum')}</div>{DL('TCP',':3333','cyan')}{DL('Alt',':3334')}{DL('TLS',':4333','cyan')}{DL('Workers',`${liveW}/${totW}`)}</div>
-              <div className="col"><div className="ch">{tt('Strikes')}</div>{DL('Closest',cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL('Workers',`${liveW}/${totW}`)}{DL('Solo 30d',snap.soloBlocks30d??'—','amber')}{DL('Yours',snap.totalStrikes??0,'amber')}</div>
-              <div className="col"><div className="ch">{tt('Near Strikes')}</div>{cc.length?cc.slice(0,4).map((c,i)=>{const netDiff=net.difficulty>0?net.difficulty:null;const pct=netDiff?(c.diff/netDiff)*100:null;return DL('#'+(i+1)+' '+((displayName?displayName(c.workerName,aliases):c.workerName)||'').slice(0,6),pct!=null?pct.toFixed(4)+'%':hrShort(c.diff),i===0?'cyan':'');}):<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No near-misses yet.</div>}</div>
-              <div className="col"><div className="ch">{tt('Top Miners')}</div>{topMiners.length?<>{topMiners.map((w,i)=>DL((i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,7),hrShort(w.bestshare),i===0?'amber':'cyan'))}{DL('Pool best',poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>:<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No shares submitted yet.</div>}</div>
-              <div className="col"><div className="ch">{tt('Claim Jumpers')}</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];return tf.length?<>{tf.slice(0,4).map((f,i)=><div className="barrow" key={i}><span className="nm">{f.name||'—'}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="ct">{f.count??0}</span></div>)}</>:<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>Awaiting block data…</div>;})()}</div>
-              <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL('Total',shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL('Best',poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL('Accept',acc,'green')}{DL('Reject',rej)}</div>
+              <div className="col"><div className="ch">{tt('Strikes')}</div>{DL(_tt('Closest'),cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL('Workers',`${liveW}/${totW}`)}{DL('Solo 30d',snap.soloBlocks30d??'—','amber')}{DL(_tt('Yours'),snap.totalStrikes??0,'amber')}</div>
+              <div className="col"><div className="ch">{tt('Near Strikes')}</div>{cc.length?(()=>{const netDiff=net.difficulty>0?net.difficulty:null;const top=Math.max(...cc.slice(0,4).map(c=>c.diff||0),1);return cc.slice(0,4).map((c,i)=>{const pct=netDiff?(c.diff/netDiff)*100:null;const w=Math.max(5,Math.min(100,((c.diff||0)/top)*100));const nm=((displayName?displayName(c.workerName,aliases):c.workerName)||'—').slice(0,7);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{pct!=null?pct.toFixed(3)+'%':hrShort(c.diff)}</span></div>;});})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No near-misses yet.</div>}</div>
+              <div className="col"><div className="ch">{tt('Top Miners')}</div>{topMiners.length?(()=>{const top=Math.max(...topMiners.map(w=>w.bestshare||0),1);return <>{topMiners.map((w,i)=>{const bw=Math.max(6,Math.min(100,((w.bestshare||0)/top)*100));const nm=(i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,6);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:bw+'%'}}/></span><span className="dval">{hrShort(w.bestshare)}</span></div>;})}{DL(_tt('Pool best'),poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>;})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No shares submitted yet.</div>}</div>
+              <div className="col"><div className="ch">{tt('Claim Jumpers')}</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];if(!tf.length)return <div style={{fontSize:'.58rem',color:'var(--text-3)'}}>Awaiting block data…</div>;const top=Math.max(...tf.slice(0,4).map(x=>x.count||0),1);return <>{tf.slice(0,4).map((f,i)=>{const w=Math.max(8,((f.count||0)/top)*100);return <div className="dbar" key={i}><span className="dnm">{(f.name||'—').slice(0,8)}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="dtrack"><i className={f.isSolo?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{f.count??0}</span></div>;})}</>;})()}</div>
+              <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL(_tt('Total'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL(_tt('Best'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Accept'),acc,'green')}{DL(_tt('Reject'),rej)}{(()=>{const a=shares.acceptedCount||0;const r=(shares.rejectedCount||0)+(shares.stale||0);const tot=a+r;const ap=tot>0?(a/tot)*100:100;return <div className="accbar" title={`Accept ${ap.toFixed(2)}%`}><i className="acc" style={{width:ap+'%'}}/><i className="rej" style={{width:(100-ap)+'%'}}/></div>;})()}</div>
             </div>
 
             {/* BAND 4 — ledger + health */}
             <div className="band" style={{gridTemplateColumns:'2.2fr 1.2fr',borderTop:'1px solid var(--hair)',paddingTop:8}}>
               <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'0 14px'}}>
-                  {blocks.slice(0,6).map((b,i)=><div className="dl" key={i} style={{border:0}}><span className="k">{fmtNum(b.height)}</span><span className="v">{(b.miner||b.pool||'—').toString().slice(0,10)}</span></div>)}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'2px 14px'}}>
+                  {blocks.slice(0,12).map((b,i)=>{const who=(b.miner||b.pool||'—').toString();return <div className="dl" key={i} style={{border:0}}><span className="k"><span className="lchip" style={{background:poolColor(who)}}/>{fmtNum(b.height)}</span><span className="v">{who.slice(0,10)}</span></div>;})}
                   {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">waiting</span></div>}
                 </div>
               </div>
@@ -534,9 +600,9 @@ export default function DesktopPages({
             </div>
           </div>
 
-          {/* ============ PAGE 2 — POOL INTERNALS ============ */}
+          {/* ============ PAGE 3 — POOL INTERNALS ============ */}
           <div className="viewport p2">
-            <AppHead page={1} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+            <AppHead page={2} zmqOk={zmqOk} ticker={page===2?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.5fr 1fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Hashrate Windows — % of Pool Peak')}</div><Gauges windows={windows} pct={wpct}/></div>
               <div className="panel"><div className="zlabel">{tt('Shares / Second — Windows')}</div>
@@ -549,16 +615,16 @@ export default function DesktopPages({
               <FleetTable workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL('Pool runtime',pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL('Accept',acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
-              <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL('Accepted',shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL('Rejected',fmtNum(shares.rejectedCount))}{DL('Accept',acc,'cyan')}{DL('Reject',rej)}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
+              <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL(_tt('Accepted'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL(_tt('Rejected'),fmtNum(shares.rejectedCount))}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('Reject'),rej)}</div>
               <div className="col"><div className="ch">{tt('Best Share — Trend')}</div><TsLine data={(()=>{const a=Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[]);return a.map(b=>b.best).filter(Number.isFinite);})()} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
               <div className="col"><div className="ch">{tt('Users + Workers History')}</div><TsLine data={(()=>{const a=Array.isArray(pool.workersHistory)?pool.workersHistory:(Array.isArray(pool.workersHistoryTail)?pool.workersHistoryTail:[]);return a.map(p=>p.workers).filter(Number.isFinite);})()} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
             </div>
           </div>
 
-          {/* ============ PAGE 3 — LUCK & ANALYTICS ============ */}
+          {/* ============ PAGE 4 — LUCK & ANALYTICS ============ */}
           <div className="viewport p3">
-            <AppHead page={2} zmqOk={zmqOk} ticker={page===2?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+            <AppHead page={3} zmqOk={zmqOk} ticker={page===3?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.7fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Block Effort / Luck — per strike')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>(shares-to-find vs expected · &lt;100% = lucky)</span></div>
                 <div className="effortwrap">{(()=>{const rounds=Array.isArray(snap.blockEffort)?snap.blockEffort.slice(-6):[];const arr=[...Array(Math.max(0,6-rounds.length)).fill(null),...rounds];arr.push(snap.openEffortPct??null);const col=p=>p==null?'var(--bg-raised)':p<100?'var(--green)':p<=200?'var(--amber)':'var(--red)';return arr.slice(0,7).map((p,i)=>{const h=p==null?14:Math.min(100,(p/250)*100);return <div className="ebar" key={i}><div className="pct" style={{color:col(p)}}>{p==null?'':Math.round(p)+'%'}</div><div className="col2" style={{height:`${h}%`,background:col(p)}}/><div className="lab">{i===6?'NOW':'—'}</div></div>;});})()}</div>
@@ -606,9 +672,22 @@ export default function DesktopPages({
         </div>
       </div>
 
+      <footer className="ss-foot">
+        <span className="ff-brand">SoloStrike v1.11.61 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
+        <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+        <span className="ff-r">Ports
+          <b className="port" onClick={()=>{try{navigator.clipboard.writeText('3333');}catch(e){}}} title="Copy">3333</b> ·
+          <b className="port" onClick={()=>{try{navigator.clipboard.writeText('3334');}catch(e){}}} title="Copy">3334</b> ·
+          <span className="tls">TLS</span>
+          <b className="port" onClick={()=>{try{navigator.clipboard.writeText('4333');}catch(e){}}} title="Copy">4333</b>
+        </span>
+      </footer>
+
       <button className={`nav l${page===0?' hidden':''}`} onClick={()=>go(page-1)}>❮</button>
       <button className={`nav r${page===NP-1?' hidden':''}`} onClick={()=>go(page+1)}>❯</button>
-      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
+      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2,3].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
 
       {fsCard && (
         <div className="fs-overlay" onClick={e=>{if(e.target===e.currentTarget)setFsCard(null);}}>
