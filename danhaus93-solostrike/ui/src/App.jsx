@@ -12289,36 +12289,41 @@ function StrikersModal({ networkStats, onClose }) {
           <div style={{
             borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
             paddingTop:'0.7rem',
-            fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
-            lineHeight:1.5,
-            paddingRight:'5rem',
+            display:'flex', alignItems:'flex-start', gap:'1rem',
           }}>
-            Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
-            <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
+            <div style={{
+              flex:1, minWidth:0,
+              fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
+              lineHeight:1.5,
+            }}>
+              Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+              <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
+                Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
+              </div>
             </div>
-          </div>
-
-
-          <div style={{
-            position:'absolute', right:'1rem', bottom:'1rem',
-            transform:'rotate(-12deg)',
-            fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
-            letterSpacing:'0.18em', textTransform:'uppercase',
-            color:'rgba(var(--amber-rgb),0.65)',
-            border:'2px solid rgba(var(--amber-rgb),0.5)',
-            padding:'4px 10px',
-            pointerEvents:'none',
-            textShadow:'0 0 8px rgba(var(--amber-rgb),0.6)',
-            boxShadow:'0 0 12px rgba(var(--amber-rgb),0.25), inset 0 0 8px rgba(var(--amber-rgb),0.15)',
-            background:'rgba(var(--amber-rgb),0.03)',
-            lineHeight:1.2,
-            textAlign:'center',
-            animation:'pulse 4s ease-in-out infinite',
-            willChange:'opacity',
-          }}>
-            <div>100%</div>
-            <div>SOLO</div>
+            {/* v1.12.0: SOLO stamp is now IN-FLOW (was position:absolute, which
+                floated it over the last roster row when the list was long).
+                Sits to the right of the census text, can never overlap. */}
+            <div style={{
+              flexShrink:0, alignSelf:'center',
+              transform:'rotate(-12deg)',
+              fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
+              letterSpacing:'0.18em', textTransform:'uppercase',
+              color:'rgba(var(--amber-rgb),0.65)',
+              border:'2px solid rgba(var(--amber-rgb),0.5)',
+              padding:'4px 10px',
+              pointerEvents:'none',
+              textShadow:'0 0 8px rgba(var(--amber-rgb),0.6)',
+              boxShadow:'0 0 12px rgba(var(--amber-rgb),0.25), inset 0 0 8px rgba(var(--amber-rgb),0.15)',
+              background:'rgba(var(--amber-rgb),0.03)',
+              lineHeight:1.2,
+              textAlign:'center',
+              animation:'pulse 4s ease-in-out infinite',
+              willChange:'opacity',
+            }}>
+              <div>100%</div>
+              <div>SOLO</div>
+            </div>
           </div>
 
         </div>
@@ -13902,7 +13907,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','hunt','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent','health'];
+const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','hunt','network','node','hashwindows','spswindows','connstates','besttrend','luck','retarget','effort','stability','rejects','fleeteff','reliability','shares','best','closestcalls','jumpers','recent','health'];
 function loadOrder() {
   try {
     const s = localStorage.getItem(LS_CARD_ORDER);
@@ -14829,8 +14834,9 @@ export default function App() {
         )}
       </div>
 
-      <main style={{padding:0, display:'flex', flexDirection:'column', minHeight:0, flex:1}} className={useCarousel ? 'ss-carousel-wrap' : 'ss-desktop-pages-wrap'}>
+      <main style={{padding: useCarousel ? 0 : (isMobile ? '0.65rem' : 0), display:'flex', flexDirection:'column', minHeight:0, flex:1}} className={useCarousel ? 'ss-carousel-wrap' : (isMobile ? '' : 'ss-desktop-pages-wrap')}>
         {useCarousel ? (
+          // ── mobile + carousel: swipe cards ──────────────────────────────
           <>
             <div ref={carouselRef} className="ss-carousel">
               {renderableOrder.map(id => (
@@ -14847,9 +14853,21 @@ export default function App() {
               onJump={jumpToCard}
             />
           </>
+        ) : isMobile ? (
+          // ── mobile + vertical: scrolling grid (the ORIGINAL non-carousel
+          // mobile layout). NOT the desktop 3-page slider. ────────────────
+          <div className="ss-grid">
+            {renderableOrder.map(id => (
+              <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
+                <ErrorBoundary label={id}>
+                  {cardComponents[id]}
+                </ErrorBoundary>
+              </DraggableCard>
+            ))}
+          </div>
         ) : (
-          // v1.12.0: desktop/tablet 3-page layout. Wraps every card component
-          // in its own ErrorBoundary so one failing card can't blank a page.
+          // ── desktop/tablet: 3-page slider. Each card wrapped in its own
+          // ErrorBoundary so one failing card can't blank a page. ──────────
           <DesktopPages
             cardComponents={Object.fromEntries(Object.keys(cardComponents).map(id => [id,
               <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
