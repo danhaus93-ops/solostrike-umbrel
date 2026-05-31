@@ -318,6 +318,7 @@ const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
 const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.41: Performance Mode toggle
+const LS_DESKTOP_CARD_MODE = 'ss_desktop_card_mode_v1'; // v1.12.x: render old cards on desktop
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -426,6 +427,8 @@ function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, Strin
 // existing minimalMode ternary; performanceMode joins it).
 function loadPerformanceMode()   { try { const v = localStorage.getItem(LS_PERFORMANCE_MODE); return v === 'true'; } catch { return false; } }
 function savePerformanceMode(v)  { try { localStorage.setItem(LS_PERFORMANCE_MODE, String(!!v)); } catch {} }
+function loadDesktopCardMode()   { try { const v = localStorage.getItem(LS_DESKTOP_CARD_MODE); return v === 'true'; } catch { return false; } }
+function saveDesktopCardMode(v)  { try { localStorage.setItem(LS_DESKTOP_CARD_MODE, String(!!v)); } catch {} }
 function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); const migrated = migrateCardIds(Array.isArray(p) ? p : []); return migrated.length ? migrated.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
 function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
 
@@ -7364,7 +7367,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
@@ -7573,6 +7576,29 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
           ⚡ Performance Mode is on — animations frozen for older or battery-throttled iPhones, budget Android, Pi 4/5, and DIY Umbrel hosts. Live strikes still pulse.
         </div>
       )}
+
+      {/* v1.12.x: Desktop Card Mode — render the classic card grid on desktop
+          instead of the 3-page dashboard. Desktop-only setting. */}
+      {!isMobileView && (<>
+      <div style={sectionTitle}>▸ Desktop Layout</div>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: desktopCardMode?'rgba(var(--amber-rgb),0.06)':'var(--bg-raised)', border:`1px solid ${desktopCardMode?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`}}>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: desktopCardMode?'var(--amber)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>
+            {desktopCardMode ? 'Card Grid' : '3-Page Dashboard'}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
+            {desktopCardMode
+              ? 'Classic cards in a multi-column grid filling the screen — drag to reorder, scroll through all of them.'
+              : 'The 3-page slider dashboard (Live · Pool Internals · Luck & Analytics). Flip this on to use the original cards instead.'}
+          </div>
+        </div>
+        <button onClick={()=>onDesktopCardModeChange(!desktopCardMode)}
+          style={{width:46, height:26, borderRadius:13, background: desktopCardMode?'var(--amber)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
+          <div style={{position:'absolute', top:2, left: desktopCardMode?22:2, width:20, height:20, borderRadius:'50%', background: desktopCardMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
+      </div>
+      </>)}
+
 
       <div style={sectionTitle}>▸ Card Layout (Mobile)</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: carouselEnabled?'rgba(var(--amber-rgb),0.06)':'var(--bg-raised)', border:`1px solid ${carouselEnabled?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`}}>
@@ -13981,6 +14007,7 @@ export default function App() {
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.41
+  const [desktopCardMode, setDesktopCardMode] = useState(loadDesktopCardMode()); // v1.12.x
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
   // v1.12.0: persisted desktop 3-page order (array of 3 id-arrays) or null.
   const [desktopPages, setDesktopPages] = useState(() => loadDesktopPages());
@@ -14096,6 +14123,7 @@ export default function App() {
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
   const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.41
+  const onDesktopCardModeChange = (v) => { setDesktopCardMode(v); saveDesktopCardMode(v); }; // v1.12.x
   const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   const onStripSettingsChange = useCallback((next) => {
@@ -14291,6 +14319,10 @@ export default function App() {
     setBlockFoundCelebration({ animType: huntAnim, block: mock });
   }, [poolState, huntAnim]);
   const useCarousel = isMobile && carouselEnabled;
+  // v1.12.x: in desktop card mode there's no DesktopPages apphead, so the
+  // global Header + footer must show (same as mobile).
+  const desktopCards = !isMobile && desktopCardMode;
+  const showChrome = isMobile || useCarousel || desktopCards;
   const carouselRef = useRef(null);
   const headerRef = useRef(null);
   const footerRef = useRef(null);
@@ -14832,7 +14864,7 @@ export default function App() {
         {/* Global header + ticker show on mobile/carousel only. On desktop the
             DesktopPages apphead provides them (with the same real Ticker), so
             rendering them here too would double the ticker. */}
-        {(isMobile || useCarousel) && (
+        {showChrome && (
           <Header
             connected={connected}
             status={status}
@@ -14844,7 +14876,7 @@ export default function App() {
             blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
           />
         )}
-        {(isMobile || useCarousel) && !minimalMode && (
+        {showChrome && !minimalMode && (
           <>
             <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>
             <SyncWarningBanner sync={poolState?.sync}/>
@@ -14852,7 +14884,7 @@ export default function App() {
         )}
       </div>
 
-      <main style={{padding: useCarousel ? 0 : (isMobile ? '0.65rem' : 0), display:'flex', flexDirection:'column', minHeight:0, flex:1}} className={useCarousel ? 'ss-carousel-wrap' : (isMobile ? '' : 'ss-desktop-pages-wrap')}>
+      <main style={{padding: useCarousel ? 0 : ((isMobile || desktopCards) ? '0.65rem' : 0), display:'flex', flexDirection:'column', minHeight:0, flex:1}} className={useCarousel ? 'ss-carousel-wrap' : ((isMobile || desktopCards) ? '' : 'ss-desktop-pages-wrap')}>
         {useCarousel ? (
           // ── mobile + carousel: swipe cards ──────────────────────────────
           <>
@@ -14875,6 +14907,18 @@ export default function App() {
           // ── mobile + vertical: scrolling grid (the ORIGINAL non-carousel
           // mobile layout). NOT the desktop 3-page slider. ────────────────
           <div className="ss-grid">
+            {renderableOrder.map(id => (
+              <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
+                <ErrorBoundary label={id}>
+                  {cardComponents[id]}
+                </ErrorBoundary>
+              </DraggableCard>
+            ))}
+          </div>
+        ) : desktopCards ? (
+          // ── desktop CARD MODE: the original cards in a multi-column grid
+          // filling the width. Toggled via Settings → Display. ────────────
+          <div className="ss-desktop-card-grid">
             {renderableOrder.map(id => (
               <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
                 <ErrorBoundary label={id}>
@@ -14906,7 +14950,7 @@ export default function App() {
                 case 'Share Stats': setShowShareStats(true); break;
                 case 'Solostrike Pulse': setShowStrikers(true); break;
                 case 'The Hunt': setShowReckoning(true); break;
-                case 'System Health': setHealthDetailSnapshot(poolState?.health || {}); break;
+                case 'System Health': fetch('/api/health/detailed',{cache:'no-store'}).then(r=>r.json()).then(d=>setHealthDetailSnapshot(d)).catch(()=>setHealthDetailSnapshot({})); break;
                 case 'Stratum Connection': setShowSettings(true); break;
                 case 'Claim Jumpers + Solo Strikes': setShowStrikers(true); break;
                 case 'Firepower': setShowSettings(true); break;
@@ -14916,7 +14960,7 @@ export default function App() {
           />
         )}
       </main>
-        {(useCarousel || isMobile) && (
+        {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
         <span>SoloStrike v1.11.61 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
@@ -14971,6 +15015,7 @@ export default function App() {
           tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
           minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
+            desktopCardMode={desktopCardMode} onDesktopCardModeChange={onDesktopCardModeChange} isMobileView={isMobile}
           visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
           networkStats={poolState?.networkStats}
           onNetworkStatsRefresh={refreshConfig}
