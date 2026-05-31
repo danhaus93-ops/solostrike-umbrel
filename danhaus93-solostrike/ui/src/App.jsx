@@ -5095,11 +5095,11 @@ function saveHuntAnim(v) { try { localStorage.setItem(LS_HUNT_ANIM, String(v)); 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return window.matchMedia('(max-width: 767px)').matches;
+    return window.matchMedia('(max-width: 599px)').matches;
   });
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 767px)');
+    const mq = window.matchMedia('(max-width: 599px)');
     const onChange = (e) => setIsMobile(e.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else mq.addListener(onChange);
@@ -5632,7 +5632,7 @@ function DebugOverlay({ settings, onSettingsChange, appState }) {
           : 'n/a',
         // mode / state
         mode,
-        cMatch: window.matchMedia('(max-width: 767px)').matches,
+        cMatch: window.matchMedia('(max-width: 599px)').matches,
         gMatch: window.matchMedia('(min-width: 768px)').matches,
         body: document.body.className.split(' ').filter((c) => c.startsWith('ss-')).join(' '),
         // sw / build
