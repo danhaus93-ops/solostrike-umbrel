@@ -14895,6 +14895,11 @@ export default function App() {
             status={status === 'connected' ? 'Mining Live' : (status || 'Mining Live')}
             zmq={poolState?.zmq}
             strikes={poolState?.snapshots?.totalStrikes ?? 0}
+            poolState={poolState}
+            workers={workers}
+            aliases={aliases}
+            displayName={displayName}
+            stratumHealth={stratumHealth}
           />
         )}
       </main>
