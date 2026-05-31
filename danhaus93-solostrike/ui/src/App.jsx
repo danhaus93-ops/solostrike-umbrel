@@ -12,6 +12,7 @@ import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
 import { THEMES, THEME_IDS, getThemeById, loadTheme, saveTheme, applyThemeCSS, applyThemeColorMeta } from './themes.js';
 import DesktopPages from './components/DesktopPages.jsx';
+import { SUPPORTED, LANG_META, resolveLang, makeTT, dirFor } from './i18n.js';
 import {
   PoolHashrateWindows, SpsWindows, ConnectionStates, BlockEffortPanel,
   HashrateStability, RejectTrend, BestShareTrend, FleetEfficiency, PoolReliability,
@@ -319,6 +320,7 @@ const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
 const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.41: Performance Mode toggle
 const LS_DESKTOP_CARD_MODE = 'ss_desktop_card_mode_v1'; // v1.12.x: render old cards on desktop
+const LS_LANG = 'ss_lang_v1'; // v1.12.x: UI language
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -429,6 +431,17 @@ function loadPerformanceMode()   { try { const v = localStorage.getItem(LS_PERFO
 function savePerformanceMode(v)  { try { localStorage.setItem(LS_PERFORMANCE_MODE, String(!!v)); } catch {} }
 function loadDesktopCardMode()   { try { const v = localStorage.getItem(LS_DESKTOP_CARD_MODE); return v === 'true'; } catch { return false; } }
 function saveDesktopCardMode(v)  { try { localStorage.setItem(LS_DESKTOP_CARD_MODE, String(!!v)); } catch {} }
+function loadLang() {
+  try {
+    const stored = localStorage.getItem(LS_LANG);
+    if (stored && SUPPORTED.includes(stored)) return stored;
+  } catch {}
+  try {
+    const navs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language];
+    return resolveLang(navs);
+  } catch { return 'en'; }
+}
+function saveLang(v) { try { localStorage.setItem(LS_LANG, v); } catch {} }
 function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); const migrated = migrateCardIds(Array.isArray(p) ? p : []); return migrated.length ? migrated.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
 function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
 
@@ -7367,7 +7380,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, lang = 'en', onLangChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
   const [tab, setTab] = useState('main');
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
@@ -7400,6 +7413,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           {[
             ['main','Main'],
             ['display','Display'],
+            ['language','Language'],
             ['privacy','Privacy'],
             ['pulse','Pulse'],
             ['hunt','Hunt'],
@@ -7428,8 +7442,12 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
             tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
             minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
+            desktopCardMode={desktopCardMode} onDesktopCardModeChange={onDesktopCardModeChange} isMobileView={isMobileView}
             visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
             carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}/>
+        )}
+        {tab==='language' && (
+          <LanguageTab lang={lang} onLangChange={onLangChange}/>
         )}
         {tab==='privacy' && (
           <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode}
@@ -7492,7 +7510,34 @@ function MainTab({addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,sa
 }
 
 // ── Display tab ───────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
+function LanguageTab({ lang = 'en', onLangChange }) {
+  return (
+    <div>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'0.4rem'}}>▸ Language</div>
+      <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginBottom:'0.9rem', lineHeight:1.5}}>
+        Choose the display language. Mining terms (hashrate, stratum, share, difficulty…) stay in English on purpose — they read correctly to miners everywhere. Auto-detected from your browser on first run; unsupported languages fall back to English.
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:'0.5rem'}}>
+        {SUPPORTED.map(code => {
+          const active = code === lang;
+          return (
+            <button key={code} onClick={()=>onLangChange && onLangChange(code)}
+              style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.5rem',
+                padding:'0.6rem 0.7rem', borderRadius:8, cursor:'pointer', textAlign:'left',
+                background: active?'rgba(var(--amber-rgb),0.10)':'var(--bg-raised)',
+                border:`1px solid ${active?'rgba(var(--amber-rgb),0.45)':'var(--border)'}`,
+                color: active?'var(--amber)':'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.74rem', fontWeight:active?700:500}}>
+              <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{LANG_META[code]?.name || code}</span>
+              {active && <span style={{color:'var(--amber)', flexShrink:0}}>●</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
   const toggleCard = (id) => {
     const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
     onVisibleCardsChange(next);
@@ -7589,7 +7634,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
           <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
             {desktopCardMode
               ? 'Classic cards in a multi-column grid filling the screen — drag to reorder, scroll through all of them.'
-              : 'The 3-page slider dashboard (Live · Pool Internals · Luck & Analytics). Flip this on to use the original cards instead.'}
+              : 'The 3-page slider dashboard (Live · Pool Internals · Luck & Analytics).'}
           </div>
         </div>
         <button onClick={()=>onDesktopCardModeChange(!desktopCardMode)}
@@ -14246,6 +14291,21 @@ export default function App() {
   const themeRef = useRef(getThemeById(themeId));
   useEffect(() => { themeRef.current = getThemeById(themeId); }, [themeId]);
 
+  // v1.12.x: UI language. Stored value wins; otherwise auto-detected from the
+  // browser with English fallback. tt(en) returns the translation or English.
+  const [lang, setLang] = useState(() => loadLang());
+  const tt = useMemo(() => makeTT(lang), [lang]);
+  const onLangChange = useCallback((code) => {
+    if (!SUPPORTED.includes(code)) return;
+    setLang(code); saveLang(code);
+  }, []);
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('lang', lang);
+      document.documentElement.setAttribute('dir', dirFor(lang));
+    } catch {}
+  }, [lang]);
+
   const onThemeChange = useCallback((id) => {
     if (!THEMES[id]) return;
     saveTheme(id);
@@ -14940,6 +15000,7 @@ export default function App() {
             zmq={poolState?.zmq}
             strikes={poolState?.snapshots?.totalStrikes ?? 0}
             poolState={poolState}
+            lang={lang}
             workers={workers}
             aliases={aliases}
             displayName={displayName}
@@ -15016,6 +15077,7 @@ export default function App() {
           minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
             desktopCardMode={desktopCardMode} onDesktopCardModeChange={onDesktopCardModeChange} isMobileView={isMobile}
+            lang={lang} onLangChange={onLangChange}
           visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
           networkStats={poolState?.networkStats}
           onNetworkStatsRefresh={refreshConfig}
