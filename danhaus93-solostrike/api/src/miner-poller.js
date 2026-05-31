@@ -567,6 +567,7 @@ function extractEspMinerLive(d) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    asicModel: null,
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
   if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
@@ -576,6 +577,14 @@ function extractEspMinerLive(d) {
     live.hashrateReported = d.hashRate * 1e9;
   if (typeof d.uptimeSeconds === 'number')            live.uptimeSec = d.uptimeSeconds;
   if (typeof d.version === 'string')                  live.firmwareVersion = d.version;
+  // v1.12.x: ESP-Miner reports the actual mining chip in ASICModel
+  // (e.g. "BM1370", "BM1366"). This is the authoritative model signal —
+  // far more reliable than guessing from the worker name. Captured here
+  // and consumed by miner-detect's detectFromAsicModel().
+  if (typeof d.ASICModel === 'string' && d.ASICModel.trim()) live.asicModel = d.ASICModel.trim();
+  else if (typeof d.asicModel === 'string' && d.asicModel.trim()) live.asicModel = d.asicModel.trim();
+  if (typeof d.asicCount === 'number' && d.asicCount > 0) live.asicCount = d.asicCount;
+  if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
   // v1.12.0: ESP-Miner reports instantaneous power draw in watts.
   if (typeof d.power === 'number' && d.power > 0 && d.power < 20000) live.powerW = d.power;
   live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
