@@ -14829,17 +14829,22 @@ export default function App() {
             onDismiss={dismissBanner}
           />
         )}
-        <Header
-          connected={connected}
-          status={status}
-          onSettings={()=>setShowSettings(true)}
-          privateMode={!!poolState?.privateMode}
-          minimalMode={minimalMode}
-          performanceMode={performanceMode}
-          zmq={poolState?.zmq}
-          blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
-        />
-        {!minimalMode && (
+        {/* Global header + ticker show on mobile/carousel only. On desktop the
+            DesktopPages apphead provides them (with the same real Ticker), so
+            rendering them here too would double the ticker. */}
+        {(isMobile || useCarousel) && (
+          <Header
+            connected={connected}
+            status={status}
+            onSettings={()=>setShowSettings(true)}
+            privateMode={!!poolState?.privateMode}
+            minimalMode={minimalMode}
+            performanceMode={performanceMode}
+            zmq={poolState?.zmq}
+            blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
+          />
+        )}
+        {(isMobile || useCarousel) && !minimalMode && (
           <>
             <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>
             <SyncWarningBanner sync={poolState?.sync}/>
@@ -14885,23 +14890,11 @@ export default function App() {
             cardComponents={Object.fromEntries(Object.keys(cardComponents).map(id => [id,
               <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
             ]))}
-            order={renderableOrder}
-            visibleSet={visibleSet}
-            persistedOrder={desktopPages}
-            onOrderChange={onDesktopPagesChange}
-            poolState={poolState}
-            workers={workers}
-            aliases={aliases}
-            stratumHealth={stratumHealth}
-            displayName={displayName}
-            onSelectWorker={setSelectedWorker}
-            onOpen={(name) => {
-              if (name === 'sharestats') setShowShareStats(true);
-              else if (name === 'pulse') setShowStrikers(true);
-              else if (name === 'hunt') setSimulatorOpen(true);
-              else if (name === 'health') setHealthDetailSnapshot(stratumHealth || {});
-              // 'stratum' and 'jumpers' have no dedicated modal yet — no-op
-            }}
+            ticker={<Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>}
+            onOpenSettings={()=>setShowSettings(true)}
+            status={status === 'connected' ? 'Mining Live' : (status || 'Mining Live')}
+            zmq={poolState?.zmq}
+            strikes={poolState?.snapshots?.totalStrikes ?? 0}
           />
         )}
       </main>
