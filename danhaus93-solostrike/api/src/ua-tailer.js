@@ -164,6 +164,15 @@ async function startUaTailer({ configDir, logDir }) {
 
   const logFile = path.join(logDir, 'ckpool.log');
   let fileSize = 0;
+  // v1.11.62 TRAILING-LINE FIX: when a read ends mid-line (ckpool flushed a
+  // partial line with no terminating newline yet), the old code split on
+  // '\n' and parsed the partial fragment as if it were complete — then the
+  // continuation arriving in the NEXT read was parsed as a fresh line. Both
+  // halves were mangled, so the Authorised/Dropped line that happened to
+  // straddle a read boundary silently failed to register the worker's IP.
+  // Fix: hold the trailing partial line in `carry` and prepend it to the
+  // next read. Only whole, newline-terminated lines are parsed each pass.
+  let carry = '';
 
   // On boot, seek to end of current log so we don't re-parse history
   try {
@@ -175,14 +184,29 @@ async function startUaTailer({ configDir, logDir }) {
     try {
       const stat = await fs.stat(logFile).catch(() => null);
       if (!stat) return;
-      if (stat.size < fileSize) fileSize = 0; // rotation
+      if (stat.size < fileSize) { fileSize = 0; carry = ''; } // rotation: reset carry too
       if (stat.size <= fileSize) return;
       const buf = Buffer.alloc(stat.size - fileSize);
       const fd = await fs.open(logFile, 'r');
       try { await fs.read(fd, buf, 0, buf.length, fileSize); }
       finally { await fs.close(fd); }
       fileSize = stat.size;
-      buf.toString('utf8').split('\n').forEach(l => l.trim() && parseLine(l, configDir));
+      // Prepend any partial line carried over from the previous read.
+      const chunk = carry + buf.toString('utf8');
+      const parts = chunk.split('\n');
+      // The last element is either '' (chunk ended on a newline → nothing to
+      // carry) or a partial line with no terminating newline yet → carry it
+      // to the next read instead of parsing it incomplete.
+      carry = parts.pop();
+      for (const l of parts) {
+        if (l.trim()) parseLine(l, configDir);
+      }
+      // Safety valve: if a single line somehow never terminates (corrupt log,
+      // no newline for a very long time), don't let `carry` grow unbounded.
+      if (carry.length > 64 * 1024) {
+        if (carry.trim()) parseLine(carry, configDir);
+        carry = '';
+      }
     } catch (e) { console.error('[UA-Tailer]', e.message); }
   };
 

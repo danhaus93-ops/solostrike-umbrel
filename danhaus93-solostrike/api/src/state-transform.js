@@ -267,7 +267,9 @@ function transformState(state, opts) {
       // v1.11.38: tail size is 10 (was 2), matching hashrate tails — covers
       // ≥10 minute disconnects without dropping samples.
       shares: stateShares ? (() => {
-        const { rejectReasons, spsHistory, ...rest_s } = stateShares;
+        // v1.12.0: bestHistory (Best Share Trend) gets the same tail treatment
+        // as spsHistory — 1440 entries @ 1min would bloat every broadcast.
+        const { rejectReasons, spsHistory, bestHistory, ...rest_s } = stateShares;
         const top = rejectReasons
           ? Object.entries(rejectReasons).sort((a,b)=>b[1]-a[1]).slice(0,20)
           : [];
@@ -275,6 +277,7 @@ function transformState(state, opts) {
           ...rest_s,
           rejectReasons: Object.fromEntries(top),
           spsHistoryTail: Array.isArray(spsHistory) ? spsHistory.slice(-10) : [],
+          bestHistoryTail: Array.isArray(bestHistory) ? bestHistory.slice(-10) : [],
         };
       })() : undefined,
       // snapshots omitted entirely in compact mode
