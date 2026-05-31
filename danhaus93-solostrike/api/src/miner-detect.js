@@ -20,7 +20,7 @@ const WORKERNAME_PATTERNS = [
   { match: /\.avalon/i,                                        type: 'Avalon',               icon: '▸',  vendor: 'Canaan' },
   { match: /\.nerdqaxe/i,                                      type: 'NerdQaxe++',           icon: '◈',  vendor: 'Shufps' },
   { match: /\.nerdminer|\.nerd/i,                              type: 'NerdMiner',            icon: '◈',  vendor: 'OSS' },
-  { match: /\.bitaxe[\s_.-]*gamma/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
+  { match: /\.bitaxe[\s_.-]*gamma|\.gamma[\s_.-]*60[12]|\.bitaxe[\s_.-]*60[12]|\.60[12](?:$|[\s_.-])/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*supra/i,                           type: 'BitAxe Supra',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*ultra/i,                           type: 'BitAxe Ultra',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe/i,                                        type: 'BitAxe',               icon: '◆',  vendor: 'OSS' },
