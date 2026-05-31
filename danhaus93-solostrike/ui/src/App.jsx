@@ -14900,6 +14900,19 @@ export default function App() {
             aliases={aliases}
             displayName={displayName}
             stratumHealth={stratumHealth}
+            onWorkerClick={setSelectedWorker}
+            openModal={(name)=>{
+              switch(name){
+                case 'Share Stats': setShowShareStats(true); break;
+                case 'Solostrike Pulse': setShowStrikers(true); break;
+                case 'The Hunt': setShowReckoning(true); break;
+                case 'System Health': setHealthDetailSnapshot(poolState?.health || {}); break;
+                case 'Stratum Connection': setShowSettings(true); break;
+                case 'Claim Jumpers + Solo Strikes': setShowStrikers(true); break;
+                case 'Firepower': setShowSettings(true); break;
+                default: break;
+              }
+            }}
           />
         )}
       </main>
