@@ -3563,7 +3563,10 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       height: '100%',
       flex: '1 1 auto',
       minHeight: 130,
-      maxHeight: 280,
+      // v1.11.x: on desktop (≥600px) the parent panel is height-bounded, so the
+      // canvas can safely fill all space down to the Block Reward box. The 280
+      // cap only matters on mobile vertical-scroll where the parent is unbounded.
+      maxHeight: (typeof window !== 'undefined' && window.matchMedia('(min-width: 600px)').matches) ? 9999 : 280,
       position: 'relative',
       overflow: 'hidden',
       // v1.8.5-rev70e: bg transparent so Hunt animations composite onto
@@ -8371,7 +8374,8 @@ function useAnimatedNumber(value, durationMs = 600) {
 //   - Sliding logarithmic scrub: peerCount maps to slider via log scale
 //     so 1-2-8-20-50-200-1K-5K stages are roughly evenly spaced.
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClose }) {
+const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClose, lang = 'en' }) {
+  const tt = useMemo(() => makeTT(lang), [lang]);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -11056,7 +11060,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           {/* v1.8.8-rev42 (rev27 restoration): WebGL globe canvas behind
               transparent 2D canvas. The 2D canvas handles markers, pin
               tap overlay, and pointer events for drag rotation. */}
-          <canvas ref={webglCanvasRef} style={{
+          <canvas key={'globe-'+pulseAnim} ref={webglCanvasRef} style={{
             position:'absolute', inset:0, width:'100%', height:'100%',
             pointerEvents:'none',
             display: pulseAnim === 'globe' ? 'block' : 'none',
@@ -11066,6 +11070,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               rev70k: receives pointer events when active; supports drag
               to rotate + pinch / wheel to zoom + double-click to reset. */}
           <canvas
+            key={'mesh-'+pulseAnim}
             ref={constellationCanvasRef}
             onPointerDown={handleConstellationPointerDown}
             onPointerMove={handleConstellationPointerMove}
@@ -11338,7 +11343,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         position:'relative', overflow:'hidden',
       }}>
         {/* v1.8.8-rev42 (rev27 restoration): WebGL globe canvas. */}
-        <canvas ref={webglCanvasRef} style={{
+        <canvas key={'globe-'+pulseAnim} ref={webglCanvasRef} style={{
           position:'absolute', inset:0, width:'100%', height:'100%',
           pointerEvents:'none',
           display: pulseAnim === 'globe' ? 'block' : 'none',
@@ -11347,6 +11352,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             only one is display:block at a time.
             rev70k: receives pointer events when active. */}
         <canvas
+          key={'mesh-'+pulseAnim}
           ref={constellationCanvasRef}
           onPointerDown={handleConstellationPointerDown}
           onPointerMove={handleConstellationPointerMove}
@@ -11567,7 +11573,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         synthesizes peers + share traffic internally. Closes via the X
         button or by tapping outside the picker drawer. */}
     {simulatorOpen && (
-      <BlockSimulatorModal onClose={() => setSimulatorOpen(false)}/>
+      <BlockSimulatorModal onClose={() => setSimulatorOpen(false)} lang={lang}/>
     )}
     </>
   );
