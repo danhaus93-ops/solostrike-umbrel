@@ -11262,7 +11262,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
           paddingTop:'0.4rem',
           fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
-          lineHeight:1.4, paddingRight:'4rem',
+          lineHeight:1.4, paddingRight:'0.5rem', whiteSpace:'nowrap',
           cursor: onOpenStrikers ? 'pointer' : 'default',
         }}>
           {pulseAnim === 'globe' ? (
@@ -11542,7 +11542,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
         paddingTop:'0.5rem',
         fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)',
-        lineHeight:1.5, paddingRight:'4rem' /* leave room for the rotated stamp */,
+        lineHeight:1.5, paddingRight:'0.5rem', whiteSpace:'nowrap',
         cursor: onOpenStrikers ? 'pointer' : 'default',
       }}>
         {pulseAnim === 'globe' ? (
