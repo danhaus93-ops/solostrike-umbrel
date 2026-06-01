@@ -9225,7 +9225,7 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en' }) {
+const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en', showStamp = true }) {
   const tt = useMemo(() => makeTT(lang), [lang]);
   // v1.11.47: re-create constellation cube when theme changes.
   const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
@@ -10958,7 +10958,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
   // iter27c: bumped up from 0.2rem to 0.6rem so it's no longer clipped
   // at the card's bottom edge on mobile.
-  const StampSolo = () => (
+  const StampSolo = () => (!showStamp ? null :
     <div style={{
       position:'absolute', right:'0.5rem', bottom:'0.6rem',
       transform:'rotate(-12deg)',
@@ -14872,6 +14872,7 @@ export default function App() {
       acceptedCount={poolState?.shares?.acceptedCount}
       workers={poolState?.workers}
       lang={lang}
+      showStamp={false}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
