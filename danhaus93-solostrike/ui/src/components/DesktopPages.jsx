@@ -139,7 +139,7 @@ function useIsNarrow(){ const [n,setN]=useState(()=>typeof window!=='undefined'&
 
 /* ============================ CSS (ported 1:1) ============================ */
 const CSS = `
-.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%),var(--bg-void)}
+.ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%)}
 .ssdesk .scaler{width:100%;flex:1;min-height:0;overflow:hidden}
 .ssdesk .pages{display:flex;width:100%;height:100%;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
 .ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}.ssdesk .pages.p4{transform:translateX(-300%)}
@@ -188,7 +188,8 @@ const CSS = `
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
-.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 72%, transparent)}}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 7px;padding-bottom:.35rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
 .ssdesk .clk:hover{background:rgba(var(--amber-rgb),0.06);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),0.2)}
