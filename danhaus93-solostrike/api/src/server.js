@@ -1,4 +1,4 @@
-// SoloStrike API server (v1.11.59 — privacy-aware)
+// SoloStrike API server (v1.11.63 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
 const express = require('express');
