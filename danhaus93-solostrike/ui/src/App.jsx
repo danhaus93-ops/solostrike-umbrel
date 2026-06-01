@@ -7749,7 +7749,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
           <div style={{...rowLabel, marginTop:'0.9rem'}}>
             Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
             <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
-              ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
+              ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? tt('fast') : tickerSettings.speedSec <= 35 ? tt('medium') : 'slow'})
             </span>
           </div>
           <input type="range" min="3" max="90" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
@@ -8154,7 +8154,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>{tt('Install ID')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--border)',marginBottom:14,wordBreak:'break-all'}}>{backup.installId}</div>
                 <div style={{display:'flex',gap:6}}>
-                  <button onClick={()=>{ if(navigator.clipboard?.writeText){ navigator.clipboard.writeText(`pubkey: ${backup.pubkey}\nprivkey: ${backup.privkeyHex}\ninstallId: ${backup.installId}`).then(()=>{ setBackupCopied(true); setTimeout(()=>setBackupCopied(false), 2000); }); } }} style={{flex:1,padding:'0.55rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{backupCopied?'✓ COPIED':'COPY ALL'}</button>
+                  <button onClick={()=>{ if(navigator.clipboard?.writeText){ navigator.clipboard.writeText(`pubkey: ${backup.pubkey}\nprivkey: ${backup.privkeyHex}\ninstallId: ${backup.installId}`).then(()=>{ setBackupCopied(true); setTimeout(()=>setBackupCopied(false), 2000); }); } }} style={{flex:1,padding:'0.55rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{backupCopied?'✓ '+tt('COPIED'):tt('COPY ALL')}</button>
                   <button onClick={()=>setBackup(null)} style={{padding:'0.55rem 0.9rem',background:'transparent',color:'var(--text-2)',border:'1px solid var(--border)',fontFamily:'var(--fd)',fontWeight:600,fontSize:'0.62rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{tt('CLOSE')}</button>
                 </div>
               </div>
@@ -8644,7 +8644,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
           fontSize: '0.6rem', letterSpacing: '0.15em',
           textTransform: 'uppercase', pointerEvents: 'none',
         }}>
-          {peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount} peers · {stageName}
+          {peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount} peers · {tt(stageName)}
         </div>
         {/* Reset overlay (bottom-left) */}
         <div
@@ -11267,7 +11267,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         }}>
           {pulseAnim === 'globe' ? (
             <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
-              Pool locations are approximate, not exact — miners remain private.
+              Pool locations are approximate.
             </span>
           ) : (
             <>
@@ -11547,7 +11547,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       }}>
         {pulseAnim === 'globe' ? (
           <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
-            Pool locations are approximate, not exact — miners remain private.
+            Pool locations are approximate.
           </span>
         ) : (
           <>
