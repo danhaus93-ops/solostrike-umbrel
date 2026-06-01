@@ -10,6 +10,7 @@
   --cyan:#00FFD1;--red:#FF3B3B;--green:#39FF6A;
   --text-1:#EAD9C0;--text-2:#a89788;--text-3:#7a6d5e;
   --border:rgba(245,166,35,0.1);--border-hot:rgba(245,166,35,0.35);
+  --chart1:#00FFD1;--chart2:#F5A623;
   --fd:'Chakra Petch',sans-serif;--fm:'JetBrains Mono',monospace;
   --glow-a:0 0 24px rgba(245,166,35,0.25);
 }
@@ -390,6 +391,12 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 .ss-grid{display:grid;gap:0.75rem;grid-template-columns:1fr}
 @media (min-width:640px){.ss-grid{gap:0.875rem;grid-template-columns:repeat(2,1fr)}}
 @media (min-width:1024px){.ss-grid{grid-template-columns:repeat(4,1fr)}}
+
+/* v1.12.x: Desktop Card Mode — old cards in a multi-column grid filling width */
+.ss-desktop-card-grid{display:grid;gap:0.875rem;grid-template-columns:repeat(2,1fr);grid-auto-rows:min-content;align-content:start;width:100%;flex:1;min-height:0;overflow-y:auto;padding:0.25rem;box-sizing:border-box}
+@media (min-width:1200px){.ss-desktop-card-grid{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:1700px){.ss-desktop-card-grid{grid-template-columns:repeat(4,1fr)}}
+.ss-desktop-card-grid > *{min-width:0}
 
 /* v1.11.12: vertical fit on desktop — cap card height at viewport-minus-chrome
  * so dashboard fits in one screen without body scroll. Cards with internal
@@ -1076,6 +1083,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#67E8F9;--red:#FB7185;--green:#86EFAC;
   --text-1:#E9E1FF;--text-2:#9F7AEA;--text-3:#6B5B95;
   --border:rgba(196,181,253,0.15);--border-hot:rgba(244,114,182,0.40);
+  --chart1:#67E8F9;--chart2:#F472B6;
   --glow-a:0 0 24px rgba(196,181,253,0.30);
 }
 
@@ -1087,6 +1095,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#5EFFCC;--red:#FF4444;--green:#00FF41;
   --text-1:#C0FFD0;--text-2:#00CC30;--text-3:#006B0A;
   --border:rgba(0,255,65,0.15);--border-hot:rgba(0,255,65,0.45);
+  --chart1:#00FF41;--chart2:#5EFFCC;
   --glow-a:0 0 24px rgba(0,255,65,0.35);
 }
 
@@ -1099,6 +1108,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#00F5FF;--red:#FF1744;--green:#39FF14;
   --text-1:#FFD0EC;--text-2:#8B5CF6;--text-3:#5b3d8e;
   --border:rgba(255,51,140,0.20);--border-hot:rgba(255,51,140,0.50);
+  --chart1:#00F5FF;--chart2:#FF338C;
   --glow-a:0 0 24px rgba(255,51,140,0.40);
 }
 
@@ -1110,6 +1120,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#67E8F9;--red:#FCA5A5;--green:#6EE7B7;
   --text-1:#E0F2FE;--text-2:#94A3B8;--text-3:#64748B;
   --border:rgba(125,211,252,0.15);--border-hot:rgba(125,211,252,0.40);
+  --chart1:#67E8F9;--chart2:#6EE7B7;
   --glow-a:0 0 24px rgba(125,211,252,0.30);
 }
 
@@ -1122,6 +1133,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#FCD34D;--red:#EF4444;--green:#84CC16;
   --text-1:#FECACA;--text-2:#E53E3E;--text-3:#7F1D1D;
   --border:rgba(229,62,62,0.20);--border-hot:rgba(229,62,62,0.50);
+  --chart1:#FCD34D;--chart2:#EF4444;
   --glow-a:0 0 24px rgba(229,62,62,0.35);
 }
 
@@ -1137,6 +1149,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#055569;--red:#B91C1C;--green:#15803D;
   --text-1:#1a1a1a;--text-2:#475569;--text-3:#94A3B8;
   --border:rgba(30,92,158,0.20);--border-hot:rgba(30,92,158,0.50);
+  --chart1:#1E5C9E;--chart2:#15803D;
   --glow-a:0 0 24px rgba(30,92,158,0.20);
 }
 
@@ -1148,6 +1161,7 @@ body.ss-in-iframe .ss-app-header {
   --cyan:#34D399;--red:#FB7185;--green:#34D399;
   --text-1:#FEF3C7;--text-2:#34D399;--text-3:#047857;
   --border:rgba(252,211,77,0.18);--border-hot:rgba(252,211,77,0.45);
+  --chart1:#34D399;--chart2:#FCD34D;
   --glow-a:0 0 24px rgba(252,211,77,0.30);
 }
 
