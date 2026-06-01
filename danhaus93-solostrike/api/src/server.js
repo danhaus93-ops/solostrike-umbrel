@@ -38,6 +38,8 @@ const {
   captureDailySnapshot,
   applyDailySnapshot,
   updateClosestCalls,
+  syncBlockEffort,
+  sampleBestTrend,
 } = require('./snapshots');
 const { startStratumHealthPoller, getStratumHealth } = require('./stratum-health');
 const { startBlockWatcher } = require('./block-watcher');
@@ -103,7 +105,11 @@ const state = {
   nodeInfo: null,
   zmq: null,
   sync: null,
-  snapshots: { daily: [] },
+  snapshots: { daily: [], closestCalls: [], lastRollupDate: null, blockEffort: [], bestTrend: [] },
+  // v1.12.0: live block-effort ring (newest-first); snapshots persists it
+  blockEffortHistory: [],
+  // v1.12.0: round-share baseline for effort calc (set on each block solve)
+  _sharesAtLastBlock: 0,
   shareCounters: {},
   sharelogCursors: {},
   webhooks: [],
@@ -1276,6 +1282,13 @@ function startSnapshotScheduler() {
   setInterval(() => {
     try {
       updateClosestCalls(state.snapshots, state);
+      // v1.12.0: persist block-effort history + best-share trend samples.
+      const effChanged  = syncBlockEffort(state.snapshots, state);
+      const bestChanged = sampleBestTrend(state.snapshots, state);
+      if (effChanged || bestChanged) {
+        savePersist({ snapshots: state.snapshots, closestCalls: state.closestCalls })
+          .catch(e => console.error('[snapshots] persist failed:', e.message));
+      }
     } catch (e) { console.error('[snapshots] interval failed:', e.message); }
   }, ROLLUP_INTERVAL_MS);
 
@@ -1289,7 +1302,12 @@ async function main() {
   const persist = await loadPersist();
   if (persist.closestCalls) state.closestCalls = persist.closestCalls;
   if (persist.blocks) state.blocks = persist.blocks;
-  if (persist.snapshots) state.snapshots = persist.snapshots;
+  if (persist.snapshots) {
+    state.snapshots = persist.snapshots;
+    // v1.12.0 upgrade-safe backfill: older persist files lack these arrays.
+    if (!Array.isArray(state.snapshots.blockEffort)) state.snapshots.blockEffort = [];
+    if (!Array.isArray(state.snapshots.bestTrend))   state.snapshots.bestTrend = [];
+  }
   if (persist.webhooks) state.webhooks = persist.webhooks;
   if (persist.nostrPrivkey) cfg.nostrPrivkey = persist.nostrPrivkey;
   if (persist.nostrInstallId) cfg.nostrInstallId = persist.nostrInstallId;
