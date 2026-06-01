@@ -48,6 +48,14 @@ function computeAverage(history, windowMs) {
   return count > 0 ? sum / count : 0;
 }
 
+// v1.12.0: parse a ckpool runtime/uptime field. ckpool's pool.status summary
+// line carries "runtime" as integer seconds since the pool process started.
+function parseRuntimeSeconds(summary) {
+  const r = summary && (summary.runtime ?? summary.Runtime ?? summary.uptime);
+  const n = Number(r);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 function startStatusPoller(state, broadcast, logDir) {
   const poolStatus = path.join(logDir, 'pool/pool.status');
   const usersDir   = path.join(logDir, 'users');
@@ -59,6 +67,16 @@ function startStatusPoller(state, broadcast, logDir) {
   const WEEK_INTERVAL_MS    = 60 * 1000;
   let lastHistoryPush = 0;
   let lastWeekPush = 0;
+
+  // v1.12.0: best-share-over-time ring buffer. ckpool only ever exposes the
+  // CURRENT pool bestshare; to chart "are we getting closer to a block over
+  // time" we sample it ourselves. Same 60s throttle + 1440-point (24h) cap
+  // as spsHistory. Persistence across restarts is layered on by snapshots.js;
+  // this in-memory buffer feeds the live Best Share — Trend chart.
+  const BEST_INTERVAL_MS = 60 * 1000;
+  let lastBestPush = 0;
+  const WORKERS_INTERVAL_MS = 60 * 1000;
+  let lastWorkersPush = 0;
 
   // v1.11.8: decouple poll cadence from broadcast cadence.
   // Poll ckpool's status files every 2s for fresh internal state, but
@@ -74,6 +92,11 @@ function startStatusPoller(state, broadcast, logDir) {
 
   if (!Array.isArray(state.hashrate.week)) state.hashrate.week = [];
   if (!state.hashrate.averages) state.hashrate.averages = {};
+  // v1.12.0: ensure the new pool-internals containers exist so transformState
+  // and the UI never read undefined.
+  if (!state.pool) state.pool = {};
+  if (!Array.isArray(state.shares.bestHistory)) state.shares.bestHistory = [];
+  if (!Array.isArray(state.pool.workersHistory)) state.pool.workersHistory = [];
 
   function cleanupStaleWorkers() {
     const now = Date.now();
@@ -158,6 +181,66 @@ function startStatusPoller(state, broadcast, logDir) {
 
             refreshAverages();
 
+            // ── v1.12.0: ckpool NATIVE pool-level windows ──────────────────
+            // Previously we computed our own averages from history and ignored
+            // ckpool's own windowed rates. ckpool's "rates" line carries
+            // authoritative hashrate1m/5m/15m/1hr/6hr/1d/7d; the "summary"
+            // line carries Idle/Disconnected and runtime; the "shares" line
+            // carries SPS1m/5m/15m/1h. Surface all of them under state.pool
+            // for the Pool Internals page (Page 2). These are the pool's OWN
+            // numbers, distinct from the history-derived averages above.
+            state.pool.hashrateWindows = {
+              hr1m:  parseHashrate(rates.hashrate1m),
+              hr5m:  parseHashrate(rates.hashrate5m),
+              hr15m: parseHashrate(rates.hashrate15m),
+              hr1h:  parseHashrate(rates.hashrate1hr),
+              hr6h:  parseHashrate(rates.hashrate6hr),
+              hr1d:  parseHashrate(rates.hashrate1d),
+              hr7d:  parseHashrate(rates.hashrate7d),
+            };
+            // % of pool peak — the highest of the windows is the reference.
+            {
+              const w = state.pool.hashrateWindows;
+              const peak = Math.max(w.hr1m, w.hr5m, w.hr15m, w.hr1h, w.hr6h, w.hr1d, w.hr7d, 1);
+              state.pool.hashrateWindowPct = {
+                hr1m:  +(w.hr1m  / peak * 100).toFixed(1),
+                hr5m:  +(w.hr5m  / peak * 100).toFixed(1),
+                hr15m: +(w.hr15m / peak * 100).toFixed(1),
+                hr1h:  +(w.hr1h  / peak * 100).toFixed(1),
+                hr6h:  +(w.hr6h  / peak * 100).toFixed(1),
+                hr1d:  +(w.hr1d  / peak * 100).toFixed(1),
+                hr7d:  +(w.hr7d  / peak * 100).toFixed(1),
+              };
+              state.pool.hashratePeak = peak;
+            }
+            // SPS windows — ckpool exposes all four; we previously kept only 1m.
+            state.pool.spsWindows = {
+              sps1m:  shares.SPS1m  || 0,
+              sps5m:  shares.SPS5m  || 0,
+              sps15m: shares.SPS15m || 0,
+              sps1h:  shares.SPS1h  || shares.SPS1hr || 0,
+            };
+            // Connection states + runtime from the summary line.
+            state.pool.users        = summary.Users        || 0;
+            state.pool.workers      = summary.Workers       || 0;
+            state.pool.idle         = summary.Idle          || 0;
+            state.pool.disconnected = summary.Disconnected  || 0;
+            state.pool.runtimeSec   = parseRuntimeSeconds(summary);
+            state.pool.lastUpdate   = summary.lastupdate || summary.lastUpdate || Math.floor(now / 1000);
+            state.pool.lastPolledAt = now;
+            // v1.12.x: rolling workers+users history for the Page-2 trend.
+            // {ts, workers, users}. One sample/min, 24h cap — mirrors bestHistory.
+            (() => {
+              if (!Array.isArray(state.pool.workersHistory)) state.pool.workersHistory = [];
+              if (now - lastWorkersPush < WORKERS_INTERVAL_MS) return;
+              state.pool.workersHistory.push({ ts: now, workers: state.pool.workers || 0, users: state.pool.users || 0 });
+              if (state.pool.workersHistory.length > HISTORY_MAX_POINTS) {
+                state.pool.workersHistory.splice(0, state.pool.workersHistory.length - HISTORY_MAX_POINTS);
+              }
+              lastWorkersPush = now;
+            })();
+            // ───────────────────────────────────────────────────────────────
+
 // v1.5.11: share-watcher owns acceptedCount/rejectedCount/stale fields
             // (real share counts from sharelogs). Status-poller only sets the
             // work-weighted accepted/rejected from ckpool's pool.status.
@@ -180,6 +263,23 @@ function startStatusPoller(state, broadcast, logDir) {
             state.bestshare            = shares.bestshare     || 0;
             state.totalWorkers         = summary.Workers      || 0;
             state.totalUsers           = summary.Users        || 0;
+
+            // ── v1.12.0: best-share-over-time ring buffer (Best Share Trend) ─
+            // ckpool only ever gives the CURRENT bestshare; to chart it over
+            // time we sample on the same 60s cadence. The value is a running
+            // session maximum, so the series is monotonic non-decreasing —
+            // that's intentional: the chart shows "closest we've ever come,
+            // climbing over the round."
+            (() => {
+              if (!Array.isArray(state.shares.bestHistory)) state.shares.bestHistory = [];
+              if (now - lastBestPush < BEST_INTERVAL_MS) return;
+              const best = shares.bestshare || 0;
+              state.shares.bestHistory.push({ ts: now, best });
+              if (state.shares.bestHistory.length > 1440) {
+                state.shares.bestHistory.splice(0, state.shares.bestHistory.length - 1440);
+              }
+              lastBestPush = now;
+            })();
           } catch (e) {
             // v1.8.3-rev29: was silently swallowed. If ckpool's pool.status
             // becomes malformed (disk full mid-write, partial flush, etc.),
@@ -209,6 +309,9 @@ function startStatusPoller(state, broadcast, logDir) {
                   sharesCount: 0, rejectedCount: 0,
                   lastSeen: Date.now(), diff: 0, status: 'online',
                   bestshare: 0,
+                  // v1.12.0: lifetime best (bestever) tracked separately from
+                  // session bestshare for the Fleet Comparison "Best Ever" col.
+                  bestever: 0,
                   minerType: null, minerIcon: '▪', minerVendor: null,
                   minerSource: 'unknown', userAgent: null,
                   ip: null,
@@ -230,6 +333,10 @@ function startStatusPoller(state, broadcast, logDir) {
               wk.sharesCount    = w.sharesCount    || w.shares_count   || 0;
               wk.rejectedCount  = w.rejectedCount  || w.rejected_count || 0;
               wk.bestshare      = w.bestshare      || 0;
+              // v1.12.0: bestever — ckpool's per-worker lifetime best diff.
+              // Fall back to tracking the running max of bestshare if ckpool
+              // doesn't emit a separate bestever field on this build.
+              wk.bestever       = Math.max(wk.bestever || 0, w.bestever || 0, wk.bestshare || 0);
               wk.diff           = w.lastdiff       || w.diff || wk.diff || 0;
               wk.lastSeen       = (w.lastshare || Math.floor(Date.now()/1000)) * 1000;
               const age = Date.now() - wk.lastSeen;

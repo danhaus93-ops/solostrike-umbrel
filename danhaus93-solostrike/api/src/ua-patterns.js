@@ -4,7 +4,7 @@
 
 const UA_PATTERNS = [
   // ── OSS / Hobby (most distinctive UAs, put these first) ──────────────────
-  { match: /bitaxe.*gamma/i,                      type: 'BitAxe Gamma',       icon: '◆', vendor: 'OSS' },
+  { match: /bitaxe.*gamma|gamma[\s_.-]*60[12]|bitaxe[\s_.-]*60[12]/i,                      type: 'BitAxe Gamma',       icon: '◆', vendor: 'OSS' },
   { match: /bitaxe.*supra/i,                      type: 'BitAxe Supra',       icon: '◆', vendor: 'OSS' },
   { match: /bitaxe.*ultra/i,                      type: 'BitAxe Ultra',       icon: '◆', vendor: 'OSS' },
   { match: /bitaxe.*max/i,                        type: 'BitAxe Max',         icon: '◆', vendor: 'OSS' },

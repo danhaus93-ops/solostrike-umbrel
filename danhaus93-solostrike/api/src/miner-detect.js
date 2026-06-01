@@ -20,7 +20,7 @@ const WORKERNAME_PATTERNS = [
   { match: /\.avalon/i,                                        type: 'Avalon',               icon: '▸',  vendor: 'Canaan' },
   { match: /\.nerdqaxe/i,                                      type: 'NerdQaxe++',           icon: '◈',  vendor: 'Shufps' },
   { match: /\.nerdminer|\.nerd/i,                              type: 'NerdMiner',            icon: '◈',  vendor: 'OSS' },
-  { match: /\.bitaxe[\s_.-]*gamma/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
+  { match: /\.bitaxe[\s_.-]*gamma|\.gamma[\s_.-]*60[12]|\.bitaxe[\s_.-]*60[12]|\.60[12](?:$|[\s_.-])/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*supra/i,                           type: 'BitAxe Supra',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*ultra/i,                           type: 'BitAxe Ultra',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe/i,                                        type: 'BitAxe',               icon: '◆',  vendor: 'OSS' },
@@ -42,9 +42,44 @@ function detectFromWorkername(workername) {
   return { type: null, icon: null, vendor: null };
 }
 
+// v1.12.x: authoritative model detection from the ESP-Miner ASICModel field.
+// ESP-Miner (Bitaxe family + NerdQaxe) reports the literal Bitmain chip ID
+// in /api/system/info → ASICModel. The chip uniquely identifies the board:
+//   BM1370 → Gamma (single) / NerdQaxe Gamma (multi)
+//   BM1368 → Supra
+//   BM1366 → Ultra
+//   BM1397 → original Bitaxe Max / early single-chip boards
+// asicCount disambiguates single-chip Bitaxe from multi-chip NerdQaxe.
+const ASIC_MODEL_MAP = {
+  BM1370: { type: 'BitAxe Gamma', icon: '◆', vendor: 'OSS' },
+  BM1368: { type: 'BitAxe Supra', icon: '◆', vendor: 'OSS' },
+  BM1366: { type: 'BitAxe Ultra', icon: '◆', vendor: 'OSS' },
+  BM1397: { type: 'BitAxe Max',   icon: '◆', vendor: 'OSS' },
+};
+
+function detectFromAsicModel(asicModel, asicCount) {
+  if (!asicModel || typeof asicModel !== 'string') {
+    return { type: null, icon: null, vendor: null };
+  }
+  // normalize: strip non-alphanumerics, uppercase (handles "bm1370", "BM-1370")
+  const key = asicModel.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const base = ASIC_MODEL_MAP[key];
+  if (!base) return { type: null, icon: null, vendor: null };
+  // multi-chip BM1370/BM1368 boards are NerdQaxe variants, not single Bitaxe
+  const n = Number(asicCount) || 0;
+  if (n >= 2) {
+    return { type: 'NerdQaxe++', icon: '◈', vendor: 'Shufps' };
+  }
+  return { ...base };
+}
+
 // Best-effort detection combining user-agent (preferred) and workername fallback.
 // Returns { type, icon, vendor, source } — `source` tells you which method won.
-function detectMinerBest(workername, userAgent) {
+function detectMinerBest(workername, userAgent, asicModel, asicCount) {
+  // v1.12.x: the physical chip ID is the most authoritative signal — use it first.
+  const asic = detectFromAsicModel(asicModel, asicCount);
+  if (asic.type) return { ...asic, source: 'asic-model' };
+
   const ua = detectFromUserAgent(userAgent);
   if (ua.type) return { ...ua, source: 'user-agent' };
 
@@ -78,8 +113,9 @@ function workerHealth(w) {
 
 module.exports = {
   detectMiner,            // back-compat
-  detectMinerBest,        // new two-tier detection
+  detectMinerBest,        // new three-tier detection (asic-model → UA → workername)
   detectFromWorkername,
   detectFromUserAgent,
+  detectFromAsicModel,
   workerHealth,
 };

@@ -4,6 +4,17 @@
 // yet exists.
 
 const { getAlignmentForWorker, getLiveForWorker } = require('./miner-poller');
+const { detectFromAsicModel } = require('./miner-detect');
+
+// v1.12.x: when a worker's live telemetry includes the real chip ID
+// (ESP-Miner ASICModel), upgrade its detected model — the physical chip is
+// authoritative and overrides any earlier workername/UA guess.
+function applyAsicModelUpgrade(w, live) {
+  if (!live || !live.asicModel) return w;
+  const det = detectFromAsicModel(live.asicModel, live.asicCount);
+  if (!det.type) return w;
+  return { ...w, minerType: det.type, minerIcon: det.icon || w.minerIcon, minerVendor: det.vendor, minerSource: 'asic-model' };
+}
 
 function computeOdds(state) {
   const poolHR = state.hashrate?.current || 0;
@@ -147,6 +158,7 @@ function transformState(state, opts) {
     //   sharelogCursors = 21KB (server-only bookkeeping, UI never reads)
     //   workers         = 57KB (statusHistory at 3.7KB × N workers)
     shares: stateShares,
+    pool: statePool,
     sharelogCursors: _stateSharelogCursors,  // dropped entirely from output
     ...rest
   } = state;
@@ -167,6 +179,10 @@ function transformState(state, opts) {
   }
   return {
     ...rest,
+    pool: statePool ? (compact ? (() => {
+      const { workersHistory, ...rest_p } = statePool;
+      return { ...rest_p, workersHistoryTail: Array.isArray(workersHistory) ? workersHistory.slice(-10) : [] };
+    })() : statePool) : undefined,
     // v1.10.1 SECURITY: expose only `hasAddress: boolean` (not the address
     // itself). UI's onboarding-detection check (`if (!poolState.payoutAddress)`)
     // is updated to use this boolean. Components needing the actual address
@@ -185,20 +201,22 @@ function transformState(state, opts) {
       const alignment = enhanceAlignmentWithShares(rawAlignment, shareCounters, w.name);
       if (compact) {
         const { statusHistory, ...wRest } = w;
-        return {
+        const live = getLiveForWorker(w.name);
+        return applyAsicModelUpgrade({
           ...wRest,
           shareEvents:   (shareCounters || {})[w.name] || null,
           poolAlignment: alignment,
-          live:          getLiveForWorker(w.name),
+          live,
           statusHistoryTail: Array.isArray(statusHistory) ? statusHistory.slice(-10) : [],
-        };
+        }, live);
       }
-      return {
+      const live = getLiveForWorker(w.name);
+      return applyAsicModelUpgrade({
         ...w,
         shareEvents:   (shareCounters || {})[w.name] || null,
         poolAlignment: alignment,
-        live:          getLiveForWorker(w.name),
-      };
+        live,
+      }, live);
     }),
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
@@ -267,7 +285,9 @@ function transformState(state, opts) {
       // v1.11.38: tail size is 10 (was 2), matching hashrate tails — covers
       // ≥10 minute disconnects without dropping samples.
       shares: stateShares ? (() => {
-        const { rejectReasons, spsHistory, ...rest_s } = stateShares;
+        // v1.12.0: bestHistory (Best Share Trend) gets the same tail treatment
+        // as spsHistory — 1440 entries @ 1min would bloat every broadcast.
+        const { rejectReasons, spsHistory, bestHistory, ...rest_s } = stateShares;
         const top = rejectReasons
           ? Object.entries(rejectReasons).sort((a,b)=>b[1]-a[1]).slice(0,20)
           : [];
@@ -275,6 +295,7 @@ function transformState(state, opts) {
           ...rest_s,
           rejectReasons: Object.fromEntries(top),
           spsHistoryTail: Array.isArray(spsHistory) ? spsHistory.slice(-10) : [],
+          bestHistoryTail: Array.isArray(bestHistory) ? bestHistory.slice(-10) : [],
         };
       })() : undefined,
       // snapshots omitted entirely in compact mode

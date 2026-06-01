@@ -101,7 +101,15 @@ const MAX_WORKERS       = 1000;
 const MAX_BLOCKS        = 1e6;                       // sanity cap
 const MAX_VERSION_LEN   = 16;                        // version strings are short
 
-// Outlier filtering — Median Absolute Deviation, drop entries > 5×MAD from median
+// Outlier filtering — Median Absolute Deviation, drop entries > 5×MAD from median.
+// v1.11.x: DISABLED. Pulse is an ambient, opt-in community visualization, not an
+// audited statistic. The MAD filter dropped genuinely-large-but-real miners (a
+// 1 PH/s rig among hobbyists is ~250,000× MAD from the median — no sane multiplier
+// keeps it), so legitimate participants vanished from the globe. We now show all
+// self-reported entries that pass the absolute MAX_HASHRATE_HPS ceiling, and the
+// Strikers modal carries a disclaimer that figures are self-reported / unverified.
+// Flip OUTLIER_FILTER_ENABLED back to true to restore the old behavior.
+const OUTLIER_FILTER_ENABLED = false;
 const OUTLIER_MAD_MULTIPLIER = 5;
 const OUTLIER_MIN_SAMPLES    = 5;                    // need >= 5 to compute median meaningfully
 
@@ -663,7 +671,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     let activeEntries = all;
     let outliersFilteredThisRound = 0;
 
-    if (all.length >= OUTLIER_MIN_SAMPLES) {
+    if (OUTLIER_FILTER_ENABLED && all.length >= OUTLIER_MIN_SAMPLES) {
       const hashrates = all.map(([, e]) => e.hashrate);
       const workersArr = all.map(([, e]) => e.workers);
       const { median: hrMed, mad: hrMad } = medianAbsoluteDeviation(hashrates);

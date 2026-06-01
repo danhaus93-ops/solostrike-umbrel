@@ -331,6 +331,11 @@ function extractCgminerLive(summary, stats) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    // v1.12.0: power draw (watts) + computed efficiency (J/TH) for Fleet
+    // Efficiency. ckpool has no concept of power; this comes from the rig's
+    // own API. Not all firmwares report it — null when unavailable.
+    powerW: null,
+    efficiencyJTH: null,
   };
 
   const sm = Array.isArray(summary) ? summary[0] : summary;
@@ -352,6 +357,10 @@ function extractCgminerLive(summary, stats) {
 
     const sumT = numOr(sm.Temperature);
     if (sumT !== null && sumT > 0) live.tempC = sumT;
+
+    // v1.12.0: power from summary line (some firmwares put it here)
+    const sumP = numOr(sm.Power ?? sm.power ?? sm['Power'] ?? sm['Power Consumption']);
+    if (sumP !== null && sumP > 0 && sumP < 20000) live.powerW = sumP;
   }
 
   let maxTemp = null;
@@ -403,6 +412,13 @@ function extractCgminerLive(summary, stats) {
           if (maxFanPct === null || v > maxFanPct) maxFanPct = v;
         }
       }
+      // v1.12.0: power draw (watts) from stats fields
+      for (const k of ['Power','power','Power Consumption','wattage','Watts','PowerConsumption']) {
+        const v = numOr(s[k]);
+        if (v !== null && v > 0 && v < 20000) {
+          if (live.powerW === null || v > live.powerW) live.powerW = v;
+        }
+      }
 
       if (!live.firmwareVersion) {
         live.firmwareVersion = s['Miner Version'] || s.MinerVersion
@@ -428,7 +444,11 @@ function extractCgminerLive(summary, stats) {
         const mmGhs  = parseAvalonMmField(v, 'GHSmm', 'GHSavg', 'GHSspd');
         const mmVer  = /Ver\[([^\]]+)\]/.exec(v);
         const mmElapsed = parseAvalonMmField(v, 'ELAPSED', 'Elapsed');
+        const mmPower = parseAvalonMmField(v, 'MPO', 'Power', 'Pmax', 'PWR');
 
+        if (mmPower !== null && mmPower > 0 && mmPower < 20000) {
+          if (live.powerW === null || mmPower > live.powerW) live.powerW = mmPower;
+        }
         if (mmTemp !== null && mmTemp > 0 && mmTemp < 200) {
           if (maxTemp === null || mmTemp > maxTemp) maxTemp = mmTemp;
           live.tempDetails.push({ id: String(key), tempC: mmTemp });
@@ -456,7 +476,20 @@ function extractCgminerLive(summary, stats) {
   if (maxFanRpm !== null) live.fanRpm = maxFanRpm;
   if (maxFanPct !== null) live.fanPct = maxFanPct;
 
+  // v1.12.0: efficiency = watts per terahash. Needs both a power reading and
+  // a reported hashrate; null if either is missing.
+  live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
+
   return live;
+}
+
+// v1.12.0: J/TH = watts / (hashrate in TH/s). hashrate is stored in H/s.
+function computeEfficiency(powerW, hashrateHs) {
+  if (!powerW || powerW <= 0) return null;
+  if (!hashrateHs || hashrateHs <= 0) return null;
+  const ths = hashrateHs / 1e12;
+  if (ths <= 0) return null;
+  return +(powerW / ths).toFixed(2);
 }
 
 // Avalon "MM ID" string sub-field extractor. Tries multiple key candidates
@@ -534,6 +567,7 @@ function extractEspMinerLive(d) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    asicModel: null,
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
   if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
@@ -543,6 +577,17 @@ function extractEspMinerLive(d) {
     live.hashrateReported = d.hashRate * 1e9;
   if (typeof d.uptimeSeconds === 'number')            live.uptimeSec = d.uptimeSeconds;
   if (typeof d.version === 'string')                  live.firmwareVersion = d.version;
+  // v1.12.x: ESP-Miner reports the actual mining chip in ASICModel
+  // (e.g. "BM1370", "BM1366"). This is the authoritative model signal —
+  // far more reliable than guessing from the worker name. Captured here
+  // and consumed by miner-detect's detectFromAsicModel().
+  if (typeof d.ASICModel === 'string' && d.ASICModel.trim()) live.asicModel = d.ASICModel.trim();
+  else if (typeof d.asicModel === 'string' && d.asicModel.trim()) live.asicModel = d.asicModel.trim();
+  if (typeof d.asicCount === 'number' && d.asicCount > 0) live.asicCount = d.asicCount;
+  if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
+  // v1.12.0: ESP-Miner reports instantaneous power draw in watts.
+  if (typeof d.power === 'number' && d.power > 0 && d.power < 20000) live.powerW = d.power;
+  live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
 
   if (live.tempC !== null) {
     live.tempDetails.push({ id: 'asic', tempC: live.tempC });
