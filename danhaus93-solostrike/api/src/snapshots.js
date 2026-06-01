@@ -3,6 +3,9 @@ const path = require('path');
 
 const MAX_DAILY_SNAPSHOTS = 90;
 const MAX_CLOSEST_CALLS   = 10;
+// v1.12.0: persisted history for Page 3 analytics.
+const MAX_BLOCK_EFFORT     = 200;   // last 200 solved-block effort records
+const MAX_BEST_TREND       = 2880;  // 48h of best-share samples @ 1min
 
 function todayUtcKey(d = new Date()) {
   return d.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -17,12 +20,15 @@ async function loadSnapshots(configDir) {
         daily:           Array.isArray(data.daily)        ? data.daily.slice(-MAX_DAILY_SNAPSHOTS) : [],
         closestCalls:    Array.isArray(data.closestCalls) ? data.closestCalls.slice(0, MAX_CLOSEST_CALLS) : [],
         lastRollupDate:  data.lastRollupDate || null,
+        // v1.12.0 persisted analytics
+        blockEffort:     Array.isArray(data.blockEffort)  ? data.blockEffort.slice(0, MAX_BLOCK_EFFORT) : [],
+        bestTrend:       Array.isArray(data.bestTrend)    ? data.bestTrend.slice(-MAX_BEST_TREND) : [],
       };
     }
   } catch (e) {
     console.error('[Snapshots] load failed:', e.message);
   }
-  return { daily: [], closestCalls: [], lastRollupDate: null };
+  return { daily: [], closestCalls: [], lastRollupDate: null, blockEffort: [], bestTrend: [] };
 }
 
 async function saveSnapshots(configDir, snapshots) {
@@ -34,6 +40,9 @@ async function saveSnapshots(configDir, snapshots) {
       daily:          (snapshots.daily || []).slice(-MAX_DAILY_SNAPSHOTS),
       closestCalls:   (snapshots.closestCalls || []).slice(0, MAX_CLOSEST_CALLS),
       lastRollupDate: snapshots.lastRollupDate || null,
+      // v1.12.0 persisted analytics
+      blockEffort:    (snapshots.blockEffort || []).slice(0, MAX_BLOCK_EFFORT),
+      bestTrend:      (snapshots.bestTrend || []).slice(-MAX_BEST_TREND),
     }, { spaces: 2 });
   } catch (e) {
     console.error('[Snapshots] save failed:', e.message);
@@ -127,6 +136,48 @@ function updateClosestCalls(snapshots, state) {
   return changed;
 }
 
+// v1.12.0: mirror state.blockEffortHistory into the persisted snapshot store
+// so block-effort survives restarts. Returns true if changed.
+function syncBlockEffort(snapshots, state) {
+  if (!Array.isArray(snapshots.blockEffort)) snapshots.blockEffort = [];
+  const live = Array.isArray(state.blockEffortHistory) ? state.blockEffortHistory : [];
+  if (!live.length) return false;
+  // Merge by block height (live is newest-first). Add any not already stored.
+  const known = new Set(snapshots.blockEffort.map(e => e.height));
+  let changed = false;
+  for (const e of live) {
+    if (e && e.height != null && !known.has(e.height)) {
+      snapshots.blockEffort.unshift(e);
+      known.add(e.height);
+      changed = true;
+    }
+  }
+  if (changed) {
+    snapshots.blockEffort.sort((a, b) => (b.height || 0) - (a.height || 0));
+    if (snapshots.blockEffort.length > MAX_BLOCK_EFFORT) {
+      snapshots.blockEffort = snapshots.blockEffort.slice(0, MAX_BLOCK_EFFORT);
+    }
+  }
+  return changed;
+}
+
+// v1.12.0: sample the current pool bestshare into the persisted best-share
+// trend once per tick (scheduler runs every 60s). Monotonic per round.
+function sampleBestTrend(snapshots, state) {
+  if (!Array.isArray(snapshots.bestTrend)) snapshots.bestTrend = [];
+  const best = state.bestshare || 0;
+  if (best <= 0) return false;
+  const now = Date.now();
+  const last = snapshots.bestTrend[snapshots.bestTrend.length - 1];
+  // Skip if <55s since last sample (scheduler cadence guard) or unchanged.
+  if (last && (now - last.ts) < 55000) return false;
+  snapshots.bestTrend.push({ ts: now, best });
+  if (snapshots.bestTrend.length > MAX_BEST_TREND) {
+    snapshots.bestTrend.splice(0, snapshots.bestTrend.length - MAX_BEST_TREND);
+  }
+  return true;
+}
+
 // Schedule UTC-midnight rollups. Also immediately runs a rollup if we've passed
 // midnight since last rollup (catches restarts).
 function startSnapshotScheduler({ state, snapshots, configDir, intervalMs = 60 * 1000 }) {
@@ -148,7 +199,10 @@ function startSnapshotScheduler({ state, snapshots, configDir, intervalMs = 60 *
 
       // Closest calls can change at any time as bestshares grow
       const ccChanged = updateClosestCalls(snapshots, state);
-      if (ccChanged) {
+      // v1.12.0: persist block-effort + best-share trend
+      const effChanged  = syncBlockEffort(snapshots, state);
+      const bestChanged = sampleBestTrend(snapshots, state);
+      if (ccChanged || effChanged || bestChanged) {
         await saveSnapshots(configDir, snapshots);
       }
     } catch (e) {
@@ -170,7 +224,11 @@ module.exports = {
   captureDailySnapshot,
   applyDailySnapshot,
   updateClosestCalls,
+  syncBlockEffort,
+  sampleBestTrend,
   startSnapshotScheduler,
   MAX_DAILY_SNAPSHOTS,
   MAX_CLOSEST_CALLS,
+  MAX_BLOCK_EFFORT,
+  MAX_BEST_TREND,
 };

@@ -33,20 +33,49 @@ function startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir })
   } catch {}
 
   function handleBlockFound({ hash, height }) {
+    // v1.12.0: block effort / luck. ckpool tells us a block was solved but not
+    // how hard it was to find. Effort% = (shares submitted this round) /
+    // (shares expected for the network difficulty). <100% = lucky, >100% =
+    // unlucky. We approximate round shares from the accepted-share counter's
+    // delta since the previous block, and expected shares ≈ network difficulty
+    // (the average number of diff-1 shares to find a block at that difficulty).
+    const netDiff = state.network?.difficulty || 0;
+    const acceptedNow = state.shares?.accepted || 0;
+    const sharesThisRound = Math.max(0, acceptedNow - (state._sharesAtLastBlock || 0));
+    let effortPct = null;
+    if (netDiff > 0 && sharesThisRound > 0) {
+      effortPct = +((sharesThisRound / netDiff) * 100).toFixed(1);
+    }
     const block = {
       hash: hash || null,
       height: height || state.network?.height || 0,
       timestamp: Date.now(),
       miner: 'SoloStrike',
       minerAlias: null,
-      difficulty: state.network?.difficulty || 0,
+      difficulty: netDiff,
       reward: (3.125 + (state.mempool?.totalFeesBtc || 0)),
+      // v1.12.0 effort/luck fields
+      sharesThisRound,
+      effortPct,
           };
           // Dedup: skip if this block hash is already recorded (handles multi-pattern log matches)
           if (block.hash && (state.blocks || []).some(b => b.hash === block.hash)) return;
           console.log('[block-watcher] 🎉 BLOCK FOUND:', block.height, block.hash || '(hash pending)');
 
     state.blocks = [block, ...(state.blocks || [])].slice(0, 1000);
+    // v1.12.0: reset the round baseline so the NEXT block's effort measures
+    // only shares since this solve.
+    state._sharesAtLastBlock = acceptedNow;
+    // Append to the block-effort history ring (persisted by snapshots.js).
+    if (!Array.isArray(state.blockEffortHistory)) state.blockEffortHistory = [];
+    state.blockEffortHistory.unshift({
+      height: block.height,
+      ts: block.timestamp,
+      effortPct,
+      sharesThisRound,
+      difficulty: netDiff,
+    });
+    state.blockEffortHistory = state.blockEffortHistory.slice(0, 200);
     try { broadcast({ type: 'BLOCK_FOUND', data: block }); } catch {}
     try { fireHooks('block_found', { block }); } catch {}
     try {
