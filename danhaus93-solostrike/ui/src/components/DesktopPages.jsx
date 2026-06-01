@@ -201,6 +201,16 @@ const CSS = `
 .ssdesk .fp-num,.ssdesk .sv-num{font-family:var(--fd);font-weight:700;font-size:1.5rem;line-height:.95}.ssdesk .sv-num{color:var(--text-1)}
 .ssdesk .fp-peak{font-family:var(--fm);font-size:.52rem;color:var(--amber-dim)}
 .ssdesk .fp-chart{position:relative;flex:1;min-height:40px}.ssdesk .fp-chart svg{position:absolute;inset:0;width:100%;height:100%}
+.ssdesk .fp-chart svg path{transition:none!important;animation:none!important}
+.ssdesk .fp-avgs{display:flex;flex-direction:column;gap:2px;margin-top:5px;flex:0 0 auto}
+.ssdesk .fp-arow{display:flex;align-items:center;gap:6px;cursor:pointer;padding:1px 2px;border-radius:3px;transition:background .12s}
+.ssdesk .fp-arow:hover{background:rgba(var(--amber-rgb),.06)}
+.ssdesk .fp-arow.on{background:rgba(var(--amber-rgb),.12)}
+.ssdesk .fp-alab{font-family:var(--fd);font-size:.5rem;font-weight:700;letter-spacing:.06em;color:var(--text-2);width:30px;flex:0 0 auto;text-transform:uppercase}
+.ssdesk .fp-arow.on .fp-alab{color:var(--amber)}
+.ssdesk .fp-atrack{flex:1;height:4px;background:var(--bg-deep);border-radius:2px;overflow:hidden}
+.ssdesk .fp-atrack i{display:block;height:100%;background:var(--amber);border-radius:2px}
+.ssdesk .fp-aval{font-family:var(--fm);font-size:.5rem;color:var(--text-2);width:52px;flex:0 0 auto;text-align:right}
 .ssdesk .avgs{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
 .ssdesk .avg .al{font-family:var(--fd);font-size:.48rem;font-weight:700;color:var(--text-2);text-align:center;margin-bottom:2px}.ssdesk .avg.on .al{color:var(--amber)}
 .ssdesk .avg .bar{height:5px;border-radius:3px;background:var(--bg-deep);overflow:hidden}.ssdesk .avg .bar i{display:block;height:100%;background:linear-gradient(90deg,rgba(var(--amber-rgb),0.35),var(--amber))}
@@ -567,21 +577,22 @@ export default function DesktopPages({
   // (which only holds recent samples). Using history for 7D = flat/empty chart.
   const hrHistFull=(Array.isArray(hr.history)?hr.history:[]).filter(h=>h&&Number.isFinite(h.hr));
   const hrWeek=(Array.isArray(hr.week)?hr.week:[]).filter(h=>h&&Number.isFinite(h.hr));
-  const FP_WIN_MS={'live':null,'1M':60e3,'5M':5*60e3,'15M':15*60e3,'1H':3600e3,'6H':6*3600e3,'24H':24*3600e3,'7D':7*24*3600e3};
-  const fpCut=FP_WIN_MS[fpTrend];
+  // CARD-MODE MATCH: HashrateChart plots ONE consistent series — the recent
+  // history (or the separate weekly series for 7D) — with a zero-based domain.
+  // It does NOT re-slice into a different point-count per pill; that reslicing
+  // was what caused the point count to jump (5 → 1440) on trend change, which
+  // made the line "shoot off" and "cut/distort". The pills now just pick which
+  // window AVERAGE is emphasized; the chart shape stays stable.
   const fpSource=fpTrend==='7D'?(hrWeek.length?hrWeek:hrHistFull):hrHistFull;
-  // Each pill shows ITS OWN time window. Don't fall back to the full history on
-  // sparse windows — that made every pill render the same line. If a short
-  // window has <2 samples, synthesize a flat 2-point line at that window's
-  // rolling average (from hashrateWindows) so the chart still renders + differs.
-  const fpAvg=fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur);
-  const hrHistW=(fpCut==null)?fpSource:(()=>{
+  // For sub-day windows, show the tail of history scaled to the window so the
+  // curve still reflects that period, but always keep a real, consistent series.
+  const fpCutMs={'live':null,'1M':null,'5M':null,'15M':null,'1H':3600e3,'6H':6*3600e3,'24H':24*3600e3,'7D':null}[fpTrend];
+  const hrHistW=(fpCutMs==null)?fpSource:(()=>{
     const now=Date.now();
-    const w=fpSource.filter(h=>h.ts&&(now-h.ts)<=fpCut);
-    if(w.length>=2) return w;
-    const a=(fpAvg||cur||0);
-    return [{ts:now-fpCut,hr:a},{ts:now,hr:a}]; // flat line at the window average
+    const w=fpSource.filter(h=>h.ts&&(now-h.ts)<=fpCutMs);
+    return w.length>=2?w:fpSource; // never synthesize — fall back to the real series
   })();
+  const fpAvg=fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur);
   const hrHistRaw=hrHistW.map(h=>h.hr).filter(Number.isFinite);
   // Production smooths each window with a moving average (SMOOTH_WINDOW per range)
   // so the line is clean, not jagged. Mirror that.
@@ -605,7 +616,7 @@ export default function DesktopPages({
     const dips=stabSrc.filter(v=>v<mean*0.5).length; // samples that dropped >50% below mean
     return {pct,std,min:lo,max:hi,dips};
   })();
-  const avgW=[['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr24h'],['7D','hr7d']];
+  const avgW=[['live',null],['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr24h'],['7D','hr7d']];
   const wmax=Math.max(cur,...Object.values(windows).filter(Number.isFinite),1);
 
   // strike velocity — window spsHistory by the selected range pill (1H/6H/24H).
@@ -656,7 +667,8 @@ export default function DesktopPages({
                 <div className="zlabel zlabel-row">{tt('Firepower')} — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1M','5M','15M','1H','6H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
                 <div className="fp">
                   <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
-                  <div className="fp-chart"><svg viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--amber)" stopOpacity="0.28"/><stop offset="95%" stopColor="var(--amber)" stopOpacity="0.02"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)"/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="2"/></>}</svg></div>
+                  <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
+                  <div className="fp-avgs">{avgW.map(([lab,key])=>{const v=(lab==='live'?cur:windows[key])||0;const pct=wmax>0?Math.min(100,(v/wmax)*100):0;const on=fpTrend===lab;return <div className={`fp-arow${on?' on':''}`} key={lab} onClick={()=>setFpTrend(lab)}><span className="fp-alab">{lab==='live'?'LIVE':lab}</span><span className="fp-atrack"><i style={{width:Math.max(2,pct)+'%'}}/></span><span className="fp-aval">{v>0?fmtTH(v)+' T':'—'}</span></div>;})}</div>
                 </div>
               </div>
               <div className="panel">
