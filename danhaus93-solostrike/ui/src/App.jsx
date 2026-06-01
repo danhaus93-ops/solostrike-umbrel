@@ -7890,7 +7890,7 @@ function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }
               cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 2,
               transition: 'all 0.15s ease',
             }}
-          >{opt.label}</button>
+          >{tt(opt.label)}</button>
         ))}
       </div>
       <div style={{
@@ -8055,7 +8055,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
               <div style={{flex:1}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:'var(--text-1)',letterSpacing:'0.05em',marginBottom:3}}>{'🧅 '}{tt('Route via Tor')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.45}}>
-                  Send broadcasts through Tor so no relay learns your IP address. Adds latency. Requires Umbrel Tor service running.
+                  {tt('Send broadcasts through Tor so no relay learns your IP address. Adds latency. Requires Umbrel Tor service running.')}
                 </div>
               </div>
               <button
@@ -8088,22 +8088,22 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             </div>
             {torMode === 'checking' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',padding:'0.4rem 0.55rem',background:'rgba(255,255,255,0.03)',border:'1px dashed var(--border)',marginTop:6}}>
-                ⏳ Testing Tor reachability…
+                ⏳ {tt('Testing Tor reachability…')}
               </div>
             )}
             {torMode === 'tor' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--green)',padding:'0.4rem 0.55rem',background:'rgba(0,255,128,0.05)',border:'1px dashed rgba(0,255,128,0.3)',marginTop:6}}>
-                🟢 Routing all relays through Tor. Privacy active.
+                🟢 {tt('Routing all relays through Tor. Privacy active.')}
               </div>
             )}
             {torMode === 'unreachable' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px dashed rgba(var(--amber-rgb),0.4)',marginTop:6,lineHeight:1.5}}>
-                ⚠ Tor unreachable: <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{torError || 'check Umbrel Tor service'}</span>. Pulse continues broadcasting direct.
+                ⚠ {tt('Tor unreachable:')} <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{torError || 'check Umbrel Tor service'}</span>. {tt('Pulse continues broadcasting direct.')}
               </div>
             )}
             {torOn && torMode === 'direct' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px dashed rgba(var(--amber-rgb),0.4)',marginTop:6}}>
-                🟡 Tor degraded — broadcasts using direct routing. Auto-recovery every 5 min.
+                🟡 {tt('Tor degraded — broadcasts using direct routing. Auto-recovery every 5 min.')}
               </div>
             )}
           </div>
@@ -8132,10 +8132,10 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
               } catch(e) { setErr(e.message); }
             }}
             style={{display:'block',width:'100%',padding:'0.5rem 0.7rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase',marginBottom:6}}>
-              🔑 Backup Pulse Identity
+              🔑 {tt('Backup Pulse Identity')}
             </button>
             <button onClick={regenerate} style={{display:'block',width:'100%',padding:'0.5rem 0.7rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>
-              🔄 Regenerate Identity
+              🔄 {tt('Regenerate Identity')}
             </button>
           </div>
 
@@ -8229,7 +8229,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
             color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
           }}>
-            Pulse Animation Style
+            {tt('Pulse Animation Style')}
           </div>
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
@@ -8254,7 +8254,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
             marginTop: 6,
           }}>
-            Choose how the SoloStrike Pulse network is visualized.
+            {tt('Choose how the SoloStrike Pulse network is visualized.')}
           </div>
         </div>
       )}
@@ -8274,7 +8274,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fd)', fontSize: '0.72rem', letterSpacing: '0.08em',
             color: 'var(--amber)', textTransform: 'uppercase', marginBottom: 8,
           }}>
-            Your Pool Location
+            {tt('Your Pool Location')}
           </div>
           <div style={{
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
@@ -8282,10 +8282,10 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
           }}>
             {poolPin ? (
               <>
-                Pinned to <span style={{ color: 'var(--text-1)' }}>
+                {tt('Pinned to')} <span style={{ color: 'var(--text-1)' }}>
                   {Math.abs(poolPin.lat)}°{poolPin.lat >= 0 ? 'N' : 'S'},{' '}
                   {Math.abs(poolPin.lon)}°{poolPin.lon >= 0 ? 'E' : 'W'}
-                </span>{' · '}snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.
+                </span>{' · '}{tt('snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.')}
               </>
             ) : (
               <>{tt('Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to')} <span style={{ color: 'var(--text-1)' }}>{tt('Globe')}</span>{tt(', then tap "Pin My Pool" below the globe.')}</>
@@ -9422,6 +9422,27 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     }
   }, [pulseAnim]);
 
+  // v1.11.66: fresh-install self-heal + Join-Pulse trigger. On a brand-new
+  // install the globe sometimes never textures on first load (blank until a
+  // manual refresh). Poll a few times after mount — and re-poll whenever Join
+  // Pulse is toggled — re-arming the globe init (re-fetch + re-bake) until the
+  // sphere actually textures. Guarded by webglTextureReadyRef so a globe that
+  // is already rendering is never disturbed (the interval clears immediately).
+  useEffect(() => {
+    let tries = 0;
+    const id = setInterval(() => {
+      const c = canvasRef.current;
+      if (!c) return;
+      if (webglTextureReadyRef.current) { clearInterval(id); return; }
+      tries++;
+      c._globeInit = undefined;     // forces full re-fetch + re-bake next frame
+      c._globeRings = null;
+      c._globeFetchTries = 0;       // reset the fetch-retry budget
+      if (tries >= 4) clearInterval(id);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [enabled]);
+
   // v1.11.0: Strike Mesh init. Mount-once on canvas ref ready,
   // re-mounts only if pulseAnim changes to/from 'block'. Renders only
   // when pulseAnim === 'block' (canvas display:none otherwise — context
@@ -10169,7 +10190,17 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           })
           .catch(e => {
             console.warn('Globe coastline fetch failed:', e);
-            canvas._globeInit = true; // proceed without coastlines
+            // v1.11.66: retry the fetch on a fresh install. The atlas file can
+            // be briefly unavailable on the very first load (assets still
+            // settling / SW not yet in control), which left the sphere blank
+            // until a manual refresh. Re-arm init for another attempt with
+            // backoff; give up (empty ocean) after a few tries.
+            canvas._globeFetchTries = (canvas._globeFetchTries || 0) + 1;
+            if (canvas._globeFetchTries <= 5) {
+              setTimeout(() => { canvas._globeInit = undefined; }, 1000 * canvas._globeFetchTries);
+            } else {
+              canvas._globeInit = true; // proceed without coastlines
+            }
           });
       }
 
