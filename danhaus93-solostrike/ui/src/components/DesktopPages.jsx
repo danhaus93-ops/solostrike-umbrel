@@ -188,9 +188,9 @@ const CSS = `
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
-.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
-@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 72%, transparent)}}
-.ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 7px;padding-bottom:.35rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
+.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
+@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 50%, transparent)}}
+.ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px;padding-bottom:.22rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
 .ssdesk .clk:hover{background:rgba(var(--amber-rgb),0.06);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),0.2)}
 .ssdesk .clk::after{content:"⤢";position:absolute;top:4px;right:6px;font-size:.56rem;color:var(--amber);opacity:.35}.ssdesk .clk:hover::after{opacity:1}
@@ -227,7 +227,7 @@ const CSS = `
 .ssdesk .sv-median{margin-left:auto;color:var(--text-2);white-space:nowrap}
 .ssdesk .sv-samples{font-family:var(--fd);font-size:.5rem;font-weight:600;letter-spacing:.06em;color:var(--text-2);text-transform:uppercase}
 
-.ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
+.ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:0;border-radius:11px}
 .ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .ssdesk .slot-hunt{width:100%;flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
 /* mounted Pulse/Hunt panels render their own "▸ Title" as first child — hide it
@@ -684,12 +684,6 @@ export default function DesktopPages({
                 <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('The Hunt')} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')} <span className="tap-hint">▸ {_tt('THE RECKONING')}</span></span><button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
-                  <div className="hunt-face">
-                    <div className="hf-reward"><span className="lbl">{_tt('Block Reward')}</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
-                    <div className="hf-sub">{(()=>{const sub=reward.base??reward.subsidyBtc??null;const fees=reward.fees??reward.feesBtc??(reward.totalBtc!=null&&sub!=null?reward.totalBtc-sub:null);return <>{_tt('subsidy')} <b>{sub!=null?sub.toFixed(3):'—'}</b> · {_tt('fees')} <span className="fee">{fees!=null?'+'+fees.toFixed(4):'—'}</span></>;})()}</div>
-                    <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡{_tt('Fast')}</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐{_tt('Mid')}</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯{_tt('Low')}</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Expected')}</div><div className="ov">{odds.expectedDays!=null&&odds.expectedDays>0?(odds.expectedDays>=365?(odds.expectedDays/365).toFixed(1)+' yr':odds.expectedDays>=30?(odds.expectedDays/30).toFixed(1)+' mo':Math.round(odds.expectedDays)+' d'):'—'}</div></div><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.perYear>0?(odds.perYear*100<0.001?(odds.perYear*100).toFixed(6):odds.perYear*100<0.01?(odds.perYear*100).toFixed(4):(odds.perYear*100).toFixed(2))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.perDay>0?(odds.perDay*100<0.0001?(odds.perDay*100).toFixed(7):(odds.perDay*100).toFixed(5))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{(odds.perDay>0&&reward.totalBtc>0)?fmtNum(Math.round(odds.perDay*reward.totalBtc*1e8)):'—'}</div></div></div>
-                  </div>
                 </div>
               </div>
               <div className="panel">
@@ -832,7 +826,7 @@ export default function DesktopPages({
       </div>
 
       <footer className="ss-foot">
-        <span className="ff-brand">SoloStrike v1.11.61 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
+        <span className="ff-brand">SoloStrike v1.11.64 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
         <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
