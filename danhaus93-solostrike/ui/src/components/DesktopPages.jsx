@@ -25,6 +25,7 @@ const TH = h => (h ? h / 1e12 : 0);
 function hrShort(h){ if(h==null||h<=0)return '—'; const u=['H','K','M','G','T','P','E']; let i=0,v=h; while(v>=1000&&i<u.length-1){v/=1000;i++;} return `${v.toFixed(v<10?2:0)} ${u[i]}`; }
 function fmtTH(h){ return TH(h).toFixed(1); }
 function fmtUptime(s){ if(s==null)return '—'; if(s<60)return Math.floor(s)+'s'; if(s<3600)return Math.floor(s/60)+'m'; if(s<86400)return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; return Math.floor(s/86400)+'d '+Math.floor((s%86400)/3600)+'h'; }
+function fmtDurationMs(ms){ if(!ms||ms<0)return '—'; const s=Math.floor(ms/1000); const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60); if(d>0)return `${d}d ${h}h`; if(h>0)return `${h}h ${m}m`; return `${m}m`; }
 function fmtNum(n){ return n==null?'—':Number(n).toLocaleString(); }
 const avgKeyFor = lab => ({'1M':'hr1m','5M':'hr5m','15M':'hr15m','1H':'hr1h','6H':'hr6h','24H':'hr1d','7D':'hr7d'}[lab]||'hr1h');
 // v1.12.x: stable color per mining pool for the Ledger chips
@@ -97,7 +98,7 @@ const CSS = `
 .ssdesk .ss-foot .port:hover{text-decoration:underline}
 .ssdesk .ss-foot .tls{padding:1px 5px;border-radius:3px;font-size:.5rem;letter-spacing:.14em;color:var(--cyan);border:1px solid rgba(0,255,209,0.45);background:rgba(0,255,209,0.05)}
 .ssdesk .ss-foot b{color:var(--text-1);font-weight:700}
-.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 180px minmax(0,1fr) auto auto;padding:14px 10px;row-gap:10px}
+.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 210px minmax(0,1fr);padding:14px 10px;row-gap:12px}
 .ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
@@ -123,6 +124,7 @@ const CSS = `
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
+.ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
 .ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 7px;padding-bottom:.35rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
@@ -159,6 +161,21 @@ const CSS = `
 /* let the panel body fill the freed space */
 .ssdesk .slot-globe > *,.ssdesk .slot-hunt > *{height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important}
 .ssdesk .slot-globe>*,.ssdesk .slot-hunt>*{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;background:transparent!important;border:none!important;box-shadow:none!important;border-radius:0!important;padding:0!important;margin:0!important}
+/* desktop pulse slot: the mounted PulsePanel renders its own bottom stats +
+   "TAP TO SEE STRIKERS" disclaimer which gets clipped by the fixed slot height.
+   We already show a pulse-read strip below, so let the globe own the slot and
+   hide the panel's non-canvas children (text/stat strips) here. */
+.ssdesk .slot-globe canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
+/* desktop hunt slot: keep ONLY the NonceField canvas — the mounted HuntPanel's
+   PER-BLOCK ODDS header + BLOCK REWARD strip duplicate (and clip against) the
+   desktop hunt-face readout below. Force the canvas to fill the slot. */
+.ssdesk .slot-hunt canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover}
+/* hide the HuntPanel's text rows inside the slot so only the canvas shows.
+   The panel content is: [odds-header row][nonce canvas][block-reward strip].
+   We keep the wrapper that contains the canvas; hide the reward strip (its
+   sibling) and the odds-header text row. */
+.ssdesk .slot-hunt > * > * > div:last-child{display:none!important}
+.ssdesk .slot-hunt > * > * > div:first-child > div:first-child{visibility:hidden!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
 .ssdesk .pulse-read .prv{font-family:var(--fd);font-size:.78rem;font-weight:700;color:var(--amber)}
@@ -171,7 +188,7 @@ const CSS = `
 .ssdesk .hf-odds{display:flex;border-top:1px solid var(--hair);padding-top:3px}.ssdesk .hf-odds .o{flex:1;text-align:center;border-left:1px solid var(--hair)}.ssdesk .hf-odds .o:first-child{border-left:0}
 .ssdesk .hf-odds .ol{font-family:var(--fd);font-size:.44rem;text-transform:uppercase;color:var(--text-2)}.ssdesk .hf-odds .ov{font-family:var(--fd);font-size:.68rem;font-weight:700;color:var(--cyan)}
 
-.ssdesk .crew{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(0,1fr);gap:5px 12px;min-height:0;overflow:hidden;flex:1}
+.ssdesk .crew{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));grid-auto-rows:max-content;align-content:start;gap:6px 12px;min-height:0;overflow-y:auto;flex:1;padding-right:2px}
 .ssdesk .miner{cursor:pointer;border-radius:7px;padding:5px 7px;transition:background .15s,box-shadow .15s;display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0}
 .ssdesk .miner:hover{background:rgba(var(--amber-rgb),0.06);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),0.18)}
 .ssdesk .miner .top{display:flex;align-items:center;gap:6px}
@@ -297,7 +314,7 @@ function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
 
 /* ---------- Crew tile grid (real workers) ---------- */
 function Crew({ workers, aliases, displayName, onWorkerClick }){
-  const list=(workers||[]).slice(0,12);
+  const list=(workers||[]).slice(0,60);
   return (
     <div className="crew">
       {list.map((w,i)=>{
@@ -312,12 +329,12 @@ function Crew({ workers, aliases, displayName, onWorkerClick }){
         return (
           <div key={w.name||i} className={`miner${on?'':' off'}`} onClick={()=>onWorkerClick&&onWorkerClick(w)} title={w.minerType||''}>
             <div className="top"><span className="dot"/><span className="nm">{name}</span><span className="hash">{on?hrShort(w.hashrate):'off'}</span></div>
-            <div className="tele"><div className={tcls}><b>{tC!=null?tC+'°':'—'}</b>temp</div><div><b>{fan}</b>fan</div><div><b>{fw}</b>fw</div><div><b>{acc}</b>acc</div></div>
+            <div className="tele"><div className={tcls}><b>{tC!=null?tC+'°':'—'}</b>{_tt('temp')}</div><div><b>{fan}</b>{_tt('fan')}</div><div><b>{fw}</b>{_tt('fw')}</div><div><b>{acc}</b>{_tt('acc')}</div></div>
             <div className="uptime" title={`Uptime over last 24h · ${samples.length}/${SLOTS} samples`}>{Array.from({length:SLOTS}).map((_,j)=>{const isPh=j<ph;const s=isPh?null:samples[j-ph];const cls=isPh?'':(s&&s.status==='online'?'on':'dn');return <i key={j} className={cls}/>;})}</div>
           </div>
         );
       })}
-      {list.length===0 && <div style={{gridColumn:'1/-1',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-3)',fontFamily:'var(--fd)',fontSize:'.6rem'}}>No miners connected yet.</div>}
+      {list.length===0 && <div style={{gridColumn:'1/-1',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-3)',fontFamily:'var(--fd)',fontSize:'.6rem'}}>{_tt('No miners connected yet.')}</div>}
     </div>
   );
 }
@@ -342,7 +359,7 @@ function FleetTable({ workers, aliases, displayName, onWorkerClick }){
   const live=rows.filter(r=>r.online); const totHr=live.reduce((s,r)=>s+r.hashrate,0);
   const temps=live.map(r=>r.asic).filter(n=>n!=null); const avgT=temps.length?Math.round(temps.reduce((s,t)=>s+t,0)/temps.length):null; const maxT=temps.length?Math.max(...temps):null;
   const tcls=t=>t==null?'':t>=70?'cell-hot':t>=60?'cell-warm':'';
-  const COLS=[['name','Worker'],['hashrate','Hashrate'],['asic','ASIC °C'],['vr','VR °C'],['fan','Fan RPM'],['boards','Boards (°C)'],['best','Best Ever'],['diff','Last Diff'],['fw','Firmware'],['up','Uptime']];
+  const COLS=[['name',_tt('Worker')],['hashrate',_tt('Hashrate')],['asic','ASIC °C'],['vr','VR °C'],['fan','Fan RPM'],['boards',_tt('Boards (°C)')],['best',_tt('Best Ever')],['diff',_tt('Last Diff')],['fw',_tt('Firmware')],['up',_tt('Uptime')]];
   const sort=k=>{ if(k===sortKey)setSortDir(d=>-d); else {setSortKey(k);setSortDir(k==='name'?1:-1);} };
   return (
     <div style={{overflow:'auto',minHeight:0,flex:1}}>
@@ -363,13 +380,13 @@ function FleetTable({ workers, aliases, displayName, onWorkerClick }){
               <td>{fmtUptime(r.up)}</td>
             </tr>
           ))}
-          {sorted.length===0 && <tr><td colSpan={10} style={{textAlign:'center',color:'var(--text-3)',padding:18}}>No miners connected yet.</td></tr>}
+          {sorted.length===0 && <tr><td colSpan={10} style={{textAlign:'center',color:'var(--text-3)',padding:18}}>{_tt('No miners connected yet.')}</td></tr>}
         </tbody>
         {sorted.length>0 && <tfoot><tr>
           <td><b>FLEET</b></td><td><b>{fmtTH(totHr)} T</b></td>
           <td colSpan={2}>{avgT!=null?<>avg <b>{avgT}°</b> · max <b className={maxT>=70?'cell-hot':''}>{maxT}°</b></>:'—'}</td>
           <td colSpan={2}>{live.length}/{rows.length} online</td>
-          <td colSpan={4}>tap any rig for full single-rig telemetry →</td>
+          <td colSpan={4}>{_tt('tap any rig for full single-rig telemetry')} →</td>
         </tr></tfoot>}
       </table>
     </div>
@@ -464,12 +481,15 @@ export default function DesktopPages({
   const liveW=(workers||[]).filter(w=>(w.hashrate||0)>0 && w.status!=='offline').length, totW=(workers||[]).length;
   const zmqOk=zmq&&(zmq.connected||zmq.synced||zmq===true);
 
-  // firepower chart + avgs — window the history by the selected trend so the
-  // graph (not just the headline) redraws when the LIVE/1H/24H/7D pills change.
+  // firepower chart — mirror production HashrateChart: the 7D range pulls from
+  // a SEPARATE weekly series (hr.week); shorter ranges time-filter hr.history
+  // (which only holds recent samples). Using history for 7D = flat/empty chart.
   const hrHistFull=(Array.isArray(hr.history)?hr.history:[]).filter(h=>h&&Number.isFinite(h.hr));
+  const hrWeek=(Array.isArray(hr.week)?hr.week:[]).filter(h=>h&&Number.isFinite(h.hr));
   const FP_WIN_MS={'live':null,'1H':3600e3,'24H':24*3600e3,'7D':7*24*3600e3};
   const fpCut=FP_WIN_MS[fpTrend];
-  const hrHistW=(fpCut==null)?hrHistFull:(()=>{const now=Date.now();const w=hrHistFull.filter(h=>h.ts&&(now-h.ts)<=fpCut);return w.length>=2?w:hrHistFull;})();
+  const fpSource=fpTrend==='7D'?(hrWeek.length?hrWeek:hrHistFull):hrHistFull;
+  const hrHistW=(fpCut==null)?fpSource:(()=>{const now=Date.now();const w=fpSource.filter(h=>h.ts&&(now-h.ts)<=fpCut);return w.length>=2?w:fpSource;})();
   const hrHist=hrHistW.map(h=>h.hr).filter(Number.isFinite);
   const fp=linePath(hrHist);
   const avgW=[['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr1d'],['7D','hr7d']];
@@ -527,13 +547,13 @@ export default function DesktopPages({
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} samples</span>}</div>
+                <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
                 <div className="sv">
                   <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
                   {spsHist.length===0
                     ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
                     : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
-                  <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>normal</span><span><b style={{background:'var(--amber)'}}/>anomaly</span><span><b style={{background:'var(--red)'}}/>offline</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
+                  <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
                 </div>
               </div>
             </div>
@@ -547,7 +567,7 @@ export default function DesktopPages({
                   <div className="pulse-read">
                     <div className="pr"><div className="prl">{_tt('Strikers')}</div><div className="prv">{ns.peers?.length??ns.strikers??'—'}</div></div>
                     <div className="pr"><div className="prl">{_tt('Net Pulse')}</div><div className="prv">{ns.networkHashrate?hrShort(ns.networkHashrate):(net.hashrate?hrShort(net.hashrate):'—')}</div></div>
-                    <div className="pr"><div className="prl">{_tt('Your Pin')}</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolState?.poolPin?'PINNED':'—'}</div></div>
+                    <div className="pr"><div className="prl">{_tt('Your Pin')}</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolState?.poolPin?_tt('PINNED'):'—'}</div></div>
                   </div>
                 </div>
               </div>
@@ -558,8 +578,8 @@ export default function DesktopPages({
                   <div className="hunt-face">
                     <div className="hf-reward"><span className="lbl">{_tt('Block Reward')}</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
                     <div className="hf-sub">{_tt('subsidy')} <b>{reward.subsidy??'—'}</b> · {_tt('fees')} <span className="fee">{reward.feesBtc!=null?'+'+reward.feesBtc.toFixed(4):(reward.totalBtc!=null&&reward.subsidy!=null?'+'+(reward.totalBtc-reward.subsidy).toFixed(4):'—')}</span></div>
-                    <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                    <div className="hf-odds"><div className="o"><div className="ol">Yearly</div><div className="ov">{odds.yearly!=null?(odds.yearly*100).toFixed(2)+'%':'—'}</div></div><div className="o"><div className="ol">Daily</div><div className="ov">{odds.daily!=null?(odds.daily*100).toFixed(3)+'%':'—'}</div></div><div className="o"><div className="ol">Sats/d</div><div className="ov">{odds.satsPerDay??'—'}</div></div></div>
+                    <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡{_tt('Fast')}</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐{_tt('Mid')}</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯{_tt('Low')}</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
+                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.yearly!=null?(odds.yearly*100).toFixed(2)+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.daily!=null?(odds.daily*100).toFixed(3)+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{odds.satsPerDay??'—'}</div></div></div>
                   </div>
                 </div>
               </div>
@@ -574,28 +594,39 @@ export default function DesktopPages({
           <div className="viewport vitals">
             <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
-            {/* BAND 3 — 8 data cols */}
-            <div className="band b-data">
-              <div className="col"><div className="ch">{tt('Bitcoin Network')}</div>{DL('Difficulty',net.difficulty?hrShort(net.difficulty):'—')}{DL('Hashrate',net.hashrate?hrShort(net.hashrate):'—')}{DL('Mempool',mp.count!=null?fmtNum(mp.count):'—')}{DL('Retarget',retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(1)+'%':'—',retarget.difficultyChange>=0?'red':'green')}</div>
-              <div className="col"><div className="ch">{tt('Bitcoin Node')}</div>{DL(_tt('Status'),poolState?.nodeInfo?.connected?'LIVE':'—',poolState?.nodeInfo?.connected?'green':'')}{DL(_tt('Height'),net.height!=null?fmtNum(net.height):'—')}{DL(_tt('Peers'),poolState?.nodeInfo?.peers!=null?fmtNum(poolState.nodeInfo.peers):'—')}{DL('ZMQ',zmqOk?'● sync':'○',zmqOk?'green':'')}</div>
-              <div className="col"><div className="ch">{tt('Stratum')}</div>{DL('TCP',':3333','cyan')}{DL('Alt',':3334')}{DL('TLS',':4333','cyan')}{DL('Workers',`${liveW}/${totW}`)}</div>
-              <div className="col"><div className="ch">{tt('Strikes')}</div>{DL(_tt('Closest'),cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL('Workers',`${liveW}/${totW}`)}{DL('Solo 30d',snap.soloBlocks30d??'—','amber')}{DL(_tt('Yours'),snap.totalStrikes??0,'amber')}</div>
-              <div className="col"><div className="ch">{tt('Near Strikes')}</div>{cc.length?(()=>{const netDiff=net.difficulty>0?net.difficulty:null;const top=Math.max(...cc.slice(0,4).map(c=>c.diff||0),1);return cc.slice(0,4).map((c,i)=>{const pct=netDiff?(c.diff/netDiff)*100:null;const w=Math.max(5,Math.min(100,((c.diff||0)/top)*100));const nm=((displayName?displayName(c.workerName,aliases):c.workerName)||'—').slice(0,7);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{pct!=null?pct.toFixed(3)+'%':hrShort(c.diff)}</span></div>;});})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No near-misses yet.</div>}</div>
-              <div className="col"><div className="ch">{tt('Top Miners')}</div>{topMiners.length?(()=>{const top=Math.max(...topMiners.map(w=>w.bestshare||0),1);return <>{topMiners.map((w,i)=>{const bw=Math.max(6,Math.min(100,((w.bestshare||0)/top)*100));const nm=(i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,6);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:bw+'%'}}/></span><span className="dval">{hrShort(w.bestshare)}</span></div>;})}{DL(_tt('Pool best'),poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>;})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>No shares submitted yet.</div>}</div>
-              <div className="col"><div className="ch">{tt('Claim Jumpers')}</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];if(!tf.length)return <div style={{fontSize:'.58rem',color:'var(--text-3)'}}>Awaiting block data…</div>;const top=Math.max(...tf.slice(0,4).map(x=>x.count||0),1);return <>{tf.slice(0,4).map((f,i)=>{const w=Math.max(8,((f.count||0)/top)*100);return <div className="dbar" key={i}><span className="dnm">{(f.name||'—').slice(0,8)}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="dtrack"><i className={f.isSolo?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{f.count??0}</span></div>;})}</>;})()}</div>
+            {/* BAND 3 — 7 data cols (Stratum removed — ports live in the footer) */}
+            <div className="band b-data b-data-7">
+              <div className="col"><div className="ch">{tt('Bitcoin Network')}</div>{DL(_tt('Difficulty'),net.difficulty?hrShort(net.difficulty):'—')}{DL(_tt('Hashrate'),net.hashrate?hrShort(net.hashrate):'—')}{DL(_tt('Mempool'),mp.count!=null?fmtNum(mp.count):'—')}{DL(_tt('Retarget'),retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(1)+'%':'—',retarget.difficultyChange>=0?'red':'green')}</div>
+              <div className="col"><div className="ch">{tt('Bitcoin Node')}</div>{DL(_tt('Status'),poolState?.nodeInfo?.connected?'LIVE':'—',poolState?.nodeInfo?.connected?'green':'')}{DL(_tt('Height'),net.height!=null?fmtNum(net.height):'—')}{DL(_tt('Peers'),poolState?.nodeInfo?.peers!=null?fmtNum(poolState.nodeInfo.peers):'—')}{DL(_tt('ZMQ'),zmqOk?'● sync':'○',zmqOk?'green':'')}</div>
+              <div className="col"><div className="ch">{tt('Strikes')}</div>{DL(_tt('Closest'),cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL(_tt('Workers'),`${liveW}/${totW}`)}{DL(_tt('Solo 30d'),snap.soloBlocks30d??'—','amber')}{DL(_tt('Yours'),snap.totalStrikes??0,'amber')}</div>
+              <div className="col"><div className="ch">{tt('Near Strikes')}</div>{cc.length?(()=>{const netDiff=net.difficulty>0?net.difficulty:null;const top=Math.max(...cc.slice(0,4).map(c=>c.diff||0),1);return cc.slice(0,4).map((c,i)=>{const pct=netDiff?(c.diff/netDiff)*100:null;const w=Math.max(5,Math.min(100,((c.diff||0)/top)*100));const nm=((displayName?displayName(c.workerName,aliases):c.workerName)||'—').slice(0,7);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{pct!=null?pct.toFixed(3)+'%':hrShort(c.diff)}</span></div>;});})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('No near-misses yet.')}</div>}</div>
+              <div className="col"><div className="ch">{tt('Top Miners')}</div>{topMiners.length?(()=>{const top=Math.max(...topMiners.map(w=>w.bestshare||0),1);return <>{topMiners.map((w,i)=>{const bw=Math.max(6,Math.min(100,((w.bestshare||0)/top)*100));const nm=(i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,6);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:bw+'%'}}/></span><span className="dval">{hrShort(w.bestshare)}</span></div>;})}{DL(_tt('Pool best'),poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>;})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('No shares submitted yet.')}</div>}</div>
+              <div className="col"><div className="ch">{tt('Claim Jumpers')}</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];if(!tf.length)return <div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('Awaiting block data…')}</div>;const top=Math.max(...tf.slice(0,8).map(x=>x.count||0),1);return <>{tf.slice(0,8).map((f,i)=>{const w=Math.max(8,((f.count||0)/top)*100);return <div className="dbar" key={i}><span className="dnm">{(f.name||'—').slice(0,8)}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="dtrack"><i className={f.isSolo?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{f.count??0}</span></div>;})}</>;})()}</div>
               <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL(_tt('Total'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL(_tt('Best'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Accept'),acc,'green')}{DL(_tt('Reject'),rej)}{(()=>{const a=shares.acceptedCount||0;const r=(shares.rejectedCount||0)+(shares.stale||0);const tot=a+r;const ap=tot>0?(a/tot)*100:100;return <div className="accbar" title={`Accept ${ap.toFixed(2)}%`}><i className="acc" style={{width:ap+'%'}}/><i className="rej" style={{width:(100-ap)+'%'}}/></div>;})()}</div>
             </div>
 
-            {/* BAND 4 — ledger + health */}
+            {/* BAND 4 — ledger (+ pool tally) + health (+ detail) */}
             <div className="band" style={{gridTemplateColumns:'2.2fr 1.2fr',borderTop:'1px solid var(--hair)',paddingTop:8}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0,display:'flex',flexDirection:'column'}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'2px 14px'}}>
                   {blocks.slice(0,12).map((b,i)=>{const who=(b.miner||b.pool||'—').toString();return <div className="dl" key={i} style={{border:0}}><span className="k"><span className="lchip" style={{background:poolColor(who)}}/>{fmtNum(b.height)}</span><span className="v">{who.slice(0,10)}</span></div>;})}
                   {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">waiting</span></div>}
                 </div>
+                {/* pool tally — who's claiming the last N blocks, as a stacked share bar */}
+                {blocks.length>0&&(()=>{const tally={};blocks.slice(0,20).forEach(b=>{const who=(b.miner||b.pool||'—').toString().slice(0,12);tally[who]=(tally[who]||0)+1;});const entries=Object.entries(tally).sort((a,b)=>b[1]-a[1]).slice(0,6);const total=entries.reduce((s,[,n])=>s+n,0)||1;return <div style={{marginTop:'auto',paddingTop:8}}><div style={{fontSize:'.46rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-3)',marginBottom:5}}>Last {Math.min(20,blocks.length)} blocks · pool share</div><div style={{display:'flex',height:9,borderRadius:5,overflow:'hidden',background:'var(--bg-deep)'}}>{entries.map(([who,n],i)=><div key={i} title={`${who} · ${n}`} style={{width:`${(n/total)*100}%`,background:poolColor(who)}}/>)}</div><div style={{display:'flex',flexWrap:'wrap',gap:'2px 12px',marginTop:6}}>{entries.map(([who,n],i)=><span key={i} style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:'.5rem',color:'var(--text-2)'}}><span className="lchip" style={{background:poolColor(who),marginRight:0}}/>{who} <b style={{color:'var(--text-1)'}}>{n}</b></span>)}</div></div>;})()}
               </div>
-              <div className="col clk" onClick={M('System Health')}><div className="ch">{tt('System Health')}</div>
-                <div className="status">{healthItems.map(([l,ok],i)=><div className={`st${ok?'':' bad'}`} key={i}><span className="dot"/>{l}</div>)}</div>
+              <div className="col clk" onClick={M('System Health')} style={{display:'flex',flexDirection:'column'}}><div className="ch">{tt('System Health')}</div>
+                <div className="status" style={{marginBottom:10}}>{healthItems.map(([l,ok],i)=><div className={`st${ok?'':' bad'}`} key={i}><span className="dot"/>{l}</div>)}</div>
+                {/* fill the box with real service detail rows */}
+                <div style={{marginTop:6,display:'flex',flexDirection:'column'}}>
+                  {DL(_tt('Pool uptime'),poolState?.pool?.runtimeSec?fmtUptime(poolState.pool.runtimeSec):'—','green')}
+                  {DL(_tt('Node height'),net.height!=null?fmtNum(net.height):'—')}
+                  {DL(_tt('Node peers'),poolState?.nodeInfo?.peers!=null?`${fmtNum(poolState.nodeInfo.peers)}${poolState?.nodeInfo?.peersOut!=null?` (${poolState.nodeInfo.peersIn||0}↓ ${poolState.nodeInfo.peersOut||0}↑)`:''}`:'—')}
+                  {DL(_tt('TLS :4333'),H.ports&&H.ports['4333']?.status==='healthy'?'● secure':(H.tls!==false?'● up':'○'),H.ports&&H.ports['4333']?.status==='healthy'?'green':'')}
+                  {DL(_tt('ZMQ'),zmqOk?'● synced':'○',zmqOk?'green':'red')}
+                  {DL(_tt('Workers live'),`${liveW}/${totW}`,liveW>0?'green':'')}
+                </div>
+                <div style={{marginTop:'auto',paddingTop:8,fontSize:'.5rem',color:'var(--text-3)',letterSpacing:'.06em'}}>{_tt('Tap for full diagnostics')} ▸</div>
               </div>
             </div>
           </div>
@@ -611,11 +642,11 @@ export default function DesktopPages({
               <div className="panel"><div className="zlabel">{tt('Connection States')}</div><Donut pool={pool}/></div>
             </div>
             <div className="panel" style={{minHeight:0}}>
-              <div className="zlabel">{tt('Fleet Comparison — All Rigs at a Glance')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>(scan side-by-side · tap a rig for one-rig depth)</span></div>
+              <div className="zlabel">{tt('Fleet Comparison — All Rigs at a Glance')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>{_tt('(scan side-by-side · tap a rig for one-rig depth)')}</span></div>
               <FleetTable workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL('Workers',`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,'cyan')}{DL('ckpool','solo 2.x')}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL(_tt('Workers'),`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('ckpool'),'solo 2.x')}</div>
               <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL(_tt('Accepted'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL(_tt('Rejected'),fmtNum(shares.rejectedCount))}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('Reject'),rej)}</div>
               <div className="col"><div className="ch">{tt('Best Share — Trend')}</div><TsLine data={(()=>{const a=Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[]);return a.map(b=>b.best).filter(Number.isFinite);})()} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
               <div className="col"><div className="ch">{tt('Users + Workers History')}</div><TsLine data={(()=>{const a=Array.isArray(pool.workersHistory)?pool.workersHistory:(Array.isArray(pool.workersHistoryTail)?pool.workersHistoryTail:[]);return a.map(p=>p.workers).filter(Number.isFinite);})()} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
@@ -632,12 +663,12 @@ export default function DesktopPages({
               </div>
               <div className="panel"><div className="zlabel">{tt('Hashrate Stability')}</div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:10,flex:1}}>
-                  <div style={{display:'flex',alignItems:'baseline',gap:10}}><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700}}>{hr.stabilityPct!=null?hr.stabilityPct.toFixed(1):'—'}<span className="unit" style={{fontSize:'.4em'}}> %</span></span><span style={{fontSize:'.62rem',color:'var(--text-2)'}}>consistency (7d)</span></div>
+                  <div style={{display:'flex',alignItems:'baseline',gap:10}}><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700}}>{hr.stabilityPct!=null?hr.stabilityPct.toFixed(1):'—'}<span className="unit" style={{fontSize:'.4em'}}> %</span></span><span style={{fontSize:'.62rem',color:'var(--text-2)'}}>{_tt('consistency (7d)')}</span></div>
                   <TsLine data={hrHist} color="var(--chart1)" H={80} fmt={v=>fmtTH(v)+'T'}/>
                   <div style={{display:'flex'}}>
-                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>Std Dev</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--amber)'}}>{hr.stdDev!=null?'±'+fmtTH(hr.stdDev)+' T':'—'}</div></div>
-                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>Min / Max</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--text-1)'}}>{hrHist.length?fmtTH(Math.min(...hrHist))+' / '+fmtTH(Math.max(...hrHist))+' T':'—'}</div></div>
-                    <div style={{flex:1,textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>Dips 24h</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--red)'}}>{hr.dips24h??'—'}</div></div>
+                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Std Dev')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--amber)'}}>{hr.stdDev!=null?'±'+fmtTH(hr.stdDev)+' T':'—'}</div></div>
+                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Min / Max')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--text-1)'}}>{hrHist.length?fmtTH(Math.min(...hrHist))+' / '+fmtTH(Math.max(...hrHist))+' T':'—'}</div></div>
+                    <div style={{flex:1,textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Dips 24h')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--red)'}}>{hr.dips24h??'—'}</div></div>
                   </div>
                 </div>
               </div>
@@ -646,26 +677,31 @@ export default function DesktopPages({
               <div className="panel"><div className="zlabel">{tt('Reject Reasons — Trend (24h)')}</div>
                 <div className="rejtrend">{(()=>{const rr=shares.rejectReasons||{};const ent=Object.entries(rr).sort((a,b)=>b[1]-a[1]).slice(0,3);const tot=ent.reduce((s,[,n])=>s+n,0)||1;const cols=['var(--amber)','var(--cyan)','var(--text-2)'];return ent.length?<>{ent.map(([n,c],i)=>{const p=Math.round((c/tot)*100);return <div className="rejrow" key={n}><span className="rl">{n}</span><span className="rbar"><i style={{width:p+'%',background:cols[i]}}/></span><span className="rv">{p}%</span></div>;})}<div style={{fontSize:'.54rem',color:'var(--text-3)',marginTop:2}}>of {fmtNum(shares.rejectedCount)} rejected shares · last 24h</div></>:<div style={{fontSize:'.6rem',color:'var(--text-3)'}}>No rejected shares recorded.</div>;})()}</div>
               </div>
-              <div className="panel"><div className="zlabel">{tt('Mempool Conditions')}</div>
-                <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:10,flex:1}}>
-                  <div className="hf-fees" style={{borderTop:0}}><div className="ft"><div className="ftl fast">⚡Fast</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐Mid</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯Low</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'.62rem',fontFamily:'var(--fm)',color:'var(--text-2)'}}><span>Unconfirmed</span><span style={{color:'var(--text-1)'}}>{mp.count!=null?fmtNum(mp.count)+' tx':'—'}</span></div>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'.62rem',fontFamily:'var(--fm)',color:'var(--text-2)'}}><span>Block reward now</span><span style={{color:'var(--amber)'}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4)+' BTC':'—'}</span></div>
+              <div className="panel"><div className="zlabel">{tt('Your Edge — Network Position')}</div>
+                <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:11,flex:1}}>
+                  <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.5rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{odds.perBlock!=null&&odds.perBlock>0?'1 in '+fmtNum(Math.round(1/odds.perBlock)):'—'}</div><div style={{fontSize:'.52rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>{_tt('per-block odds')}</div></div>
+                  {(()=>{const poolHr=cur||0;const netHr=net.hashrate||0;const share=netHr>0?(poolHr*1e12/netHr)*100:null;return <>
+                    <div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>{_tt('Your share of network')}</span><span style={{color:'var(--cyan)'}}>{share!=null?(share<0.0001?share.toExponential(2):share.toFixed(6))+'%':'—'}</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0.5,Math.min(100,(share||0)*1e6))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>
+                    <div style={{display:'flex'}}>
+                      <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Your power')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.82rem',fontWeight:700,color:'var(--amber)'}}>{fmtTH(poolHr)} TH/s</div></div>
+                      <div style={{flex:1,textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Expected')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.82rem',fontWeight:700,color:'var(--text-1)'}}>{odds.expectedDays!=null&&odds.expectedDays>0?(odds.expectedDays>=365?(odds.expectedDays/365).toFixed(1)+' yr':Math.round(odds.expectedDays)+' d'):'—'}</div></div>
+                    </div></>;})()}
                 </div>
               </div>
               <div className="panel"><div className="zlabel">{tt('Difficulty Retarget')}</div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:9,flex:1}}>
-                  <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.7rem',fontWeight:700,color:retarget.difficultyChange>=0?'var(--red)':'var(--green)',lineHeight:1}}>{retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(2)+'%':'—'}</div><div style={{fontSize:'.55rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>estimated change</div>{retarget.prevDifficultyChange!=null&&<div style={{fontFamily:'var(--fm)',fontSize:'.62rem',color:'var(--text-2)',marginTop:4}}>Last epoch: <span style={{color:retarget.prevDifficultyChange>=0?'var(--red)':'var(--green)',fontWeight:600}}>{(retarget.prevDifficultyChange>=0?'+':'')+retarget.prevDifficultyChange.toFixed(2)+'%'}</span></div>}</div>
+                  <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.7rem',fontWeight:700,color:retarget.difficultyChange>=0?'var(--red)':'var(--green)',lineHeight:1}}>{retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(2)+'%':'—'}</div><div style={{fontSize:'.55rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>{_tt('estimated change')}</div>{retarget.prevDifficultyChange!=null&&<div style={{fontFamily:'var(--fm)',fontSize:'.62rem',color:'var(--text-2)',marginTop:4}}>Last epoch: <span style={{color:retarget.prevDifficultyChange>=0?'var(--red)':'var(--green)',fontWeight:600}}>{(retarget.prevDifficultyChange>=0?'+':'')+retarget.prevDifficultyChange.toFixed(2)+'%'}</span></div>}</div>
                   {retarget.progressPercent!=null&&<div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>Epoch progress</span><span style={{color:'var(--cyan)'}}>{retarget.progressPercent.toFixed(1)}%</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0,Math.min(100,retarget.progressPercent))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>}
                   {retarget.remainingBlocks!=null&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>Remaining Blocks <b style={{color:'var(--text-1)',fontWeight:600}}>{fmtNum(retarget.remainingBlocks)}</b></span></div>}
+                  {retarget.remainingTime!=null&&retarget.remainingTime>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>ETA</span><b style={{color:'var(--amber)',fontWeight:600}}>{fmtDurationMs(retarget.remainingTime)}</b></div>}
                 </div>
               </div>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('Lifetime Records')}</div>{DL('Best ever (fleet)',poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL('Best worker',topMiners[0]?(displayName?displayName(topMiners[0].name,aliases):topMiners[0].name):'—')}{DL('Closest to block',cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL('Peak hashrate',fmtTH(peak)+' T')}</div>
-              <div className="col"><div className="ch">{tt('Luck Summary')}</div>{DL('Avg effort',snap.avgEffortPct!=null?Math.round(snap.avgEffortPct)+'%':'—','amber')}{DL('Blocks found',snap.blocksFound??0)}{DL('Best round luck',snap.bestRoundLuck!=null?Math.round(snap.bestRoundLuck)+'%':'—')}{DL('Shares this round',shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—')}</div>
-              <div className="col"><div className="ch">{tt('Fleet Efficiency')}</div>{DL('Total power',poolState?.fleet?.totalW?fmtNum(poolState.fleet.totalW)+' W':'—')}{DL('Avg J/TH',poolState?.fleet?.avgJTH?.toFixed?.(1)??'—','amber')}{DL('Best rig J/TH',poolState?.fleet?.bestJTH?.toFixed?.(2)??'—','green')}{DL('Cost / interval','power-based')}</div>
-              <div className="col"><div className="ch">{tt('Reliability')}</div>{DL('Fleet uptime',totW?((liveW/totW)*100).toFixed(1)+'%':'—','green')}{DL('Workers online',`${liveW}/${totW}`)}{DL('Outages 7d',poolState?.fleet?.outages7d??'—')}{DL('Pool restarts',poolState?.fleet?.poolRestarts??'—')}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('Lifetime Records')}</div>{DL(_tt('Best ever (fleet)'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Best worker'),topMiners[0]?(displayName?displayName(topMiners[0].name,aliases):topMiners[0].name):'—')}{DL(_tt('Closest to block'),cc[0]?.pct!=null?cc[0].pct.toFixed(4)+'%':'—','cyan')}{DL(_tt('Peak hashrate'),fmtTH(peak)+' T')}</div>
+              <div className="col"><div className="ch">{tt('Luck Summary')}</div>{DL(_tt('Avg effort'),snap.avgEffortPct!=null?Math.round(snap.avgEffortPct)+'%':'—','amber')}{DL(_tt('Blocks found'),snap.blocksFound??0)}{DL(_tt('Best round luck'),snap.bestRoundLuck!=null?Math.round(snap.bestRoundLuck)+'%':'—')}{DL(_tt('Shares this round'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—')}</div>
+              <div className="col"><div className="ch">{tt('Fleet Efficiency')}</div>{DL(_tt('Total power'),poolState?.fleet?.totalW?fmtNum(poolState.fleet.totalW)+' W':'—')}{DL(_tt('Avg J/TH'),poolState?.fleet?.avgJTH?.toFixed?.(1)??'—','amber')}{DL(_tt('Best rig J/TH'),poolState?.fleet?.bestJTH?.toFixed?.(2)??'—','green')}{DL(_tt('Cost / interval'),'power-based')}</div>
+              <div className="col"><div className="ch">{tt('Reliability')}</div>{DL(_tt('Fleet uptime'),totW?((liveW/totW)*100).toFixed(1)+'%':'—','green')}{DL(_tt('Workers online'),`${liveW}/${totW}`)}{DL(_tt('Outages 7d'),poolState?.fleet?.outages7d??'—')}{DL(_tt('Pool restarts'),poolState?.fleet?.poolRestarts??'—')}</div>
             </div>
           </div>
 
@@ -678,10 +714,7 @@ export default function DesktopPages({
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
         <span className="ff-r">Ports
-          <b className="port" onClick={()=>{try{navigator.clipboard.writeText('3333');}catch(e){}}} title="Copy">3333</b> ·
-          <b className="port" onClick={()=>{try{navigator.clipboard.writeText('3334');}catch(e){}}} title="Copy">3334</b> ·
-          <span className="tls">TLS</span>
-          <b className="port" onClick={()=>{try{navigator.clipboard.writeText('4333');}catch(e){}}} title="Copy">4333</b>
+          {[['3333','3333'],['3334','3334'],['4333','4333']].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">TLS</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p==='4333'?'ssl':'tcp'}://umbrel.local:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
         </span>
       </footer>
 
