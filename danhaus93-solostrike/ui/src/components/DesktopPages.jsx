@@ -275,9 +275,11 @@ const CSS = `
 .ssdesk .slot-hunt canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover}
 /* hide the HuntPanel's text rows inside the slot so only the canvas shows.
    The panel content is: [odds-header row][nonce canvas][block-reward strip].
-   We keep the wrapper that contains the canvas; hide the reward strip (its
-   sibling) and the odds-header text row. */
-.ssdesk .slot-hunt > * > * > div:last-child{display:none!important}
+   We keep the wrapper that contains the canvas; hide the odds-header text row.
+   v1.11.66: the Expected/Yearly/Daily/Sats stat grid (div:last-child) is no
+   longer hidden — the user wants it on desktop too, level with the Pulse card's
+   Pools/Hashrate/Miners row. Both panels flex-grow their canvas/globe area, so
+   the bottom rows bottom-out together. */
 .ssdesk .slot-hunt > * > * > div:first-child > div:first-child{visibility:hidden!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
