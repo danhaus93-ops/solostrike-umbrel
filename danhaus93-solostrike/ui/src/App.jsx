@@ -7523,7 +7523,7 @@ function LanguageTab({ tt=(x)=>x, lang = 'en', onLangChange }) {
     <div>
       <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'0.4rem'}}>▸ {tt('Language')}</div>
       <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginBottom:'0.9rem', lineHeight:1.5}}>
-        {tt('Choose the display language. Mining terms (hashrate, stratum, share, difficulty…) stay in English on purpose — they read correctly to miners everywhere. Auto-detected from your browser on first run; unsupported languages fall back to English.')}
+        {tt('Choose the display language. Mining terms (hashrate, stratum…) stay in English on purpose — they read correctly to miners everywhere. Auto-detected from your browser on first run; unsupported languages fall back to English.')}
       </div>
       <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:'0.5rem'}}>
         {SUPPORTED.map(code => {
@@ -10141,6 +10141,14 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             canvas._globeAllVerts = allVerts;
             canvas._globeInit = true;
 
+            // Stash rings the moment they're decoded — independent of WebGL
+            // readiness. The per-frame retry below and the rebake-on-globe-entry
+            // effect both read window.__ssGlobeRings; on a fresh load the
+            // renderer may not be ready yet when this fetch resolves, so we must
+            // not gate the stash on isReady() (that left rings unstashed and the
+            // sphere blank until a manual refresh).
+            if (typeof window !== 'undefined') window.__ssGlobeRings = rings;
+
             // v1.8.8-rev24: bake the equirectangular world map texture
             // and upload to the WebGL renderer. Uses the SAME rings we
             // just built, so no second fetch. ~30ms one-time work.
@@ -10163,6 +10171,30 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             console.warn('Globe coastline fetch failed:', e);
             canvas._globeInit = true; // proceed without coastlines
           });
+      }
+
+      // v1.11.65: fresh-install retry. On first load the atlas fetch can
+      // resolve before the WebGL renderer finishes compiling its program +
+      // textures (isReady() === false), so the one-shot bake in the init block
+      // is skipped and the sphere stays blank until a manual page refresh.
+      // Retry the bake on subsequent frames once BOTH the decoded rings and a
+      // ready renderer are available. Self-healing (usually within 1–2 frames)
+      // and cheap: the guard short-circuits the moment a texture is uploaded,
+      // and isReady() returns fast when WebGL is unavailable (2D fallback).
+      if (!webglTextureReadyRef.current
+          && Array.isArray(canvas._globeRings) && canvas._globeRings.length) {
+        const r = webglRendererRef.current;
+        if (r && r.isReady()) {
+          try {
+            const texCanvas = bakeWorldMapTexture(canvas._globeRings, { palette: _ssGlobePalette(_ssCurrentTheme()) });
+            r.setTexture(texCanvas);
+            webglTextureReadyRef.current = true;
+            if (typeof window !== 'undefined') {
+              window.__ssGlobeRings = canvas._globeRings;
+              window.__ssGlobeRenderer = r;
+            }
+          } catch (e) { /* retry next frame */ }
+        }
       }
 
       canvas._globeT += dt;
