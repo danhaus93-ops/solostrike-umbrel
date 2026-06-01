@@ -26,6 +26,9 @@ function hrShort(h){ if(h==null||h<=0)return '—'; const u=['H','K','M','G','T'
 function fmtTH(h){ return TH(h).toFixed(1); }
 function fmtUptime(s){ if(s==null)return '—'; if(s<60)return Math.floor(s)+'s'; if(s<3600)return Math.floor(s/60)+'m'; if(s<86400)return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; return Math.floor(s/86400)+'d '+Math.floor((s%86400)/3600)+'h'; }
 function fmtDurationMs(ms){ if(!ms||ms<0)return '—'; const s=Math.floor(ms/1000); const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60); if(d>0)return `${d}d ${h}h`; if(h>0)return `${h}h ${m}m`; return `${m}m`; }
+// "1 in X" inverse formatting for very small probabilities — intuitive for
+// solo-mining odds, and used CONSISTENTLY everywhere (never scientific notation).
+function fmtOddsInverse(p){ if(p==null||isNaN(p)||p<=0)return '—'; if(p>=1)return '1 in 1'; const inv=1/p; if(inv<1000)return `1 in ${inv.toFixed(0)}`; if(inv<1e6)return `1 in ${(inv/1e3).toFixed(1)}K`; if(inv<1e9)return `1 in ${(inv/1e6).toFixed(2)}M`; if(inv<1e12)return `1 in ${(inv/1e9).toFixed(2)}B`; if(inv<1e15)return `1 in ${(inv/1e12).toFixed(2)}T`; return `1 in ${(inv/1e15).toFixed(2)}Q`; }
 function fmtNum(n){ return n==null?'—':Number(n).toLocaleString(); }
 const avgKeyFor = lab => ({'1M':'hr1m','5M':'hr5m','15M':'hr15m','1H':'hr1h','6H':'hr6h','24H':'hr24h','7D':'hr7d'}[lab]||'hr1h');
 // v1.12.x: stable color per mining pool for the Ledger chips
@@ -39,10 +42,17 @@ function poolColor(name){
 }
 
 /* ---------- area-chart path (firepower / tsLine style) ---------- */
-function linePath(vals, W=400, H=70, pad=0){
+function linePath(vals, W=400, H=70, pad=6){
   const pts=(vals||[]).filter(Number.isFinite);
   if(pts.length<2) return null;
-  const lo=Math.min(...pts), hi=Math.max(...pts), rng=(hi-lo)||1;
+  let lo=Math.min(...pts), hi=Math.max(...pts);
+  // Guard against flat/near-flat series getting amplified into fake zigzags:
+  // if the spread is a tiny fraction of the magnitude, center the line instead
+  // of normalizing noise to the full height.
+  const span=hi-lo;
+  const mag=Math.max(Math.abs(hi),Math.abs(lo),1);
+  if(span/mag < 0.02){ const mid=(hi+lo)/2; lo=mid-mag*0.05; hi=mid+mag*0.05; }
+  const rng=(hi-lo)||1;
   const xy=pts.map((v,i)=>[+(i*(W/(pts.length-1))).toFixed(1), +(H-pad-((v-lo)/rng)*(H-pad*2)).toFixed(1)]);
   const ln='M'+xy.map(p=>p.join(' ')).join(' L');
   return { ln, fill:`${ln} L${W} ${H} L0 ${H} Z`, lo, hi, now:pts[pts.length-1] };
@@ -74,26 +84,31 @@ function TsLine({ data, color='var(--chart1)', H=80, fmt, unit, fill=true }){
    log scale: proximity% = log10(shareDiff/netDiff) normalized. A real block
    would hit 100% (the target line). Bars animate up on mount + a fresh hottest
    share pulses. Pure CSS transitions, no libs. */
-function ShareProximity({ calls, netDifficulty, tt=(x)=>x }){
-  const list = Array.isArray(calls) ? calls.slice(0, 24) : [];
+function ShareProximity({ series, calls, netDifficulty, tt=(x)=>x }){
   const netDiff = netDifficulty>0 ? netDifficulty : null;
+  // Prefer the time-series of best shares (one sample/min) — gives a real bar
+  // chart. Each entry: {ts, best}. Fall back to closestCalls {diff} if no series.
+  const fromSeries = Array.isArray(series) ? series.filter(e=>e&&Number.isFinite(e.best)).map(e=>({sd:e.best,ts:e.ts,workerName:e.workerName})) : [];
+  const fromCalls  = Array.isArray(calls)  ? calls.filter(c=>c&&(c.diff||c.sdiff)).map(c=>({sd:c.diff||c.sdiff,ts:c.ts,workerName:c.workerName})) : [];
+  const src = fromSeries.length>=2 ? fromSeries : (fromCalls.length ? fromCalls : fromSeries);
+  // newest on the right; cap to the most recent 24 samples
+  const ordered = src.slice(-24);
   const [mounted,setMounted] = useState(false);
   useEffect(()=>{ const id=requestAnimationFrame(()=>setMounted(true)); return ()=>cancelAnimationFrame(id); },[]);
-  // newest on the right
-  const ordered = [...list].reverse();
-  // proximity 0..100 on a log scale: a share at the full target = 100.
-  // ratio = shareDiff/netDiff (≪1 normally). log10(ratio) in [-12..0] -> 0..100.
-  const FLOOR = -12; // 1e-12 of target maps to ~0% height
-  const prox = c => {
-    const sd = c.diff||c.sdiff||0;
-    if(!netDiff||sd<=0) return { h:0, ratio:0 };
-    const ratio = sd/netDiff;
-    const lr = Math.log10(ratio); // negative
-    const h = Math.max(2, Math.min(100, ((lr - FLOOR) / (0 - FLOOR)) * 100));
-    return { h, ratio };
+  // VISUAL height only (log scale) so bars are comparable to each other. This is
+  // NOT "percent to a block" — that would be wildly misleading (a routine share
+  // is one-in-billions). True proximity is shown as "1 in X" in the labels.
+  const FLOOR = -15;
+  const visH = c => {
+    const sd = c.sd||0;
+    if(!netDiff||sd<=0) return 0;
+    const lr = Math.log10(sd/netDiff);
+    return Math.max(3, Math.min(100, ((lr - FLOOR) / (0 - FLOOR)) * 100));
   };
-  const colFor = h => h>=85?'var(--red)':h>=60?'var(--amber)':h>=35?'var(--cyan)':'var(--green)';
-  const hottest = ordered.reduce((m,c)=>Math.max(m,prox(c).h),0);
+  const ratioOf = c => { const sd=c.sd||0; return (netDiff&&sd>0)?(sd/netDiff):0; };
+  const colFor = h => h>=92?'var(--red)':h>=75?'var(--amber)':h>=55?'var(--cyan)':'var(--green)';
+  // "closest" = the single best share's TRUE odds vs the target (1 in X)
+  const bestRatio = ordered.reduce((m,c)=>Math.max(m,ratioOf(c)),0);
   return (
     <div className="sproximity">
       {ordered.length===0
@@ -101,12 +116,12 @@ function ShareProximity({ calls, netDifficulty, tt=(x)=>x }){
         : <>
           <div className="sp-target"><span>{tt('TARGET (block)')}</span><span className="sp-tline"/></div>
           <div className="sp-bars">
-            {ordered.map((c,i)=>{const {h,ratio}=prox(c);const isHot=h>=85;const pctOfTarget=ratio!=null?(ratio*100):0;
-              return <div className="sp-col" key={(c.ts||i)+'_'+i} title={`${(c.workerName||'—')} · ${pctOfTarget<0.0001?pctOfTarget.toExponential(2):pctOfTarget.toFixed(4)}% of target`}>
+            {ordered.map((c,i)=>{const h=visH(c);const ratio=ratioOf(c);const isHot=h>=92;
+              return <div className="sp-col" key={(c.ts||i)+'_'+i} title={`${(c.workerName||'—')} · ${ratio>0?fmtOddsInverse(ratio)+' of target':'—'}`}>
                 <i className={isHot?'hot':''} style={{height:mounted?`${h}%`:'0%',background:colFor(h),transitionDelay:`${Math.min(i*22,500)}ms`}}/>
               </div>;})}
           </div>
-          <div className="sp-cap"><span>{tt('oldest')}</span><span className="sp-best" style={{color:colFor(hottest)}}>{tt('closest')} {hottest.toFixed(0)}%</span><span>{tt('newest')}</span></div>
+          <div className="sp-cap"><span>{tt('oldest')}</span><span className="sp-best" style={{color:colFor(visH(ordered.reduce((b,c)=>ratioOf(c)>ratioOf(b)?c:b,ordered[0])))}}>{tt('closest')} {bestRatio>0?fmtOddsInverse(bestRatio):'—'}</span><span>{tt('newest')}</span></div>
         </>}
     </div>
   );
@@ -208,7 +223,7 @@ const CSS = `
 
 .ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
 .ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.ssdesk .slot-hunt{width:100%;flex:0 0 38%;min-height:0;position:relative;overflow:hidden}
+.ssdesk .slot-hunt{width:100%;flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
 /* mounted Pulse/Hunt panels render their own "▸ Title" as first child — hide it
    (our zlabel above already provides a translated, deduped title). */
 .ssdesk .slot-globe > * > *:first-child,
@@ -221,6 +236,10 @@ const CSS = `
    We already show a pulse-read strip below, so let the globe own the slot and
    hide the panel's non-canvas children (text/stat strips) here. */
 .ssdesk .slot-globe canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
+/* the mounted PulsePanel renders a rotated "100% SOLO" stamp + text overlays
+   absolutely-positioned; on desktop they bleed over the Miners box below. Keep
+   ONLY the canvas — hide any non-canvas positioned children in the globe slot. */
+.ssdesk .slot-globe > * canvas{display:block!important}
 /* desktop hunt slot: keep ONLY the NonceField canvas — the mounted HuntPanel's
    PER-BLOCK ODDS header + BLOCK REWARD strip duplicate (and clip against) the
    desktop hunt-face readout below. Force the canvas to fill the slot. */
@@ -234,7 +253,7 @@ const CSS = `
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
 .ssdesk .pulse-read .prv{font-family:var(--fd);font-size:.78rem;font-weight:700;color:var(--amber)}
-.ssdesk .hunt-face{width:100%;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:space-evenly;gap:4px}
+.ssdesk .hunt-face{width:100%;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;margin-top:4px}
 .ssdesk .hf-reward{display:flex;align-items:baseline;justify-content:space-between}.ssdesk .hf-reward .lbl{font-family:var(--fd);font-size:.48rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
 .ssdesk .hf-sub{font-family:var(--fm);font-size:.54rem;color:var(--text-2)}.ssdesk .hf-sub b{color:var(--text-1)}.ssdesk .hf-sub .fee{color:var(--cyan)}
 .ssdesk .hf-fees{display:flex}.ssdesk .hf-fees .ft{flex:1;text-align:center;border-left:1px solid var(--hair);padding:1px 0}.ssdesk .hf-fees .ft:first-child{border-left:0}
@@ -497,7 +516,7 @@ const DL=(k,v,cls)=> <div className="dl"><span className="k">{_tt(k)}</span><spa
 export default function DesktopPages({
   cardComponents = {}, poolState, workers = [], aliases = {}, displayName,
   stratumHealth, ticker = null, onOpenSettings, openModal, onWorkerClick,
-  status = 'Mining Live', zmq = null, strikes = 0, lang = 'en',
+  status = 'Mining Live', zmq = null, strikes = 0, lang = 'en', poolPin = null,
 }){
   const tt = useMemo(()=>makeTT(lang),[lang]);
   _tt = tt;
@@ -544,10 +563,21 @@ export default function DesktopPages({
   const FP_WIN_MS={'live':null,'1M':60e3,'5M':5*60e3,'15M':15*60e3,'1H':3600e3,'6H':6*3600e3,'24H':24*3600e3,'7D':7*24*3600e3};
   const fpCut=FP_WIN_MS[fpTrend];
   const fpSource=fpTrend==='7D'?(hrWeek.length?hrWeek:hrHistFull):hrHistFull;
-  const hrHistW=(fpCut==null)?fpSource:(()=>{const now=Date.now();const w=fpSource.filter(h=>h.ts&&(now-h.ts)<=fpCut);return w.length>=2?w:fpSource;})();
+  // Each pill shows ITS OWN time window. Don't fall back to the full history on
+  // sparse windows — that made every pill render the same line. If a short
+  // window has <2 samples, synthesize a flat 2-point line at that window's
+  // rolling average (from hashrateWindows) so the chart still renders + differs.
+  const fpAvg=fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur);
+  const hrHistW=(fpCut==null)?fpSource:(()=>{
+    const now=Date.now();
+    const w=fpSource.filter(h=>h.ts&&(now-h.ts)<=fpCut);
+    if(w.length>=2) return w;
+    const a=(fpAvg||cur||0);
+    return [{ts:now-fpCut,hr:a},{ts:now,hr:a}]; // flat line at the window average
+  })();
   const hrHist=hrHistW.map(h=>h.hr).filter(Number.isFinite);
   const fp=linePath(hrHist);
-  const avgW=[['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr1d'],['7D','hr7d']];
+  const avgW=[['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr24h'],['7D','hr7d']];
   const wmax=Math.max(cur,...Object.values(windows).filter(Number.isFinite),1);
 
   // strike velocity — window spsHistory by the selected range pill (1H/6H/24H).
@@ -597,7 +627,7 @@ export default function DesktopPages({
               <div className="panel">
                 <div className="zlabel zlabel-row">{tt('Firepower')} — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1M','5M','15M','1H','6H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
                 <div className="fp">
-                  <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpTrend==='live'?cur:(windows[avgKeyFor(fpTrend)]??cur))}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
+                  <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
                   <div className="fp-chart"><svg viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--amber)" stopOpacity="0.28"/><stop offset="95%" stopColor="var(--amber)" stopOpacity="0.02"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)"/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="2"/></>}</svg></div>
                 </div>
               </div>
@@ -622,7 +652,7 @@ export default function DesktopPages({
                   <div className="pulse-read">
                     <div className="pr"><div className="prl">{_tt('Strikers')}</div><div className="prv">{ns.peers?.length??ns.strikers??'—'}</div></div>
                     <div className="pr"><div className="prl">{_tt('Net Pulse')}</div><div className="prv">{ns.networkHashrate?hrShort(ns.networkHashrate):(net.hashrate?hrShort(net.hashrate):'—')}</div></div>
-                    <div className="pr"><div className="prl">{_tt('Your Pin')}</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolState?.poolPin?_tt('PINNED'):'—'}</div></div>
+                    <div className="pr"><div className="prl">{_tt('Your Pin')}</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolPin&&Number.isFinite(poolPin.lat)?`${Math.abs(poolPin.lat).toFixed(0)}°${poolPin.lat>=0?'N':'S'} ${Math.abs(poolPin.lon).toFixed(0)}°${poolPin.lon>=0?'E':'W'}`:_tt('Not set')}</div></div>
                   </div>
                 </div>
               </div>
@@ -634,7 +664,7 @@ export default function DesktopPages({
                     <div className="hf-reward"><span className="lbl">{_tt('Block Reward')}</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
                     <div className="hf-sub">{_tt('subsidy')} <b>{reward.subsidy??'—'}</b> · {_tt('fees')} <span className="fee">{reward.feesBtc!=null?'+'+reward.feesBtc.toFixed(4):(reward.totalBtc!=null&&reward.subsidy!=null?'+'+(reward.totalBtc-reward.subsidy).toFixed(4):'—')}</span></div>
                     <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡{_tt('Fast')}</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐{_tt('Mid')}</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯{_tt('Low')}</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.perYear>0?(odds.perYear<0.0001?(odds.perYear*100).toExponential(2):(odds.perYear*100).toFixed(odds.perYear<0.01?3:2))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.perDay>0?(odds.perDay*100).toFixed(4)+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{(odds.perDay>0&&reward.totalBtc>0)?fmtNum(Math.round(odds.perDay*reward.totalBtc*1e8)):'—'}</div></div></div>
+                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.perYear>0?(odds.perYear*100<0.001?(odds.perYear*100).toFixed(6):odds.perYear*100<0.01?(odds.perYear*100).toFixed(4):(odds.perYear*100).toFixed(2))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.perDay>0?(odds.perDay*100<0.0001?(odds.perDay*100).toFixed(7):(odds.perDay*100).toFixed(5))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{(odds.perDay>0&&reward.totalBtc>0)?fmtNum(Math.round(odds.perDay*reward.totalBtc*1e8)):'—'}</div></div></div>
                   </div>
                 </div>
               </div>
@@ -717,7 +747,7 @@ export default function DesktopPages({
                 {(!snap.blockEffort||!snap.blockEffort.length)&&<div className="effort-note">No blocks found yet — history fills in as you strike. The NOW bar shows the current open round's effort.</div>}
               </div>
               <div className="panel"><div className="zlabel">{tt('Share Proximity to Target')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>({tt('how close each share came to a block')})</span></div>
-                <ShareProximity calls={cc} netDifficulty={net.difficulty} tt={_tt}/>
+                <ShareProximity series={Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[])} calls={cc} netDifficulty={net.difficulty} tt={_tt}/>
               </div>
               <div className="panel"><div className="zlabel">{tt('Hashrate Stability')}</div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:10,flex:1}}>
@@ -739,7 +769,7 @@ export default function DesktopPages({
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:11,flex:1}}>
                   <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.5rem',fontWeight:700,color:'var(--amber)',lineHeight:1}}>{odds.perBlock!=null&&odds.perBlock>0?'1 in '+fmtNum(Math.round(1/odds.perBlock)):'—'}</div><div style={{fontSize:'.52rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>{_tt('per-block odds')}</div></div>
                   {(()=>{const poolHr=cur||0;const netHr=net.hashrate||0;const share=netHr>0?(poolHr/netHr)*100:null;return <>
-                    <div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>{_tt('Your share of network')}</span><span style={{color:'var(--cyan)'}}>{share!=null?(share<0.000001?share.toExponential(2):share.toFixed(8))+'%':'—'}</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0.5,Math.min(100,(share||0)*1e6))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>
+                    <div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>{_tt('Your share of network')}</span><span style={{color:'var(--cyan)'}}>{share!=null&&share>0?fmtOddsInverse(share/100):'—'}</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0.5,Math.min(100,(share||0)*1e6))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>
                     <div style={{display:'flex'}}>
                       <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Your power')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.82rem',fontWeight:700,color:'var(--amber)'}}>{fmtTH(poolHr)} TH/s</div></div>
                       <div style={{flex:1,textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Expected')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.82rem',fontWeight:700,color:'var(--text-1)'}}>{odds.expectedDays!=null&&odds.expectedDays>0?(odds.expectedDays>=365?(odds.expectedDays/365).toFixed(1)+' yr':Math.round(odds.expectedDays)+' d'):'—'}</div></div>
