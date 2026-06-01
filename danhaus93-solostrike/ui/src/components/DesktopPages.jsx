@@ -169,7 +169,7 @@ const CSS = `
 
 .ssdesk .apphead{display:flex;align-items:center;gap:.4rem;min-height:42px;border-bottom:1px solid var(--hair);padding-bottom:6px}
 .ssdesk .ah-left{display:flex;align-items:center;gap:.5rem;flex:0 0 auto}
-.ssdesk .ah-pick{width:16px;height:16px;object-fit:contain;display:block;filter:drop-shadow(0 0 8px rgba(var(--amber-rgb),0.7));animation:ss-pulse 3s ease-in-out infinite}
+.ssdesk .ah-pick{width:30px;height:30px;object-fit:contain;display:block;filter:drop-shadow(0 0 12px rgba(var(--amber-rgb),0.85)) drop-shadow(0 0 4px rgba(var(--amber-rgb),0.6));animation:ss-pulse 3s ease-in-out infinite}
 .ssdesk .ah-wordmark{font-family:var(--fd);font-size:.92rem;font-weight:700;letter-spacing:.06em;color:var(--amber);text-transform:uppercase}
 .ssdesk .ah-div{width:1px;height:16px;background:rgba(var(--amber-rgb),0.2)}
 .ssdesk .ah-status{font-family:var(--fd);font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--green);text-shadow:0 0 6px var(--green);animation:ss-pulse 2s ease-in-out infinite;white-space:nowrap}
@@ -185,9 +185,10 @@ const CSS = `
 @keyframes ss-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 
 .ssdesk .band{display:grid;gap:16px;min-height:0}
-/* Frost the col-based data bands (Intel page, page 4/5 data rows) so content
-   sits on a card. Exclude b-live/b-field which hold their own frosted panels. */
-.ssdesk .band:not(.b-live):not(.b-field){position:relative;background:color-mix(in srgb, var(--bg-surface) 60%, transparent);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+/* Frost ONLY col-holding data bands (Intel page, page 4/5 bottom rows).
+   Panel-holding bands (b-live/b-field/top rows) are NOT frosted — their
+   panels carry the frosting, so frosting the band too would double-stack. */
+.ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) 60%, transparent);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
 .ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
@@ -728,7 +729,7 @@ export default function DesktopPages({
             </div>
 
             {/* BAND 4 — ledger (+ pool tally) + health (+ detail) */}
-            <div className="band" style={{gridTemplateColumns:'2.2fr 1.2fr'}}>
+            <div className="band b-cols" style={{gridTemplateColumns:'2.2fr 1.2fr'}}>
               <div className="col" style={{paddingLeft:0,borderLeft:0,display:'flex',flexDirection:'column'}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'2px 14px'}}>
                   {blocks.slice(0,12).map((b,i)=>{const who=(b.miner||b.pool||'—').toString();return <div className="dl" key={i} style={{border:0}}><span className="k"><span className="lchip" style={{background:poolColor(who)}}/>{fmtNum(b.height)}</span><span className="v">{who.slice(0,10)}</span></div>;})}
