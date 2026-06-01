@@ -250,6 +250,17 @@ const CSS = `
    We already show a pulse-read strip below, so let the globe own the slot and
    hide the panel's non-canvas children (text/stat strips) here. */
 .ssdesk .slot-globe canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
+/* v1.11.66: page-2 Pulse alignment. The mounted Pulse panel caps its inner
+   globe wrapper at 380px, so on a tall desktop card the Pools/Hashrate/Miners
+   row + caption sit high with empty space below them. Lift the cap on desktop
+   so the globe area (child 2 of the panel) flex-grows to fill, dropping the
+   stat row + caption to the bottom of the card — level with the Hunt card's
+   fee row. The globe canvas is absolutely positioned to the slot, so growing
+   this flowed wrapper only repositions the stats; it does not affect render.
+   The caption keeps its natural height (flex consumes leftover space only),
+   so it can never be pushed off-screen. */
+.ssdesk .slot-globe > * > *:nth-child(2){flex:1 1 auto!important;max-height:none!important;min-height:0!important}
+.ssdesk .slot-globe > * > *:nth-child(2) > *{max-height:none!important}
 /* the mounted PulsePanel renders a rotated "100% SOLO" stamp + text overlays
    absolutely-positioned; on desktop they bleed over the Miners box below. Keep
    ONLY the canvas — hide any non-canvas positioned children in the globe slot.
