@@ -7586,7 +7586,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
 
   return (
     <>
-      <div style={firstSectionTitle}>▸ Minimal Mode</div>
+      <div style={firstSectionTitle}>▸ {tt('Minimal Mode')}</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: minimalMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
           <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: minimalMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>{tt('Bare Bones UI')}</div>
@@ -7608,7 +7608,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
       {/* v1.11.41: Performance Mode — freezes decorative animations while
           keeping information-bearing animations (strike pulse) alive.
           Mirrors Minimal Mode UI pattern for visual consistency. */}
-      <div style={firstSectionTitle}>▸ Performance Mode</div>
+      <div style={firstSectionTitle}>▸ {tt('Performance Mode')}</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: performanceMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${performanceMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
           <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: performanceMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>{tt('Static Mode')}</div>
@@ -7693,7 +7693,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
                 style={{width:20, height:20, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:13, lineHeight:1, padding:0, flexShrink:0}}>
                 {on?'✓':''}
               </button>
-              <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.78rem', color: on?'var(--text-1)':'var(--text-2)'}}>{c.label}</span>
+              <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.78rem', color: on?'var(--text-1)':'var(--text-2)'}}>{tt(c.label)}</span>
             </div>
           );
         })}
@@ -7718,7 +7718,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
           <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
             {METRIC_CATEGORIES.map(cat => (
               <div key={cat}>
-                <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{cat}</div>
+                <div style={{fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-3)', padding:'4px 6px', borderBottom:'1px dashed var(--border)', marginTop:4}}>{tt(cat)}</div>
                 {METRICS.filter(metric => metric.category === cat).map(metric => {
                   const on = (tickerSettings.metricIds || []).includes(metric.id);
                   const order = on ? tickerSettings.metricIds.indexOf(metric.id) : -1;
@@ -7728,7 +7728,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
                         style={{width:18, height:18, borderRadius:3, border:`1px solid ${on?'var(--cyan)':'var(--border)'}`, background:on?'var(--cyan)':'transparent', color:'#000', cursor:'pointer', fontSize:12, lineHeight:1, padding:0, flexShrink:0}}>
                         {on?'✓':''}
                       </button>
-                      <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{metric.label}</span>
+                      <span style={{flex:1, fontFamily:'var(--fm)', fontSize:'0.72rem', color: on?'var(--text-1)':'var(--text-2)'}}>{tt(metric.label)}</span>
                       {on && (
                         <>
                           <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-3)', minWidth:18, textAlign:'right'}}>#{order+1}</span>
@@ -7749,13 +7749,13 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
           <div style={{...rowLabel, marginTop:'0.9rem'}}>
             Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
             <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
-              ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? 'fast' : tickerSettings.speedSec <= 35 ? 'medium' : 'slow'})
+              ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? tt('fast') : tickerSettings.speedSec <= 35 ? tt('medium') : 'slow'})
             </span>
           </div>
           <input type="range" min="3" max="90" step="1" value={tickerSettings.speedSec} onChange={e=>onTickerSettingsChange({ ...tickerSettings, speedSec: parseInt(e.target.value,10) })}
             style={{width:'100%', accentColor:'var(--amber)'}}/>
           <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--fm)', fontSize:'0.52rem', color:'var(--text-3)', marginTop:2}}>
-            <span>very fast</span><span>slow</span>
+            <span>{tt('very fast')}</span><span>{tt('slow')}</span>
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
             Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.
@@ -8047,10 +8047,10 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
         <>
           {/* Tor routing toggle */}
           <div style={{padding:'0.7rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.5rem'}}>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>Privacy</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>{tt('Privacy')}</div>
             <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginBottom:6}}>
               <div style={{flex:1}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:'var(--text-1)',letterSpacing:'0.05em',marginBottom:3}}>🧅 Route via Tor</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:'var(--text-1)',letterSpacing:'0.05em',marginBottom:3}}>{'🧅 '}{tt('Route via Tor')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.45}}>
                   Send broadcasts through Tor so no relay learns your IP address. Adds latency. Requires Umbrel Tor service running.
                 </div>
@@ -8107,7 +8107,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
 
           {/* Advanced actions */}
           <div style={{padding:'0.7rem 0.8rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.5rem'}}>
-            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>Advanced</div>
+            <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>{tt('Advanced')}</div>
             <button onClick={async()=>{
               if (!window.confirm('Show your Pulse identity backup?\n\nThis reveals your private signing key. Anyone with this key can sign Pulse events as you.\n\nUse only if you intend to back it up offline (paper, encrypted vault).')) return;
               setErr('');
@@ -8141,21 +8141,21 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             <div onClick={()=>setBackup(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
               <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',maxWidth:560,width:'100%',padding:'1.25rem',boxShadow:'0 0 30px rgba(var(--amber-rgb),0.3)'}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-                  <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.18em',color:'var(--amber)'}}>🔑 Identity Backup</h3>
+                  <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.75rem',letterSpacing:'0.18em',color:'var(--amber)'}}>{'🔑 '}{tt('Identity Backup')}</h3>
                   <button onClick={()=>setBackup(null)} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem'}}>✕</button>
                 </div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--amber)',padding:'0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px solid rgba(var(--amber-rgb),0.3)',marginBottom:12,lineHeight:1.5}}>
                   ⚠ {backup.warning}
                 </div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Public Key</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>{tt('Public Key')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--border)',marginBottom:10,wordBreak:'break-all'}}>{backup.pubkey}</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Private Key (hex)</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>{tt('Private Key (hex)')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--amber)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--amber)',marginBottom:10,wordBreak:'break-all'}}>{backup.privkeyHex}</div>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>Install ID</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.1em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:5}}>{tt('Install ID')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-1)',padding:'0.45rem',background:'var(--bg-deep)',border:'1px solid var(--border)',marginBottom:14,wordBreak:'break-all'}}>{backup.installId}</div>
                 <div style={{display:'flex',gap:6}}>
-                  <button onClick={()=>{ if(navigator.clipboard?.writeText){ navigator.clipboard.writeText(`pubkey: ${backup.pubkey}\nprivkey: ${backup.privkeyHex}\ninstallId: ${backup.installId}`).then(()=>{ setBackupCopied(true); setTimeout(()=>setBackupCopied(false), 2000); }); } }} style={{flex:1,padding:'0.55rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{backupCopied?'✓ COPIED':'COPY ALL'}</button>
-                  <button onClick={()=>setBackup(null)} style={{padding:'0.55rem 0.9rem',background:'transparent',color:'var(--text-2)',border:'1px solid var(--border)',fontFamily:'var(--fd)',fontWeight:600,fontSize:'0.62rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>CLOSE</button>
+                  <button onClick={()=>{ if(navigator.clipboard?.writeText){ navigator.clipboard.writeText(`pubkey: ${backup.pubkey}\nprivkey: ${backup.privkeyHex}\ninstallId: ${backup.installId}`).then(()=>{ setBackupCopied(true); setTimeout(()=>setBackupCopied(false), 2000); }); } }} style={{flex:1,padding:'0.55rem',background:backupCopied?'var(--green)':'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{backupCopied?'✓ '+tt('COPIED'):tt('COPY ALL')}</button>
+                  <button onClick={()=>setBackup(null)} style={{padding:'0.55rem 0.9rem',background:'transparent',color:'var(--text-2)',border:'1px solid var(--border)',fontFamily:'var(--fd)',fontWeight:600,fontSize:'0.62rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>{tt('CLOSE')}</button>
                 </div>
               </div>
             </div>
@@ -8167,21 +8167,21 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
         <div style={{ marginTop: '0.5rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>{tt('Pools')}</div>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.35)' }}>{ns.pools || 0}</div>
             </div>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>{tt('Hashrate')}</div>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '1rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
             </div>
             <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.7rem 0.4rem', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>{tt('Miners')}</div>
               <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.35)' }}>{ns.workers || 0}</div>
             </div>
           </div>
 
           <div style={{ padding: '0.65rem', background: 'var(--bg-deep)', border: '1px solid var(--border)', marginBottom: '0.6rem' }}>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 6 }}>Relay status (8 relays)</div>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 6 }}>{tt('Relay status (8 relays)')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               {Object.entries(ns.relayStatus || {}).map(([url, status]) => (
                 <div key={url} style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--fm)', fontSize: '0.6rem' }}>
@@ -8196,7 +8196,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
 
           {Object.keys(ns.versions || {}).length > 0 && (
             <div style={{ padding: '0.55rem', background: 'var(--bg-deep)', border: '1px solid var(--border)' }}>
-              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 5 }}>Versions in network</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 5 }}>{tt('Versions in network')}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {Object.entries(ns.versions).map(([v, count]) => (
                   <div key={v} style={{ fontFamily: 'var(--fm)', fontSize: '0.62rem', padding: '2px 6px', background: 'var(--bg-raised)', border: '1px solid var(--border)' }}>
@@ -8285,7 +8285,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
                 </span>{' · '}snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.
               </>
             ) : (
-              <>Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to <span style={{ color: 'var(--text-1)' }}>Globe</span>, then tap "Pin My Pool" below the globe.</>
+              <>{tt('Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to')} <span style={{ color: 'var(--text-1)' }}>{tt('Globe')}</span>{tt(', then tap "Pin My Pool" below the globe.')}</>
             )}
           </div>
           {poolPin && (
@@ -8602,7 +8602,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
           color: 'var(--amber)', fontFamily: 'var(--fd)',
           fontSize: '0.65rem', letterSpacing: '0.2em',
           textTransform: 'uppercase', fontWeight: 700,
-        }}>◈ Simulate · Strike Mesh</span>
+        }}>{'◈ '}{tt('Simulate · Strike Mesh')}</span>
         <button
           onClick={onClose}
           style={{
@@ -8611,7 +8611,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
             background: 'transparent', border: '1px solid var(--border)',
             borderRadius: 3,
           }}
-          aria-label="Close simulator"
+          aria-label={tt('Close simulator')}
         >✕</button>
       </div>
 
@@ -8644,7 +8644,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
           fontSize: '0.6rem', letterSpacing: '0.15em',
           textTransform: 'uppercase', pointerEvents: 'none',
         }}>
-          {peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount} peers · {stageName}
+          {peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount} peers · {tt(stageName)}
         </div>
         {/* Reset overlay (bottom-left) */}
         <div
@@ -8661,8 +8661,8 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
             textShadow: '0 0 6px rgba(0,0,0,0.9)',
           }}
           role="button"
-          aria-label="Reset view"
-        >⟲ Reset</div>
+          aria-label={tt('Reset view')}
+        >{'⟲ '}{tt('Reset')}</div>
         {/* Find Me overlay (bottom-right) */}
         <div
           onClick={(e) => {
@@ -8678,8 +8678,8 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
             textShadow: '0 0 8px rgba(212,164,55,0.7)',
           }}
           role="button"
-          aria-label="Find own pool"
-        >◎ Find Me</div>
+          aria-label={tt('Find own pool')}
+        >{'◎ '}{tt('Find Me')}</div>
       </div>
 
       {/* Picker drawer */}
@@ -8694,7 +8694,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
             color: 'var(--text-2)', fontFamily: 'var(--fd)',
             fontSize: '0.5rem', letterSpacing: '0.16em',
             textTransform: 'uppercase', flexShrink: 0, width: 50,
-          }}>Peers <b style={{ color: 'var(--amber)', marginLeft: 4 }}>{peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount}</b></span>
+          }}>{tt('Peers')}{' '}<b style={{ color: 'var(--amber)', marginLeft: 4 }}>{peerCount > 999 ? (peerCount / 1000).toFixed(0) + 'K' : peerCount}</b></span>
           {STAGES.map(n => (
             <button
               key={n}
@@ -8718,7 +8718,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
             color: 'var(--text-2)', fontFamily: 'var(--fd)',
             fontSize: '0.5rem', letterSpacing: '0.16em',
             textTransform: 'uppercase', flexShrink: 0, width: 65,
-          }}>Fine-tune</span>
+          }}>{tt('Fine-tune')}</span>
           <input
             type="range"
             min="1"
@@ -8736,7 +8736,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
             color: 'var(--text-2)', fontFamily: 'var(--fd)',
             fontSize: '0.5rem', letterSpacing: '0.16em',
             textTransform: 'uppercase', flexShrink: 0, width: 65,
-          }}>Density</span>
+          }}>{tt('Density')}</span>
           <button
             onClick={() => setDensity('real')}
             style={{
@@ -8748,7 +8748,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
               letterSpacing: '0.1em', padding: '0.4rem 0.3rem',
               borderRadius: 3, cursor: 'pointer', textTransform: 'uppercase',
             }}
-          >Realistic</button>
+          >{tt('Realistic')}</button>
           <button
             onClick={() => setDensity('cinematic')}
             style={{
@@ -8760,7 +8760,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
               letterSpacing: '0.1em', padding: '0.4rem 0.3rem',
               borderRadius: 3, cursor: 'pointer', textTransform: 'uppercase',
             }}
-          >Cinematic</button>
+          >{tt('Cinematic')}</button>
           <button
             onClick={() => { burstUntilRef.current = performance.now() + 600; }}
             style={{
@@ -8770,7 +8770,7 @@ const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClo
               padding: '0.4rem 0.7rem', borderRadius: 3, cursor: 'pointer',
               textTransform: 'uppercase',
             }}
-          >⚡ Burst</button>
+          >{'⚡ '}{tt('Burst')}</button>
         </div>
       </div>
     </div>,
@@ -9225,7 +9225,7 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en' }) {
+const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en', showStamp = true }) {
   const tt = useMemo(() => makeTT(lang), [lang]);
   // v1.11.47: re-create constellation cube when theme changes.
   const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
@@ -10958,7 +10958,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // Bottom-right "100% SOLO" stamp — rotated, amber, glowing
   // iter27c: bumped up from 0.2rem to 0.6rem so it's no longer clipped
   // at the card's bottom edge on mobile.
-  const StampSolo = () => (
+  const StampSolo = () => (!showStamp ? null :
     <div style={{
       position:'absolute', right:'0.5rem', bottom:'0.6rem',
       transform:'rotate(-12deg)',
@@ -11267,7 +11267,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         }}>
           {pulseAnim === 'globe' ? (
             <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
-              Pool locations are approximate, not exact — miners remain private.
+              Pool locations are approximate.
             </span>
           ) : (
             <>
@@ -11547,7 +11547,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       }}>
         {pulseAnim === 'globe' ? (
           <span style={{fontStyle:'italic', letterSpacing:'0.04em'}}>
-            Pool locations are approximate, not exact — miners remain private.
+            Pool locations are approximate.
           </span>
         ) : (
           <>
@@ -13203,7 +13203,7 @@ function WebhooksTab({tt=(x)=>x}) {
     setErr('');
     if (!url.trim()) { setErr('URL required'); return; }
     const evList = Object.entries(events).filter(([,v])=>v).map(([k])=>k);
-    if (!evList.length) { setErr('Select at least one event'); return; }
+    if (!evList.length) { setErr(tt('Select at least one event')); return; }
     setLoading(true);
     try {
       const r = await fetch('/api/webhooks', {
@@ -13217,7 +13217,7 @@ function WebhooksTab({tt=(x)=>x}) {
     finally { setLoading(false); }
   };
   const remove = async (id) => {
-    if (!window.confirm('Remove this webhook?')) return;
+    if (!window.confirm(tt('Remove this webhook?'))) return;
     try {
       const r = await fetch('/api/webhooks', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -13240,7 +13240,7 @@ function WebhooksTab({tt=(x)=>x}) {
       </div>
       <div style={{marginBottom:14}}>
         <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('URL')}</label>
-        <input type="text" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."
+        <input type="text" value={url} onChange={e=>setUrl(e.target.value)} placeholder={tt('https://…')}
           style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box'}}/>
       </div>
       <div style={{marginBottom:14}}>
@@ -13283,7 +13283,7 @@ function WebhooksTab({tt=(x)=>x}) {
       </button>
       {hooks.length > 0 && (
         <div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:6, textTransform:'uppercase'}}>Configured ({hooks.length})</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:6, textTransform:'uppercase'}}>{tt('Configured')} ({hooks.length})</div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {hooks.map(h=>(
               <div key={h.id} style={{padding:'0.55rem',background:'var(--bg-raised)',border:'1px solid var(--border)',display:'flex',gap:8}}>
@@ -14872,6 +14872,7 @@ export default function App() {
       acceptedCount={poolState?.shares?.acceptedCount}
       workers={poolState?.workers}
       lang={lang}
+      showStamp={false}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
