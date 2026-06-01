@@ -185,6 +185,9 @@ const CSS = `
 @keyframes ss-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 
 .ssdesk .band{display:grid;gap:16px;min-height:0}
+/* Frost the col-based data bands (Intel page, page 4/5 data rows) so content
+   sits on a card. Exclude b-live/b-field which hold their own frosted panels. */
+.ssdesk .band:not(.b-live):not(.b-field){position:relative;background:color-mix(in srgb, var(--bg-surface) 60%, transparent);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
 .ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
@@ -365,6 +368,8 @@ const CSS = `
 .ssdesk .tap-open{display:inline-flex;align-items:center;gap:6px;transition:color .15s}
 .ssdesk .tap-open:hover{color:var(--amber)}
 .ssdesk .tap-hint{font-size:.82em;color:var(--amber);opacity:.7;letter-spacing:.1em}
+.ssdesk .tap-hint-right{margin-left:auto;margin-right:8px;transition:opacity .15s}
+.ssdesk .tap-hint-right:hover{opacity:1}
 .ssdesk .expand-btn{background:rgba(var(--amber-rgb),.08);border:1px solid var(--border-hot);color:var(--amber);cursor:pointer;font-size:.7rem;line-height:1;border-radius:5px;padding:2px 7px;flex:none;transition:background .12s}
 .ssdesk .expand-btn:hover{background:rgba(var(--amber-rgb),.2)}
 
@@ -693,13 +698,13 @@ export default function DesktopPages({
             <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band b-field">
               <div className="panel">
-                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('Solostrike Pulse')} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')} <span className="tap-hint">▸ {_tt('STRIKERS')}</span></span><button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('Solostrike Pulse')} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')}</span><span className="tap-hint tap-hint-right" onClick={M('Solostrike Pulse')} style={{cursor:'pointer'}}>▸ {_tt('STRIKERS')}</span><button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('The Hunt')} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')} <span className="tap-hint">▸ {_tt('THE RECKONING')}</span></span><button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('The Hunt')} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')}</span><span className="tap-hint tap-hint-right" onClick={M('The Hunt')} style={{cursor:'pointer'}}>▸ {_tt('THE RECKONING')}</span><button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
                 </div>
@@ -723,7 +728,7 @@ export default function DesktopPages({
             </div>
 
             {/* BAND 4 — ledger (+ pool tally) + health (+ detail) */}
-            <div className="band" style={{gridTemplateColumns:'2.2fr 1.2fr',borderTop:'1px solid var(--hair)',paddingTop:8}}>
+            <div className="band" style={{gridTemplateColumns:'2.2fr 1.2fr'}}>
               <div className="col" style={{paddingLeft:0,borderLeft:0,display:'flex',flexDirection:'column'}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'2px 14px'}}>
                   {blocks.slice(0,12).map((b,i)=>{const who=(b.miner||b.pool||'—').toString();return <div className="dl" key={i} style={{border:0}}><span className="k"><span className="lchip" style={{background:poolColor(who)}}/>{fmtNum(b.height)}</span><span className="v">{who.slice(0,10)}</span></div>;})}
