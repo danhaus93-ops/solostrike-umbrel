@@ -142,7 +142,7 @@ const CSS = `
 .ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%)}
 .ssdesk .scaler{width:100%;flex:1;min-height:0;overflow:hidden}
 .ssdesk .pages{display:flex;width:100%;height:100%;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
-.ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}.ssdesk .pages.p4{transform:translateX(-300%)}
+.ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}.ssdesk .pages.p4{transform:translateX(-300%)}.ssdesk .pages.p5{transform:translateX(-400%)}
 .ssdesk .viewport.vitals{grid-template-rows:auto minmax(0,1.25fr) minmax(0,1fr);row-gap:16px}
 .ssdesk .viewport.vitals .b-data{align-self:stretch}
 .ssdesk .viewport.vitals .b-data .col{display:flex;flex-direction:column}
@@ -161,8 +161,9 @@ const CSS = `
 .ssdesk .ss-foot .port:hover{text-decoration:underline}
 .ssdesk .ss-foot .tls{padding:1px 5px;border-radius:3px;font-size:.5rem;letter-spacing:.14em;color:var(--cyan);border:1px solid rgba(0,255,209,0.45);background:rgba(0,255,209,0.05)}
 .ssdesk .ss-foot b{color:var(--text-1);font-weight:700}
-.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 210px minmax(0,1fr);padding:14px 10px;row-gap:12px}
-.ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
+.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);padding:14px 10px;row-gap:12px}
+.ssdesk .viewport.field{grid-template-rows:auto minmax(0,1fr)}
+.ssdesk .viewport.p3,.ssdesk .viewport.p4{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
 
@@ -184,12 +185,15 @@ const CSS = `
 @keyframes ss-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 
 .ssdesk .band{display:grid;gap:16px;min-height:0}
+.ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
+.ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
+.ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
 .ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
-@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 50%, transparent)}}
+@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 60%, transparent)}}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px;padding-bottom:.22rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
 .ssdesk .clk:hover{background:rgba(var(--amber-rgb),0.06);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),0.2)}
@@ -276,7 +280,7 @@ const CSS = `
 .ssdesk .miner .nm{font-family:var(--fd);font-size:.58rem;font-weight:700;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ssdesk .miner .hash{margin-left:auto;font-family:var(--fd);font-size:.62rem;color:var(--amber);flex-shrink:0}
 .ssdesk .tele{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;border-top:1px solid rgba(var(--amber-rgb),0.06);padding-top:3px}
-.ssdesk .tele div{font-size:.42rem;color:var(--text-2);text-align:center;line-height:1.2;overflow:hidden}.ssdesk .tele b{display:block;font-family:var(--fd);font-size:.54rem;color:var(--text-1);white-space:nowrap}.ssdesk .tele .warm b{color:var(--amber)}.ssdesk .tele .hot b{color:var(--red)}
+.ssdesk .tele div{font-size:.42rem;color:var(--text-2);text-align:center;line-height:1.2;overflow:hidden}.ssdesk .tele b{display:block;font-family:var(--fd);font-size:.54rem;color:var(--text-1);white-space:nowrap}.ssdesk .tele .ok b{color:var(--green)}.ssdesk .tele .cool b{color:var(--cyan)}.ssdesk .tele .warm b{color:var(--amber)}.ssdesk .tele .hot b{color:var(--red)}
 .ssdesk .uptime{display:flex;height:5px;gap:1px;margin-top:4px;width:100%;min-width:0}.ssdesk .uptime i{flex:1 1 0;min-width:0;border-radius:.5px;background:var(--bg-deep)}.ssdesk .uptime i.on{background:rgba(57,255,106,0.65)}.ssdesk .uptime i.dn{background:rgba(232,67,67,0.7)}
 
 .ssdesk .col{padding:0 12px;border-left:1px solid var(--hair);min-width:0}.ssdesk .col:first-child{padding-left:0;border-left:0}
@@ -375,8 +379,8 @@ const CSS = `
 
 /* ---------- AppHead (real ticker in marquee slot) ---------- */
 function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
-  const statusTxt = page===1?_tt('Vitals'):page===2?_tt('Pool Internals'):page===3?_tt('Luck & Analytics'):_tt(status);
-  const zmqTxt = page===1?'node':page===2?'ckpool':page===3?'stats':`ZMQ ${zmqOk?'●':'○'}`;
+  const statusTxt = page===1?_tt('The Field'):page===2?_tt('Intel'):page===3?_tt('Pool Internals'):page===4?_tt('Luck & Analytics'):_tt(status);
+  const zmqTxt = page===1?'census':page===2?'node':page===3?'ckpool':page===4?'stats':`ZMQ ${zmqOk?'●':'○'}`;
   return (
     <div className="apphead">
       <div className="ah-left">
@@ -384,7 +388,7 @@ function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
         <span className="ah-wordmark">SoloStrike</span><span className="ah-div"/>
         <span className="ah-status">{statusTxt}</span>
         <span className="ah-zmq">{zmqTxt}</span>
-        <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 4</b></>}</span>
+        <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 5</b></>}</span>
       </div>
       <div className="ah-mq">{ticker}</div>
       <div className="ah-right">
@@ -403,7 +407,7 @@ function Crew({ workers, aliases, displayName, onWorkerClick }){
       {list.map((w,i)=>{
         const live=w.live||{}; const on=(w.hashrate||0)>0 && w.status!=='offline';
         const tC=Number.isFinite(live.tempC)?Math.round(live.tempC):null;
-        const tcls=tC>=70?'hot':tC>=60?'warm':'';
+        const tcls=tC==null?'':tC>=80?'hot':tC>=75?'warm':tC>=70?'cool':'ok';
         const fan=Number.isFinite(live.fanPct)?live.fanPct+'%':(Number.isFinite(live.fanRpm)?fmtNum(live.fanRpm):'—');
         const fw=(live.firmwareVersion||w.minerVendor||'—').toString().split(' ')[0];
         const acc=Number.isFinite(w.acceptRate)?(w.acceptRate*100).toFixed(1)+'%':'—';
@@ -538,7 +542,7 @@ export default function DesktopPages({
   const [fsCard,setFsCard]=useState(null); // 'pulse' | 'hunt' | null — fullscreen overlay
   const [svRange,setSvRange]=useState('1H'); // strike-velocity window
   const [fpTrend,setFpTrend]=useState('live'); // firepower trend window
-  const NP=4;
+  const NP=5;
   const startX=useRef(null);
   const fitRef=useRef(null);
   const scalerRef=useRef(null);
@@ -629,6 +633,11 @@ export default function DesktopPages({
   const _ta=shares.acceptedCount||0, _tr=shares.rejectedCount||0, _ts=shares.stale||0, _gt=_ta+_tr+_ts;
   const acc=_gt>0?((_ta/_gt)*100).toFixed(2)+'%':'—';
   const rej=_gt>0?((_tr/_gt)*100).toFixed(2)+'%':'—';
+  // match mobile card thresholds: accept green only if >99.9% else amber; reject green<0.5, amber<2, red>=2
+  const _accPct=_gt>0?(_ta/_gt)*100:100;
+  const _rejPct=_gt>0?(_tr/_gt)*100:0;
+  const accCls=_accPct>99.9?'green':'amber';
+  const rejCls=_rejPct<0.5?'green':_rejPct<2?'amber':'red';
 
   // health flags
   const H=stratumHealth||{};
@@ -645,35 +654,44 @@ export default function DesktopPages({
       onTouchStart={e=>{startX.current=e.touches[0].clientX;pokeDots();}}
       onTouchEnd={e=>{if(startX.current==null)return;const dx=e.changedTouches[0].clientX-startX.current;if(Math.abs(dx)>60)go(dx<0?page+1:page-1);startX.current=null;}}>
       <div className="scaler" ref={scalerRef}>
-        <div className={`pages${page===1?' p2':page===2?' p3':page===3?' p4':''}`}>
+        <div className={`pages${page===1?' p2':page===2?' p3':page===3?' p4':page===4?' p5':''}`}>
 
           {/* ============ PAGE 1 — LIVE ============ */}
           <div className="viewport">
             <AppHead page={0} status={status} zmqOk={zmqOk} strikes={ns.totalStrikesEver??strikes??0} ticker={page===0?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
-            {/* BAND 1 */}
-            <div className="band b-charts">
-              <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Firepower')} — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1M','5M','15M','1H','6H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
-                <div className="fp">
-                  <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
-                  <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
+            {/* BAND — left: Firepower stacked over Strike Velocity · right: Crew */}
+            <div className="band b-live">
+              <div className="live-left">
+                <div className="panel">
+                  <div className="zlabel zlabel-row">{tt('Firepower')} — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1M','5M','15M','1H','6H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
+                  <div className="fp">
+                    <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
+                    <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
+                  </div>
+                </div>
+                <div className="panel">
+                  <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
+                  <div className="sv">
+                    <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
+                    {spsHist.length===0
+                      ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
+                      : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
+                    <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
+                  </div>
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
-                <div className="sv">
-                  <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
-                  {spsHist.length===0
-                    ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
-                    : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
-                  <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
-                </div>
+                <div className="zlabel">{tt('The Crew · live telemetry')} · {liveW}/{totW}</div>
+                <Crew workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
               </div>
             </div>
+          </div>
 
-            {/* BAND 2 — Pulse (REAL globe) · Hunt (REAL) · Crew */}
-            <div className="band b-feat">
+          {/* ============ PAGE 2 — THE FIELD (Pulse | Hunt) ============ */}
+          <div className="viewport field">
+            <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+            <div className="band b-field">
               <div className="panel">
                 <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('Solostrike Pulse')} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')} <span className="tap-hint">▸ {_tt('STRIKERS')}</span></span><button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
                 <div className="body">
@@ -686,16 +704,12 @@ export default function DesktopPages({
                   <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
                 </div>
               </div>
-              <div className="panel">
-                <div className="zlabel">{tt('The Crew · live telemetry')} · {liveW}/{totW}</div>
-                <Crew workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
-              </div>
             </div>
           </div>
 
-          {/* ============ PAGE 2 — VITALS ============ */}
+          {/* ============ PAGE 3 — INTEL (was Vitals) ============ */}
           <div className="viewport vitals">
-            <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+            <AppHead page={2} status={status} zmqOk={zmqOk} ticker={page===2?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
             {/* BAND 3 — 7 data cols (Stratum removed — ports live in the footer) */}
             <div className="band b-data b-data-7">
@@ -705,7 +719,7 @@ export default function DesktopPages({
               <div className="col"><div className="ch">{tt('Near Strikes')}</div>{cc.length?(()=>{const netDiff=net.difficulty>0?net.difficulty:null;const top=Math.max(...cc.slice(0,4).map(c=>c.diff||0),1);return cc.slice(0,4).map((c,i)=>{const pct=netDiff?(c.diff/netDiff)*100:null;const w=Math.max(5,Math.min(100,((c.diff||0)/top)*100));const nm=((displayName?displayName(c.workerName,aliases):c.workerName)||'—').slice(0,7);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{pct!=null?pct.toFixed(3)+'%':hrShort(c.diff)}</span></div>;});})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('No near-misses yet.')}</div>}</div>
               <div className="col"><div className="ch">{tt('Top Miners')}</div>{topMiners.length?(()=>{const top=Math.max(...topMiners.map(w=>w.bestshare||0),1);return <>{topMiners.map((w,i)=>{const bw=Math.max(6,Math.min(100,((w.bestshare||0)/top)*100));const nm=(i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,6);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:bw+'%'}}/></span><span className="dval">{hrShort(w.bestshare)}</span></div>;})}{DL(_tt('Pool best'),poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>;})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('No shares submitted yet.')}</div>}</div>
               <div className="col"><div className="ch">{tt('Claim Jumpers')}</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];if(!tf.length)return <div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('Awaiting block data…')}</div>;const top=Math.max(...tf.slice(0,8).map(x=>x.count||0),1);return <>{tf.slice(0,8).map((f,i)=>{const w=Math.max(8,((f.count||0)/top)*100);return <div className="dbar" key={i}><span className="dnm">{(f.name||'—').slice(0,8)}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="dtrack"><i className={f.isSolo?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{f.count??0}</span></div>;})}</>;})()}</div>
-              <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL(_tt('Total'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL(_tt('Best'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Accept'),acc,'green')}{DL(_tt('Reject'),rej)}{(()=>{const a=shares.acceptedCount||0;const r=(shares.rejectedCount||0)+(shares.stale||0);const tot=a+r;const ap=tot>0?(a/tot)*100:100;return <div className="accbar" title={`Accept ${ap.toFixed(2)}%`}><i className="acc" style={{width:ap+'%'}}/><i className="rej" style={{width:(100-ap)+'%'}}/></div>;})()}</div>
+              <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL(_tt('Total'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL(_tt('Best'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Accept'),acc,accCls)}{DL(_tt('Reject'),rej,rejCls)}{(()=>{const a=shares.acceptedCount||0;const r=(shares.rejectedCount||0)+(shares.stale||0);const tot=a+r;const ap=tot>0?(a/tot)*100:100;return <div className="accbar" title={`Accept ${ap.toFixed(2)}%`}><i className="acc" style={{width:ap+'%'}}/><i className="rej" style={{width:(100-ap)+'%'}}/></div>;})()}</div>
             </div>
 
             {/* BAND 4 — ledger (+ pool tally) + health (+ detail) */}
@@ -734,9 +748,9 @@ export default function DesktopPages({
             </div>
           </div>
 
-          {/* ============ PAGE 3 — POOL INTERNALS ============ */}
-          <div className="viewport p2">
-            <AppHead page={2} zmqOk={zmqOk} ticker={page===2?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+          {/* ============ PAGE 4 — POOL INTERNALS ============ */}
+          <div className="viewport p3">
+            <AppHead page={3} zmqOk={zmqOk} ticker={page===3?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.5fr 1fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Hashrate Windows — % of Pool Peak')}</div><Gauges windows={windows} pct={wpct}/></div>
               <div className="panel"><div className="zlabel">{tt('Shares / Second — Windows')}</div>
@@ -749,16 +763,16 @@ export default function DesktopPages({
               <FleetTable workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL(_tt('Workers'),`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('ckpool'),'solo 2.x')}</div>
-              <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL(_tt('Accepted'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL(_tt('Rejected'),fmtNum(shares.rejectedCount))}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('Reject'),rej)}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL(_tt('Workers'),`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,accCls)}{DL(_tt('ckpool'),'solo 2.x')}</div>
+              <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL(_tt('Accepted'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL(_tt('Rejected'),fmtNum(shares.rejectedCount))}{DL(_tt('Accept'),acc,accCls)}{DL(_tt('Reject'),rej,rejCls)}</div>
               <div className="col"><div className="ch">{tt('Best Share — Trend')}</div><TsLine data={(()=>{const a=Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[]);return a.map(b=>b.best).filter(Number.isFinite);})()} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
               <div className="col"><div className="ch">{tt('Users + Workers History')}</div><TsLine data={(()=>{const a=Array.isArray(pool.workersHistory)?pool.workersHistory:(Array.isArray(pool.workersHistoryTail)?pool.workersHistoryTail:[]);return a.map(p=>p.workers).filter(Number.isFinite);})()} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
             </div>
           </div>
 
-          {/* ============ PAGE 4 — LUCK & ANALYTICS ============ */}
-          <div className="viewport p3">
-            <AppHead page={3} zmqOk={zmqOk} ticker={page===3?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+          {/* ============ PAGE 5 — LUCK & ANALYTICS ============ */}
+          <div className="viewport p4">
+            <AppHead page={4} zmqOk={zmqOk} ticker={page===4?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.3fr 1fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Block Effort / Luck — per strike')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>(shares-to-find vs expected · &lt;100% = lucky)</span></div>
                 <div className="effortwrap">{(()=>{
@@ -837,7 +851,7 @@ export default function DesktopPages({
 
       <button className={`nav l${page===0?' hidden':''}`} onClick={()=>go(page-1)}>❮</button>
       <button className={`nav r${page===NP-1?' hidden':''}`} onClick={()=>go(page+1)}>❯</button>
-      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2,3].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
+      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2,3,4].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
 
       {fsCard && (
         <div className="fs-overlay" onClick={e=>{if(e.target===e.currentTarget)setFsCard(null);}}>
