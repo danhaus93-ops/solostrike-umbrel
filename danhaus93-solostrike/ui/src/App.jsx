@@ -9403,6 +9403,25 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     };
   }, []);
 
+  // v1.11.64: the WebGL globe canvas is NO LONGER remounted on pulseAnim
+  // change (its renderer is created once and bound to the stable node;
+  // remounting orphaned the renderer and left the sphere blank). Instead,
+  // when we return to globe mode, re-bake the world texture onto the
+  // existing renderer so the sphere repaints a complete, current-theme
+  // frame — the "rebake on switch" without tearing down the GL context.
+  useEffect(() => {
+    if (pulseAnim !== 'globe') return;
+    const renderer = webglRendererRef.current;
+    const rings = (typeof window !== 'undefined') ? window.__ssGlobeRings : null;
+    if (renderer && renderer.isReady() && Array.isArray(rings) && rings.length) {
+      try {
+        const texCanvas = bakeWorldMapTexture(rings, { palette: _ssGlobePalette(_ssCurrentTheme()) });
+        renderer.setTexture(texCanvas);
+        webglTextureReadyRef.current = true;
+      } catch (e) { /* keep last good texture */ }
+    }
+  }, [pulseAnim]);
+
   // v1.11.0: Strike Mesh init. Mount-once on canvas ref ready,
   // re-mounts only if pulseAnim changes to/from 'block'. Renders only
   // when pulseAnim === 'block' (canvas display:none otherwise — context
@@ -11060,7 +11079,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           {/* v1.8.8-rev42 (rev27 restoration): WebGL globe canvas behind
               transparent 2D canvas. The 2D canvas handles markers, pin
               tap overlay, and pointer events for drag rotation. */}
-          <canvas key={'globe-'+pulseAnim} ref={webglCanvasRef} style={{
+          <canvas ref={webglCanvasRef} style={{
             position:'absolute', inset:0, width:'100%', height:'100%',
             pointerEvents:'none',
             display: pulseAnim === 'globe' ? 'block' : 'none',
@@ -11343,7 +11362,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         position:'relative', overflow:'hidden',
       }}>
         {/* v1.8.8-rev42 (rev27 restoration): WebGL globe canvas. */}
-        <canvas key={'globe-'+pulseAnim} ref={webglCanvasRef} style={{
+        <canvas ref={webglCanvasRef} style={{
           position:'absolute', inset:0, width:'100%', height:'100%',
           pointerEvents:'none',
           display: pulseAnim === 'globe' ? 'block' : 'none',
