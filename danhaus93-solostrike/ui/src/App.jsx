@@ -11,6 +11,12 @@ import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
 import { createNonceFieldWebGL } from './nonce-field-webgl.js';
 import { THEMES, THEME_IDS, getThemeById, loadTheme, saveTheme, applyThemeCSS, applyThemeColorMeta } from './themes.js';
+import DesktopPages from './components/DesktopPages.jsx';
+import { SUPPORTED, LANG_META, resolveLang, makeTT, dirFor } from './i18n.js';
+import {
+  PoolHashrateWindows, SpsWindows, ConnectionStates, BlockEffortPanel,
+  HashrateStability, RejectTrend, BestShareTrend, FleetEfficiency, PoolReliability,
+} from './components/AnalyticsCards.jsx';
 // v1.11.47: read current theme from document attribute. Used by WebGL
 // renderers that init outside the React tree.
 function _ssCurrentTheme() {
@@ -300,6 +306,7 @@ const TEMP_RED_C   = 80;
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LS_CARD_ORDER      = 'ss_card_order_v1';
+const LS_DESKTOP_PAGES   = 'ss_desktop_pages_v1';  // v1.12.0 per-page desktop order
 const LS_CURRENCY        = 'ss_currency_v1';
 const LS_ALIASES         = 'ss_worker_aliases_v1';
 const LS_NOTES           = 'ss_worker_notes_v1';
@@ -312,6 +319,8 @@ const LS_TICKER_SPEED    = 'ss_ticker_speed_v1';
 const LS_TICKER_METRICS  = 'ss_ticker_metrics_v1';
 const LS_MINIMAL_MODE    = 'ss_minimal_mode_v1';
 const LS_PERFORMANCE_MODE = 'ss_performance_mode_v1'; // v1.11.41: Performance Mode toggle
+const LS_DESKTOP_CARD_MODE = 'ss_desktop_card_mode_v1'; // v1.12.x: render old cards on desktop
+const LS_LANG = 'ss_lang_v1'; // v1.12.x: UI language
 const LS_VISIBLE_CARDS   = 'ss_visible_cards_v1';
 const LS_DEBUG_SETTINGS  = 'ss_debug_settings_v1';
 
@@ -335,6 +344,16 @@ const ALL_CARDS = [
   { id:'jumpers',       label:'Claim Jumpers + Solo Strikes' },
   { id:'recent',        label:'The Ledger' },
   { id:'health',        label:'System Health' },
+  // v1.12.0 analytics cards (Pool Internals + Luck & Analytics)
+  { id:'hashwindows',   label:'Hashrate Windows' },
+  { id:'spswindows',    label:'SPS Windows' },
+  { id:'connstates',    label:'Connection States' },
+  { id:'besttrend',     label:'Best Share Trend' },
+  { id:'effort',        label:'Block Effort / Luck' },
+  { id:'stability',     label:'Hashrate Stability' },
+  { id:'rejects',       label:'Reject Reasons' },
+  { id:'fleeteff',      label:'Fleet Efficiency' },
+  { id:'reliability',   label:'Reliability' },
 ];
 const ALL_CARD_IDS    = ALL_CARDS.map(c => c.id);
 const MINIMAL_PRESET  = ['hashrate', 'pulse', 'workers', 'jumpers'];
@@ -381,6 +400,8 @@ function migrateCardIds(arr) {
   return out;
 }
 
+function loadDesktopPages() { try { const s = localStorage.getItem(LS_DESKTOP_PAGES); const p = s ? JSON.parse(s) : null; return Array.isArray(p) ? p : null; } catch { return null; } }
+function saveDesktopPages(arr) { try { localStorage.setItem(LS_DESKTOP_PAGES, JSON.stringify(arr)); } catch {} }
 function loadAliases() { try { const s = localStorage.getItem(LS_ALIASES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
 function saveAliases(a) { try { localStorage.setItem(LS_ALIASES, JSON.stringify(a)); } catch {} }
 function loadNotes()   { try { const s = localStorage.getItem(LS_NOTES); return s ? JSON.parse(s) : {}; } catch { return {}; } }
@@ -408,6 +429,19 @@ function saveMinimalMode(v)  { try { localStorage.setItem(LS_MINIMAL_MODE, Strin
 // existing minimalMode ternary; performanceMode joins it).
 function loadPerformanceMode()   { try { const v = localStorage.getItem(LS_PERFORMANCE_MODE); return v === 'true'; } catch { return false; } }
 function savePerformanceMode(v)  { try { localStorage.setItem(LS_PERFORMANCE_MODE, String(!!v)); } catch {} }
+function loadDesktopCardMode()   { try { const v = localStorage.getItem(LS_DESKTOP_CARD_MODE); return v === 'true'; } catch { return false; } }
+function saveDesktopCardMode(v)  { try { localStorage.setItem(LS_DESKTOP_CARD_MODE, String(!!v)); } catch {} }
+function loadLang() {
+  try {
+    const stored = localStorage.getItem(LS_LANG);
+    if (stored && SUPPORTED.includes(stored)) return stored;
+  } catch {}
+  try {
+    const navs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language];
+    return resolveLang(navs);
+  } catch { return 'en'; }
+}
+function saveLang(v) { try { localStorage.setItem(LS_LANG, v); } catch {} }
 function loadVisibleCards()  { try { const s = localStorage.getItem(LS_VISIBLE_CARDS); if (!s) return EVERYTHING_PRESET; const p = JSON.parse(s); const migrated = migrateCardIds(Array.isArray(p) ? p : []); return migrated.length ? migrated.filter(id => ALL_CARD_IDS.includes(id)) : EVERYTHING_PRESET; } catch { return EVERYTHING_PRESET; } }
 function saveVisibleCards(list) { try { localStorage.setItem(LS_VISIBLE_CARDS, JSON.stringify(list)); } catch {} }
 
@@ -1267,10 +1301,12 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
 // render(). When set, we prepend an outlined ₿ cube (matching the original
 // LatestBlockStrip styling — 20x20 black bg, btc-orange border, soft glow,
 // 12x12 PNG of /btc-glyph.png inside).
-const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
+const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec, lang = 'en' }) {
   const marqueeRef = useRef(null);
   const pillsSourceRef = useRef(pillsSource);
   const spawnCountRef = useRef(0);
+  const ttRef = useRef(makeTT(lang));
+  useEffect(() => { ttRef.current = makeTT(lang); }, [lang]);
   useEffect(() => { pillsSourceRef.current = pillsSource; }, [pillsSource]);
 
   const speed = speedSec || DEFAULT_TICKER_SPEED;
@@ -1297,7 +1333,7 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       if (hasGlyph) pill.classList.add('ss-pill-tight');
       const lbl = document.createElement('span');
       lbl.className = 'ss-marquee-pill-lbl';
-      lbl.textContent = data.label || '';
+      lbl.textContent = ttRef.current(data.label || '') || '';
       pill.appendChild(lbl);
       if (hasGlyph) {
         const glyph = document.createElement('span');
@@ -1312,7 +1348,7 @@ const Ticker = React.memo(function Ticker({ pillsSource, enabled, speedSec }) {
       }
       const val = document.createElement('span');
       val.className = 'ss-marquee-pill-val' + (data.valClass ? ' ' + data.valClass : '');
-      val.textContent = data.value || '';
+      val.textContent = ttRef.current(data.value || '') || '';
       pill.appendChild(val);
       return pill;
     };
@@ -3587,7 +3623,8 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
   );
 }
 
-function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, performanceMode, onOpen }) {
+function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, huntAnim, performanceMode, onOpen, lang = 'en' }) {
+  const tt = useMemo(() => makeTT(lang), [lang]);
   const { perBlock=0, expectedDays=null, perDay=0, perWeek=0, perMonth=0, perYear=0 } = odds||{};
   // iter27c: `scale` (logarithmic mapping for the odds SVG fill width)
   // is no longer needed — replaced by the NonceField canvas component.
@@ -3621,13 +3658,14 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
       title={onOpen ? 'Tap to open The Reckoning' : undefined}
     >
       <div style={{...cardTitle, color:'var(--amber)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0}}>
-        <span>▸ The Hunt</span>
+        <span>▸ {tt('The Hunt')}</span>
         {onOpen && (
           <span style={{
             fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em',
             color:'var(--amber)', textTransform:'uppercase',
+            whiteSpace:'nowrap', paddingRight:'4px', flexShrink:0,
           }}>
-            ▸ Tap for the Reckoning
+            ▸ {tt('Tap for the Reckoning')}
           </span>
         )}
       </div>
@@ -3649,7 +3687,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
         <div style={{display:'flex', flexDirection:'column', flex:1, minHeight:240}}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6, flexShrink:0}}>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)'}}>
-              Per-Block Odds
+              {tt('Per-Block Odds')}
             </span>
             <span style={{fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, color:'var(--amber)', textShadow:'0 0 8px rgba(var(--amber-rgb),0.4)', fontVariantNumeric:'tabular-nums'}}>
               {perBlock>0 ? fmtOddsInverse(perBlock) : '—'}
@@ -3671,7 +3709,7 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
           <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:10}}>
             <div style={{display:'flex', alignItems:'baseline', gap:8, flex:1, minWidth:0}}>
               <span style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-2)', whiteSpace:'nowrap'}}>
-                BLOCK REWARD
+                {tt('Block Reward')}
               </span>
               <span style={{
                 fontFamily:'var(--fd)', fontSize:'1.05rem', fontWeight:800, lineHeight:1,
@@ -5077,11 +5115,11 @@ function saveHuntAnim(v) { try { localStorage.setItem(LS_HUNT_ANIM, String(v)); 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return window.matchMedia('(max-width: 767px)').matches;
+    return window.matchMedia('(max-width: 599px)').matches;
   });
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 767px)');
+    const mq = window.matchMedia('(max-width: 599px)');
     const onChange = (e) => setIsMobile(e.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else mq.addListener(onChange);
@@ -5614,7 +5652,7 @@ function DebugOverlay({ settings, onSettingsChange, appState }) {
           : 'n/a',
         // mode / state
         mode,
-        cMatch: window.matchMedia('(max-width: 767px)').matches,
+        cMatch: window.matchMedia('(max-width: 599px)').matches,
         gMatch: window.matchMedia('(min-width: 768px)').matches,
         body: document.body.className.split(' ').filter((c) => c.startsWith('ss-')).join(' '),
         // sw / build
@@ -7346,8 +7384,9 @@ function HealthDetailModal({ initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, lang = 'en', onLangChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
   const [tab, setTab] = useState('main');
+  const tt = useMemo(() => makeTT(lang), [lang]);
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
   // where 'SoloStrike' is now hardcoded server-side. No user-facing effect lost.
@@ -7370,7 +7409,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
           <h3 style={{margin:0,fontFamily:'var(--fd)',fontSize:'0.85rem',letterSpacing:'0.18em',color:'var(--amber)', display:'flex', alignItems:'center', gap:'0.5rem'}}>
             <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1rem', height:'1rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.5))', flexShrink:0}}/>
-            Settings
+            {tt('Settings')}
           </h3>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:'1.2rem',lineHeight:1,padding:0}}>✕</button>
         </div>
@@ -7379,6 +7418,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           {[
             ['main','Main'],
             ['display','Display'],
+            ['language','Language'],
             ['privacy','Privacy'],
             ['pulse','Pulse'],
             ['hunt','Hunt'],
@@ -7393,43 +7433,47 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
               color:tab===id?'var(--amber)':'var(--text-2)',
               fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.12em',
               cursor:'pointer', textTransform:'uppercase'
-            }}>{label}</button>
+            }}>{tt(label)}</button>
           ))}
         </div>
 
         {tab==='main' && (
-          <MainTab addr={addr} setAddr={setAddr}
+          <MainTab tt={tt} addr={addr} setAddr={setAddr}
             currency={currency} onCurrencyChange={onCurrencyChange} onResetLayout={onResetLayout}
             submit={submit} saved={saved} loading={loading}/>
         )}
         {tab==='display' && (
-          <DisplayTab stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
+          <DisplayTab tt={tt} stripSettings={stripSettings} onStripSettingsChange={onStripSettingsChange}
             tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
             minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
+            desktopCardMode={desktopCardMode} onDesktopCardModeChange={onDesktopCardModeChange} isMobileView={isMobileView}
             visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
             carouselEnabled={carouselEnabled} onCarouselChange={onCarouselChange}/>
         )}
+        {tab==='language' && (
+          <LanguageTab tt={tt} lang={lang} onLangChange={onLangChange}/>
+        )}
         {tab==='privacy' && (
-          <PrivacyTab privateMode={privateMode} setPrivateMode={setPrivateMode}
+          <PrivacyTab tt={tt} privateMode={privateMode} setPrivateMode={setPrivateMode}
             submit={submit} saved={saved} loading={loading}/>
         )}
         {tab==='pulse' && (
-          <PulseTab networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
+          <PulseTab tt={tt} networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}/>
         )}
         {tab==='hunt' && (
-          <HuntTab huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange} onPreviewCelebration={onPreviewCelebration}/>
+          <HuntTab tt={tt} huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange} onPreviewCelebration={onPreviewCelebration}/>
         )}
         {tab==='themes' && (
-          <ThemesTab themeId={themeId} onThemeChange={onThemeChange}/>
+          <ThemesTab tt={tt} themeId={themeId} onThemeChange={onThemeChange}/>
         )}
         {tab==='aliases' && (
-          <AliasesTab workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
+          <AliasesTab tt={tt} workers={workers} aliases={aliases} onAliasesChange={onAliasesChange}/>
         )}
         {tab==='webhooks' && (
-          <WebhooksTab/>
+          <WebhooksTab tt={tt}/>
         )}
         {tab==='debug' && (
           <DebugTab settings={debugSettings} onSettingsChange={onDebugSettingsChange}/>
@@ -7440,17 +7484,17 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
 }
 
 // ── Main settings tab ─────────────────────────────────────────────────────────
-function MainTab({addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,saved,loading}) {
+function MainTab({tt=(x)=>x,addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,saved,loading}) {
   return (
     <>
       <div style={{marginBottom:14}}>
-        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Bitcoin Payout Address</label>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('Bitcoin Payout Address')}</label>
         <input type="text" value={addr} onChange={e=>setAddr(e.target.value)} placeholder="bc1q..."
           style={{width:'100%',padding:'0.55rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginTop:5}}>Where block rewards go. Use a fresh, dedicated address from your own wallet.</div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginTop:5}}>{tt('Where block rewards go. Use a fresh, dedicated address from your own wallet.')}</div>
       </div>
       <div style={{marginBottom:14}}>
-        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Currency</label>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('Currency')}</label>
         <select value={currency} onChange={e=>onCurrencyChange(e.target.value)}
           style={{width:'100%',padding:'0.55rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}>
           {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
@@ -7459,7 +7503,7 @@ function MainTab({addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,sa
       <div style={{display:'flex',gap:8, marginTop:18}}>
         <button onClick={submit} disabled={loading}
           style={{flex:1, padding:'0.7rem', background:saved?'var(--green)':'var(--amber)', color:'#000', border:'none', fontFamily:'var(--fd)', fontWeight:700, letterSpacing:'0.1em', fontSize:'0.7rem', cursor:loading?'wait':'pointer', textTransform:'uppercase', opacity:loading?0.6:1}}>
-          {loading?'SAVING…':saved?'✓ SAVED':'SAVE'}
+          {loading?tt('SAVING…'):saved?'✓ '+tt('SAVED'):tt('SAVE')}
         </button>
         <button onClick={onResetLayout}
           style={{padding:'0.7rem 1rem', background:'transparent', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'var(--fd)', fontWeight:600, letterSpacing:'0.1em', fontSize:'0.65rem', cursor:'pointer', textTransform:'uppercase'}}>
@@ -7471,7 +7515,34 @@ function MainTab({addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,sa
 }
 
 // ── Display tab ───────────────────────────────────────────────────────────────
-function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
+function LanguageTab({ tt=(x)=>x, lang = 'en', onLangChange }) {
+  return (
+    <div>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'0.4rem'}}>▸ {tt('Language')}</div>
+      <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginBottom:'0.9rem', lineHeight:1.5}}>
+        {tt('Choose the display language. Mining terms (hashrate, stratum, share, difficulty…) stay in English on purpose — they read correctly to miners everywhere. Auto-detected from your browser on first run; unsupported languages fall back to English.')}
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:'0.5rem'}}>
+        {SUPPORTED.map(code => {
+          const active = code === lang;
+          return (
+            <button key={code} onClick={()=>onLangChange && onLangChange(code)}
+              style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.5rem',
+                padding:'0.6rem 0.7rem', borderRadius:8, cursor:'pointer', textAlign:'left',
+                background: active?'rgba(var(--amber-rgb),0.10)':'var(--bg-raised)',
+                border:`1px solid ${active?'rgba(var(--amber-rgb),0.45)':'var(--border)'}`,
+                color: active?'var(--amber)':'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.74rem', fontWeight:active?700:500}}>
+              <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{LANG_META[code]?.name || code}</span>
+              {active && <span style={{color:'var(--amber)', flexShrink:0}}>●</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
   const toggleCard = (id) => {
     const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
     onVisibleCardsChange(next);
@@ -7518,7 +7589,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       <div style={firstSectionTitle}>▸ Minimal Mode</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: minimalMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: minimalMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>Bare Bones UI</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: minimalMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>{tt('Bare Bones UI')}</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
             Hides ticker, block strips, status dot, and shows only Hashrate + Workers + Blocks cards.
           </div>
@@ -7540,7 +7611,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
       <div style={firstSectionTitle}>▸ Performance Mode</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: performanceMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${performanceMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: performanceMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>Static Mode</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: performanceMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>{tt('Static Mode')}</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
             Replaces animated Pulse globe and Hunt canvases with static baked frames. Reduces battery drain and heat on older devices. Strike pulse rings stay live (information-bearing).
           </div>
@@ -7556,16 +7627,39 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </div>
       )}
 
-      <div style={sectionTitle}>▸ Card Layout (Mobile)</div>
+      {/* v1.12.x: Desktop Card Mode — render the classic card grid on desktop
+          instead of the 3-page dashboard. Desktop-only setting. */}
+      {!isMobileView && (<>
+      <div style={sectionTitle}>▸ {tt('Desktop Layout')}</div>
+      <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: desktopCardMode?'rgba(var(--amber-rgb),0.06)':'var(--bg-raised)', border:`1px solid ${desktopCardMode?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`}}>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: desktopCardMode?'var(--amber)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>
+            {desktopCardMode ? tt('Card Grid') : tt('3-Page Dashboard')}
+          </div>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
+            {desktopCardMode
+              ? tt('Classic cards in a multi-column grid filling the screen — drag to reorder, scroll through all of them.')
+              : tt('The 3-page slider dashboard (Live · Pool Internals · Luck & Analytics).')}
+          </div>
+        </div>
+        <button onClick={()=>onDesktopCardModeChange(!desktopCardMode)}
+          style={{width:46, height:26, borderRadius:13, background: desktopCardMode?'var(--amber)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer', flexShrink:0}}>
+          <div style={{position:'absolute', top:2, left: desktopCardMode?22:2, width:20, height:20, borderRadius:'50%', background: desktopCardMode?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
+        </button>
+      </div>
+      </>)}
+
+
+      <div style={sectionTitle}>▸ {tt('Card Layout (Mobile)')}</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: carouselEnabled?'rgba(var(--amber-rgb),0.06)':'var(--bg-raised)', border:`1px solid ${carouselEnabled?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
           <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: carouselEnabled?'var(--amber)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>
-            {carouselEnabled ? 'Carousel · Swipe' : 'Vertical · Scroll'}
+            {carouselEnabled ? tt('Carousel · Swipe') : tt('Vertical · Scroll')}
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
             {carouselEnabled
-              ? 'One card per screen — swipe left/right between them. Position dots at the bottom show where you are. Mobile only — desktop always uses the grid.'
-              : 'Classic vertical stack — scroll up/down through all cards on one page. Same as it was before v1.7.17.'}
+              ? tt('One card per screen — swipe left/right between them. Position dots at the bottom show where you are. Mobile only — desktop always uses the grid.')
+              : tt('Classic vertical stack — scroll up/down through all cards on one page. Same as it was before v1.7.17.')}
           </div>
         </div>
         <button onClick={()=>onCarouselChange(!carouselEnabled)}
@@ -7574,9 +7668,9 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </button>
       </div>
 
-      <div style={sectionTitle}>▸ Dashboard Cards</div>
+      <div style={sectionTitle}>▸ {tt('Dashboard Cards')}</div>
 
-      <div style={rowLabel}>Quick presets</div>
+      <div style={rowLabel}>{tt('Quick presets')}</div>
       <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
         <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
           Minimal (3)
@@ -7589,7 +7683,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         </button>
       </div>
 
-      <div style={rowLabel}>Individual cards (tap to toggle)</div>
+      <div style={rowLabel}>{tt('Individual cards (tap to toggle)')}</div>
       <div style={{display:'flex', flexDirection:'column', gap:3, padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
         {ALL_CARDS.map(c => {
           const on = visibleCards.includes(c.id);
@@ -7608,10 +7702,10 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
         Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
       </div>
 
-      <div style={sectionTitle}>▸ Scrolling Ticker</div>
+      <div style={sectionTitle}>▸ {tt('Scrolling Ticker')}</div>
 
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.75rem', padding:'0.5rem 0.6rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>Show scrolling ticker</span>
+        <span style={{fontFamily:'var(--fd)', fontSize:'0.68rem', color:'var(--text-1)', fontWeight:600, flex:1}}>{tt('Show scrolling ticker')}</span>
         <button onClick={()=>onTickerSettingsChange({ ...tickerSettings, enabled: !tickerSettings.enabled })}
           style={{width:40, height:22, borderRadius:11, background: tickerSettings.enabled?'var(--cyan)':'var(--bg-deep)', border:'1px solid var(--border)', position:'relative', cursor:'pointer'}}>
           <div style={{position:'absolute', top:1, left: tickerSettings.enabled?20:2, width:18, height:18, borderRadius:'50%', background: tickerSettings.enabled?'#000':'var(--text-2)', transition:'left 0.2s'}}/>
@@ -7620,7 +7714,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
       {tickerSettings.enabled && (
         <>
-          <div style={{...rowLabel, marginTop:'0.5rem'}}>Ticker metrics (tap to toggle, ↑↓ to reorder)</div>
+          <div style={{...rowLabel, marginTop:'0.5rem'}}>{tt('Ticker metrics (tap to toggle, ↑↓ to reorder)')}</div>
           <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto', padding:4, background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
             {METRIC_CATEGORIES.map(cat => (
               <div key={cat}>
@@ -7678,7 +7772,7 @@ function DisplayTab({ stripSettings, onStripSettingsChange, tickerSettings, onTi
 
 // ── Hunt tab — animation chooser for The Hunt card ────────────────────────────
 // ── Themes tab — v1.11.47 theme picker ────────────────────────────────────────
-function ThemesTab({ themeId, onThemeChange }) {
+function ThemesTab({ tt=(x)=>x, themeId, onThemeChange }) {
   return (
     <>
       <div style={{
@@ -7728,7 +7822,7 @@ function ThemesTab({ themeId, onThemeChange }) {
                 <div style={{
                   fontFamily: 'var(--fd)', fontWeight: 700, fontSize: '0.85rem',
                   color: t.css['--amber'], letterSpacing: '0.08em',
-                }}>{t.label}</div>
+                }}>{tt(t.label)}</div>
                 {selected && (
                   <span style={{
                     position: 'absolute', top: 4, right: 6,
@@ -7756,7 +7850,7 @@ function ThemesTab({ themeId, onThemeChange }) {
         fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
         marginTop: '1rem', lineHeight: 1.5,
       }}>
-        Theme changes apply instantly on app reload.
+        {tt('Theme changes apply instantly on app reload.')}
       </div>
       <div style={{
         fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-3)',
@@ -7768,7 +7862,7 @@ function ThemesTab({ themeId, onThemeChange }) {
   );
 }
 
-function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
+function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }) {
   return (
     <>
       <div style={{
@@ -7814,7 +7908,7 @@ function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
             fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
             color: 'var(--text-2)', marginTop: '1.4rem', marginBottom: 8, textTransform: 'uppercase',
           }}>
-            Block-Found Celebration
+            {tt('Block-Found Celebration')}
           </div>
           <button
             onClick={onPreviewCelebration}
@@ -7827,12 +7921,12 @@ function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
               letterSpacing: '0.14em', textTransform: 'uppercase',
               cursor: 'pointer',
             }}
-          >▸ Preview Celebration</button>
+          >▸ {tt('Preview Celebration')}</button>
           <div style={{
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
             marginTop: 6, lineHeight: 1.5,
           }}>
-            Replays the fullscreen celebration that fires on a real block discovery, using the animation theme selected above.
+            {tt('Replays the fullscreen celebration that fires on a real block discovery, using the animation theme selected above.')}
           </div>
         </>
       )}
@@ -7845,21 +7939,21 @@ function HuntTab({ huntAnim, onHuntAnimChange, onPreviewCelebration }) {
 }
 
 // ── Privacy tab ───────────────────────────────────────────────────────────────
-function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
+function PrivacyTab({tt=(x)=>x,privateMode,setPrivateMode,submit,saved,loading}) {
   return (
     <>
       <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,display:'flex',alignItems:'center',gap:'0.75rem'}}>
         <input type="checkbox" id="priv-mode" checked={privateMode} onChange={e=>setPrivateMode(e.target.checked)} style={{accentColor:'var(--cyan)'}}/>
         <div style={{flex:1}}>
-          <label htmlFor="priv-mode" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--cyan)',cursor:'pointer',letterSpacing:'0.05em'}}>🔒 Private Mode</label>
+          <label htmlFor="priv-mode" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--cyan)',cursor:'pointer',letterSpacing:'0.05em'}}>🔒 {tt('Private Mode')}</label>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
-            Disables external API calls (mempool.space, prices). Pool gets its data exclusively from your local Bitcoin Core node. Some features (fee rates, top finders, fiat prices) become unavailable.
+            {tt('Disables external API calls (mempool.space, prices). Pool gets its data exclusively from your local Bitcoin Core node. Some features (fee rates, top finders, fiat prices) become unavailable.')}
           </div>
         </div>
       </div>
       <div style={{display:'flex',gap:8,marginTop:14}}>
         <button onClick={submit} disabled={loading} style={{flex:1,padding:'0.7rem',background:saved?'var(--green)':'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
-          {loading?'SAVING…':saved?'✓ SAVED':'SAVE'}
+          {loading?tt('SAVING…'):saved?'✓ '+tt('SAVED'):tt('SAVE')}
         </button>
       </div>
     </>
@@ -7867,7 +7961,7 @@ function PrivacyTab({privateMode,setPrivateMode,submit,saved,loading}) {
 }
 
 // ── Pulse tab ─────────────────────────────────────────────────────────────────
-function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolPin, onPoolPinChange }) {
+function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolPin, onPoolPinChange }) {
   const [err, setErr] = useState('');
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
@@ -7942,9 +8036,9 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
       <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:'0.6rem',display:'flex',alignItems:'center',gap:'0.75rem'}}>
         <input type="checkbox" id="pulse-on" checked={enabled} onChange={toggle} style={{accentColor:'var(--amber)'}}/>
         <div style={{flex:1}}>
-          <label htmlFor="pulse-on" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--amber)',cursor:'pointer',letterSpacing:'0.05em'}}>📡 Join Pulse</label>
+          <label htmlFor="pulse-on" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--amber)',cursor:'pointer',letterSpacing:'0.05em'}}>📡 {tt('Join Pulse')}</label>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
-            Broadcast your pool's anonymous stats to the SoloStrike Pulse network. See how many other solo pools exist. Opt-in, can be turned off any time.
+            {tt("Broadcast your pool's anonymous stats to the SoloStrike Pulse network. See how many other solo pools exist. Opt-in, can be turned off any time.")}
           </div>
         </div>
       </div>
@@ -8206,7 +8300,7 @@ function PulseTab({ networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolP
                 padding: '0.4rem 0.7rem',
                 cursor: 'pointer', borderRadius: 2,
               }}
-            >Remove Pin</button>
+            >{tt('Remove Pin')}</button>
           )}
         </div>
       )}
@@ -9131,7 +9225,8 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null }) {
+const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en' }) {
+  const tt = useMemo(() => makeTT(lang), [lang]);
   // v1.11.47: re-create constellation cube when theme changes.
   const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
   useEffect(() => {
@@ -10890,14 +10985,14 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     return (
       <div style={{...card, position:'relative', minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
         <div style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0}}>
-          <span>▸ SoloStrike Pulse</span>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>OFF</span>
+          <span>▸ {tt('Pulse')}</span>
+          <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em', color:'var(--text-3)', marginRight:14}}>{tt('OFF')}</span>
         </div>
         <div style={{textAlign:'center', padding:'1.5rem 0.75rem', color:'var(--text-2)'}}>
           <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>📡</div>
-          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>Pulse is offline</div>
+          <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', marginBottom: 6, fontWeight:600}}>{tt('Pulse is offline')}</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)', lineHeight:1.5, maxWidth:300, margin:'0 auto'}}>
-            See how many other solo pools are running, combined hashrate, and miner count across the network.
+            {tt('See how many other solo pools are running, combined hashrate, and miner count across the network.')}
           </div>
           <button
             onClick={onOpenSettings}
@@ -10910,7 +11005,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               letterSpacing:'0.12em', textTransform:'uppercase',
               boxShadow:'0 0 14px rgba(var(--amber-rgb),0.35)',
             }}>
-            JOIN PULSE
+            {tt('JOIN PULSE')}
           </button>
         </div>
         <StampSolo/>
@@ -10932,7 +11027,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', marginBottom:'0.4rem', cursor: onOpenStrikers ? 'pointer' : 'default'}}
           title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
         >
-          <span>▸ SoloStrike Pulse</span>
+          <span>▸ {tt('Pulse')}</span>
           <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
             <span style={{width:5, height:5, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite', willChange:'opacity'}}/>
             LIVE
@@ -11204,7 +11299,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         style={{...cardTitle, display:'flex', justifyContent:'space-between', alignItems:'center', color:'var(--amber)', flexShrink:0, cursor: onOpenStrikers ? 'pointer' : 'default'}}
         title={onOpenStrikers ? 'Tap to view all Strikers' : undefined}
       >
-        <span>▸ SoloStrike Pulse</span>
+        <span>▸ {tt('Pulse')}</span>
         <span style={{display:'inline-flex', alignItems:'center', gap:5, fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', color:'var(--green)', textShadow:'0 0 6px var(--green)', marginRight:14}}>
           <span style={{width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', animation:'pulse 2s ease-in-out infinite', willChange:'opacity'}}/>
           LIVE
@@ -12135,6 +12230,18 @@ function StrikersModal({ networkStats, onClose }) {
             )}
           </div>
 
+          {/* v1.11.x (ported from Gavin's fixes): honesty disclaimer — Pulse figures
+              are self-reported by opt-in nodes over nostr and are not verified (no
+              outlier filtering), so individual broadcasts can be approximate or
+              inflated. Matches the "approximate, not exact" voice of the Pulse card. */}
+          <div style={{
+            fontFamily:'var(--fm)', fontSize:'0.58rem', lineHeight:1.5,
+            color:'var(--text-3)', marginBottom:'0.9rem',
+            paddingBottom:'0.6rem', borderBottom:'1px solid var(--border)',
+          }}>
+            Hashrate is self-reported, not verified — figures are approximate and an ambient community snapshot, not exact measurements.
+          </div>
+
           <DistributionBar/>
 
           {/* v1.11.2: personal hashrate goal tracker */}
@@ -12271,36 +12378,42 @@ function StrikersModal({ networkStats, onClose }) {
           <div style={{
             borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
             paddingTop:'0.7rem',
-            fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
-            lineHeight:1.5,
-            paddingRight:'5rem',
+            display:'flex', alignItems:'flex-end', gap:'1rem',
           }}>
-            Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
-            <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-              Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
+            <div style={{
+              flex:1, minWidth:0,
+              fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
+              lineHeight:1.5,
+            }}>
+              Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+              <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
+                Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
+              </div>
             </div>
-          </div>
-
-
-          <div style={{
-            position:'absolute', right:'1rem', bottom:'1rem',
-            transform:'rotate(-12deg)',
-            fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
-            letterSpacing:'0.18em', textTransform:'uppercase',
-            color:'rgba(var(--amber-rgb),0.65)',
-            border:'2px solid rgba(var(--amber-rgb),0.5)',
-            padding:'4px 10px',
-            pointerEvents:'none',
-            textShadow:'0 0 8px rgba(var(--amber-rgb),0.6)',
-            boxShadow:'0 0 12px rgba(var(--amber-rgb),0.25), inset 0 0 8px rgba(var(--amber-rgb),0.15)',
-            background:'rgba(var(--amber-rgb),0.03)',
-            lineHeight:1.2,
-            textAlign:'center',
-            animation:'pulse 4s ease-in-out infinite',
-            willChange:'opacity',
-          }}>
-            <div>100%</div>
-            <div>SOLO</div>
+            {/* v1.12.0-fix2: SOLO stamp pinned to the BOTTOM-RIGHT of the footer
+                block. Was alignSelf:center (sat too high). Now flex-end so it
+                anchors to the bottom edge, flush in the corner. */}
+            <div style={{
+              flexShrink:0, alignSelf:'flex-end',
+              marginLeft:'auto', marginTop:'auto',
+              transform:'rotate(-12deg)',
+              fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:800,
+              letterSpacing:'0.18em', textTransform:'uppercase',
+              color:'rgba(var(--amber-rgb),0.65)',
+              border:'2px solid rgba(var(--amber-rgb),0.5)',
+              padding:'4px 10px',
+              pointerEvents:'none',
+              textShadow:'0 0 8px rgba(var(--amber-rgb),0.6)',
+              boxShadow:'0 0 12px rgba(var(--amber-rgb),0.25), inset 0 0 8px rgba(var(--amber-rgb),0.15)',
+              background:'rgba(var(--amber-rgb),0.03)',
+              lineHeight:1.2,
+              textAlign:'center',
+              animation:'pulse 4s ease-in-out infinite',
+              willChange:'opacity',
+            }}>
+              <div>100%</div>
+              <div>SOLO</div>
+            </div>
           </div>
 
         </div>
@@ -13028,7 +13141,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
 }
 
 // ── Aliases tab ───────────────────────────────────────────────────────────────
-function AliasesTab({workers, aliases, onAliasesChange}) {
+function AliasesTab({tt=(x)=>x, workers, aliases, onAliasesChange}) {
   const updateAlias = (workerName, alias) => {
     const next = { ...aliases };
     if (alias && alias.trim()) next[workerName] = alias.trim();
@@ -13039,10 +13152,10 @@ function AliasesTab({workers, aliases, onAliasesChange}) {
   return (
     <>
       <div style={{padding:'0.65rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.5}}>
-        Give your workers friendly names. Aliases are stored locally in your browser and only visible to you.
+        {tt('Give your workers friendly names. Aliases are stored locally in your browser and only visible to you.')}
       </div>
       {sorted.length === 0 ? (
-        <div style={{textAlign:'center',padding:'2rem',color:'var(--text-2)',fontSize:'0.75rem'}}>No workers yet.</div>
+        <div style={{textAlign:'center',padding:'2rem',color:'var(--text-2)',fontSize:'0.75rem'}}>{tt('No workers yet.')}</div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
           {sorted.map(w=>{
@@ -13052,7 +13165,7 @@ function AliasesTab({workers, aliases, onAliasesChange}) {
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--text-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{stripped}</div>
                 </div>
-                <input type="text" value={aliases[w.name]||''} onChange={e=>updateAlias(w.name, e.target.value)} placeholder="alias…"
+                <input type="text" value={aliases[w.name]||''} onChange={e=>updateAlias(w.name, e.target.value)} placeholder={tt("alias…")}
                   style={{width:140,padding:'0.4rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.7rem',outline:'none'}}/>
               </div>
             );
@@ -13064,7 +13177,7 @@ function AliasesTab({workers, aliases, onAliasesChange}) {
 }
 
 // ── Webhooks tab ──────────────────────────────────────────────────────────────
-function WebhooksTab() {
+function WebhooksTab({tt=(x)=>x}) {
   const [hooks, setHooks] = useState([]);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -13121,21 +13234,21 @@ function WebhooksTab() {
         Get a HTTP POST when blocks are found or workers go offline. Use Discord, Slack, custom endpoint, etc.
       </div>
       <div style={{marginBottom:14}}>
-        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Name</label>
-        <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="My Discord"
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('Name')}</label>
+        <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder={tt("My Discord")}
           style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box'}}/>
       </div>
       <div style={{marginBottom:14}}>
-        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>URL</label>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('URL')}</label>
         <input type="text" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."
           style={{width:'100%',padding:'0.5rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.75rem',outline:'none',boxSizing:'border-box'}}/>
       </div>
       <div style={{marginBottom:14}}>
-        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>Events</label>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('Events')}</label>
         {[
-          ['block_found','Block found (strike)'],
-          ['worker_offline','Worker offline'],
-          ['worker_online','Worker online'],
+          ['block_found',tt('Block found (strike)')],
+          ['worker_offline',tt('Worker offline')],
+          ['worker_online',tt('Worker online')],
         ].map(([k,v])=>(
           <label key={k} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',cursor:'pointer'}}>
             <input type="checkbox" checked={!!events[k]} onChange={e=>setEvents({...events, [k]:e.target.checked})} style={{accentColor:'var(--amber)'}}/>
@@ -13166,7 +13279,7 @@ function WebhooksTab() {
         </label>
       </div>
       <button onClick={add} disabled={loading} style={{width:'100%',padding:'0.6rem',background:'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',marginBottom:14}}>
-        {loading ? 'Adding…' : '+ Add Webhook'}
+        {loading ? tt('Adding…') : '+ '+tt('Add Webhook')}
       </button>
       {hooks.length > 0 && (
         <div>
@@ -13179,7 +13292,7 @@ function WebhooksTab() {
                   <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.urlPreview || h.url}</div>
                   <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:3,letterSpacing:'0.05em',textTransform:'uppercase'}}>{(h.events||[]).join(' · ')}</div>
                 </div>
-                <button onClick={()=>remove(h.id)} style={{background:'transparent',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.55rem',padding:'4px 8px',cursor:'pointer',letterSpacing:'0.1em'}}>REMOVE</button>
+                <button onClick={()=>remove(h.id)} style={{background:'transparent',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.55rem',padding:'4px 8px',cursor:'pointer',letterSpacing:'0.1em'}}>{tt('REMOVE')}</button>
               </div>
             ))}
           </div>
@@ -13884,7 +13997,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
-const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','hunt','network','node','luck','retarget','shares','best','closestcalls','jumpers','recent','health'];
+const DEFAULT_ORDER = ['hashrate','strikevel','pulse','workers','stratum','hunt','network','node','hashwindows','spswindows','connstates','besttrend','luck','retarget','effort','stability','rejects','fleeteff','reliability','shares','best','closestcalls','jumpers','recent','health'];
 function loadOrder() {
   try {
     const s = localStorage.getItem(LS_CARD_ORDER);
@@ -13945,7 +14058,11 @@ export default function App() {
   });
   const [minimalMode, setMinimalMode] = useState(loadMinimalMode());
   const [performanceMode, setPerformanceMode] = useState(loadPerformanceMode()); // v1.11.41
+  const [desktopCardMode, setDesktopCardMode] = useState(loadDesktopCardMode()); // v1.12.x
   const [visibleCards, setVisibleCards] = useState(loadVisibleCards());
+  // v1.12.0: persisted desktop 3-page order (array of 3 id-arrays) or null.
+  const [desktopPages, setDesktopPages] = useState(() => loadDesktopPages());
+  const onDesktopPagesChange = useCallback((next) => { setDesktopPages(next); saveDesktopPages(next); }, []);
   // rev70: persistent debug overlay settings. See DEBUG_DEFAULTS / loadDebugSettings.
   const [debugSettings, setDebugSettings] = useState(loadDebugSettings);
   const onDebugSettingsChange = useCallback((next) => {
@@ -14047,11 +14164,17 @@ export default function App() {
   }, [updateTier, updateVersion]);
 
   const onCurrencyChange = (c) => { setCurrencyState(c); saveCurrency(c); };
-  const onResetLayout = () => { setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER); };
+  const onResetLayout = () => {
+    setOrder(DEFAULT_ORDER); saveOrder(DEFAULT_ORDER);
+    // v1.12.0: also reset desktop 3-page order back to editorial defaults
+    setDesktopPages(null);
+    try { localStorage.removeItem(LS_DESKTOP_PAGES); } catch {}
+  };
   const onAliasesChange = (a) => { setAliases(a); saveAliases(a); };
   const onNotesChange = (n) => { setNotes(n); saveNotes(n); };
   const onMinimalModeChange = (v) => { setMinimalMode(v); saveMinimalMode(v); };
   const onPerformanceModeChange = (v) => { setPerformanceMode(v); savePerformanceMode(v); }; // v1.11.41
+  const onDesktopCardModeChange = (v) => { setDesktopCardMode(v); saveDesktopCardMode(v); }; // v1.12.x
   const onVisibleCardsChange = (list) => { setVisibleCards(list); saveVisibleCards(list); };
 
   const onStripSettingsChange = useCallback((next) => {
@@ -14174,6 +14297,21 @@ export default function App() {
   const themeRef = useRef(getThemeById(themeId));
   useEffect(() => { themeRef.current = getThemeById(themeId); }, [themeId]);
 
+  // v1.12.x: UI language. Stored value wins; otherwise auto-detected from the
+  // browser with English fallback. tt(en) returns the translation or English.
+  const [lang, setLang] = useState(() => loadLang());
+  const tt = useMemo(() => makeTT(lang), [lang]);
+  const onLangChange = useCallback((code) => {
+    if (!SUPPORTED.includes(code)) return;
+    setLang(code); saveLang(code);
+  }, []);
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('lang', lang);
+      document.documentElement.setAttribute('dir', dirFor(lang));
+    } catch {}
+  }, [lang]);
+
   const onThemeChange = useCallback((id) => {
     if (!THEMES[id]) return;
     saveTheme(id);
@@ -14247,6 +14385,10 @@ export default function App() {
     setBlockFoundCelebration({ animType: huntAnim, block: mock });
   }, [poolState, huntAnim]);
   const useCarousel = isMobile && carouselEnabled;
+  // v1.12.x: in desktop card mode there's no DesktopPages apphead, so the
+  // global Header + footer must show (same as mobile).
+  const desktopCards = !isMobile && desktopCardMode;
+  const showChrome = isMobile || useCarousel || desktopCards;
   const carouselRef = useRef(null);
   const headerRef = useRef(null);
   const footerRef = useRef(null);
@@ -14729,12 +14871,13 @@ export default function App() {
       lastShareAt={poolState?.shares?.lastShareAt}
       acceptedCount={poolState?.shares?.acceptedCount}
       workers={poolState?.workers}
+      lang={lang}
     />,
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
     stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
-    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)}/>,
+    hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
@@ -14748,6 +14891,16 @@ export default function App() {
     />,
     recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
     health: <HealthStatusCard onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
+    // ── v1.12.0 analytics cards ───────────────────────────────────────────
+    hashwindows: <PoolHashrateWindows pool={poolState?.pool} themeKey={themeId} />,
+    spswindows:  <SpsWindows pool={poolState?.pool} />,
+    connstates:  <ConnectionStates pool={poolState?.pool} />,
+    besttrend:   <BestShareTrend snapshots={poolState?.snapshots} bestHistory={poolState?.shares?.bestHistory} themeKey={themeId} />,
+    effort:      <BlockEffortPanel snapshots={poolState?.snapshots} sharesThisRound={Math.max(0,(poolState?.shares?.accepted||0)-(poolState?._sharesAtLastBlock||0))} networkDifficulty={poolState?.network?.difficulty} />,
+    stability:   <HashrateStability hashrate={poolState?.hashrate} themeKey={themeId} />,
+    rejects:     <RejectTrend shares={poolState?.shares} />,
+    fleeteff:    <FleetEfficiency workers={workers} />,
+    reliability: <PoolReliability pool={poolState?.pool} workers={workers} />,
   };
 
   const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
@@ -14775,45 +14928,107 @@ export default function App() {
             onDismiss={dismissBanner}
           />
         )}
-        <Header
-          connected={connected}
-          status={status}
-          onSettings={()=>setShowSettings(true)}
-          privateMode={!!poolState?.privateMode}
-          minimalMode={minimalMode}
-          performanceMode={performanceMode}
-          zmq={poolState?.zmq}
-          blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
-        />
-        {!minimalMode && (
+        {/* Global header + ticker show on mobile/carousel only. On desktop the
+            DesktopPages apphead provides them (with the same real Ticker), so
+            rendering them here too would double the ticker. */}
+        {showChrome && (
+          <Header
+            connected={connected}
+            status={status}
+            onSettings={()=>setShowSettings(true)}
+            privateMode={!!poolState?.privateMode}
+            minimalMode={minimalMode}
+            performanceMode={performanceMode}
+            zmq={poolState?.zmq}
+            blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
+          />
+        )}
+        {showChrome && !minimalMode && (
           <>
-            <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec}/>
+            <Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec} lang={lang}/>
             <SyncWarningBanner sync={poolState?.sync}/>
           </>
         )}
       </div>
 
-      <main style={{padding: useCarousel ? 0 : '0.65rem'}} className={useCarousel ? 'ss-carousel-wrap' : ''}>
-        <div
-          ref={carouselRef}
-          className={useCarousel ? 'ss-carousel' : 'ss-grid'}
-        >
-          {renderableOrder.map(id => (
-            <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
-              <ErrorBoundary label={id}>
-                {cardComponents[id]}
-              </ErrorBoundary>
-            </DraggableCard>
-          ))}
-        </div>
-        {useCarousel && (
-          <CarouselDots
-            count={renderableOrder.length}
-            activeIndex={activeIndex}
-            onJump={jumpToCard}
+      <main style={{padding: useCarousel ? 0 : ((isMobile || desktopCards) ? '0.65rem' : 0), display:'flex', flexDirection:'column', minHeight:0, flex:1}} className={useCarousel ? 'ss-carousel-wrap' : ((isMobile || desktopCards) ? '' : 'ss-desktop-pages-wrap')}>
+        {useCarousel ? (
+          // ── mobile + carousel: swipe cards ──────────────────────────────
+          <>
+            <div ref={carouselRef} className="ss-carousel">
+              {renderableOrder.map(id => (
+                <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
+                  <ErrorBoundary label={id}>
+                    {cardComponents[id]}
+                  </ErrorBoundary>
+                </DraggableCard>
+              ))}
+            </div>
+            <CarouselDots
+              count={renderableOrder.length}
+              activeIndex={activeIndex}
+              onJump={jumpToCard}
+            />
+          </>
+        ) : isMobile ? (
+          // ── mobile + vertical: scrolling grid (the ORIGINAL non-carousel
+          // mobile layout). NOT the desktop 3-page slider. ────────────────
+          <div className="ss-grid">
+            {renderableOrder.map(id => (
+              <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
+                <ErrorBoundary label={id}>
+                  {cardComponents[id]}
+                </ErrorBoundary>
+              </DraggableCard>
+            ))}
+          </div>
+        ) : desktopCards ? (
+          // ── desktop CARD MODE: the original cards in a multi-column grid
+          // filling the width. Toggled via Settings → Display. ────────────
+          <div className="ss-desktop-card-grid">
+            {renderableOrder.map(id => (
+              <DraggableCard key={id} id={id} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={()=>{setDraggedId(null); setOverId(null);}} draggedId={draggedId}>
+                <ErrorBoundary label={id}>
+                  {cardComponents[id]}
+                </ErrorBoundary>
+              </DraggableCard>
+            ))}
+          </div>
+        ) : (
+          // ── desktop/tablet: 3-page slider. Each card wrapped in its own
+          // ErrorBoundary so one failing card can't blank a page. ──────────
+          <DesktopPages
+            cardComponents={Object.fromEntries(Object.keys(cardComponents).map(id => [id,
+              <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
+            ]))}
+            ticker={<Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec} lang={lang}/>}
+            onOpenSettings={()=>setShowSettings(true)}
+            status={status === 'connected' ? 'Mining Live' : (status || 'Mining Live')}
+            zmq={poolState?.zmq}
+            strikes={poolState?.snapshots?.totalStrikes ?? 0}
+            poolState={poolState}
+            lang={lang}
+            workers={workers}
+            aliases={aliases}
+            displayName={displayName}
+            stratumHealth={stratumHealth}
+            onWorkerClick={setSelectedWorker}
+            openModal={(name)=>{
+              switch(name){
+                case 'Share Stats': setShowShareStats(true); break;
+                case 'Solostrike Pulse': setShowStrikers(true); break;
+                case 'The Hunt': setShowReckoning(true); break;
+                case 'System Health': fetch('/api/health/detailed',{cache:'no-store'}).then(r=>r.json()).then(d=>setHealthDetailSnapshot(d)).catch(()=>setHealthDetailSnapshot({})); break;
+                case 'Stratum Connection': setShowSettings(true); break;
+                case 'Claim Jumpers + Solo Strikes': setShowStrikers(true); break;
+                case 'Firepower': setShowSettings(true); break;
+                default: break;
+              }
+            }}
           />
         )}
       </main>
+        {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
         <span>SoloStrike v1.11.61 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
@@ -14823,6 +15038,7 @@ export default function App() {
         </a>
         <span>Ports <CopyablePort health={stratumHealth} port="3333"/> · <CopyablePort health={stratumHealth} port="3334"/> · <span title="TLS encryption via stunnel" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span><CopyablePort health={stratumHealth} port="4333" ssl/></span>
       </footer>
+      )}
 
       <BlockAlert show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
       <OfflineToasts workers={workers} aliases={aliases}/>
@@ -14867,6 +15083,8 @@ export default function App() {
           tickerSettings={tickerSettings} onTickerSettingsChange={onTickerSettingsChange}
           minimalMode={minimalMode} onMinimalModeChange={onMinimalModeChange}
             performanceMode={performanceMode} onPerformanceModeChange={onPerformanceModeChange}
+            desktopCardMode={desktopCardMode} onDesktopCardModeChange={onDesktopCardModeChange} isMobileView={isMobile}
+            lang={lang} onLangChange={onLangChange}
           visibleCards={visibleCards} onVisibleCardsChange={onVisibleCardsChange}
           networkStats={poolState?.networkStats}
           onNetworkStatsRefresh={refreshConfig}
