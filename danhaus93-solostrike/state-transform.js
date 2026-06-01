@@ -4,6 +4,17 @@
 // yet exists.
 
 const { getAlignmentForWorker, getLiveForWorker } = require('./miner-poller');
+const { detectFromAsicModel } = require('./miner-detect');
+
+// v1.12.x: when a worker's live telemetry includes the real chip ID
+// (ESP-Miner ASICModel), upgrade its detected model — the physical chip is
+// authoritative and overrides any earlier workername/UA guess.
+function applyAsicModelUpgrade(w, live) {
+  if (!live || !live.asicModel) return w;
+  const det = detectFromAsicModel(live.asicModel, live.asicCount);
+  if (!det.type) return w;
+  return { ...w, minerType: det.type, minerIcon: det.icon || w.minerIcon, minerVendor: det.vendor, minerSource: 'asic-model' };
+}
 
 function computeOdds(state) {
   const poolHR = state.hashrate?.current || 0;
@@ -190,20 +201,22 @@ function transformState(state, opts) {
       const alignment = enhanceAlignmentWithShares(rawAlignment, shareCounters, w.name);
       if (compact) {
         const { statusHistory, ...wRest } = w;
-        return {
+        const live = getLiveForWorker(w.name);
+        return applyAsicModelUpgrade({
           ...wRest,
           shareEvents:   (shareCounters || {})[w.name] || null,
           poolAlignment: alignment,
-          live:          getLiveForWorker(w.name),
+          live,
           statusHistoryTail: Array.isArray(statusHistory) ? statusHistory.slice(-10) : [],
-        };
+        }, live);
       }
-      return {
+      const live = getLiveForWorker(w.name);
+      return applyAsicModelUpgrade({
         ...w,
         shareEvents:   (shareCounters || {})[w.name] || null,
         poolAlignment: alignment,
-        live:          getLiveForWorker(w.name),
-      };
+        live,
+      }, live);
     }),
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
