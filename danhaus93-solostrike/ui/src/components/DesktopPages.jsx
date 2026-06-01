@@ -42,20 +42,24 @@ function poolColor(name){
 }
 
 /* ---------- area-chart path (firepower / tsLine style) ---------- */
-function linePath(vals, W=400, H=70, pad=6){
+function linePath(vals, W=400, H=70, pad=6, domainMax=null){
   const pts=(vals||[]).filter(Number.isFinite);
   if(pts.length<2) return null;
-  let lo=Math.min(...pts), hi=Math.max(...pts);
-  // Guard against flat/near-flat series getting amplified into fake zigzags:
-  // if the spread is a tiny fraction of the magnitude, center the line instead
-  // of normalizing noise to the full height.
-  const span=hi-lo;
-  const mag=Math.max(Math.abs(hi),Math.abs(lo),1);
-  if(span/mag < 0.02){ const mid=(hi+lo)/2; lo=mid-mag*0.05; hi=mid+mag*0.05; }
+  // Production anchors the Y-axis at ZERO and scales to peak*1.15 (recharts
+  // YAxis domain={[0, max*1.15]}). We mirror that: a fixed zero-based domain so
+  // the baseline never shifts between windows (that shift caused the "branching"
+  // line) and flat data stays flat instead of being amplified to full height.
+  const hi=domainMax!=null?domainMax:Math.max(...pts)*1.15||1;
+  const lo=0;
   const rng=(hi-lo)||1;
   const xy=pts.map((v,i)=>[+(i*(W/(pts.length-1))).toFixed(1), +(H-pad-((v-lo)/rng)*(H-pad*2)).toFixed(1)]);
   const ln='M'+xy.map(p=>p.join(' ')).join(' L');
-  return { ln, fill:`${ln} L${W} ${H} L0 ${H} Z`, lo, hi, now:pts[pts.length-1] };
+  // fill: trace the line, drop straight down at the LAST x to the baseline,
+  // run along the baseline back to the FIRST x, close. Closing at first-x (not
+  // 0) avoids a stray diagonal "branch" when the first point isn't at x=0.
+  const x0=xy[0][0], xN=xy[xy.length-1][0], base=H-pad/2;
+  const fill=`${ln} L${xN} ${base} L${x0} ${base} Z`;
+  return { ln, fill, lo:Math.min(...pts), hi:Math.max(...pts), now:pts[pts.length-1] };
 }
 
 /* ---------- tsLine SVG (with lo/now/hi caption) ---------- */
@@ -352,6 +356,9 @@ const CSS = `
 
 /* expand button on pulse/hunt labels */
 .ssdesk .zlabel-row{display:flex;align-items:center;justify-content:space-between}
+.ssdesk .tap-open{display:inline-flex;align-items:center;gap:6px;transition:color .15s}
+.ssdesk .tap-open:hover{color:var(--amber)}
+.ssdesk .tap-hint{font-size:.82em;color:var(--amber);opacity:.7;letter-spacing:.1em}
 .ssdesk .expand-btn{background:rgba(var(--amber-rgb),.08);border:1px solid var(--border-hot);color:var(--amber);cursor:pointer;font-size:.7rem;line-height:1;border-radius:5px;padding:2px 7px;flex:none;transition:background .12s}
 .ssdesk .expand-btn:hover{background:rgba(var(--amber-rgb),.2)}
 
@@ -575,8 +582,29 @@ export default function DesktopPages({
     const a=(fpAvg||cur||0);
     return [{ts:now-fpCut,hr:a},{ts:now,hr:a}]; // flat line at the window average
   })();
-  const hrHist=hrHistW.map(h=>h.hr).filter(Number.isFinite);
-  const fp=linePath(hrHist);
+  const hrHistRaw=hrHistW.map(h=>h.hr).filter(Number.isFinite);
+  // Production smooths each window with a moving average (SMOOTH_WINDOW per range)
+  // so the line is clean, not jagged. Mirror that.
+  const FP_SMOOTH={'live':1,'1M':1,'5M':1,'15M':2,'1H':3,'6H':5,'24H':10,'7D':30}[fpTrend]||3;
+  const hrHist=hrHistRaw.map((v,i)=>{const s=Math.max(0,i-FP_SMOOTH+1);const sl=hrHistRaw.slice(s,i+1);return sl.reduce((a,b)=>a+b,0)/sl.length;});
+  // zero-based domain anchored to peak (matches production recharts YAxis)
+  const fpDomain=Math.max(cur||0, peak||0, ...hrHist, 1)*1.15;
+  const fp=linePath(hrHist, 400, 70, 6, fpDomain);
+  // Hashrate Stability — computed CLIENT-SIDE from hr.history (card mode does the
+  // same via stabilityIndex; there is NO stabilityPct/stdDev/dips24h field).
+  const stabSrc=hrHistFull.map(h=>h.hr).filter(Number.isFinite);
+  const stab=(()=>{
+    if(stabSrc.length<5) return {pct:null,std:null,min:null,max:null,dips:null};
+    const mean=stabSrc.reduce((a,b)=>a+b,0)/stabSrc.length;
+    if(!mean) return {pct:null,std:null,min:null,max:null,dips:null};
+    const variance=stabSrc.reduce((a,b)=>a+Math.pow(b-mean,2),0)/stabSrc.length;
+    const std=Math.sqrt(variance);
+    const cv=std/mean;
+    const pct=Math.max(0,Math.min(100,(1-cv)*100)); // consistency %
+    const lo=Math.min(...stabSrc), hi=Math.max(...stabSrc);
+    const dips=stabSrc.filter(v=>v<mean*0.5).length; // samples that dropped >50% below mean
+    return {pct,std,min:lo,max:hi,dips};
+  })();
   const avgW=[['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr24h'],['7D','hr7d']];
   const wmax=Math.max(cur,...Object.values(windows).filter(Number.isFinite),1);
 
@@ -620,7 +648,7 @@ export default function DesktopPages({
 
           {/* ============ PAGE 1 — LIVE ============ */}
           <div className="viewport">
-            <AppHead page={0} status={status} zmqOk={zmqOk} strikes={snap.totalStrikes??strikes??0} ticker={page===0?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+            <AppHead page={0} status={status} zmqOk={zmqOk} strikes={ns.totalStrikesEver??strikes??0} ticker={page===0?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
             {/* BAND 1 */}
             <div className="band b-charts">
@@ -646,25 +674,20 @@ export default function DesktopPages({
             {/* BAND 2 — Pulse (REAL globe) · Hunt (REAL) · Crew */}
             <div className="band b-feat">
               <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Pulse')}<button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('Solostrike Pulse')} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')} <span className="tap-hint">▸ {_tt('STRIKERS')}</span></span><button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
-                  <div className="pulse-read">
-                    <div className="pr"><div className="prl">{_tt('Strikers')}</div><div className="prv">{ns.peers?.length??ns.strikers??'—'}</div></div>
-                    <div className="pr"><div className="prl">{_tt('Net Pulse')}</div><div className="prv">{ns.networkHashrate?hrShort(ns.networkHashrate):(net.hashrate?hrShort(net.hashrate):'—')}</div></div>
-                    <div className="pr"><div className="prl">{_tt('Your Pin')}</div><div className="prv" style={{color:'var(--cyan)',fontSize:'.58rem'}}>{poolPin&&Number.isFinite(poolPin.lat)?`${Math.abs(poolPin.lat).toFixed(0)}°${poolPin.lat>=0?'N':'S'} ${Math.abs(poolPin.lon).toFixed(0)}°${poolPin.lon>=0?'E':'W'}`:_tt('Not set')}</div></div>
-                  </div>
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel zlabel-row">{tt('The Hunt')}<button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('The Hunt')} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')} <span className="tap-hint">▸ {_tt('THE RECKONING')}</span></span><button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
                   <div className="hunt-face">
                     <div className="hf-reward"><span className="lbl">{_tt('Block Reward')}</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
-                    <div className="hf-sub">{_tt('subsidy')} <b>{reward.subsidy??'—'}</b> · {_tt('fees')} <span className="fee">{reward.feesBtc!=null?'+'+reward.feesBtc.toFixed(4):(reward.totalBtc!=null&&reward.subsidy!=null?'+'+(reward.totalBtc-reward.subsidy).toFixed(4):'—')}</span></div>
+                    <div className="hf-sub">{(()=>{const sub=reward.base??reward.subsidyBtc??null;const fees=reward.fees??reward.feesBtc??(reward.totalBtc!=null&&sub!=null?reward.totalBtc-sub:null);return <>{_tt('subsidy')} <b>{sub!=null?sub.toFixed(3):'—'}</b> · {_tt('fees')} <span className="fee">{fees!=null?'+'+fees.toFixed(4):'—'}</span></>;})()}</div>
                     <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡{_tt('Fast')}</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐{_tt('Mid')}</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯{_tt('Low')}</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.perYear>0?(odds.perYear*100<0.001?(odds.perYear*100).toFixed(6):odds.perYear*100<0.01?(odds.perYear*100).toFixed(4):(odds.perYear*100).toFixed(2))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.perDay>0?(odds.perDay*100<0.0001?(odds.perDay*100).toFixed(7):(odds.perDay*100).toFixed(5))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{(odds.perDay>0&&reward.totalBtc>0)?fmtNum(Math.round(odds.perDay*reward.totalBtc*1e8)):'—'}</div></div></div>
+                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Expected')}</div><div className="ov">{odds.expectedDays!=null&&odds.expectedDays>0?(odds.expectedDays>=365?(odds.expectedDays/365).toFixed(1)+' yr':odds.expectedDays>=30?(odds.expectedDays/30).toFixed(1)+' mo':Math.round(odds.expectedDays)+' d'):'—'}</div></div><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.perYear>0?(odds.perYear*100<0.001?(odds.perYear*100).toFixed(6):odds.perYear*100<0.01?(odds.perYear*100).toFixed(4):(odds.perYear*100).toFixed(2))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.perDay>0?(odds.perDay*100<0.0001?(odds.perDay*100).toFixed(7):(odds.perDay*100).toFixed(5))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{(odds.perDay>0&&reward.totalBtc>0)?fmtNum(Math.round(odds.perDay*reward.totalBtc*1e8)):'—'}</div></div></div>
                   </div>
                 </div>
               </div>
@@ -743,20 +766,32 @@ export default function DesktopPages({
             <AppHead page={3} zmqOk={zmqOk} ticker={page===3?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.3fr 1fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Block Effort / Luck — per strike')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>(shares-to-find vs expected · &lt;100% = lucky)</span></div>
-                <div className="effortwrap">{(()=>{const rounds=Array.isArray(snap.blockEffort)?snap.blockEffort.slice(-6):[];const arr=[...Array(Math.max(0,6-rounds.length)).fill(null),...rounds];arr.push(snap.openEffortPct??null);const col=p=>p==null?'var(--bg-raised)':p<100?'var(--green)':p<=200?'var(--amber)':'var(--red)';return arr.slice(0,7).map((p,i)=>{const h=p==null?14:Math.min(100,(p/250)*100);return <div className="ebar" key={i}><div className="pct" style={{color:col(p)}}>{p==null?'':Math.round(p)+'%'}</div><div className="col2" style={{height:`${h}%`,background:col(p)}}/><div className="lab">{i===6?'NOW':'—'}</div></div>;});})()}</div>
-                {(!snap.blockEffort||!snap.blockEffort.length)&&<div className="effort-note">No blocks found yet — history fills in as you strike. The NOW bar shows the current open round's effort.</div>}
+                <div className="effortwrap">{(()=>{
+                  // No per-round effort history exists (no blockEffort field). The
+                  // only real effort signal is luck.progress = current open round's
+                  // accumulated effort as % of one block. Show that as the live bar;
+                  // past rounds only exist once blocks are actually found.
+                  const found=Array.isArray(blocks)?blocks.length:(luck.blocksFound||0);
+                  const open=luck.progress!=null?luck.progress:null;
+                  const past=Array(6).fill(null); // history placeholders until blocks found
+                  const arr=[...past, open];
+                  const col=p=>p==null?'var(--bg-raised)':p<100?'var(--green)':p<=200?'var(--amber)':'var(--red)';
+                  return arr.map((p,i)=>{const h=p==null?14:Math.max(4,Math.min(100,(p/250)*100));
+                    return <div className="ebar" key={i}><div className="pct" style={{color:col(p)}}>{p==null?'':(p<1?p.toFixed(2):Math.round(p))+'%'}</div><div className="col2" style={{height:`${h}%`,background:col(p)}}/><div className="lab">{i===6?'NOW':'—'}</div></div>;});
+                })()}</div>
+                {(!luck.progress)&&<div className="effort-note">{_tt('No blocks found yet — history fills in as you strike. The NOW bar shows the current open round\u2019s effort.')}</div>}
               </div>
               <div className="panel"><div className="zlabel">{tt('Share Proximity to Target')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>({tt('how close each share came to a block')})</span></div>
                 <ShareProximity series={Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[])} calls={cc} netDifficulty={net.difficulty} tt={_tt}/>
               </div>
               <div className="panel"><div className="zlabel">{tt('Hashrate Stability')}</div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'center',gap:10,flex:1}}>
-                  <div style={{display:'flex',alignItems:'baseline',gap:10}}><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700}}>{hr.stabilityPct!=null?hr.stabilityPct.toFixed(1):'—'}<span className="unit" style={{fontSize:'.4em'}}> %</span></span><span style={{fontSize:'.62rem',color:'var(--text-2)'}}>{_tt('consistency (7d)')}</span></div>
+                  <div style={{display:'flex',alignItems:'baseline',gap:10}}><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700}}>{stab.pct!=null?stab.pct.toFixed(1):'—'}<span className="unit" style={{fontSize:'.4em'}}> %</span></span><span style={{fontSize:'.62rem',color:'var(--text-2)'}}>{_tt('consistency (7d)')}</span></div>
                   <TsLine data={hrHist} color="var(--chart1)" H={80} fmt={v=>fmtTH(v)+'T'}/>
                   <div style={{display:'flex'}}>
-                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Std Dev')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--amber)'}}>{hr.stdDev!=null?'±'+fmtTH(hr.stdDev)+' T':'—'}</div></div>
-                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Min / Max')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--text-1)'}}>{hrHist.length?fmtTH(Math.min(...hrHist))+' / '+fmtTH(Math.max(...hrHist))+' T':'—'}</div></div>
-                    <div style={{flex:1,textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Dips 24h')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--red)'}}>{hr.dips24h??'—'}</div></div>
+                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Std Dev')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--amber)'}}>{stab.std!=null?'±'+fmtTH(stab.std)+' T':'—'}</div></div>
+                    <div style={{flex:1,textAlign:'center',borderRight:'1px solid var(--hair)'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Min / Max')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--text-1)'}}>{stab.min!=null?fmtTH(stab.min)+' / '+fmtTH(stab.max)+' T':'—'}</div></div>
+                    <div style={{flex:1,textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'.5rem',color:'var(--text-2)',textTransform:'uppercase',letterSpacing:'.1em'}}>{_tt('Dips 24h')}</div><div style={{fontFamily:'var(--fd)',fontSize:'.8rem',fontWeight:700,color:'var(--red)'}}>{stab.dips??'—'}</div></div>
                   </div>
                 </div>
               </div>
