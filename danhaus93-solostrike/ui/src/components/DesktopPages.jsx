@@ -252,8 +252,12 @@ const CSS = `
 .ssdesk .slot-globe canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
 /* the mounted PulsePanel renders a rotated "100% SOLO" stamp + text overlays
    absolutely-positioned; on desktop they bleed over the Miners box below. Keep
-   ONLY the canvas — hide any non-canvas positioned children in the globe slot. */
-.ssdesk .slot-globe > * canvas{display:block!important}
+   ONLY the canvas — hide any non-canvas positioned children in the globe slot.
+   NOTE: do NOT force canvas display:block here. The globe + mesh canvases toggle
+   via their inline display style (globe shows block else none; mesh the inverse).
+   Forcing block kept the globe canvas visible in mesh mode, showing its frozen
+   last frame under the mesh. Leaving display to the inline toggle makes desktop
+   behave exactly like the card/mobile layout, where the switch is clean. */
 /* desktop hunt slot: keep ONLY the NonceField canvas — the mounted HuntPanel's
    PER-BLOCK ODDS header + BLOCK REWARD strip duplicate (and clip against) the
    desktop hunt-face readout below. Force the canvas to fill the slot. */
