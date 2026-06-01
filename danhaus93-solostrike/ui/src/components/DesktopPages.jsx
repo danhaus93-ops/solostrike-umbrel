@@ -202,15 +202,6 @@ const CSS = `
 .ssdesk .fp-peak{font-family:var(--fm);font-size:.52rem;color:var(--amber-dim)}
 .ssdesk .fp-chart{position:relative;flex:1;min-height:40px}.ssdesk .fp-chart svg{position:absolute;inset:0;width:100%;height:100%}
 .ssdesk .fp-chart svg path{transition:none!important;animation:none!important}
-.ssdesk .fp-avgs{display:flex;flex-direction:column;gap:2px;margin-top:5px;flex:0 0 auto}
-.ssdesk .fp-arow{display:flex;align-items:center;gap:6px;cursor:pointer;padding:1px 2px;border-radius:3px;transition:background .12s}
-.ssdesk .fp-arow:hover{background:rgba(var(--amber-rgb),.06)}
-.ssdesk .fp-arow.on{background:rgba(var(--amber-rgb),.12)}
-.ssdesk .fp-alab{font-family:var(--fd);font-size:.5rem;font-weight:700;letter-spacing:.06em;color:var(--text-2);width:30px;flex:0 0 auto;text-transform:uppercase}
-.ssdesk .fp-arow.on .fp-alab{color:var(--amber)}
-.ssdesk .fp-atrack{flex:1;height:4px;background:var(--bg-deep);border-radius:2px;overflow:hidden}
-.ssdesk .fp-atrack i{display:block;height:100%;background:var(--amber);border-radius:2px}
-.ssdesk .fp-aval{font-family:var(--fm);font-size:.5rem;color:var(--text-2);width:52px;flex:0 0 auto;text-align:right}
 .ssdesk .avgs{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
 .ssdesk .avg .al{font-family:var(--fd);font-size:.48rem;font-weight:700;color:var(--text-2);text-align:center;margin-bottom:2px}.ssdesk .avg.on .al{color:var(--amber)}
 .ssdesk .avg .bar{height:5px;border-radius:3px;background:var(--bg-deep);overflow:hidden}.ssdesk .avg .bar i{display:block;height:100%;background:linear-gradient(90deg,rgba(var(--amber-rgb),0.35),var(--amber))}
@@ -616,8 +607,6 @@ export default function DesktopPages({
     const dips=stabSrc.filter(v=>v<mean*0.5).length; // samples that dropped >50% below mean
     return {pct,std,min:lo,max:hi,dips};
   })();
-  const avgW=[['live',null],['1M','hr1m'],['5M','hr5m'],['15M','hr15m'],['1H','hr1h'],['6H','hr6h'],['24H','hr24h'],['7D','hr7d']];
-  const wmax=Math.max(cur,...Object.values(windows).filter(Number.isFinite),1);
 
   // strike velocity — window spsHistory by the selected range pill (1H/6H/24H).
   const sps=shares.sps1m||0;
@@ -668,7 +657,6 @@ export default function DesktopPages({
                 <div className="fp">
                   <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
                   <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
-                  <div className="fp-avgs">{avgW.map(([lab,key])=>{const v=(lab==='live'?cur:windows[key])||0;const pct=wmax>0?Math.min(100,(v/wmax)*100):0;const on=fpTrend===lab;return <div className={`fp-arow${on?' on':''}`} key={lab} onClick={()=>setFpTrend(lab)}><span className="fp-alab">{lab==='live'?'LIVE':lab}</span><span className="fp-atrack"><i style={{width:Math.max(2,pct)+'%'}}/></span><span className="fp-aval">{v>0?fmtTH(v)+' T':'—'}</span></div>;})}</div>
                 </div>
               </div>
               <div className="panel">
