@@ -9558,6 +9558,32 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     };
   }, [pulseAnim]);
 
+  // v2.0.x: manual "rebuild pulse" trigger. Lets users force the active
+  // visual to (re)build on demand — primarily for a fresh install where the
+  // globe hasn't textured yet and the user doesn't want to wait on the
+  // self-heal poll. Reuses the EXACT proven paths: the globe gets the same
+  // canvas-ref poke the fresh-install self-heal uses (re-arm _globeInit so the
+  // per-frame loop re-fetches rings + re-bakes the sphere), and the mesh/cube
+  // tears down + recreates its constellation renderer the same way its mount
+  // effect does. No new init logic.
+  const rebuildPulse = () => {
+    // Globe: re-arm init so the per-frame loop re-fetches + re-bakes.
+    const c = canvasRef.current;
+    if (c) { c._globeInit = undefined; c._globeRings = null; c._globeFetchTries = 0; }
+    webglTextureReadyRef.current = false;
+    // Mesh/cube: recreate the constellation renderer when it's the active mode.
+    if (pulseAnimRef.current === 'block' && constellationCanvasRef.current) {
+      if (constellationRendererRef.current) {
+        try { constellationRendererRef.current.destroy(); } catch {}
+        constellationRendererRef.current = null;
+      }
+      try {
+        const r = createConstellationCube(constellationCanvasRef.current, { theme: _ssCurrentTheme() });
+        if (r && !r.failed) constellationRendererRef.current = r;
+      } catch {}
+    }
+  };
+
   // Inverse orthographic projection — converts a tap on the canvas to
   // lat/lon (in degrees), un-rotated against the current globe rotation,
   // then snapped to a 5° grid for the privacy guarantee. Returns null if
@@ -11734,6 +11760,24 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         {onOpenStrikers && (ns.peers && ns.peers.length > 0) && (
           <span style={{display:'block', marginTop:4, color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>▸ TAP TO SEE STRIKERS</span>
         )}
+      </div>
+      {/* v2.0.x: manual rebuild — placed in the card BODY (outside the canvas)
+          so it sits in the card's bottom-right, clear of the globe/mesh and
+          their in-canvas corner controls. Forces the active visual to rebuild. */}
+      <div style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
+        <span
+          onClick={(e) => { e.stopPropagation(); rebuildPulse(); }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); rebuildPulse(); } }}
+          style={{
+            fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:600,
+            letterSpacing:'0.18em', color:'var(--text-2)', cursor:'pointer',
+            userSelect:'none', display:'inline-flex', alignItems:'center', gap:4,
+          }}
+          aria-label="Rebuild pulse visualization"
+          title="Rebuild the globe / mesh"
+        >⟲ rebuild pulse</span>
       </div>
       </div>
       <StampSolo/>
