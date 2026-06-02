@@ -188,7 +188,7 @@ const CSS = `
 /* Frost ONLY col-holding data bands (Intel page, page 4/5 bottom rows).
    Panel-holding bands (b-live/b-field/top rows) are NOT frosted — their
    panels carry the frosting, so frosting the band too would double-stack. */
-.ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) 60%, transparent);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+.ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent);backdrop-filter:blur(var(--card-blur,7px));-webkit-backdrop-filter:blur(var(--card-blur,7px));border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
 .ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
@@ -196,8 +196,8 @@ const CSS = `
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
-.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
-@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 60%, transparent)}}
+.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(var(--card-blur,7px));-webkit-backdrop-filter:blur(var(--card-blur,7px));border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
+@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent)}}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px;padding-bottom:.22rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
 .ssdesk .clk:hover{background:rgba(var(--amber-rgb),0.06);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),0.2)}
