@@ -9332,6 +9332,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // without waiting for the network to grow.
   const [simulatorOpen, setSimulatorOpen] = useState(false);
 
+  // v2.0.x: bumped by the "rebuild pulse" control. Wired into the globe and
+  // mesh renderer-creation effects so a tap tears down + recreates the active
+  // renderer fresh — the same thing opening the full-screen pop-out does,
+  // minus the pop-out. This is what actually rebuilds a blank globe; poking the
+  // draw-loop alone can't help if the renderer was never created.
+  const [rebuildTick, setRebuildTick] = useState(0);
+
   // v1.11.x: latest-value refs. The Pulse animation useEffect (line ~8134)
   // used to depend on [ns.hashrate, ns.pools, ns.workers, ns.peers, workers,
   // pulseAnim, enabled]. Every WebSocket STATE_UPDATE
@@ -9474,6 +9481,16 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       webglRendererRef.current = null;
       console.warn('WebGL globe init failed; falling back to vector renderer');
     }
+    // v2.0.x: re-arm the 2D draw-loop so it (re)fetches coastlines + (re)bakes
+    // the world texture onto THIS freshly-created renderer next frame. Done
+    // here (not in the click handler) so it always runs AFTER the renderer
+    // exists — on a rebuildTick recreation, _globeInit would otherwise still be
+    // `true` from the previous renderer and the new sphere would stay blank.
+    {
+      const c2d = canvasRef.current;
+      if (c2d) { c2d._globeInit = undefined; c2d._globeRings = null; c2d._globeFetchTries = 0; }
+      webglTextureReadyRef.current = false;
+    }
     return () => {
       if (webglRendererRef.current) {
         webglRendererRef.current.destroy();
@@ -9490,7 +9507,9 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     // didn't re-run it, leaving the globe blank until a manual refresh. Keying
     // on `enabled` recreates the renderer the moment the canvas mounts on
     // opt-in (and disposes it on opt-out), so the sphere bakes without a reload.
-  }, [enabled]);
+    // v2.0.x: also keyed on rebuildTick so the "rebuild pulse" control recreates
+    // the renderer fresh (same as the pop-out remount) when a globe comes up blank.
+  }, [enabled, rebuildTick]);
 
   // v1.11.64: the WebGL globe canvas is NO LONGER remounted on pulseAnim
   // change (its renderer is created once and bound to the stable node;
@@ -9556,32 +9575,19 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         constellationRendererRef.current = null;
       }
     };
-  }, [pulseAnim]);
+    // v2.0.x: rebuildTick recreates the mesh renderer on a "rebuild pulse" tap.
+  }, [pulseAnim, rebuildTick]);
 
-  // v2.0.x: manual "rebuild pulse" trigger. Lets users force the active
-  // visual to (re)build on demand — primarily for a fresh install where the
-  // globe hasn't textured yet and the user doesn't want to wait on the
-  // self-heal poll. Reuses the EXACT proven paths: the globe gets the same
-  // canvas-ref poke the fresh-install self-heal uses (re-arm _globeInit so the
-  // per-frame loop re-fetches rings + re-bakes the sphere), and the mesh/cube
-  // tears down + recreates its constellation renderer the same way its mount
-  // effect does. No new init logic.
+  // v2.0.x: manual "rebuild pulse" trigger. Tapping it does what opening the
+  // full-screen pop-out does — tears down and recreates the active WebGL
+  // renderer from scratch — minus the pop-out. Bumping rebuildTick re-runs the
+  // globe/mesh renderer-creation effects (recreating the renderer fresh), and
+  // re-arming the globe draw-loop (_globeInit = undefined) makes it re-fetch
+  // coastlines + re-bake the world texture onto the new renderer next frame.
+  // This is what fixes a globe that came up blank: poking the draw-loop alone
+  // can't help when the renderer itself was never created.
   const rebuildPulse = () => {
-    // Globe: re-arm init so the per-frame loop re-fetches + re-bakes.
-    const c = canvasRef.current;
-    if (c) { c._globeInit = undefined; c._globeRings = null; c._globeFetchTries = 0; }
-    webglTextureReadyRef.current = false;
-    // Mesh/cube: recreate the constellation renderer when it's the active mode.
-    if (pulseAnimRef.current === 'block' && constellationCanvasRef.current) {
-      if (constellationRendererRef.current) {
-        try { constellationRendererRef.current.destroy(); } catch {}
-        constellationRendererRef.current = null;
-      }
-      try {
-        const r = createConstellationCube(constellationCanvasRef.current, { theme: _ssCurrentTheme() });
-        if (r && !r.failed) constellationRendererRef.current = r;
-      } catch {}
-    }
+    setRebuildTick(t => t + 1);
   };
 
   // Inverse orthographic projection — converts a tap on the canvas to
