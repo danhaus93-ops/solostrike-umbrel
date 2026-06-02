@@ -261,6 +261,12 @@ const CSS = `
    so it can never be pushed off-screen. */
 .ssdesk .slot-globe > * > *:nth-child(2){flex:1 1 auto!important;max-height:none!important;min-height:0!important}
 .ssdesk .slot-globe > * > *:nth-child(2) > *{max-height:none!important}
+/* v2.0.x: the mounted PulsePanel's own "⟲ rebuild pulse" row. The panel is
+   forced to inset:0 inside .slot-globe, which would bury this last child at the
+   clipped bottom edge. Pin it into the visible bottom-right corner instead so
+   desktop matches mobile. zIndex keeps it above the canvas; pointer-events
+   re-enabled on the row only. */
+.ssdesk .slot-globe .ss-rebuild-row{position:absolute!important;right:12px!important;bottom:8px!important;margin:0!important;width:auto!important;z-index:6!important;inset:auto!important;height:auto!important}
 /* the mounted PulsePanel renders a rotated "100% SOLO" stamp + text overlays
    absolutely-positioned; on desktop they bleed over the Miners box below. Keep
    ONLY the canvas — hide any non-canvas positioned children in the globe slot.
