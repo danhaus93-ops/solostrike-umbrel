@@ -44,8 +44,8 @@ const valMono = { fontFamily:'var(--fm)', fontSize:'0.8rem', color:'var(--text-1
 // and desktop.
 const cardShell = {
   background:
-    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
-    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
+    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),calc(0.45 * var(--card-chrome,1))) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),calc(0.13 * var(--card-chrome,1))) 0%, transparent 70%), ' +
     // v2.0.x: frost-aware base fill — driven by the Display → Card Frost slider
     // (--card-fill) and Solid Cards toggle, exactly like the main mobile/desktop
     // card style. Was a hardcoded opaque gradient, which is why these analytics
@@ -53,12 +53,12 @@ const cardShell = {
     'linear-gradient(180deg, color-mix(in srgb, var(--bg-raised) var(--card-fill, 60%), transparent) 0%, color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent) 100%)',
   backdropFilter: 'blur(var(--card-blur, 7px))',
   WebkitBackdropFilter: 'blur(var(--card-blur, 7px))',
-  border:'1px solid rgba(var(--amber-rgb),0.22)',
+  border:'1px solid rgba(var(--amber-rgb),calc(0.22 * var(--card-chrome,1)))',
   borderRadius:'16px',
   padding:'1.3rem',
   boxShadow:
-    'inset 0 1px 0 rgba(var(--amber-rgb),0.18), inset 0 0 0 1px rgba(0,0,0,0.4), ' +
-    '0 8px 24px rgba(0,0,0,0.6), 0 0 32px rgba(var(--amber-rgb),0.06)',
+    'inset 0 1px 0 rgba(var(--amber-rgb),calc(0.18 * var(--card-chrome,1))), inset 0 0 0 1px rgba(0,0,0,calc(0.4 * var(--card-chrome,1))), ' +
+    '0 8px 24px rgba(0,0,0,calc(0.6 * var(--card-chrome,1))), 0 0 32px rgba(var(--amber-rgb),calc(0.06 * var(--card-chrome,1)))',
   minWidth:0, maxWidth:'100%', overflow:'hidden',
   display:'flex', flexDirection:'column', height:'100%', boxSizing:'border-box',
 };
