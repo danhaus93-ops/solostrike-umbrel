@@ -408,7 +408,7 @@ function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
     <div className="apphead">
       <div className="ah-left">
         <img className="ah-pick" src="/pickaxe-icon.png" alt="⛏" draggable={false}/>
-        <span className="ah-wordmark">SoloStrike</span><span className="ah-div"/>
+        <span className="ah-wordmark">{_tt('SoloStrike')}</span><span className="ah-div"/>
         <span className="ah-status">{statusTxt}</span>
         <span className="ah-zmq">{zmqTxt}</span>
         <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 5</b></>}</span>
@@ -416,7 +416,7 @@ function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
       <div className="ah-mq">{ticker}</div>
       <div className="ah-right">
         <div className="ah-clock"><span className="lv">{_tt('LIVE')}</span><span className="tm">{now.toLocaleTimeString('en-US',{hour12:false})}</span></div>
-        <button className="ah-gear" title="Settings" onClick={onOpenSettings}>⚙</button>
+        <button className="ah-gear" title={_tt("Settings")} onClick={onOpenSettings}>⚙</button>
       </div>
     </div>
   );
@@ -469,7 +469,7 @@ function FleetTable({ workers, aliases, displayName, onWorkerClick }){
   const live=rows.filter(r=>r.online); const totHr=live.reduce((s,r)=>s+r.hashrate,0);
   const temps=live.map(r=>r.asic).filter(n=>n!=null); const avgT=temps.length?Math.round(temps.reduce((s,t)=>s+t,0)/temps.length):null; const maxT=temps.length?Math.max(...temps):null;
   const tcls=t=>t==null?'':t>=70?'cell-hot':t>=60?'cell-warm':'';
-  const COLS=[['name',_tt('Worker')],['hashrate',_tt('Hashrate')],['asic','ASIC °C'],['vr','VR °C'],['fan','Fan RPM'],['boards',_tt('Boards (°C)')],['best',_tt('Best Ever')],['diff',_tt('Last Diff')],['fw',_tt('Firmware')],['up',_tt('Uptime')]];
+  const COLS=[['name',_tt('Worker')],['hashrate',_tt('Hashrate')],['asic',_tt('ASIC °C')],['vr',_tt('VR °C')],['fan',_tt('Fan RPM')],['boards',_tt('Boards (°C)')],['best',_tt('Best Ever')],['diff',_tt('Last Diff')],['fw',_tt('Firmware')],['up',_tt('Uptime')]];
   const sort=k=>{ if(k===sortKey)setSortDir(d=>-d); else {setSortKey(k);setSortDir(k==='name'?1:-1);} };
   return (
     <div style={{overflow:'auto',minHeight:0,flex:1}}>
@@ -494,7 +494,7 @@ function FleetTable({ workers, aliases, displayName, onWorkerClick }){
         </tbody>
         {sorted.length>0 && <tfoot><tr>
           <td><b>FLEET</b></td><td><b>{fmtTH(totHr)} T</b></td>
-          <td colSpan={2}>{avgT!=null?<>avg <b>{avgT}°</b> · max <b className={maxT>=70?'cell-hot':''}>{maxT}°</b></>:'—'}</td>
+          <td colSpan={2}>{avgT!=null?<>avg <b>{avgT}°</b> {_tt('· max')} <b className={maxT>=70?'cell-hot':''}>{maxT}°</b></>:'—'}</td>
           <td colSpan={2}>{live.length}/{rows.length} online</td>
           <td colSpan={4}>{_tt('tap any rig for full single-rig telemetry')} →</td>
         </tr></tfoot>}
@@ -514,7 +514,7 @@ function Gauges({ windows, pct }){
         const r=34,c=Math.PI*r,off=c*(1-Math.max(0,Math.min(100,p))/100);
         return (
           <div className="gauge" key={key}>
-            <svg viewBox="0 0 80 48"><path d="M6 44 A34 34 0 0 1 74 44" fill="none" stroke="var(--bg-deep)" strokeWidth="7" strokeLinecap="round"/><path d="M6 44 A34 34 0 0 1 74 44" fill="none" stroke="var(--amber)" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} style={{filter:'drop-shadow(0 0 4px rgba(var(--amber-rgb),.4))'}}/></svg>
+            <svg viewBox="0 0 80 48"><path d={"M6 44 A34 34 0 0 1 74 44"} fill="none" stroke="var(--bg-deep)" strokeWidth="7" strokeLinecap="round"/><path d="M6 44 A34 34 0 0 1 74 44" fill="none" stroke="var(--amber)" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} style={{filter:'drop-shadow(0 0 4px rgba(var(--amber-rgb),.4))'}}/></svg>
             <div className="gw">{lab}</div><div className="gv">{Number.isFinite(v)?hrShort(v):'—'}</div><div className="gp">{p}%</div>
           </div>
         );
@@ -528,13 +528,13 @@ function Donut({ pool }){
   const active=Math.max(0,(pool?.workers||0)-(pool?.idle||0)-(pool?.disconnected||0));
   const idle=pool?.idle||0, disc=pool?.disconnected||0; const real=active+idle+disc;
   const total=real||1;
-  const segs=[['Active',active,'var(--green)'],['Idle',idle,'var(--amber)'],['Disconnected',disc,'var(--red)']];
+  const segs=[[_tt('Active'),active,'var(--green)'],[_tt('Idle'),idle,'var(--amber)'],[_tt('Disconnected'),disc,'var(--red)']];
   let acc=0; const stops=real>0?segs.map(([,n,c])=>{const s=(acc/total)*100;acc+=n;const e=(acc/total)*100;return `${c} ${s}% ${e}%`;}).join(', '):`var(--bg-deep) 0% 100%`;
   return (
     <div className="donutwrap">
       <div className="donut-cg">
         <div className="donut-ring" style={{background:`conic-gradient(${stops})`}}/>
-        <div className="donut-hole"><span className="dn-tot">{real}</span><span className="dn-lbl">workers</span></div>
+        <div className="donut-hole"><span className="dn-tot">{real}</span><span className="dn-lbl">{_tt('workers')}</span></div>
       </div>
       <div className="donutlegend">
         <div className="dlg"><span className="sw" style={{background:'var(--green)'}}/>{_tt('Active')} <b>{active}</b></div>
@@ -664,7 +664,7 @@ export default function DesktopPages({
 
   // health flags
   const H=stratumHealth||{};
-  const healthItems=[['API',true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :4333',H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],['ZMQ synced',zmqOk]];
+  const healthItems=[[_tt('API'),true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :4333',H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],[_tt('ZMQ synced'),zmqOk]];
 
   // top miners
   const topMiners=[...(workers||[])].filter(w=>(w.bestshare||0)>0).sort((a,b)=>(b.bestshare||0)-(a.bestshare||0)).slice(0,3);
@@ -698,7 +698,7 @@ export default function DesktopPages({
                   <div className="sv">
                     <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
                     {spsHist.length===0
-                      ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
+                      ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':_tt('NO MINERS')}</div>
                       : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
                     <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
                   </div>
@@ -716,13 +716,13 @@ export default function DesktopPages({
             <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band b-field">
               <div className="panel">
-                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('Solostrike Pulse')} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')}</span><span className="tap-hint tap-hint-right" onClick={M('Solostrike Pulse')} style={{cursor:'pointer'}}>▸ {_tt('STRIKERS')}</span><button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M(_tt('Solostrike Pulse'))} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')}</span><span className="tap-hint tap-hint-right" onClick={M(_tt('Solostrike Pulse'))} style={{cursor:'pointer'}}>▸ {_tt('STRIKERS')}</span><button className="expand-btn" title={_tt("Expand globe")} onClick={()=>setFsCard('pulse')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
                 </div>
               </div>
               <div className="panel">
-                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('The Hunt')} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')}</span><span className="tap-hint tap-hint-right" onClick={M('The Hunt')} style={{cursor:'pointer'}}>▸ {_tt('THE RECKONING')}</span><button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M(_tt('The Hunt'))} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')}</span><span className="tap-hint tap-hint-right" onClick={M(_tt('The Hunt'))} style={{cursor:'pointer'}}>▸ {_tt('THE RECKONING')}</span><button className="expand-btn" title={_tt("Expand Hunt")} onClick={()=>setFsCard('hunt')}>⤢</button></div>
                 <div className="body">
                   <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
                 </div>
@@ -750,7 +750,7 @@ export default function DesktopPages({
               <div className="col" style={{paddingLeft:0,borderLeft:0,display:'flex',flexDirection:'column'}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'2px 14px'}}>
                   {blocks.slice(0,12).map((b,i)=>{const who=(b.miner||b.pool||'—').toString();return <div className="dl" key={i} style={{border:0}}><span className="k"><span className="lchip" style={{background:poolColor(who)}}/>{fmtNum(b.height)}</span><span className="v">{who.slice(0,10)}</span></div>;})}
-                  {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">waiting</span></div>}
+                  {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">{_tt('waiting')}</span></div>}
                 </div>
                 {/* pool tally — who's claiming the last N blocks, as a stacked share bar */}
                 {blocks.length>0&&(()=>{const tally={};blocks.slice(0,20).forEach(b=>{const who=(b.miner||b.pool||'—').toString().slice(0,12);tally[who]=(tally[who]||0)+1;});const entries=Object.entries(tally).sort((a,b)=>b[1]-a[1]).slice(0,6);const total=entries.reduce((s,[,n])=>s+n,0)||1;return <div style={{marginTop:'auto',paddingTop:8}}><div style={{fontSize:'.46rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-3)',marginBottom:5}}>Last {Math.min(20,blocks.length)} blocks · pool share</div><div style={{display:'flex',height:9,borderRadius:5,overflow:'hidden',background:'var(--bg-deep)'}}>{entries.map(([who,n],i)=><div key={i} title={`${who} · ${n}`} style={{width:`${(n/total)*100}%`,background:poolColor(who)}}/>)}</div><div style={{display:'flex',flexWrap:'wrap',gap:'2px 12px',marginTop:6}}>{entries.map(([who,n],i)=><span key={i} style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:'.5rem',color:'var(--text-2)'}}><span className="lchip" style={{background:poolColor(who),marginRight:0}}/>{who} <b style={{color:'var(--text-1)'}}>{n}</b></span>)}</div></div>;})()}
@@ -848,7 +848,7 @@ export default function DesktopPages({
                   <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.7rem',fontWeight:700,color:retarget.difficultyChange>=0?'var(--red)':'var(--green)',lineHeight:1}}>{retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(2)+'%':'—'}</div><div style={{fontSize:'.55rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>{_tt('estimated change')}</div>{retarget.prevDifficultyChange!=null&&<div style={{fontFamily:'var(--fm)',fontSize:'.62rem',color:'var(--text-2)',marginTop:4}}>Last epoch: <span style={{color:retarget.prevDifficultyChange>=0?'var(--red)':'var(--green)',fontWeight:600}}>{(retarget.prevDifficultyChange>=0?'+':'')+retarget.prevDifficultyChange.toFixed(2)+'%'}</span></div>}</div>
                   {retarget.progressPercent!=null&&<div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>Epoch progress</span><span style={{color:'var(--cyan)'}}>{retarget.progressPercent.toFixed(1)}%</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0,Math.min(100,retarget.progressPercent))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>}
                   {retarget.remainingBlocks!=null&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>Remaining Blocks <b style={{color:'var(--text-1)',fontWeight:600}}>{fmtNum(retarget.remainingBlocks)}</b></span></div>}
-                  {retarget.remainingTime!=null&&retarget.remainingTime>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>ETA</span><b style={{color:'var(--amber)',fontWeight:600}}>{fmtDurationMs(retarget.remainingTime)}</b></div>}
+                  {retarget.remainingTime!=null&&retarget.remainingTime>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>{_tt('ETA')}</span><b style={{color:'var(--amber)',fontWeight:600}}>{fmtDurationMs(retarget.remainingTime)}</b></div>}
                 </div>
               </div>
             </div>
@@ -864,11 +864,11 @@ export default function DesktopPages({
 
       <footer className="ss-foot">
         <span className="ff-brand">SoloStrike v1.11.64 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
-        <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub">
+        <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title={_tt("View source on GitHub")}>
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
         <span className="ff-r">Ports
-          {[['3333','3333'],['3334','3334'],['4333','4333']].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">TLS</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p==='4333'?'ssl':'tcp'}://umbrel.local:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
+          {[['3333','3333'],['3334','3334'],['4333','4333']].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">{_tt('TLS')}</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p==='4333'?'ssl':'tcp'}://umbrel.local:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
         </span>
       </footer>
 
@@ -879,7 +879,7 @@ export default function DesktopPages({
       {fsCard && (
         <div className="fs-overlay" onClick={e=>{if(e.target===e.currentTarget)setFsCard(null);}}>
           <div className="fs-inner">
-            <div className="fs-head"><span>{fsCard==='pulse'?'Solostrike Pulse':'The Hunt'}</span><button className="fs-close" onClick={()=>setFsCard(null)}>✕</button></div>
+            <div className="fs-head"><span>{fsCard==='pulse'?'Solostrike Pulse':_tt('The Hunt')}</span><button className="fs-close" onClick={()=>setFsCard(null)}>✕</button></div>
             <div className="fs-stage">{cardComponents[fsCard]||null}</div>
           </div>
         </div>

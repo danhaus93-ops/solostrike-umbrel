@@ -60,6 +60,7 @@ export default class ErrorBoundary extends React.Component {
 
     const fullscreen = !!this.props.fullscreen;
     const label = this.props.label || '';
+    const _t = this.props.tt || ((x) => x);
 
     const fallback = (
       <div style={{
@@ -83,14 +84,14 @@ export default class ErrorBoundary extends React.Component {
           fontWeight: 'bold',
           letterSpacing: '0.05em',
         }}>
-          ▸ ERROR{label ? ` — ${label}` : ''}
+          {_t('▸ ERROR')}{label ? ` — ${label}` : ''}
         </div>
         <div style={{
           color: 'var(--text-2, #a3a3a3)',
           fontSize: '0.75rem',
           lineHeight: 1.4,
         }}>
-          A rendering error was caught before it could crash the app.
+          {_t('A rendering error was caught before it could crash the app.')}
         </div>
         {this.state.error?.message && (
           <div style={{
@@ -129,7 +130,7 @@ export default class ErrorBoundary extends React.Component {
               letterSpacing: '0.05em',
             }}
           >
-            RETRY
+            {_t('RETRY')}
           </button>
           <button
             onClick={this.handleReload}
@@ -144,7 +145,7 @@ export default class ErrorBoundary extends React.Component {
               cursor: 'pointer',
             }}
           >
-            RELOAD
+            {_t('RELOAD')}
           </button>
         </div>
       </div>
