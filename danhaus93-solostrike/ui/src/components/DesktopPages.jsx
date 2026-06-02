@@ -142,7 +142,7 @@ const CSS = `
 .ssdesk{--hair:rgba(var(--amber-rgb),0.14);position:fixed;inset:0;z-index:1;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(1100px 600px at 72% -5%,rgba(var(--amber-rgb),0.08),transparent 60%),radial-gradient(800px 520px at -5% 105%,rgba(0,255,209,0.04),transparent 55%)}
 .ssdesk .scaler{width:100%;flex:1;min-height:0;overflow:hidden}
 .ssdesk .pages{display:flex;width:100%;height:100%;transition:transform .42s cubic-bezier(.6,.02,.2,1)}
-.ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}.ssdesk .pages.p4{transform:translateX(-300%)}
+.ssdesk .pages.p2{transform:translateX(-100%)}.ssdesk .pages.p3{transform:translateX(-200%)}.ssdesk .pages.p4{transform:translateX(-300%)}.ssdesk .pages.p5{transform:translateX(-400%)}
 .ssdesk .viewport.vitals{grid-template-rows:auto minmax(0,1.25fr) minmax(0,1fr);row-gap:16px}
 .ssdesk .viewport.vitals .b-data{align-self:stretch}
 .ssdesk .viewport.vitals .b-data .col{display:flex;flex-direction:column}
@@ -161,14 +161,15 @@ const CSS = `
 .ssdesk .ss-foot .port:hover{text-decoration:underline}
 .ssdesk .ss-foot .tls{padding:1px 5px;border-radius:3px;font-size:.5rem;letter-spacing:.14em;color:var(--cyan);border:1px solid rgba(0,255,209,0.45);background:rgba(0,255,209,0.05)}
 .ssdesk .ss-foot b{color:var(--text-1);font-weight:700}
-.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto 210px minmax(0,1fr);padding:14px 10px;row-gap:12px}
-.ssdesk .viewport.p2,.ssdesk .viewport.p3{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
+.ssdesk .viewport{flex:0 0 100%;width:100%;height:100%;background:transparent;border:none;border-radius:0;overflow:hidden;position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);padding:14px 10px;row-gap:12px}
+.ssdesk .viewport.field{grid-template-rows:auto minmax(0,1fr)}
+.ssdesk .viewport.p3,.ssdesk .viewport.p4{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr) auto}
 .ssdesk .viewport::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.24;background-image:linear-gradient(rgba(var(--amber-rgb),0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--amber-rgb),0.05) 1px,transparent 1px);background-size:44px 44px}
 .ssdesk .viewport>*{position:relative;z-index:1}
 
 .ssdesk .apphead{display:flex;align-items:center;gap:.4rem;min-height:42px;border-bottom:1px solid var(--hair);padding-bottom:6px}
 .ssdesk .ah-left{display:flex;align-items:center;gap:.5rem;flex:0 0 auto}
-.ssdesk .ah-pick{width:16px;height:16px;object-fit:contain;display:block;filter:drop-shadow(0 0 8px rgba(var(--amber-rgb),0.7));animation:ss-pulse 3s ease-in-out infinite}
+.ssdesk .ah-pick{width:30px;height:30px;object-fit:contain;display:block;filter:drop-shadow(0 0 12px rgba(var(--amber-rgb),0.85)) drop-shadow(0 0 4px rgba(var(--amber-rgb),0.6));animation:ss-pulse 3s ease-in-out infinite}
 .ssdesk .ah-wordmark{font-family:var(--fd);font-size:.92rem;font-weight:700;letter-spacing:.06em;color:var(--amber);text-transform:uppercase}
 .ssdesk .ah-div{width:1px;height:16px;background:rgba(var(--amber-rgb),0.2)}
 .ssdesk .ah-status{font-family:var(--fd);font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--green);text-shadow:0 0 6px var(--green);animation:ss-pulse 2s ease-in-out infinite;white-space:nowrap}
@@ -184,13 +185,20 @@ const CSS = `
 @keyframes ss-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 
 .ssdesk .band{display:grid;gap:16px;min-height:0}
+/* Frost ONLY col-holding data bands (Intel page, page 4/5 bottom rows).
+   Panel-holding bands (b-live/b-field/top rows) are NOT frosted — their
+   panels carry the frosting, so frosting the band too would double-stack. */
+.ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent);backdrop-filter:blur(var(--card-blur,7px));-webkit-backdrop-filter:blur(var(--card-blur,7px));border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+.ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
+.ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
+.ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
-.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
-@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) 72%, transparent)}}
-.ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 7px;padding-bottom:.35rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
+.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(var(--card-blur,7px));-webkit-backdrop-filter:blur(var(--card-blur,7px));border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
+@supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent)}}
+.ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px;padding-bottom:.22rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
 .ssdesk .clk:hover{background:rgba(var(--amber-rgb),0.06);box-shadow:inset 0 0 0 1px rgba(var(--amber-rgb),0.2)}
 .ssdesk .clk::after{content:"⤢";position:absolute;top:4px;right:6px;font-size:.56rem;color:var(--amber);opacity:.35}.ssdesk .clk:hover::after{opacity:1}
@@ -227,7 +235,7 @@ const CSS = `
 .ssdesk .sv-median{margin-left:auto;color:var(--text-2);white-space:nowrap}
 .ssdesk .sv-samples{font-family:var(--fd);font-size:.5rem;font-weight:600;letter-spacing:.06em;color:var(--text-2);text-transform:uppercase}
 
-.ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:0;border-radius:11px}
+.ssdesk .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:0;border-radius:11px}
 .ssdesk .slot-globe{width:100%;flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .ssdesk .slot-hunt{width:100%;flex:1 1 auto;min-height:0;position:relative;overflow:hidden}
 /* mounted Pulse/Hunt panels render their own "▸ Title" as first child — hide it
@@ -242,19 +250,36 @@ const CSS = `
    We already show a pulse-read strip below, so let the globe own the slot and
    hide the panel's non-canvas children (text/stat strips) here. */
 .ssdesk .slot-globe canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
+/* v1.11.66: page-2 Pulse alignment. The mounted Pulse panel caps its inner
+   globe wrapper at 380px, so on a tall desktop card the Pools/Hashrate/Miners
+   row + caption sit high with empty space below them. Lift the cap on desktop
+   so the globe area (child 2 of the panel) flex-grows to fill, dropping the
+   stat row + caption to the bottom of the card — level with the Hunt card's
+   fee row. The globe canvas is absolutely positioned to the slot, so growing
+   this flowed wrapper only repositions the stats; it does not affect render.
+   The caption keeps its natural height (flex consumes leftover space only),
+   so it can never be pushed off-screen. */
+.ssdesk .slot-globe > * > *:nth-child(2){flex:1 1 auto!important;max-height:none!important;min-height:0!important}
+.ssdesk .slot-globe > * > *:nth-child(2) > *{max-height:none!important}
 /* the mounted PulsePanel renders a rotated "100% SOLO" stamp + text overlays
    absolutely-positioned; on desktop they bleed over the Miners box below. Keep
-   ONLY the canvas — hide any non-canvas positioned children in the globe slot. */
-.ssdesk .slot-globe > * canvas{display:block!important}
+   ONLY the canvas — hide any non-canvas positioned children in the globe slot.
+   NOTE: do NOT force canvas display:block here. The globe + mesh canvases toggle
+   via their inline display style (globe shows block else none; mesh the inverse).
+   Forcing block kept the globe canvas visible in mesh mode, showing its frozen
+   last frame under the mesh. Leaving display to the inline toggle makes desktop
+   behave exactly like the card/mobile layout, where the switch is clean. */
 /* desktop hunt slot: keep ONLY the NonceField canvas — the mounted HuntPanel's
    PER-BLOCK ODDS header + BLOCK REWARD strip duplicate (and clip against) the
    desktop hunt-face readout below. Force the canvas to fill the slot. */
 .ssdesk .slot-hunt canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover}
 /* hide the HuntPanel's text rows inside the slot so only the canvas shows.
    The panel content is: [odds-header row][nonce canvas][block-reward strip].
-   We keep the wrapper that contains the canvas; hide the reward strip (its
-   sibling) and the odds-header text row. */
-.ssdesk .slot-hunt > * > * > div:last-child{display:none!important}
+   We keep the wrapper that contains the canvas; hide the odds-header text row.
+   v1.11.66: the Expected/Yearly/Daily/Sats stat grid (div:last-child) is no
+   longer hidden — the user wants it on desktop too, level with the Pulse card's
+   Pools/Hashrate/Miners row. Both panels flex-grow their canvas/globe area, so
+   the bottom rows bottom-out together. */
 .ssdesk .slot-hunt > * > * > div:first-child > div:first-child{visibility:hidden!important}
 .ssdesk .pulse-read{display:flex;width:100%}.ssdesk .pulse-read .pr{flex:1;text-align:center;padding:0 5px;border-left:1px solid var(--hair)}.ssdesk .pulse-read .pr:first-child{border-left:0}
 .ssdesk .pulse-read .prl{font-family:var(--fd);font-size:.44rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-2)}
@@ -276,7 +301,7 @@ const CSS = `
 .ssdesk .miner .nm{font-family:var(--fd);font-size:.58rem;font-weight:700;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ssdesk .miner .hash{margin-left:auto;font-family:var(--fd);font-size:.62rem;color:var(--amber);flex-shrink:0}
 .ssdesk .tele{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;border-top:1px solid rgba(var(--amber-rgb),0.06);padding-top:3px}
-.ssdesk .tele div{font-size:.42rem;color:var(--text-2);text-align:center;line-height:1.2;overflow:hidden}.ssdesk .tele b{display:block;font-family:var(--fd);font-size:.54rem;color:var(--text-1);white-space:nowrap}.ssdesk .tele .warm b{color:var(--amber)}.ssdesk .tele .hot b{color:var(--red)}
+.ssdesk .tele div{font-size:.42rem;color:var(--text-2);text-align:center;line-height:1.2;overflow:hidden}.ssdesk .tele b{display:block;font-family:var(--fd);font-size:.54rem;color:var(--text-1);white-space:nowrap}.ssdesk .tele .ok b{color:var(--green)}.ssdesk .tele .cool b{color:var(--cyan)}.ssdesk .tele .warm b{color:var(--amber)}.ssdesk .tele .hot b{color:var(--red)}
 .ssdesk .uptime{display:flex;height:5px;gap:1px;margin-top:4px;width:100%;min-width:0}.ssdesk .uptime i{flex:1 1 0;min-width:0;border-radius:.5px;background:var(--bg-deep)}.ssdesk .uptime i.on{background:rgba(57,255,106,0.65)}.ssdesk .uptime i.dn{background:rgba(232,67,67,0.7)}
 
 .ssdesk .col{padding:0 12px;border-left:1px solid var(--hair);min-width:0}.ssdesk .col:first-child{padding-left:0;border-left:0}
@@ -361,6 +386,8 @@ const CSS = `
 .ssdesk .tap-open{display:inline-flex;align-items:center;gap:6px;transition:color .15s}
 .ssdesk .tap-open:hover{color:var(--amber)}
 .ssdesk .tap-hint{font-size:.82em;color:var(--amber);opacity:.7;letter-spacing:.1em}
+.ssdesk .tap-hint-right{margin-left:auto;margin-right:8px;transition:opacity .15s}
+.ssdesk .tap-hint-right:hover{opacity:1}
 .ssdesk .expand-btn{background:rgba(var(--amber-rgb),.08);border:1px solid var(--border-hot);color:var(--amber);cursor:pointer;font-size:.7rem;line-height:1;border-radius:5px;padding:2px 7px;flex:none;transition:background .12s}
 .ssdesk .expand-btn:hover{background:rgba(var(--amber-rgb),.2)}
 
@@ -375,21 +402,21 @@ const CSS = `
 
 /* ---------- AppHead (real ticker in marquee slot) ---------- */
 function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
-  const statusTxt = page===1?_tt('Vitals'):page===2?_tt('Pool Internals'):page===3?_tt('Luck & Analytics'):_tt(status);
-  const zmqTxt = page===1?'node':page===2?'ckpool':page===3?'stats':`ZMQ ${zmqOk?'●':'○'}`;
+  const statusTxt = page===1?_tt('The Field'):page===2?_tt('Intel'):page===3?_tt('Pool Internals'):page===4?_tt('Luck & Analytics'):_tt(status);
+  const zmqTxt = page===1?'census':page===2?'node':page===3?'ckpool':page===4?'stats':`ZMQ ${zmqOk?'●':'○'}`;
   return (
     <div className="apphead">
       <div className="ah-left">
         <img className="ah-pick" src="/pickaxe-icon.png" alt="⛏" draggable={false}/>
-        <span className="ah-wordmark">SoloStrike</span><span className="ah-div"/>
+        <span className="ah-wordmark">{_tt('SoloStrike')}</span><span className="ah-div"/>
         <span className="ah-status">{statusTxt}</span>
         <span className="ah-zmq">{zmqTxt}</span>
-        <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 4</b></>}</span>
+        <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 5</b></>}</span>
       </div>
       <div className="ah-mq">{ticker}</div>
       <div className="ah-right">
         <div className="ah-clock"><span className="lv">{_tt('LIVE')}</span><span className="tm">{now.toLocaleTimeString('en-US',{hour12:false})}</span></div>
-        <button className="ah-gear" title="Settings" onClick={onOpenSettings}>⚙</button>
+        <button className="ah-gear" title={_tt("Settings")} onClick={onOpenSettings}>⚙</button>
       </div>
     </div>
   );
@@ -403,7 +430,7 @@ function Crew({ workers, aliases, displayName, onWorkerClick }){
       {list.map((w,i)=>{
         const live=w.live||{}; const on=(w.hashrate||0)>0 && w.status!=='offline';
         const tC=Number.isFinite(live.tempC)?Math.round(live.tempC):null;
-        const tcls=tC>=70?'hot':tC>=60?'warm':'';
+        const tcls=tC==null?'':tC>=80?'hot':tC>=75?'warm':tC>=70?'cool':'ok';
         const fan=Number.isFinite(live.fanPct)?live.fanPct+'%':(Number.isFinite(live.fanRpm)?fmtNum(live.fanRpm):'—');
         const fw=(live.firmwareVersion||w.minerVendor||'—').toString().split(' ')[0];
         const acc=Number.isFinite(w.acceptRate)?(w.acceptRate*100).toFixed(1)+'%':'—';
@@ -442,7 +469,7 @@ function FleetTable({ workers, aliases, displayName, onWorkerClick }){
   const live=rows.filter(r=>r.online); const totHr=live.reduce((s,r)=>s+r.hashrate,0);
   const temps=live.map(r=>r.asic).filter(n=>n!=null); const avgT=temps.length?Math.round(temps.reduce((s,t)=>s+t,0)/temps.length):null; const maxT=temps.length?Math.max(...temps):null;
   const tcls=t=>t==null?'':t>=70?'cell-hot':t>=60?'cell-warm':'';
-  const COLS=[['name',_tt('Worker')],['hashrate',_tt('Hashrate')],['asic','ASIC °C'],['vr','VR °C'],['fan','Fan RPM'],['boards',_tt('Boards (°C)')],['best',_tt('Best Ever')],['diff',_tt('Last Diff')],['fw',_tt('Firmware')],['up',_tt('Uptime')]];
+  const COLS=[['name',_tt('Worker')],['hashrate',_tt('Hashrate')],['asic',_tt('ASIC °C')],['vr',_tt('VR °C')],['fan',_tt('Fan RPM')],['boards',_tt('Boards (°C)')],['best',_tt('Best Ever')],['diff',_tt('Last Diff')],['fw',_tt('Firmware')],['up',_tt('Uptime')]];
   const sort=k=>{ if(k===sortKey)setSortDir(d=>-d); else {setSortKey(k);setSortDir(k==='name'?1:-1);} };
   return (
     <div style={{overflow:'auto',minHeight:0,flex:1}}>
@@ -467,7 +494,7 @@ function FleetTable({ workers, aliases, displayName, onWorkerClick }){
         </tbody>
         {sorted.length>0 && <tfoot><tr>
           <td><b>FLEET</b></td><td><b>{fmtTH(totHr)} T</b></td>
-          <td colSpan={2}>{avgT!=null?<>avg <b>{avgT}°</b> · max <b className={maxT>=70?'cell-hot':''}>{maxT}°</b></>:'—'}</td>
+          <td colSpan={2}>{avgT!=null?<>avg <b>{avgT}°</b> {_tt('· max')} <b className={maxT>=70?'cell-hot':''}>{maxT}°</b></>:'—'}</td>
           <td colSpan={2}>{live.length}/{rows.length} online</td>
           <td colSpan={4}>{_tt('tap any rig for full single-rig telemetry')} →</td>
         </tr></tfoot>}
@@ -487,7 +514,7 @@ function Gauges({ windows, pct }){
         const r=34,c=Math.PI*r,off=c*(1-Math.max(0,Math.min(100,p))/100);
         return (
           <div className="gauge" key={key}>
-            <svg viewBox="0 0 80 48"><path d="M6 44 A34 34 0 0 1 74 44" fill="none" stroke="var(--bg-deep)" strokeWidth="7" strokeLinecap="round"/><path d="M6 44 A34 34 0 0 1 74 44" fill="none" stroke="var(--amber)" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} style={{filter:'drop-shadow(0 0 4px rgba(var(--amber-rgb),.4))'}}/></svg>
+            <svg viewBox="0 0 80 48"><path d={"M6 44 A34 34 0 0 1 74 44"} fill="none" stroke="var(--bg-deep)" strokeWidth="7" strokeLinecap="round"/><path d="M6 44 A34 34 0 0 1 74 44" fill="none" stroke="var(--amber)" strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} style={{filter:'drop-shadow(0 0 4px rgba(var(--amber-rgb),.4))'}}/></svg>
             <div className="gw">{lab}</div><div className="gv">{Number.isFinite(v)?hrShort(v):'—'}</div><div className="gp">{p}%</div>
           </div>
         );
@@ -501,13 +528,13 @@ function Donut({ pool }){
   const active=Math.max(0,(pool?.workers||0)-(pool?.idle||0)-(pool?.disconnected||0));
   const idle=pool?.idle||0, disc=pool?.disconnected||0; const real=active+idle+disc;
   const total=real||1;
-  const segs=[['Active',active,'var(--green)'],['Idle',idle,'var(--amber)'],['Disconnected',disc,'var(--red)']];
+  const segs=[[_tt('Active'),active,'var(--green)'],[_tt('Idle'),idle,'var(--amber)'],[_tt('Disconnected'),disc,'var(--red)']];
   let acc=0; const stops=real>0?segs.map(([,n,c])=>{const s=(acc/total)*100;acc+=n;const e=(acc/total)*100;return `${c} ${s}% ${e}%`;}).join(', '):`var(--bg-deep) 0% 100%`;
   return (
     <div className="donutwrap">
       <div className="donut-cg">
         <div className="donut-ring" style={{background:`conic-gradient(${stops})`}}/>
-        <div className="donut-hole"><span className="dn-tot">{real}</span><span className="dn-lbl">workers</span></div>
+        <div className="donut-hole"><span className="dn-tot">{real}</span><span className="dn-lbl">{_tt('workers')}</span></div>
       </div>
       <div className="donutlegend">
         <div className="dlg"><span className="sw" style={{background:'var(--green)'}}/>{_tt('Active')} <b>{active}</b></div>
@@ -538,7 +565,7 @@ export default function DesktopPages({
   const [fsCard,setFsCard]=useState(null); // 'pulse' | 'hunt' | null — fullscreen overlay
   const [svRange,setSvRange]=useState('1H'); // strike-velocity window
   const [fpTrend,setFpTrend]=useState('live'); // firepower trend window
-  const NP=4;
+  const NP=5;
   const startX=useRef(null);
   const fitRef=useRef(null);
   const scalerRef=useRef(null);
@@ -629,10 +656,15 @@ export default function DesktopPages({
   const _ta=shares.acceptedCount||0, _tr=shares.rejectedCount||0, _ts=shares.stale||0, _gt=_ta+_tr+_ts;
   const acc=_gt>0?((_ta/_gt)*100).toFixed(2)+'%':'—';
   const rej=_gt>0?((_tr/_gt)*100).toFixed(2)+'%':'—';
+  // match mobile card thresholds: accept green only if >99.9% else amber; reject green<0.5, amber<2, red>=2
+  const _accPct=_gt>0?(_ta/_gt)*100:100;
+  const _rejPct=_gt>0?(_tr/_gt)*100:0;
+  const accCls=_accPct>99.9?'green':'amber';
+  const rejCls=_rejPct<0.5?'green':_rejPct<2?'amber':'red';
 
   // health flags
   const H=stratumHealth||{};
-  const healthItems=[['API',true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :4333',H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],['ZMQ synced',zmqOk]];
+  const healthItems=[[_tt('API'),true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :4333',H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],[_tt('ZMQ synced'),zmqOk]];
 
   // top miners
   const topMiners=[...(workers||[])].filter(w=>(w.bestshare||0)>0).sort((a,b)=>(b.bestshare||0)-(a.bestshare||0)).slice(0,3);
@@ -645,50 +677,30 @@ export default function DesktopPages({
       onTouchStart={e=>{startX.current=e.touches[0].clientX;pokeDots();}}
       onTouchEnd={e=>{if(startX.current==null)return;const dx=e.changedTouches[0].clientX-startX.current;if(Math.abs(dx)>60)go(dx<0?page+1:page-1);startX.current=null;}}>
       <div className="scaler" ref={scalerRef}>
-        <div className={`pages${page===1?' p2':page===2?' p3':page===3?' p4':''}`}>
+        <div className={`pages${page===1?' p2':page===2?' p3':page===3?' p4':page===4?' p5':''}`}>
 
           {/* ============ PAGE 1 — LIVE ============ */}
           <div className="viewport">
             <AppHead page={0} status={status} zmqOk={zmqOk} strikes={ns.totalStrikesEver??strikes??0} ticker={page===0?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
-            {/* BAND 1 */}
-            <div className="band b-charts">
-              <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Firepower')} — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1M','5M','15M','1H','6H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
-                <div className="fp">
-                  <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
-                  <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
+            {/* BAND — left: Firepower stacked over Strike Velocity · right: Crew */}
+            <div className="band b-live">
+              <div className="live-left">
+                <div className="panel">
+                  <div className="zlabel zlabel-row">{tt('Firepower')} — {fpTrend==='live'?'Live':fpTrend.toUpperCase()}<div className="fp-seg">{['live','1M','5M','15M','1H','6H','24H','7D'].map(r=><span key={r} className={fpTrend===r?'on':''} onClick={()=>setFpTrend(r)}>{r==='live'?'LIVE':r}</span>)}</div></div>
+                  <div className="fp">
+                    <div className="fp-top"><span className="fp-num goldnum">{fmtTH(fpAvg)}<span className="unit" style={{fontSize:'.5em'}}> TH/s</span></span><span className="fp-peak">PEAK {fmtTH(peak)} · LIVE {liveW}/{totW}</span></div>
+                    <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
+                  </div>
                 </div>
-              </div>
-              <div className="panel">
-                <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
-                <div className="sv">
-                  <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
-                  {spsHist.length===0
-                    ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':'NO MINERS'}</div>
-                    : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
-                  <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
-                </div>
-              </div>
-            </div>
-
-            {/* BAND 2 — Pulse (REAL globe) · Hunt (REAL) · Crew */}
-            <div className="band b-feat">
-              <div className="panel">
-                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('Solostrike Pulse')} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')} <span className="tap-hint">▸ {_tt('STRIKERS')}</span></span><button className="expand-btn" title="Expand globe" onClick={()=>setFsCard('pulse')}>⤢</button></div>
-                <div className="body">
-                  <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
-                </div>
-              </div>
-              <div className="panel">
-                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M('The Hunt')} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')} <span className="tap-hint">▸ {_tt('THE RECKONING')}</span></span><button className="expand-btn" title="Expand Hunt" onClick={()=>setFsCard('hunt')}>⤢</button></div>
-                <div className="body">
-                  <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
-                  <div className="hunt-face">
-                    <div className="hf-reward"><span className="lbl">{_tt('Block Reward')}</span><span className="goldnum" style={{fontFamily:'var(--fd)',fontSize:'.98rem',fontWeight:800}}>{reward.totalBtc!=null?reward.totalBtc.toFixed(4):'—'}<span className="unit" style={{fontSize:'.6em'}}> BTC</span></span></div>
-                    <div className="hf-sub">{(()=>{const sub=reward.base??reward.subsidyBtc??null;const fees=reward.fees??reward.feesBtc??(reward.totalBtc!=null&&sub!=null?reward.totalBtc-sub:null);return <>{_tt('subsidy')} <b>{sub!=null?sub.toFixed(3):'—'}</b> · {_tt('fees')} <span className="fee">{fees!=null?'+'+fees.toFixed(4):'—'}</span></>;})()}</div>
-                    <div className="hf-fees"><div className="ft"><div className="ftl fast">⚡{_tt('Fast')}</div><div className="ftv">{mp.feeFast??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl mid">◐{_tt('Mid')}</div><div className="ftv">{mp.feeMid??'—'}</div><div className="ftu">sat/vB</div></div><div className="ft"><div className="ftl low">◯{_tt('Low')}</div><div className="ftv">{mp.feeLow??'—'}</div><div className="ftu">sat/vB</div></div></div>
-                    <div className="hf-odds"><div className="o"><div className="ol">{_tt('Expected')}</div><div className="ov">{odds.expectedDays!=null&&odds.expectedDays>0?(odds.expectedDays>=365?(odds.expectedDays/365).toFixed(1)+' yr':odds.expectedDays>=30?(odds.expectedDays/30).toFixed(1)+' mo':Math.round(odds.expectedDays)+' d'):'—'}</div></div><div className="o"><div className="ol">{_tt('Yearly')}</div><div className="ov">{odds.perYear>0?(odds.perYear*100<0.001?(odds.perYear*100).toFixed(6):odds.perYear*100<0.01?(odds.perYear*100).toFixed(4):(odds.perYear*100).toFixed(2))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Daily')}</div><div className="ov">{odds.perDay>0?(odds.perDay*100<0.0001?(odds.perDay*100).toFixed(7):(odds.perDay*100).toFixed(5))+'%':'—'}</div></div><div className="o"><div className="ol">{_tt('Sats/d')}</div><div className="ov">{(odds.perDay>0&&reward.totalBtc>0)?fmtNum(Math.round(odds.perDay*reward.totalBtc*1e8)):'—'}</div></div></div>
+                <div className="panel">
+                  <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
+                  <div className="sv">
+                    <div className="sv-top"><span className="sv-num">{sps>=1000?(sps/1000).toFixed(2)+'k':sps.toFixed(1)}<span className="unit" style={{fontSize:'.42em'}}> shares/s</span></span><div className="sv-rng">{['1H','6H','24H'].map(r=><span key={r} className={svRange===r?'on':''} onClick={()=>setSvRange(r)}>{r}</span>)}</div></div>
+                    {spsHist.length===0
+                      ? <div className="sv-empty">{cur>0?'COLLECTING SAMPLES…':_tt('NO MINERS')}</div>
+                      : <div className="sv-hist">{spsHist.map((p,i)=><i key={i} title={svFmt(p.sps||0)} style={{height:`${Math.max(3,((p.sps||0)/spsMax)*100)}%`,background:svColor(p.sps||0)}}/>)}</div>}
+                    <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
                   </div>
                 </div>
               </div>
@@ -699,9 +711,28 @@ export default function DesktopPages({
             </div>
           </div>
 
-          {/* ============ PAGE 2 — VITALS ============ */}
-          <div className="viewport vitals">
+          {/* ============ PAGE 2 — THE FIELD (Pulse | Hunt) ============ */}
+          <div className="viewport field">
             <AppHead page={1} status={status} zmqOk={zmqOk} ticker={page===1?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+            <div className="band b-field">
+              <div className="panel">
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M(_tt('Solostrike Pulse'))} title={_tt('Tap to see Strikers')} style={{cursor:'pointer'}}>{tt('Pulse')}</span><span className="tap-hint tap-hint-right" onClick={M(_tt('Solostrike Pulse'))} style={{cursor:'pointer'}}>▸ {_tt('STRIKERS')}</span><button className="expand-btn" title={_tt("Expand globe")} onClick={()=>setFsCard('pulse')}>⤢</button></div>
+                <div className="body">
+                  <div className="slot-globe">{fsCard==='pulse'?null:cardComponents['pulse']||null}</div>
+                </div>
+              </div>
+              <div className="panel">
+                <div className="zlabel zlabel-row"><span className="tap-open" onClick={M(_tt('The Hunt'))} title={_tt('Tap for the Reckoning')} style={{cursor:'pointer'}}>{tt('The Hunt')}</span><span className="tap-hint tap-hint-right" onClick={M(_tt('The Hunt'))} style={{cursor:'pointer'}}>▸ {_tt('THE RECKONING')}</span><button className="expand-btn" title={_tt("Expand Hunt")} onClick={()=>setFsCard('hunt')}>⤢</button></div>
+                <div className="body">
+                  <div className="slot-hunt">{fsCard==='hunt'?null:cardComponents['hunt']||null}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ============ PAGE 3 — INTEL (was Vitals) ============ */}
+          <div className="viewport vitals">
+            <AppHead page={2} status={status} zmqOk={zmqOk} ticker={page===2?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
 
             {/* BAND 3 — 7 data cols (Stratum removed — ports live in the footer) */}
             <div className="band b-data b-data-7">
@@ -711,15 +742,15 @@ export default function DesktopPages({
               <div className="col"><div className="ch">{tt('Near Strikes')}</div>{cc.length?(()=>{const netDiff=net.difficulty>0?net.difficulty:null;const top=Math.max(...cc.slice(0,4).map(c=>c.diff||0),1);return cc.slice(0,4).map((c,i)=>{const pct=netDiff?(c.diff/netDiff)*100:null;const w=Math.max(5,Math.min(100,((c.diff||0)/top)*100));const nm=((displayName?displayName(c.workerName,aliases):c.workerName)||'—').slice(0,7);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{pct!=null?pct.toFixed(3)+'%':hrShort(c.diff)}</span></div>;});})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('No near-misses yet.')}</div>}</div>
               <div className="col"><div className="ch">{tt('Top Miners')}</div>{topMiners.length?(()=>{const top=Math.max(...topMiners.map(w=>w.bestshare||0),1);return <>{topMiners.map((w,i)=>{const bw=Math.max(6,Math.min(100,((w.bestshare||0)/top)*100));const nm=(i+1)+'·'+((displayName?displayName(w.name,aliases):w.name)||'—').slice(0,6);return <div className="dbar" key={i}><span className="dnm">{nm}</span><span className="dtrack"><i className={i===0?'hot':''} style={{width:bw+'%'}}/></span><span className="dval">{hrShort(w.bestshare)}</span></div>;})}{DL(_tt('Pool best'),poolState?.bestshare?hrShort(poolState.bestshare):'—')}</>;})():<div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('No shares submitted yet.')}</div>}</div>
               <div className="col"><div className="ch">{tt('Claim Jumpers')}</div>{(()=>{const tf=Array.isArray(poolState?.topFinders)?poolState.topFinders:[];if(!tf.length)return <div style={{fontSize:'.58rem',color:'var(--text-3)'}}>{_tt('Awaiting block data…')}</div>;const top=Math.max(...tf.slice(0,8).map(x=>x.count||0),1);return <>{tf.slice(0,8).map((f,i)=>{const w=Math.max(8,((f.count||0)/top)*100);return <div className="dbar" key={i}><span className="dnm">{(f.name||'—').slice(0,8)}{f.isSolo&&<span className="solo">SOLO</span>}</span><span className="dtrack"><i className={f.isSolo?'hot':''} style={{width:w+'%'}}/></span><span className="dval">{f.count??0}</span></div>;})}</>;})()}</div>
-              <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL(_tt('Total'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL(_tt('Best'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Accept'),acc,'green')}{DL(_tt('Reject'),rej)}{(()=>{const a=shares.acceptedCount||0;const r=(shares.rejectedCount||0)+(shares.stale||0);const tot=a+r;const ap=tot>0?(a/tot)*100:100;return <div className="accbar" title={`Accept ${ap.toFixed(2)}%`}><i className="acc" style={{width:ap+'%'}}/><i className="rej" style={{width:(100-ap)+'%'}}/></div>;})()}</div>
+              <div className="col clk" onClick={M('Share Stats')}><div className="ch">{tt('Share Stats')}</div>{DL(_tt('Total'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(1)+' M':'—')}{DL(_tt('Best'),poolState?.bestshare?hrShort(poolState.bestshare):'—','amber')}{DL(_tt('Accept'),acc,accCls)}{DL(_tt('Reject'),rej,rejCls)}{(()=>{const a=shares.acceptedCount||0;const r=(shares.rejectedCount||0)+(shares.stale||0);const tot=a+r;const ap=tot>0?(a/tot)*100:100;return <div className="accbar" title={`Accept ${ap.toFixed(2)}%`}><i className="acc" style={{width:ap+'%'}}/><i className="rej" style={{width:(100-ap)+'%'}}/></div>;})()}</div>
             </div>
 
             {/* BAND 4 — ledger (+ pool tally) + health (+ detail) */}
-            <div className="band" style={{gridTemplateColumns:'2.2fr 1.2fr',borderTop:'1px solid var(--hair)',paddingTop:8}}>
+            <div className="band b-cols" style={{gridTemplateColumns:'2.2fr 1.2fr'}}>
               <div className="col" style={{paddingLeft:0,borderLeft:0,display:'flex',flexDirection:'column'}}><div className="ch">{tt('The Ledger — Recent Blocks')}</div>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'2px 14px'}}>
                   {blocks.slice(0,12).map((b,i)=>{const who=(b.miner||b.pool||'—').toString();return <div className="dl" key={i} style={{border:0}}><span className="k"><span className="lchip" style={{background:poolColor(who)}}/>{fmtNum(b.height)}</span><span className="v">{who.slice(0,10)}</span></div>;})}
-                  {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">waiting</span></div>}
+                  {blocks.length===0&&<div className="dl" style={{border:0}}><span className="k">—</span><span className="v">{_tt('waiting')}</span></div>}
                 </div>
                 {/* pool tally — who's claiming the last N blocks, as a stacked share bar */}
                 {blocks.length>0&&(()=>{const tally={};blocks.slice(0,20).forEach(b=>{const who=(b.miner||b.pool||'—').toString().slice(0,12);tally[who]=(tally[who]||0)+1;});const entries=Object.entries(tally).sort((a,b)=>b[1]-a[1]).slice(0,6);const total=entries.reduce((s,[,n])=>s+n,0)||1;return <div style={{marginTop:'auto',paddingTop:8}}><div style={{fontSize:'.46rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-3)',marginBottom:5}}>Last {Math.min(20,blocks.length)} blocks · pool share</div><div style={{display:'flex',height:9,borderRadius:5,overflow:'hidden',background:'var(--bg-deep)'}}>{entries.map(([who,n],i)=><div key={i} title={`${who} · ${n}`} style={{width:`${(n/total)*100}%`,background:poolColor(who)}}/>)}</div><div style={{display:'flex',flexWrap:'wrap',gap:'2px 12px',marginTop:6}}>{entries.map(([who,n],i)=><span key={i} style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:'.5rem',color:'var(--text-2)'}}><span className="lchip" style={{background:poolColor(who),marginRight:0}}/>{who} <b style={{color:'var(--text-1)'}}>{n}</b></span>)}</div></div>;})()}
@@ -740,9 +771,9 @@ export default function DesktopPages({
             </div>
           </div>
 
-          {/* ============ PAGE 3 — POOL INTERNALS ============ */}
-          <div className="viewport p2">
-            <AppHead page={2} zmqOk={zmqOk} ticker={page===2?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+          {/* ============ PAGE 4 — POOL INTERNALS ============ */}
+          <div className="viewport p3">
+            <AppHead page={3} zmqOk={zmqOk} ticker={page===3?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.5fr 1fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Hashrate Windows — % of Pool Peak')}</div><Gauges windows={windows} pct={wpct}/></div>
               <div className="panel"><div className="zlabel">{tt('Shares / Second — Windows')}</div>
@@ -755,16 +786,16 @@ export default function DesktopPages({
               <FleetTable workers={workers} aliases={aliases} displayName={displayName} onWorkerClick={onWorkerClick}/>
             </div>
             <div className="band b-data" style={{gridTemplateColumns:'1fr 1fr 1fr 1fr',minHeight:0,alignSelf:'end'}}>
-              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL(_tt('Workers'),`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('ckpool'),'solo 2.x')}</div>
-              <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL(_tt('Accepted'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL(_tt('Rejected'),fmtNum(shares.rejectedCount))}{DL(_tt('Accept'),acc,'cyan')}{DL(_tt('Reject'),rej)}</div>
+              <div className="col" style={{paddingLeft:0,borderLeft:0}}><div className="ch">{tt('General Info')}</div>{DL(_tt('Pool runtime'),pool.runtimeSec?fmtUptime(pool.runtimeSec):'—')}{DL(_tt('Workers'),`${liveW}/${totW}`)}{DL(_tt('Accept'),acc,accCls)}{DL(_tt('ckpool'),'solo 2.x')}</div>
+              <div className="col"><div className="ch">{tt('Shares Since Last Block')}</div>{DL(_tt('Accepted'),shares.acceptedCount?(shares.acceptedCount/1e6).toFixed(2)+' M':'—','green')}{DL(_tt('Rejected'),fmtNum(shares.rejectedCount))}{DL(_tt('Accept'),acc,accCls)}{DL(_tt('Reject'),rej,rejCls)}</div>
               <div className="col"><div className="ch">{tt('Best Share — Trend')}</div><TsLine data={(()=>{const a=Array.isArray(shares.bestHistory)?shares.bestHistory:(Array.isArray(shares.bestHistoryTail)?shares.bestHistoryTail:[]);return a.map(b=>b.best).filter(Number.isFinite);})()} color="var(--chart1)" fmt={v=>hrShort(v)}/></div>
               <div className="col"><div className="ch">{tt('Users + Workers History')}</div><TsLine data={(()=>{const a=Array.isArray(pool.workersHistory)?pool.workersHistory:(Array.isArray(pool.workersHistoryTail)?pool.workersHistoryTail:[]);return a.map(p=>p.workers).filter(Number.isFinite);})()} color="var(--chart2)" fmt={v=>Math.round(v)} unit="wkrs"/></div>
             </div>
           </div>
 
-          {/* ============ PAGE 4 — LUCK & ANALYTICS ============ */}
-          <div className="viewport p3">
-            <AppHead page={3} zmqOk={zmqOk} ticker={page===3?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
+          {/* ============ PAGE 5 — LUCK & ANALYTICS ============ */}
+          <div className="viewport p4">
+            <AppHead page={4} zmqOk={zmqOk} ticker={page===4?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.3fr 1fr 1fr',minHeight:0}}>
               <div className="panel"><div className="zlabel">{tt('Block Effort / Luck — per strike')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>(shares-to-find vs expected · &lt;100% = lucky)</span></div>
                 <div className="effortwrap">{(()=>{
@@ -817,7 +848,7 @@ export default function DesktopPages({
                   <div style={{textAlign:'center'}}><div style={{fontFamily:'var(--fd)',fontSize:'1.7rem',fontWeight:700,color:retarget.difficultyChange>=0?'var(--red)':'var(--green)',lineHeight:1}}>{retarget.difficultyChange!=null?(retarget.difficultyChange>=0?'+':'')+retarget.difficultyChange.toFixed(2)+'%':'—'}</div><div style={{fontSize:'.55rem',letterSpacing:'.15em',textTransform:'uppercase',color:'var(--text-2)',marginTop:3}}>{_tt('estimated change')}</div>{retarget.prevDifficultyChange!=null&&<div style={{fontFamily:'var(--fm)',fontSize:'.62rem',color:'var(--text-2)',marginTop:4}}>Last epoch: <span style={{color:retarget.prevDifficultyChange>=0?'var(--red)':'var(--green)',fontWeight:600}}>{(retarget.prevDifficultyChange>=0?'+':'')+retarget.prevDifficultyChange.toFixed(2)+'%'}</span></div>}</div>
                   {retarget.progressPercent!=null&&<div><div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fd)',fontSize:'.52rem',letterSpacing:'.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:3}}><span>Epoch progress</span><span style={{color:'var(--cyan)'}}>{retarget.progressPercent.toFixed(1)}%</span></div><div style={{height:3,background:'var(--bg-deep)',borderRadius:2,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.max(0,Math.min(100,retarget.progressPercent))}%`,background:'var(--cyan)',boxShadow:'0 0 8px rgba(0,255,209,0.5)'}}/></div></div>}
                   {retarget.remainingBlocks!=null&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>Remaining Blocks <b style={{color:'var(--text-1)',fontWeight:600}}>{fmtNum(retarget.remainingBlocks)}</b></span></div>}
-                  {retarget.remainingTime!=null&&retarget.remainingTime>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>ETA</span><b style={{color:'var(--amber)',fontWeight:600}}>{fmtDurationMs(retarget.remainingTime)}</b></div>}
+                  {retarget.remainingTime!=null&&retarget.remainingTime>0&&<div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',fontFamily:'var(--fm)'}}><span style={{color:'var(--text-2)'}}>{_tt('ETA')}</span><b style={{color:'var(--amber)',fontWeight:600}}>{fmtDurationMs(retarget.remainingTime)}</b></div>}
                 </div>
               </div>
             </div>
@@ -832,23 +863,23 @@ export default function DesktopPages({
       </div>
 
       <footer className="ss-foot">
-        <span className="ff-brand">SoloStrike v1.11.64 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
-        <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub">
+        <span className="ff-brand">SoloStrike v2.0.0 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
+        <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title={_tt("View source on GitHub")}>
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
         <span className="ff-r">Ports
-          {[['3333','3333'],['3334','3334'],['4333','4333']].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">TLS</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p==='4333'?'ssl':'tcp'}://umbrel.local:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
+          {[['3333','3333'],['3334','3334'],['4333','4333']].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">{_tt('TLS')}</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p==='4333'?'ssl':'tcp'}://umbrel.local:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
         </span>
       </footer>
 
       <button className={`nav l${page===0?' hidden':''}`} onClick={()=>go(page-1)}>❮</button>
       <button className={`nav r${page===NP-1?' hidden':''}`} onClick={()=>go(page+1)}>❯</button>
-      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2,3].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
+      <div className={`pagedots${dotsVisible?'':' hide'}`} onMouseEnter={pokeDots}>{[0,1,2,3,4].map(i=><i key={i} className={i===page?'on':''} onClick={()=>go(i)}/>)}</div>
 
       {fsCard && (
         <div className="fs-overlay" onClick={e=>{if(e.target===e.currentTarget)setFsCard(null);}}>
           <div className="fs-inner">
-            <div className="fs-head"><span>{fsCard==='pulse'?'Solostrike Pulse':'The Hunt'}</span><button className="fs-close" onClick={()=>setFsCard(null)}>✕</button></div>
+            <div className="fs-head"><span>{fsCard==='pulse'?'Solostrike Pulse':_tt('The Hunt')}</span><button className="fs-close" onClick={()=>setFsCard(null)}>✕</button></div>
             <div className="fs-stage">{cardComponents[fsCard]||null}</div>
           </div>
         </div>
