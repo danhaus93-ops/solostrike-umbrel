@@ -46,7 +46,13 @@ const cardShell = {
   background:
     'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
     'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
-    'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
+    // v2.0.x: frost-aware base fill — driven by the Display → Card Frost slider
+    // (--card-fill) and Solid Cards toggle, exactly like the main mobile/desktop
+    // card style. Was a hardcoded opaque gradient, which is why these analytics
+    // cards stayed solid while every other card frosted. Falls back to 60%.
+    'linear-gradient(180deg, color-mix(in srgb, var(--bg-raised) var(--card-fill, 60%), transparent) 0%, color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent) 100%)',
+  backdropFilter: 'blur(var(--card-blur, 7px))',
+  WebkitBackdropFilter: 'blur(var(--card-blur, 7px))',
   border:'1px solid rgba(var(--amber-rgb),0.22)',
   borderRadius:'16px',
   padding:'1.3rem',
