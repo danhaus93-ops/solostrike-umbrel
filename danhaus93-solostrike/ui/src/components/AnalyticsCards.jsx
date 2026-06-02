@@ -220,8 +220,15 @@ export function SpsWindows({ tt = (x) => x, pool }) {
 }
 
 // ── Connection States donut (Page 2) ────────────────────────────────────────
-export function ConnectionStates({ tt = (x) => x, pool }) {
-  const active = Math.max(0, (pool?.workers || 0) - (pool?.idle || 0) - (pool?.disconnected || 0));
+export function ConnectionStates({ tt = (x) => x, pool, workers = [] }) {
+  // v2.0.x: "Active" is now the TRUE count of currently-mining rigs, taken from
+  // the per-worker list (same source the Crew card trusts: live unless status
+  // is 'offline'). The old value subtracted ckpool's Idle+Disconnected from its
+  // Workers total, which rental connection churn inflated until the result
+  // floored to 0 — falsely showing no live rigs while mining. Idle and
+  // Disconnected remain ckpool's real summary counters (connection churn).
+  const wl = Array.isArray(workers) ? workers : Object.values(workers || {});
+  const active = wl.filter(w => w && w.status !== 'offline').length;
   const idle = pool?.idle || 0;
   const disc = pool?.disconnected || 0;
   const total = active + idle + disc || 1;
