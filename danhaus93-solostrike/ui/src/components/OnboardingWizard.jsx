@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { isValidBtcAddress } from '../utils.js';
+import { SUPPORTED, LANG_META } from '../i18n.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SoloStrike Onboarding Wizard — 5 steps, localStorage-gated, appears once
+// SoloStrike Onboarding Wizard — 6 steps (language picker first), localStorage
+// gated, appears once. v1.12.x: fully translatable; language chosen up front
+// applies to every setup screen and persists to app start. Back navigation on
+// every step, including Welcome → back to the language picker.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LS_WIZARD_COMPLETED = 'ss_wizard_completed_v1';
@@ -87,28 +91,59 @@ function ProgressDots({ current, total }) {
   );
 }
 
-// ── STEP 1: Welcome ───────────────────────────────────────────────────────
-function StepWelcome({ onNext, onSkip }) {
+// ── STEP 1: Language picker ────────────────────────────────────────────────
+function StepLanguage({ tt = (x)=>x, lang = 'en', onLangChange, onNext }) {
+  return (
+    <>
+      <div style={{textAlign:'center', marginBottom:'1.25rem'}}>
+        <div style={{fontSize:40, marginBottom:'0.4rem'}}>🌐</div>
+        <div style={heading}>{tt('Choose your language')}</div>
+        <div style={subheading}>{tt('You can change this later in Settings')}</div>
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:'0.5rem', marginBottom:'1.5rem'}}>
+        {SUPPORTED.map(code => {
+          const active = code === lang;
+          return (
+            <button key={code} onClick={()=>onLangChange && onLangChange(code)}
+              style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.5rem',
+                padding:'0.7rem 0.8rem', borderRadius:8, cursor:'pointer', textAlign:'left',
+                background: active?'rgba(var(--amber-rgb),0.12)':'var(--bg-raised)',
+                border:`1px solid ${active?'rgba(var(--amber-rgb),0.5)':'var(--border)'}`,
+                color: active?'var(--amber)':'var(--text-1)', fontFamily:'var(--fd)', fontSize:'0.8rem', fontWeight:active?700:500}}>
+              <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{LANG_META[code]?.name || code}</span>
+              {active && <span style={{color:'var(--amber)', flexShrink:0}}>●</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{display:'flex', gap:8}}>
+        <button style={btnPrimary} onClick={onNext}>{tt('Continue')} →</button>
+      </div>
+    </>
+  );
+}
+
+// ── STEP 2: Welcome ───────────────────────────────────────────────────────
+function StepWelcome({ tt = (x)=>x, onNext, onBack, onSkip }) {
+  const features = [
+    ['💰', tt('Full block reward'), tt('Every satoshi of every block your pool finds goes directly to your address.')],
+    ['🔒', tt('True self-custody'), tt('Your node, your rules. Optional Private Mode blocks all outbound API calls.')],
+    ['⚡', tt('Works with any miner'), tt('ASICs, BitAxe, NerdQaxe, Braiins rentals — all supported out of the box.')],
+  ];
   return (
     <>
       <div style={{textAlign:'center', marginBottom:'1.5rem'}}>
         <div style={{marginBottom:'0.5rem', display:'flex', justifyContent:'center'}}>
           <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:56, height:56, objectFit:'contain', filter:'drop-shadow(0 0 14px rgba(245,166,35,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))'}}/>
         </div>
-        <div style={heading}>Welcome to SoloStrike</div>
-        <div style={subheading}>Your zero-fee solo Bitcoin pool</div>
+        <div style={heading}>{tt('Welcome to SoloStrike')}</div>
+        <div style={subheading}>{tt('Your zero-fee solo Bitcoin pool')}</div>
       </div>
       <div style={{...body, marginBottom:'1.5rem'}}>
-        SoloStrike runs a private solo mining pool on your Umbrel, using your own
-        Bitcoin node. When one of your miners solves a block, <b style={{color:'var(--amber)'}}>you keep 100% of
-        the reward</b> — no pool operator, no fees, no middleman.
+        {tt('SoloStrike runs a private solo mining pool on your Umbrel, using your own Bitcoin node. When one of your miners solves a block, you keep 100% of the reward — no pool operator, no fees, no middleman.')}
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:'0.75rem', marginBottom:'1.75rem'}}>
-        {[
-          ['💰', 'Full block reward', 'Every satoshi of every block your pool finds goes directly to your address.'],
-          ['🔒', 'True self-custody', 'Your node, your rules. Optional Private Mode blocks all outbound API calls.'],
-          ['⚡', 'Works with any miner', 'ASICs, BitAxe, NerdQaxe, Braiins rentals — all supported out of the box.'],
-        ].map(([icon, title, desc]) => (
+        {features.map(([icon, title, desc]) => (
           <div key={title} style={{display:'flex', gap:'0.75rem', alignItems:'flex-start',
             padding:'0.75rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
             <div style={{fontSize:22, flexShrink:0}}>{icon}</div>
@@ -121,43 +156,41 @@ function StepWelcome({ onNext, onSkip }) {
         ))}
       </div>
       <div style={{display:'flex', gap:8}}>
-        <button style={btnPrimary} onClick={onNext}>Get Started →</button>
+        <button style={btnSecondary} onClick={onBack}>← {tt('Back')}</button>
+        <button style={btnPrimary} onClick={onNext}>{tt('Get Started')} →</button>
       </div>
-      <div style={skipLink} onClick={onSkip}>Skip setup</div>
+      <div style={skipLink} onClick={onSkip}>{tt('Skip setup')}</div>
     </>
   );
 }
 
-// ── STEP 2: Payout Address ────────────────────────────────────────────────
-function StepAddress({ addr, setAddr, onNext, onBack, onSkip, loading, error }) {
+// ── STEP 3: Payout Address ────────────────────────────────────────────────
+function StepAddress({ tt = (x)=>x, addr, setAddr, onNext, onBack, onSkip, loading, error }) {
   const valid = addr.trim().length > 0 && isValidBtcAddress(addr.trim());
   return (
     <>
-      <div style={heading}>Your Payout Address</div>
-      <div style={subheading}>Step 2 · Bitcoin Address</div>
+      <div style={heading}>{tt('Your Payout Address')}</div>
+      <div style={subheading}>{tt('Bitcoin Address')}</div>
       <div style={{...body, marginBottom:'1.25rem'}}>
-        Enter the Bitcoin address where your block rewards will go. This is the address
-        hardcoded into every mining job your pool creates. When your pool finds a block,
-        the reward goes straight here — no intermediate wallet.
+        {tt('Enter the Bitcoin address where your block rewards will go. This is the address hardcoded into every mining job your pool creates. When your pool finds a block, the reward goes straight here — no intermediate wallet.')}
       </div>
       <div style={{background:'rgba(0,255,209,0.04)', border:'1px solid rgba(0,255,209,0.2)',
         padding:'0.6rem 0.8rem', marginBottom:'1rem'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em',
-          textTransform:'uppercase', color:'var(--cyan)', marginBottom:4}}>💡 Tip</div>
+          textTransform:'uppercase', color:'var(--cyan)', marginBottom:4}}>💡 {tt('Tip')}</div>
         <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', lineHeight:1.5}}>
-          Use a <b>fresh, dedicated address</b> from your own wallet — not an exchange.
-          Bech32 (starts with <code style={{color:'var(--amber)'}}>bc1...</code>) is cheapest and works best.
+          {tt('Use a fresh, dedicated address from your own wallet — not an exchange. Bech32 (starts with bc1…) is cheapest and works best.')}
         </div>
       </div>
       <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem',
         letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--text-2)', marginBottom:6}}>
-        Bitcoin Payout Address
+        {tt('Bitcoin Payout Address')}
       </label>
       <input
         type="text" value={addr}
         onChange={e=>setAddr(e.target.value)}
         onKeyDown={e=>e.key==='Enter' && valid && onNext()}
-        placeholder="bc1q… or 1… or 3…"
+        placeholder="bc1q… / 1… / 3…"
         spellCheck={false} autoCorrect="off" autoCapitalize="off"
         style={{
           width:'100%', boxSizing:'border-box',
@@ -171,7 +204,7 @@ function StepAddress({ addr, setAddr, onNext, onBack, onSkip, loading, error }) 
       {valid && (
         <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em',
           textTransform:'uppercase', color:'var(--green)', marginTop:6}}>
-          ✓ Valid Bitcoin address
+          ✓ {tt('Valid Bitcoin address')}
         </div>
       )}
       {error && (
@@ -182,22 +215,22 @@ function StepAddress({ addr, setAddr, onNext, onBack, onSkip, loading, error }) 
         </div>
       )}
       <div style={{display:'flex', gap:8, marginTop:'1.5rem'}}>
-        <button style={btnSecondary} onClick={onBack}>← Back</button>
+        <button style={btnSecondary} onClick={onBack}>← {tt('Back')}</button>
         <button
           style={{...btnPrimary, opacity: (valid && !loading) ? 1 : 0.5, cursor: valid ? 'pointer' : 'not-allowed'}}
           onClick={() => valid && onNext()}
           disabled={!valid || loading}
         >
-          {loading ? 'SAVING…' : 'Continue →'}
+          {loading ? tt('Saving…') : `${tt('Continue')} →`}
         </button>
       </div>
-      <div style={skipLink} onClick={onSkip}>Skip setup</div>
+      <div style={skipLink} onClick={onSkip}>{tt('Skip setup')}</div>
     </>
   );
 }
 
-// ── STEP 3: Connect Your Miners ───────────────────────────────────────────
-function StepConnect({ onNext, onBack, onSkip }) {
+// ── STEP 4: Connect Your Miners ───────────────────────────────────────────
+function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
   const urlAsic  = `stratum+tcp://${host}:3333`;
   const urlHobby = `stratum+tcp://${host}:3334`;
@@ -229,7 +262,7 @@ function StepConnect({ onNext, onBack, onSkip }) {
       </div>
       <div>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.1em',
-          textTransform:'uppercase', color:'var(--text-3)', marginBottom:3}}>Stratum URL</div>
+          textTransform:'uppercase', color:'var(--text-3)', marginBottom:3}}>{tt('Stratum URL')}</div>
         <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--cyan)',
           wordBreak:'break-all', lineHeight:1.4}}>{url}</div>
       </div>
@@ -240,56 +273,52 @@ function StepConnect({ onNext, onBack, onSkip }) {
         fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.1em',
         textTransform:'uppercase', fontWeight:600,
       }}>
-        {copied===lbl ? '✓ Copied' : `Copy URL`}
+        {copied===lbl ? `✓ ${tt('Copied')}` : tt('Copy URL')}
       </button>
     </div>
   );
 
   return (
     <>
-      <div style={heading}>Connect Your Miners</div>
-      <div style={subheading}>Step 3 · Stratum Configuration</div>
+      <div style={heading}>{tt('Connect Your Miners')}</div>
+      <div style={subheading}>{tt('Stratum Configuration')}</div>
       <div style={{...body, marginBottom:'1.25rem'}}>
-        Point your miners at one of these URLs. Most ASICs (S19, S21, Whatsminer) use port 3333;
-        hobby miners (BitAxe, NerdQaxe, Avalon Nano) use 3334 with lower starting difficulty.
+        {tt('Point your miners at one of these URLs. Most ASICs (S19, S21, Whatsminer) use port 3333; hobby miners (BitAxe, NerdQaxe, Avalon Nano) use 3334 with lower starting difficulty.')}
       </div>
       <div style={{display:'flex', gap:'0.75rem', marginBottom:'1.25rem', flexWrap:'wrap'}}>
-        {minerCard('ASIC Port', urlAsic, 3333, 'asic')}
-        {minerCard('Hobby Port', urlHobby, 3334, 'hobby')}
+        {minerCard(tt('ASIC Port'), urlAsic, 3333, 'asic')}
+        {minerCard(tt('Hobby Port'), urlHobby, 3334, 'hobby')}
       </div>
       <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
         padding:'0.75rem', marginBottom:'1.25rem'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em',
-          textTransform:'uppercase', color:'var(--text-2)', marginBottom:6}}>Miner Credentials</div>
+          textTransform:'uppercase', color:'var(--text-2)', marginBottom:6}}>{tt('Miner Credentials')}</div>
         <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', lineHeight:1.6}}>
-          <div><span style={{color:'var(--text-3)'}}>User:</span> <span style={{color:'var(--cyan)'}}>anything.worker_name</span></div>
-          <div><span style={{color:'var(--text-3)'}}>Password:</span> <span style={{color:'var(--cyan)'}}>x</span></div>
+          <div><span style={{color:'var(--text-3)'}}>{tt('User')}:</span> <span style={{color:'var(--cyan)'}}>anything.worker_name</span></div>
+          <div><span style={{color:'var(--text-3)'}}>{tt('Password')}:</span> <span style={{color:'var(--cyan)'}}>x</span></div>
           <div style={{color:'var(--text-3)', fontSize:'0.62rem', marginTop:6, lineHeight:1.5}}>
-            The "user" field can be anything — SoloStrike doesn't check it. The part after the dot is the worker label shown on your dashboard.
+            {tt('The "user" field can be anything — SoloStrike doesn\'t check it. The part after the dot is the worker label shown on your dashboard.')}
           </div>
         </div>
       </div>
       <div style={{display:'flex', gap:8}}>
-        <button style={btnSecondary} onClick={onBack}>← Back</button>
-        <button style={btnPrimary} onClick={onNext}>I've Connected My Miners →</button>
+        <button style={btnSecondary} onClick={onBack}>← {tt('Back')}</button>
+        <button style={btnPrimary} onClick={onNext}>{tt("I've Connected My Miners")} →</button>
       </div>
-      <div style={skipLink} onClick={onSkip}>Skip setup</div>
+      <div style={skipLink} onClick={onSkip}>{tt('Skip setup')}</div>
     </>
   );
 }
 
-// ── STEP 4: Waiting for first connection ─────────────────────────────────
-function StepWaiting({ onNext, onBack, onSkip }) {
+// ── STEP 5: Waiting for first connection ─────────────────────────────────
+function StepWaiting({ tt = (x)=>x, onNext, onBack, onSkip }) {
   const [elapsed, setElapsed] = useState(0);
   const [firstWorker, setFirstWorker] = useState(null);
   const tickRef = useRef(null);
   const pollRef = useRef(null);
 
   useEffect(() => {
-    // Elapsed counter
     tickRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-
-    // Poll API for workers every 3 seconds
     const poll = async () => {
       try {
         const r = await fetch('/api/state');
@@ -303,7 +332,6 @@ function StepWaiting({ onNext, onBack, onSkip }) {
     };
     poll();
     pollRef.current = setInterval(poll, 3000);
-
     return () => {
       clearInterval(tickRef.current);
       clearInterval(pollRef.current);
@@ -315,9 +343,9 @@ function StepWaiting({ onNext, onBack, onSkip }) {
   return (
     <>
       <div style={heading}>
-        {firstWorker ? 'Miner Connected!' : 'Waiting for your first miner…'}
+        {firstWorker ? tt('Miner Connected!') : tt('Waiting for your first miner…')}
       </div>
-      <div style={subheading}>Step 4 · Verification</div>
+      <div style={subheading}>{tt('Verification')}</div>
 
       <div style={{textAlign:'center', padding:'2rem 1rem',
         background:'var(--bg-raised)', border:`1px solid ${firstWorker ? 'var(--green)' : 'var(--border)'}`,
@@ -327,11 +355,11 @@ function StepWaiting({ onNext, onBack, onSkip }) {
             <div style={{fontSize:56, marginBottom:'0.5rem', animation:'pulse 2s ease-in-out infinite'}}>✅</div>
             <div style={{fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700,
               color:'var(--green)', marginBottom:'0.4rem'}}>
-              Got it!
+              {tt('Got it!')}
             </div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.85rem', color:'var(--text-1)'}}>
               <div style={{color:'var(--amber)', fontWeight:600}}>{firstWorker.name.split('.').pop() || firstWorker.name}</div>
-              <div style={{fontSize:'0.7rem', color:'var(--text-2)', marginTop:4}}>is submitting shares</div>
+              <div style={{fontSize:'0.7rem', color:'var(--text-2)', marginTop:4}}>{tt('is submitting shares')}</div>
             </div>
           </>
         ) : (
@@ -339,10 +367,10 @@ function StepWaiting({ onNext, onBack, onSkip }) {
             <div style={{fontSize:56, marginBottom:'0.5rem', animation:'pulse 1.5s ease-in-out infinite'}}>📡</div>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:600,
               color:'var(--text-1)', marginBottom:'0.25rem'}}>
-              Listening for stratum connections…
+              {tt('Listening for stratum connections…')}
             </div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-3)'}}>
-              Elapsed: {elapsed}s
+              {tt('Elapsed')}: {elapsed}s
             </div>
           </>
         )}
@@ -350,40 +378,40 @@ function StepWaiting({ onNext, onBack, onSkip }) {
 
       <div style={{...body, fontSize:'0.75rem', color:'var(--text-2)', marginBottom:'1.25rem'}}>
         {firstWorker
-          ? 'Your pool is live. You can always come back to the onboarding or check the Workers card for more detail.'
-          : 'No rush — miners sometimes take a minute to negotiate and authenticate. If you haven\'t configured them yet, that\'s fine too — you can always set them up later.'}
+          ? tt('Your pool is live. You can always come back to the onboarding or check the Workers card for more detail.')
+          : tt("No rush — miners sometimes take a minute to negotiate and authenticate. If you haven't configured them yet, that's fine too — you can always set them up later.")}
       </div>
 
       <div style={{display:'flex', gap:8}}>
-        <button style={btnSecondary} onClick={onBack}>← Back</button>
+        <button style={btnSecondary} onClick={onBack}>← {tt('Back')}</button>
         {showContinue && (
           <button style={btnPrimary} onClick={onNext}>
-            {firstWorker ? "Let's Go →" : 'Continue anyway →'}
+            {firstWorker ? `${tt("Let's Go")} →` : `${tt('Continue anyway')} →`}
           </button>
         )}
       </div>
-      <div style={skipLink} onClick={onSkip}>Skip setup</div>
+      <div style={skipLink} onClick={onSkip}>{tt('Skip setup')}</div>
     </>
   );
 }
 
-// ── STEP 5: Tour preview ──────────────────────────────────────────────────
-function StepTour({ onDone }) {
+// ── STEP 6: Tour preview ──────────────────────────────────────────────────
+function StepTour({ tt = (x)=>x, onDone, onBack }) {
   const features = [
-    ['📊', 'Live Hashrate', 'Real-time pool hashrate chart with 1h / 6h / 24h / 7d views.'],
-    ['🎯', 'Closest Calls', 'Top 10 best difficulty shares across your entire fleet — historical leaderboard.'],
-    ['💎', 'Block Celebration', 'If you find a block, the entire UI erupts with confetti. Pure celebration.'],
-    ['⚙️', 'Deep Settings', 'Customize cards, top strip, ticker, webhooks, worker aliases, Private Mode.'],
+    ['📊', tt('Live Hashrate'), tt('Real-time pool hashrate chart with 1h / 6h / 24h / 7d views.')],
+    ['🎯', tt('Closest Calls'), tt('Top 10 best difficulty shares across your entire fleet — historical leaderboard.')],
+    ['💎', tt('Block Celebration'), tt('If you find a block, the entire UI erupts with confetti. Pure celebration.')],
+    ['⚙️', tt('Deep Settings'), tt('Customize cards, top strip, ticker, webhooks, worker aliases, Private Mode.')],
   ];
   return (
     <>
       <div style={{textAlign:'center', marginBottom:'1.5rem'}}>
         <div style={{fontSize:48, marginBottom:'0.5rem'}}>🚀</div>
-        <div style={heading}>You're All Set!</div>
-        <div style={subheading}>Ready to mine</div>
+        <div style={heading}>{tt("You're All Set!")}</div>
+        <div style={subheading}>{tt('Ready to mine')}</div>
       </div>
       <div style={{...body, fontSize:'0.82rem', marginBottom:'1.5rem', textAlign:'center'}}>
-        A quick tour of what you'll find on your dashboard:
+        {tt("A quick tour of what you'll find on your dashboard:")}
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:'0.7rem', marginBottom:'1.75rem'}}>
         {features.map(([icon, title, desc]) => (
@@ -398,24 +426,27 @@ function StepTour({ onDone }) {
           </div>
         ))}
       </div>
-      <button style={btnPrimary} onClick={onDone}>Enter Dashboard →</button>
+      <div style={{display:'flex', gap:8}}>
+        <button style={btnSecondary} onClick={onBack}>← {tt('Back')}</button>
+        <button style={btnPrimary} onClick={onDone}>{tt('Enter Dashboard')} →</button>
+      </div>
     </>
   );
 }
 
 // ── Main wizard component ────────────────────────────────────────────────
-export default function OnboardingWizard({ onComplete }) {
+export default function OnboardingWizard({ onComplete, onSkip: onSkipProp, tt = (x)=>x, lang = 'en', onLangChange }) {
   const [step, setStep] = useState(1);
   const [addr, setAddr] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const totalSteps = 5;
+  const totalSteps = 6;
 
   const submitAddress = async () => {
     const trimmed = addr.trim();
-    if (!trimmed) { setError('Please enter a Bitcoin address.'); return; }
-    if (!isValidBtcAddress(trimmed)) { setError("That doesn't look like a valid Bitcoin address."); return; }
+    if (!trimmed) { setError(tt('Please enter a Bitcoin address.')); return; }
+    if (!isValidBtcAddress(trimmed)) { setError(tt("That doesn't look like a valid Bitcoin address.")); return; }
     setLoading(true); setError('');
     try {
       const r = await fetch('/api/setup', {
@@ -423,10 +454,10 @@ export default function OnboardingWizard({ onComplete }) {
         body: JSON.stringify({ payoutAddress: trimmed }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(d.error || 'Could not save address.'); return; }
-      setStep(3);
+      if (!r.ok) { setError(d.error || tt('Could not save address.')); return; }
+      setStep(4);
     } catch {
-      setError('Cannot reach pool API. Is the pool service running?');
+      setError(tt('Cannot reach pool API. Is the pool service running?'));
     } finally {
       setLoading(false);
     }
@@ -434,9 +465,9 @@ export default function OnboardingWizard({ onComplete }) {
 
   const finish = () => {
     markWizardCompleted();
-    onComplete();
+    if (onComplete) onComplete();
   };
-  const skip = () => { finish(); };
+  const skip = () => { if (onSkipProp) onSkipProp(); else finish(); };
 
   return (
     <div style={layoutOuter}>
@@ -452,15 +483,17 @@ export default function OnboardingWizard({ onComplete }) {
         <ProgressDots current={step - 1} total={totalSteps}/>
       </div>
       <div style={layoutCard}>
-        {step === 1 && <StepWelcome onNext={()=>setStep(2)} onSkip={skip}/>}
-        {step === 2 && <StepAddress
+        {step === 1 && <StepLanguage tt={tt} lang={lang} onLangChange={onLangChange} onNext={()=>setStep(2)}/>}
+        {step === 2 && <StepWelcome tt={tt} onNext={()=>setStep(3)} onBack={()=>setStep(1)} onSkip={skip}/>}
+        {step === 3 && <StepAddress
+          tt={tt}
           addr={addr} setAddr={(v)=>{setAddr(v); setError('');}}
-          onNext={submitAddress} onBack={()=>setStep(1)} onSkip={skip}
+          onNext={submitAddress} onBack={()=>setStep(2)} onSkip={skip}
           loading={loading} error={error}
         />}
-        {step === 3 && <StepConnect onNext={()=>setStep(4)} onBack={()=>setStep(2)} onSkip={skip}/>}
-        {step === 4 && <StepWaiting onNext={()=>setStep(5)} onBack={()=>setStep(3)} onSkip={skip}/>}
-        {step === 5 && <StepTour onDone={finish}/>}
+        {step === 4 && <StepConnect tt={tt} onNext={()=>setStep(5)} onBack={()=>setStep(3)} onSkip={skip}/>}
+        {step === 5 && <StepWaiting tt={tt} onNext={()=>setStep(6)} onBack={()=>setStep(4)} onSkip={skip}/>}
+        {step === 6 && <StepTour tt={tt} onDone={finish} onBack={()=>setStep(5)}/>}
       </div>
     </div>
   );
