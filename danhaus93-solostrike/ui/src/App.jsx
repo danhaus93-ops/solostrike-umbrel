@@ -15155,15 +15155,15 @@ export default function App() {
     recent: <RecentBlocksPanel tt={tt} netBlocks={poolState?.netBlocks}/>,
     health: <HealthStatusCard tt={tt} onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
     // ── v1.12.0 analytics cards ───────────────────────────────────────────
-    hashwindows: <PoolHashrateWindows pool={poolState?.pool} themeKey={themeId} />,
-    spswindows:  <SpsWindows pool={poolState?.pool} />,
-    connstates:  <ConnectionStates pool={poolState?.pool} />,
-    besttrend:   <BestShareTrend snapshots={poolState?.snapshots} bestHistory={poolState?.shares?.bestHistory} themeKey={themeId} />,
-    effort:      <BlockEffortPanel snapshots={poolState?.snapshots} sharesThisRound={Math.max(0,(poolState?.shares?.accepted||0)-(poolState?._sharesAtLastBlock||0))} networkDifficulty={poolState?.network?.difficulty} />,
-    stability:   <HashrateStability hashrate={poolState?.hashrate} themeKey={themeId} />,
-    rejects:     <RejectTrend shares={poolState?.shares} />,
-    fleeteff:    <FleetEfficiency workers={workers} />,
-    reliability: <PoolReliability pool={poolState?.pool} workers={workers} />,
+    hashwindows: <PoolHashrateWindows tt={tt} pool={poolState?.pool} themeKey={themeId} />,
+    spswindows:  <SpsWindows tt={tt} pool={poolState?.pool} />,
+    connstates:  <ConnectionStates tt={tt} pool={poolState?.pool} workers={workers} />,
+    besttrend:   <BestShareTrend tt={tt} snapshots={poolState?.snapshots} bestHistory={poolState?.shares?.bestHistory} themeKey={themeId} />,
+    effort:      <BlockEffortPanel tt={tt} snapshots={poolState?.snapshots} sharesThisRound={Math.max(0,(poolState?.shares?.accepted||0)-(poolState?._sharesAtLastBlock||0))} networkDifficulty={poolState?.network?.difficulty} />,
+    stability:   <HashrateStability tt={tt} hashrate={poolState?.hashrate} themeKey={themeId} />,
+    rejects:     <RejectTrend tt={tt} shares={poolState?.shares} />,
+    fleeteff:    <FleetEfficiency tt={tt} workers={workers} />,
+    reliability: <PoolReliability tt={tt} pool={poolState?.pool} workers={workers} />,
   };
 
   const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
