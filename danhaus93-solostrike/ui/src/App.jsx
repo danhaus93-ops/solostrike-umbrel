@@ -9312,7 +9312,7 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en', showStamp = true }) {
+const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en', showStamp = true, onRebuild = null }) {
   const tt = useMemo(() => makeTT(lang), [lang]);
   // v1.11.47: re-create constellation cube when theme changes.
   const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
@@ -9587,6 +9587,12 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // This is what fixes a globe that came up blank: poking the draw-loop alone
   // can't help when the renderer itself was never created.
   const rebuildPulse = () => {
+    // Primary path: ask the parent to remount this whole PulsePanel (changes
+    // its React key). That is exactly what the desktop pop-out does to build
+    // the globe — a brand-new instance with fresh refs + all renderer effects
+    // re-run — and it works identically on mobile and desktop. Fallback to the
+    // in-place tick only if no parent callback was provided.
+    if (typeof onRebuild === 'function') { onRebuild(); return; }
     setRebuildTick(t => t + 1);
   };
 
@@ -11770,7 +11776,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       {/* v2.0.x: manual rebuild — placed in the card BODY (outside the canvas)
           so it sits in the card's bottom-right, clear of the globe/mesh and
           their in-canvas corner controls. Forces the active visual to rebuild. */}
-      <div style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
+      <div className="ss-rebuild-row" style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
         <span
           onClick={(e) => { e.stopPropagation(); rebuildPulse(); }}
           role="button"
@@ -11783,7 +11789,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           }}
           aria-label="Rebuild pulse visualization"
           title="Rebuild the globe / mesh"
-        >⟲ rebuild pulse</span>
+        >{tt('⟲ rebuild pulse')}</span>
       </div>
       </div>
       <StampSolo/>
@@ -14510,6 +14516,13 @@ export default function App() {
     savePulseAnim(v);
     setPulseAnim(v);
   }, []);
+  // v2.0.x: "rebuild pulse" remount key. Bumping this changes the PulsePanel's
+  // React key, which destroys + recreates the whole instance — the exact same
+  // fresh-mount the desktop pop-out relies on to build the globe, but triggered
+  // in place so it works on mobile AND desktop. A new instance gets fresh refs
+  // and re-runs every renderer-creation effect from scratch.
+  const [pulseRebuildKey, setPulseRebuildKey] = useState(0);
+  const onPulseRebuild = useCallback(() => setPulseRebuildKey(k => k + 1), []);
   const [huntAnim, setHuntAnim] = useState(() => loadHuntAnim());
   const onHuntAnimChange = useCallback((v) => {
     saveHuntAnim(v);
@@ -15090,12 +15103,14 @@ export default function App() {
       hashrate={poolState?.hashrate?.current||0}
     />,
     pulse: <PulsePanel
+      key={'pulse-'+pulseRebuildKey}
       networkStats={poolState?.networkStats}
       onOpenSettings={()=>setShowSettings(true)}
       onOpenStrikers={()=>setShowStrikers(true)}
       pulseAnim={pulseAnim}
       performanceMode={performanceMode}
       onPulseAnimChange={onPulseAnimChange}
+      onRebuild={onPulseRebuild}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
       lastShareAt={poolState?.shares?.lastShareAt}
