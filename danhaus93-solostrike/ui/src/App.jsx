@@ -205,10 +205,12 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 // min-height resolves to auto when parent height is auto).
 const card = {
   background:
-    /* Hot amber edge along the top (centered, fading out at the sides) */
-    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    /* Hot amber edge along the top (centered, fading out at the sides) —
+       v2.0.x: opacity now scales with --card-chrome so the decorative
+       overlays fade out as the card approaches fully transparent. */
+    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),calc(0.45 * var(--card-chrome,1))) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
     /* Soft inner glow fading from the top edge into the card */
-    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),calc(0.13 * var(--card-chrome,1))) 0%, transparent 70%), ' +
     /* Base vertical fill — v1.11.66: translucent fill driven by the
        --card-fill CSS var (set by the Display → Card Frost slider; falls back
        to 60% = the default frosted look). Mirrors the desktop .panel frost. */
@@ -216,19 +218,19 @@ const card = {
   /* v1.11.66: frosted-glass blur, also slider-driven via --card-blur. */
   backdropFilter: 'blur(var(--card-blur, 7px))',
   WebkitBackdropFilter: 'blur(var(--card-blur, 7px))',
-  border:'1px solid rgba(var(--amber-rgb),0.22)',
+  border:'1px solid rgba(var(--amber-rgb),calc(0.22 * var(--card-chrome,1)))',
   borderRadius:'16px',
   padding:'1.3rem',
   boxShadow:
-    'inset 0 1px 0 rgba(var(--amber-rgb),0.18), '   /* sheen along very top edge */ +
-    'inset 0 0 0 1px rgba(0,0,0,0.4), '       /* dark inner ring (depth) */ +
-    '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
-    '0 0 32px rgba(var(--amber-rgb),0.06)',         /* faint amber halo */
+    'inset 0 1px 0 rgba(var(--amber-rgb),calc(0.18 * var(--card-chrome,1))), '   /* sheen along very top edge */ +
+    'inset 0 0 0 1px rgba(0,0,0,calc(0.4 * var(--card-chrome,1))), '       /* dark inner ring (depth) */ +
+    '0 8px 24px rgba(0,0,0,calc(0.6 * var(--card-chrome,1))), '            /* main drop shadow */ +
+    '0 0 32px rgba(var(--amber-rgb),calc(0.06 * var(--card-chrome,1)))',         /* faint amber halo */
 };
 // v1.11.66: user-adjustable card frost (Display → Card Frost slider).
-// frost 0..100: 0 = fully solid/opaque (no blur), 40 = the default frosted
-// look (60% fill + 7px blur), higher = more transparent + blurrier. Drives the
-// --card-fill / --card-blur CSS vars consumed by the `card` style above.
+// frost 0..100: 0 = fully solid/opaque, 40 = the default frosted look,
+// 100 = fully transparent (clear — fill 0%, blur 0, chrome faded out).
+// Drives --card-fill / --card-blur / --card-chrome consumed by `card` above.
 const SS_CARD_FROST_KEY = 'ss_card_frost';
 const SS_SOLID_CARDS_KEY = 'ss_solid_cards';
 function applyCardFrost(frost, solid) {
@@ -239,13 +241,28 @@ function applyCardFrost(frost, solid) {
   if (solid) {
     root.style.setProperty('--card-fill', '100%');
     root.style.setProperty('--card-blur', '0px');
+    root.style.setProperty('--card-blur-desk', '0px');
+    root.style.setProperty('--card-chrome', '1');
     return;
   }
   const t = Math.max(0, Math.min(100, Number(frost)));
+  // Fill fades linearly: 100% opaque at frost 0 → 0% (fully see-through) at 100.
   const fillPct = (100 - t).toFixed(0) + '%';
-  const blurPx = (t * 0.175).toFixed(2) + 'px';
+  // v2.0.x: MOBILE blur peaks around the mid/frosted range, then eases back
+  // toward 0 as the slider nears the transparent end — so max frost is CLEAR
+  // glass, not a heavy foggy wash. Peak ~9px at frost≈55, →0 at frost 100.
+  const blurPx = (Math.sin(Math.min(t, 100) / 100 * Math.PI) * 9).toFixed(2) + 'px';
+  // v2.0.x: DESKTOP keeps a stronger, steadily-increasing blur (it looked good
+  // before and reads better a touch heavier). Linear ramp, no easing back.
+  const blurDeskPx = (t * 0.22).toFixed(2) + 'px';
+  // v2.0.x: decorative chrome (amber edges, glow, inner ring, shadows) holds at
+  // full strength until ~70, then fades to 0 by 100 so nothing tints the glass
+  // at the fully-transparent end.
+  const chrome = (t <= 70 ? 1 : Math.max(0, (100 - t) / 30)).toFixed(3);
   root.style.setProperty('--card-fill', fillPct);
   root.style.setProperty('--card-blur', blurPx);
+  root.style.setProperty('--card-blur-desk', blurDeskPx);
+  root.style.setProperty('--card-chrome', chrome);
 }
 // Apply the persisted values once at load so cards render correctly before the
 // settings panel is ever opened. Absent values → CSS fallbacks (60% / 7px).
