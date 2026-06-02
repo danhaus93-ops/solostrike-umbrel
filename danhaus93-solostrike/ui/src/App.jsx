@@ -14969,6 +14969,9 @@ export default function App() {
   if (showOnboarding) {
     return (
       <OnboardingWizard
+        tt={tt}
+        lang={lang}
+        onLangChange={onLangChange}
         onComplete={async (data) => {
           await saveConfig(data);
           setShowOnboarding(false);
