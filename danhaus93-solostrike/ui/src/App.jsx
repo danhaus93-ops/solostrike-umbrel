@@ -230,21 +230,32 @@ const card = {
 // look (60% fill + 7px blur), higher = more transparent + blurrier. Drives the
 // --card-fill / --card-blur CSS vars consumed by the `card` style above.
 const SS_CARD_FROST_KEY = 'ss_card_frost';
-function applyCardFrost(frost) {
+const SS_SOLID_CARDS_KEY = 'ss_solid_cards';
+function applyCardFrost(frost, solid) {
   if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  // v1.11.67: solid override — force fully opaque cards (no blur) on both
+  // mobile and desktop, regardless of the frost slider value.
+  if (solid) {
+    root.style.setProperty('--card-fill', '100%');
+    root.style.setProperty('--card-blur', '0px');
+    return;
+  }
   const t = Math.max(0, Math.min(100, Number(frost)));
   const fillPct = (100 - t).toFixed(0) + '%';
   const blurPx = (t * 0.175).toFixed(2) + 'px';
-  const root = document.documentElement;
   root.style.setProperty('--card-fill', fillPct);
   root.style.setProperty('--card-blur', blurPx);
 }
-// Apply the persisted value once at load so cards render correctly before the
-// settings panel is ever opened. Absent value → CSS fallbacks (60% / 7px).
+// Apply the persisted values once at load so cards render correctly before the
+// settings panel is ever opened. Absent values → CSS fallbacks (60% / 7px).
 if (typeof window !== 'undefined') {
   try {
-    const saved = localStorage.getItem(SS_CARD_FROST_KEY);
-    if (saved != null) applyCardFrost(parseFloat(saved));
+    const savedFrost = localStorage.getItem(SS_CARD_FROST_KEY);
+    const savedSolid = localStorage.getItem(SS_SOLID_CARDS_KEY) === '1';
+    if (savedFrost != null || savedSolid) {
+      applyCardFrost(savedFrost != null ? parseFloat(savedFrost) : 40, savedSolid);
+    }
   } catch (e) { /* ignore */ }
 }
 // v1.10.0 Visual polish #6: gradient header underline. Replaces the previous
@@ -6520,7 +6531,7 @@ function RetargetPanel({ retarget }) {
 }
 
 // ── Share stats modal ─────────────────────────────────────────────────────────
-function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, trackingSince }) {
+function ShareStatsModal({ tt = (x) => x, shares, workers, aliases, onClose, onWorkerSelect, trackingSince }) {
   const s = shares || {};
   const reasons = s.rejectReasons || {};
 
@@ -6740,7 +6751,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
 }
 
 // ── Share Stats card ──────────────────────────────────────────────────────────
-function ShareStats({ shares, hashrate, bestshare, onOpen }) {
+function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
   const s = shares || {};
   const workAccepted = s.accepted || 0;
   const workRejected = s.rejected || 0;
@@ -6814,7 +6825,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
 }
 
 // ── Top Miners (best share leaderboard) ──────────────────────────────────────
-function BestShareLeaderboard({ workers, poolBest, aliases }) {
+function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
@@ -6852,7 +6863,7 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
 }
 
 // ── Top Finders ────────────────────────────────────────────────────────────────
-function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
+function TopFindersPanel({ tt = (x) => x, topFinders, netBlocks, compact = false }) {
   const list = topFinders || [];
   const totalSample = (netBlocks||[]).length;
   if (!list.length) return null;
@@ -6890,7 +6901,7 @@ function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
 }
 
 // ── Block feed (our strikes) ──────────────────────────────────────────────────
-function BlockFeed({ blocks, blockAlert, compact = false }) {
+function BlockFeed({ tt = (x) => x, blocks, blockAlert, compact = false }) {
   const inner = (
     <>
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center', color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>
@@ -6926,7 +6937,7 @@ function BlockFeed({ blocks, blockAlert, compact = false }) {
 }
 
 // ── Recent network blocks ─────────────────────────────────────────────────────
-function RecentBlocksPanel({ netBlocks }) {
+function RecentBlocksPanel({ tt = (x) => x, netBlocks }) {
   const list = netBlocks || [];
   if (!list.length) return null;
   return (
@@ -6968,7 +6979,7 @@ function Confetti() {
     <div key={p.id} style={{position:'absolute', top:'-20px', left:`${p.left}%`, width:6, height:14, background:p.color, animation:`confettiFall ${p.duration}s ${p.delay}s linear forwards`, transform:'rotate(0deg)'}}/>
   ))}</div>;
 }
-function BlockAlert({ show, block, onDismiss }) {
+function BlockAlert({ tt = (x) => x, show, block, onDismiss }) {
   if (!show||!block) return null;
   return (
     <>
@@ -6987,7 +6998,7 @@ function BlockAlert({ show, block, onDismiss }) {
 }
 
 // ── Setup Form ────────────────────────────────────────────────────────────────
-function SetupForm({ saveConfig }) {
+function SetupForm({ tt = (x) => x, saveConfig }) {
   const [a, setA] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -7023,7 +7034,7 @@ function SetupForm({ saveConfig }) {
 // every 5s. Six indicator rows: containers, api, persistence, ckpool, zmq, disk.
 // Headline state aggregates: ALL SYSTEMS GO / MINOR ISSUES / DEGRADED.
 // Tap card → opens HealthDetailModal with full diagnostic info.
-function HealthStatusCard({ onOpen }) {
+function HealthStatusCard({ tt = (x) => x, onOpen }) {
   const [health, setHealth] = useState(null);
   const [errored, setErrored] = useState(false);
   // v1.11.9: track in-flight AbortController so we can kill zombie fetches.
@@ -7208,7 +7219,7 @@ function HealthStatusCard({ onOpen }) {
 
 // ── System Health Detail Modal (v1.8.4) ───────────────────────────────────────
 // Pattern matches existing ShareStatsModal (fixed-overlay, click-outside-to-close).
-function HealthDetailModal({ initialHealth, onClose }) {
+function HealthDetailModal({ tt = (x) => x, initialHealth, onClose }) {
   const [health, setHealth] = useState(initialHealth);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -7506,7 +7517,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           <WebhooksTab tt={tt}/>
         )}
         {tab==='debug' && (
-          <DebugTab settings={debugSettings} onSettingsChange={onDebugSettingsChange}/>
+          <DebugTab tt={tt} settings={debugSettings} onSettingsChange={onDebugSettingsChange}/>
         )}
       </div>
     </div>
@@ -7579,10 +7590,20 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
     try { const s = localStorage.getItem(SS_CARD_FROST_KEY); return s != null ? parseFloat(s) : 40; }
     catch (e) { return 40; }
   });
+  // v1.11.67: solid-cards override. When on, cards are fully opaque (no
+  // see-through background) on both mobile and desktop, ignoring the slider.
+  const [solidCards, setSolidCards] = useState(() => {
+    try { return localStorage.getItem(SS_SOLID_CARDS_KEY) === '1'; } catch (e) { return false; }
+  });
   const changeFrost = (v) => {
     setFrost(v);
-    applyCardFrost(v);
+    applyCardFrost(v, solidCards);
     try { localStorage.setItem(SS_CARD_FROST_KEY, String(v)); } catch (e) { /* ignore */ }
+  };
+  const changeSolid = (on) => {
+    setSolidCards(on);
+    applyCardFrost(frost, on);
+    try { localStorage.setItem(SS_SOLID_CARDS_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
   };
   const toggleCard = (id) => {
     const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
@@ -7629,15 +7650,26 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
     <>
       <div style={firstSectionTitle}>▸ {tt('Card Frost')}</div>
       <div style={{padding:'0.75rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.9rem'}}>
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
-          <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)'}}>{frost <= 0 ? tt('Solid (off)') : tt('Frosted')}</span>
-          <span style={{fontFamily:'var(--fd)', fontSize:'0.8rem', fontWeight:700, color:'var(--amber)'}}>{Math.round(frost)}</span>
+        <div style={{opacity: solidCards ? 0.4 : 1, pointerEvents: solidCards ? 'none' : 'auto', transition:'opacity 0.15s'}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
+            <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)'}}>{frost <= 0 ? tt('Solid (off)') : tt('Frosted')}</span>
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.8rem', fontWeight:700, color:'var(--amber)'}}>{Math.round(frost)}</span>
+          </div>
+          <input type="range" min="0" max="100" step="1" value={frost} disabled={solidCards}
+            onChange={(e)=>changeFrost(parseFloat(e.target.value))}
+            style={{width:'100%', accentColor:'var(--amber)', cursor:'pointer', height:6}}/>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.5, marginTop:6}}>
+            {tt('Adjusts the frosted-glass transparency of cards. Drag to 0 for solid, opaque cards.')}
+          </div>
         </div>
-        <input type="range" min="0" max="100" step="1" value={frost}
-          onChange={(e)=>changeFrost(parseFloat(e.target.value))}
-          style={{width:'100%', accentColor:'var(--amber)', cursor:'pointer', height:6}}/>
-        <div style={{fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.5, marginTop:6}}>
-          {tt('Adjusts the frosted-glass transparency of cards. Drag to 0 for solid, opaque cards.')}
+        <div onClick={()=>changeSolid(!solidCards)} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.75rem', marginTop:12, paddingTop:12, borderTop:'1px solid var(--border)', cursor:'pointer'}}>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.74rem', color: solidCards?'var(--amber)':'var(--text-1)', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase'}}>{tt('Solid Cards')}</div>
+            <div style={{fontFamily:'var(--fm)', fontSize:'0.64rem', color:'var(--text-2)', lineHeight:1.5, marginTop:3}}>{tt('Turns off the see-through background and makes all cards fully solid — mobile and desktop.')}</div>
+          </div>
+          <div style={{flexShrink:0, width:40, height:23, borderRadius:12, background: solidCards?'var(--amber)':'var(--border)', position:'relative', transition:'background 0.15s'}}>
+            <div style={{position:'absolute', top:2, left: solidCards?19:2, width:19, height:19, borderRadius:'50%', background:'#000', transition:'left 0.15s'}}/>
+          </div>
         </div>
       </div>
       <div style={firstSectionTitle}>▸ {tt('Minimal Mode')}</div>
@@ -11737,11 +11769,11 @@ PulsePanel.displayName = "PulsePanel";
 // Stacks Claim Jumpers (top — pool find counts) with Gold Strikes (bottom —
 // our own found blocks). Both sections render compact (no outer card wrapper,
 // smaller padding/font, internal scroll caps). Section names preserved.
-function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
+function JumpersPanel({ tt = (x) => x, topFinders, netBlocks, blocks, blockAlert }) {
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       {/* Claim Jumpers section (top) */}
-      <TopFindersPanel topFinders={topFinders} netBlocks={netBlocks} compact />
+      <TopFindersPanel tt={tt} topFinders={topFinders} netBlocks={netBlocks} compact />
 
       {/* Divider */}
       <div style={{
@@ -11751,7 +11783,7 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
       }}/>
 
       {/* Gold Strikes section (bottom) */}
-      <BlockFeed blocks={blocks} blockAlert={blockAlert} compact />
+      <BlockFeed tt={tt} blocks={blocks} blockAlert={blockAlert} compact />
       <div style={{flex:1,minHeight:0}}/>
     </div>
   );
@@ -11761,7 +11793,7 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
 // Shows every Striker (anonymous SoloStrike operator) currently on the network.
 // You're pinned at the top, then everyone else by hashrate descending.
 // Outlier-filtered peers hidden by default; toggle reveals them.
-function StrikersModal({ networkStats, onClose }) {
+function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   const [showFiltered, setShowFiltered] = useState(false);
 
   // v1.11.2: ENGAGEMENT FEATURES
@@ -12749,7 +12781,7 @@ function StrikersModal({ networkStats, onClose }) {
 //   blocks-to-X-percent = log(1-X) / log(1-p)
 // Bitcoin produces 1 block per 10 minutes on average, so:
 //   days-to-X-percent = (blocks * 10) / (60 * 24)
-function ReckoningModal({ poolState, currency, onClose }) {
+function ReckoningModal({ tt = (x) => x, poolState, currency, onClose }) {
   const baseHash = poolState?.hashrate?.current || 0;
   const netHash = poolState?.network?.hashrate || 0;
 // blockReward is an object { subsidyBtc, feesBtc, totalBtc, totalSats } — use totalBtc
@@ -13453,7 +13485,7 @@ function WebhooksTab({tt=(x)=>x}) {
 // across reloads. The "Copy snapshot" button reads from window._ssDebugSnapshot
 // — populated by DebugOverlay on every update tick — and serializes it for
 // pasting into a chat or bug report.
-function DebugTab({ settings, onSettingsChange }) {
+function DebugTab({ tt = (x) => x, settings, onSettingsChange }) {
   const [copied, setCopied] = useState(false);
 
   // rev70b: Toggle is always interactive. Two reasons:
@@ -14950,7 +14982,7 @@ export default function App() {
     return (
       <>
         <Header connected={connected} status="setup" onSettings={()=>setShowSettings(true)} privateMode={!!poolState.privateMode} minimalMode={minimalMode} performanceMode={performanceMode} zmq={poolState?.zmq}/>
-        <SetupForm saveConfig={saveConfig}/>
+        <SetupForm tt={tt} saveConfig={saveConfig}/>
         {showSettings && (
           <SettingsModal
             onClose={()=>setShowSettings(false)}
@@ -15026,17 +15058,17 @@ export default function App() {
     hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
-    shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
-    best: <BestShareLeaderboard workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
+    shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
+    best: <BestShareLeaderboard tt={tt} workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
     closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
-    jumpers: <JumpersPanel
+    jumpers: <JumpersPanel tt={tt}
       topFinders={poolState?.topFinders}
       netBlocks={poolState?.netBlocks}
       blocks={poolState?.blocks}
       blockAlert={blockAlert}
     />,
-    recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
-    health: <HealthStatusCard onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
+    recent: <RecentBlocksPanel tt={tt} netBlocks={poolState?.netBlocks}/>,
+    health: <HealthStatusCard tt={tt} onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
     // ── v1.12.0 analytics cards ───────────────────────────────────────────
     hashwindows: <PoolHashrateWindows pool={poolState?.pool} themeKey={themeId} />,
     spswindows:  <SpsWindows pool={poolState?.pool} />,
@@ -15186,7 +15218,7 @@ export default function App() {
       </footer>
       )}
 
-      <BlockAlert show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
+      <BlockAlert tt={tt} show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
       <OfflineToasts workers={workers} aliases={aliases}/>
       <HotMinerBanner workers={workers} aliases={aliases}/>
       {selectedWorker && (
@@ -15195,24 +15227,24 @@ export default function App() {
           notes={notes} onNotesChange={onNotesChange}/>
       )}
         {showShareStats && (
-        <ShareStatsModal shares={poolState?.shares} workers={workers} aliases={aliases}
+        <ShareStatsModal tt={tt} shares={poolState?.shares} workers={workers} aliases={aliases}
           onClose={()=>setShowShareStats(false)} onWorkerSelect={setSelectedWorker}
           trackingSince={poolState?.shareStatsStartedAt}/>
       )}
        {showStrikers && (
-        <StrikersModal
+        <StrikersModal tt={tt}
           networkStats={poolState?.networkStats}
           onClose={()=>setShowStrikers(false)}/>
       )}
       {showReckoning && (
-        <ReckoningModal
+        <ReckoningModal tt={tt}
           poolState={poolState}
           currency={currency}
           onClose={()=>setShowReckoning(false)}/>
       )}
 
       {healthDetailSnapshot && (
-        <HealthDetailModal
+        <HealthDetailModal tt={tt}
           initialHealth={healthDetailSnapshot}
           onClose={()=>setHealthDetailSnapshot(null)}/>
       )}
