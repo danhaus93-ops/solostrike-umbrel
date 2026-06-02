@@ -15,7 +15,7 @@
   --glow-a:0 0 24px rgba(245,166,35,0.25);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-height:100vh;overflow-x:hidden;
+body{font-family:var(--fm);background:transparent;color:var(--text-1);min-height:100vh;overflow-x:hidden;
   /* rev63 premium pass — body bg painted behind the animated canvas as
      a fallback for browsers without WebGL. The canvas (z-index:-1 fixed)
      paints over it when GL is available. The radial gradient stays as a
@@ -32,6 +32,10 @@ body{font-family:var(--fm);background:var(--bg-void);color:var(--text-1);min-hei
 /* rev63 premium pass — animated WebGL bg canvas. Mounted by main.jsx as
    a sibling of #root, fixed full-viewport, behind every other element.
    pointer-events:none so taps pass straight through to UI underneath. */
+/* rev63 fix — fallback base color lives on <html> (below the canvas).
+   body is transparent so the z-index:-1 animated canvas shows through;
+   html keeps a solid color for browsers without WebGL (canvas renders nothing). */
+html{background:var(--bg-void)}
 #ss-animated-bg{
   position:fixed;
   inset:0;
