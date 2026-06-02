@@ -209,8 +209,13 @@ const card = {
     'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
     /* Soft inner glow fading from the top edge into the card */
     'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
-    /* Base vertical fill */
-    'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
+    /* Base vertical fill — v1.11.66: translucent fill driven by the
+       --card-fill CSS var (set by the Display → Card Frost slider; falls back
+       to 60% = the default frosted look). Mirrors the desktop .panel frost. */
+    'linear-gradient(180deg, color-mix(in srgb, var(--bg-raised) var(--card-fill, 60%), transparent) 0%, color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent) 100%)',
+  /* v1.11.66: frosted-glass blur, also slider-driven via --card-blur. */
+  backdropFilter: 'blur(var(--card-blur, 7px))',
+  WebkitBackdropFilter: 'blur(var(--card-blur, 7px))',
   border:'1px solid rgba(var(--amber-rgb),0.22)',
   borderRadius:'16px',
   padding:'1.3rem',
@@ -220,6 +225,39 @@ const card = {
     '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
     '0 0 32px rgba(var(--amber-rgb),0.06)',         /* faint amber halo */
 };
+// v1.11.66: user-adjustable card frost (Display → Card Frost slider).
+// frost 0..100: 0 = fully solid/opaque (no blur), 40 = the default frosted
+// look (60% fill + 7px blur), higher = more transparent + blurrier. Drives the
+// --card-fill / --card-blur CSS vars consumed by the `card` style above.
+const SS_CARD_FROST_KEY = 'ss_card_frost';
+const SS_SOLID_CARDS_KEY = 'ss_solid_cards';
+function applyCardFrost(frost, solid) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  // v1.11.67: solid override — force fully opaque cards (no blur) on both
+  // mobile and desktop, regardless of the frost slider value.
+  if (solid) {
+    root.style.setProperty('--card-fill', '100%');
+    root.style.setProperty('--card-blur', '0px');
+    return;
+  }
+  const t = Math.max(0, Math.min(100, Number(frost)));
+  const fillPct = (100 - t).toFixed(0) + '%';
+  const blurPx = (t * 0.175).toFixed(2) + 'px';
+  root.style.setProperty('--card-fill', fillPct);
+  root.style.setProperty('--card-blur', blurPx);
+}
+// Apply the persisted values once at load so cards render correctly before the
+// settings panel is ever opened. Absent values → CSS fallbacks (60% / 7px).
+if (typeof window !== 'undefined') {
+  try {
+    const savedFrost = localStorage.getItem(SS_CARD_FROST_KEY);
+    const savedSolid = localStorage.getItem(SS_SOLID_CARDS_KEY) === '1';
+    if (savedFrost != null || savedSolid) {
+      applyCardFrost(savedFrost != null ? parseFloat(savedFrost) : 40, savedSolid);
+    }
+  } catch (e) { /* ignore */ }
+}
 // v1.10.0 Visual polish #6: gradient header underline. Replaces the previous
 // flat marginBottom-only style with a fading amber-to-transparent line drawn
 // at the bottom of every section title via background-image (since inline
@@ -3563,7 +3601,10 @@ function NonceField({ hashrate, huntAnim, performanceMode }) {
       height: '100%',
       flex: '1 1 auto',
       minHeight: 130,
-      maxHeight: 280,
+      // v1.11.x: on desktop (≥600px) the parent panel is height-bounded, so the
+      // canvas can safely fill all space down to the Block Reward box. The 280
+      // cap only matters on mobile vertical-scroll where the parent is unbounded.
+      maxHeight: (typeof window !== 'undefined' && window.matchMedia('(min-width: 600px)').matches) ? 9999 : 280,
       position: 'relative',
       overflow: 'hidden',
       // v1.8.5-rev70e: bg transparent so Hunt animations composite onto
@@ -6490,7 +6531,7 @@ function RetargetPanel({ retarget }) {
 }
 
 // ── Share stats modal ─────────────────────────────────────────────────────────
-function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, trackingSince }) {
+function ShareStatsModal({ tt = (x) => x, shares, workers, aliases, onClose, onWorkerSelect, trackingSince }) {
   const s = shares || {};
   const reasons = s.rejectReasons || {};
 
@@ -6547,7 +6588,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📊</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>Share Diagnostics</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('Share Diagnostics')}</span>
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
         </div>
@@ -6555,16 +6596,16 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
         <div style={{padding:'1rem 1.25rem'}}>
 
           <div style={section}>
-            <div style={secTitle}>▸ Pool Share Health</div>
+            <div style={secTitle}>{tt('▸ Pool Share Health')}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem',marginBottom:'0.5rem'}}>
-              <div style={heroBox}><div style={heroLbl}>Accepted</div><div style={{...heroVal,color:'var(--green)'}}>{fmtNum(totalAccepted)}</div></div>
-              <div style={heroBox}><div style={heroLbl}>Rejected</div><div style={{...heroVal,color:totalRejected>0?'var(--red)':'var(--text-2)'}}>{fmtNum(totalRejected)}</div></div>
-              <div style={heroBox}><div style={heroLbl}>Stale</div><div style={{...heroVal,color:totalStale>0?'var(--amber)':'var(--text-2)'}}>{fmtNum(totalStale)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>{tt('Accepted')}</div><div style={{...heroVal,color:'var(--green)'}}>{fmtNum(totalAccepted)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>{tt('Rejected')}</div><div style={{...heroVal,color:totalRejected>0?'var(--red)':'var(--text-2)'}}>{fmtNum(totalRejected)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>{tt('Stale')}</div><div style={{...heroVal,color:totalStale>0?'var(--amber)':'var(--text-2)'}}>{fmtNum(totalStale)}</div></div>
             </div>
-            <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:health(acceptPct)}}>{acceptPct.toFixed(3)}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Reject Rate</span><span style={{...kvVal,color:rejectPct<0.5?'var(--text-2)':'var(--red)'}}>{rejectPct.toFixed(3)}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Stale Rate</span><span style={{...kvVal,color:stalePct<0.5?'var(--text-2)':'var(--amber)'}}>{stalePct.toFixed(3)}%</span></div>
-            <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(bestSdiff)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Accept Rate')}</span><span style={{...kvVal,color:health(acceptPct)}}>{acceptPct.toFixed(3)}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Reject Rate')}</span><span style={{...kvVal,color:rejectPct<0.5?'var(--text-2)':'var(--red)'}}>{rejectPct.toFixed(3)}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Stale Rate')}</span><span style={{...kvVal,color:stalePct<0.5?'var(--text-2)':'var(--amber)'}}>{stalePct.toFixed(3)}%</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Best Share (session)')}</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(bestSdiff)}</span></div>
             {/* iter27d: extended diagnostics — session start, avg diff, last share, implied HR */}
             {(() => {
               // Session started — same trackingSince used in the footer text below
@@ -6616,26 +6657,26 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
               return (
                 <>
                   <div style={kvRow}>
-                    <span style={kvLabel}>Avg Share Difficulty</span>
+                    <span style={kvLabel}>{tt('Avg Share Difficulty')}</span>
                     <span style={{...kvVal,color:'var(--cyan)'}}>{avgDiffLabel}</span>
                   </div>
                   <div style={kvRow}>
-                    <span style={kvLabel}>Last Share (pool)</span>
+                    <span style={kvLabel}>{tt('Last Share (pool)')}</span>
                     <span style={{...kvVal,color:lastShareColor}}>{lastShareLabel}</span>
                   </div>
                   <div style={kvRow}>
-                    <span style={kvLabel}>Implied Hashrate</span>
+                    <span style={kvLabel}>{tt('Implied Hashrate')}</span>
                     <span style={{...kvVal,color:matchColor}}>{matchLabel}</span>
                   </div>
                   <div style={kvRow}>
-                    <span style={kvLabel}>Session Started</span>
+                    <span style={kvLabel}>{tt('Session Started')}</span>
                     <span style={{...kvVal,color:'var(--text-2)',fontSize:'0.62rem'}}>{sessLabel}</span>
                   </div>
                 </>
               );
             })()}
             <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              {trackingSince ? <>Tracking since <span style={{color:'var(--amber)'}}>{new Date(trackingSince).toLocaleDateString(undefined,{month:'short',day:'numeric'})} {new Date(trackingSince).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>. Persists across restarts.</> : <>Session totals since share-watcher started. Persists across restarts.</>}
+              {trackingSince ? <>{tt('Tracking since')} <span style={{color:'var(--amber)'}}>{new Date(trackingSince).toLocaleDateString(undefined,{month:'short',day:'numeric'})} {new Date(trackingSince).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>{tt('. Persists across restarts.')}</> : <>{tt('Session totals since share-watcher started. Persists across restarts.')}</>}
             </div>
             <div style={{display:'flex',justifyContent:'flex-end',marginTop:'0.6rem'}}>
               <button onClick={()=>{
@@ -6644,15 +6685,15 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
                   .then(r=>r.json())
                   .then(d=>{ if(d.error) throw new Error(d.error); onClose && onClose(); })
                   .catch(e=>window.alert('Reset failed: '+e.message));
-              }} style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',padding:'6px 12px',cursor:'pointer',textTransform:'uppercase'}}>⟲ Reset Session Stats</button>
+              }} style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',padding:'6px 12px',cursor:'pointer',textTransform:'uppercase'}}>{tt('⟲ Reset Session Stats')}</button>
             </div>
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Reject Reasons</div>
+            <div style={secTitle}>{tt('▸ Reject Reasons')}</div>
             {reasonRows.length === 0 ? (
               <div style={{textAlign:'center',padding:'1rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>
-                No rejects yet ✓
+                {tt('No rejects yet ✓')}
               </div>
             ) : (
               reasonRows.map(([reason, count]) => (
@@ -6663,7 +6704,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
               ))
             )}
             <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              <span style={{color:'var(--amber)'}}>amber</span> = stale/latency · <span style={{color:'var(--red)'}}>red</span> = hardware/config · <span style={{color:'var(--text-2)'}}>grey</span> = rare
+              <span style={{color:'var(--amber)'}}>{tt('amber')}</span> = stale/latency · <span style={{color:'var(--red)'}}>{tt('red')}</span> = hardware/config · <span style={{color:'var(--text-2)'}}>{tt('grey')}</span> = rare
             </div>
           </div>
 
@@ -6671,7 +6712,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
             <div style={secTitle}>▸ Per-Worker Health ({workerRows.length})</div>
             {workerRows.length === 0 ? (
               <div style={{textAlign:'center',padding:'1rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>
-                Gathering data…
+                {tt('Gathering data…')}
               </div>
             ) : (
               workerRows.map(({worker, se, tot, ar}) => (
@@ -6699,7 +6740,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
               ))
             )}
             <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem',lineHeight:1.4}}>
-              Sorted by accept rate (worst first). Tap a worker for full details.
+              {tt('Sorted by accept rate (worst first). Tap a worker for full details.')}
             </div>
           </div>
 
@@ -6710,7 +6751,7 @@ function ShareStatsModal({ shares, workers, aliases, onClose, onWorkerSelect, tr
 }
 
 // ── Share Stats card ──────────────────────────────────────────────────────────
-function ShareStats({ shares, hashrate, bestshare, onOpen }) {
+function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
   const s = shares || {};
   const workAccepted = s.accepted || 0;
   const workRejected = s.rejected || 0;
@@ -6732,16 +6773,16 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
   return (
     <div onClick={onOpen} style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', cursor: onOpen ? 'pointer' : 'default', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       <div style={{...cardTitle, color:'var(--amber)', display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
-        <span>▸ Share Stats</span>
-        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>
+        <span>{tt('▸ Share Stats')}</span>
+        <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>{tt('⬇ CSV')}</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Accepted Work</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Accepted Work')}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-2)',marginTop:6}}>
-            {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> rejected</>}
-       <> · <span style={{color:stale>0?'var(--amber)':'var(--text-2)'}}>{fmtDiff(stale)}</span> stale</>
+            {workRejected>0 && <><span style={{color:'var(--red)'}}>{fmtDiff(workRejected)}</span> {tt('rejected')}</>}
+       <> · <span style={{color:stale>0?'var(--amber)':'var(--text-2)'}}>{fmtDiff(stale)}</span> {tt('stale')}</>
           </div>
         </div>
         {/* iter26: Reject Rate top-line + lifetime share counter */}
@@ -6749,7 +6790,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem'}}>
             {rejectPct !== null && (
               <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Reject Rate</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>{tt('Reject Rate')}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {rejectPct < 0.001 ? rejectPct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(rejectPct)) + 1))) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
                 </div>
@@ -6757,7 +6798,7 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
             )}
             {lifeAccepted > 0 && (
               <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
-                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>Lifetime Shares</div>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>{tt('Lifetime Shares')}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {fmtNum(lifeAccepted)}
                 </div>
@@ -6766,15 +6807,15 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
           </div>
         )}
         <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
-          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>Best Difficulty</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>all-time</span></div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Best Difficulty')}</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('all-time')}</span></div>
         </div>
         <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
           <span>{spsLabel}</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
         </div>
         {onOpen && (
           <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.15em',color:'var(--cyan)',textTransform:'uppercase',textAlign:'center',paddingTop:4,borderTop:'1px dashed var(--border)',marginTop:2}}>
-            Tap for diagnostics ↗
+            {tt('Tap for diagnostics ↗')}
           </div>
         )}
       </div>
@@ -6784,13 +6825,13 @@ function ShareStats({ shares, hashrate, bestshare, onOpen }) {
 }
 
 // ── Top Miners (best share leaderboard) ──────────────────────────────────────
-function BestShareLeaderboard({ workers, poolBest, aliases }) {
+function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ Top Miners — Best Difficulties</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ Top Miners — Best Difficulties')}</div>
       {sorted.length === 0 ? (
-        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>No shares submitted yet<br/><span style={{color:'var(--amber)',fontSize:'0.65rem',display:'inline-flex',alignItems:'center',gap:4}}>Keep mining <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.85rem',height:'0.85rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
+        <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>{tt('No shares submitted yet')}<br/><span style={{color:'var(--amber)',fontSize:'0.65rem',display:'inline-flex',alignItems:'center',gap:4}}>{tt('Keep mining')} <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.85rem',height:'0.85rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
           {sorted.map((w, i) => {
@@ -6812,7 +6853,7 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
             );
           })}
           <div style={{...statRow,marginTop:'0.4rem',borderColor:'var(--border-hot)',flexShrink:0}}>
-            <span style={label}>Pool Best</span>
+            <span style={label}>{tt('Pool Best')}</span>
             <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',textShadow:'0 0 8px rgba(var(--amber-rgb),0.4)'}}>{fmtDiff(poolBest || 0)}</span>
           </div>
         </div>
@@ -6822,14 +6863,14 @@ function BestShareLeaderboard({ workers, poolBest, aliases }) {
 }
 
 // ── Top Finders ────────────────────────────────────────────────────────────────
-function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
+function TopFindersPanel({ tt = (x) => x, topFinders, netBlocks, compact = false }) {
   const list = topFinders || [];
   const totalSample = (netBlocks||[]).length;
   if (!list.length) return null;
   const maxCount = list[0]?.count || 1;
   const inner = (
     <>
-      <div style={{...cardTitle, color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>▸ Claim Jumpers — Latest Strikes</div>
+      <div style={{...cardTitle, color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>{tt('▸ Claim Jumpers — Latest Strikes')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem', maxHeight: compact ? 180 : undefined, overflowY: compact ? 'auto' : undefined}}>
         {list.map((p,i)=>{
           const pct = (p.count/maxCount)*100;
@@ -6840,7 +6881,7 @@ function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
               <div style={{position:'relative',display:'flex',alignItems:'center',gap:'0.6rem'}}>
                 <span style={{fontFamily:'var(--fd)',fontSize:'0.65rem',fontWeight:700,color:i===0?'var(--cyan)':'var(--text-2)',width:18, flexShrink:0}}>#{i+1}</span>
                 <div style={{flex:1,minWidth:0,fontFamily:'var(--fd)',fontSize: compact ? '0.66rem' : '0.72rem',color,letterSpacing:'0.05em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textTransform:'uppercase'}}>
-                  {p.name}{p.isSolo && <span style={{fontSize:'0.5rem',color:'var(--amber)',marginLeft:6,border:'1px solid var(--amber)',padding:'0 4px'}}>SOLO</span>}
+                  {p.name}{p.isSolo && <span style={{fontSize:'0.5rem',color:'var(--amber)',marginLeft:6,border:'1px solid var(--amber)',padding:'0 4px'}}>{tt('SOLO')}</span>}
                 </div>
                 <span style={{fontFamily:'var(--fd)',fontSize: compact ? '0.78rem' : '0.85rem',fontWeight:700,color, flexShrink:0}}>{p.count}</span>
               </div>
@@ -6860,15 +6901,15 @@ function TopFindersPanel({ topFinders, netBlocks, compact = false }) {
 }
 
 // ── Block feed (our strikes) ──────────────────────────────────────────────────
-function BlockFeed({ blocks, blockAlert, compact = false }) {
+function BlockFeed({ tt = (x) => x, blocks, blockAlert, compact = false }) {
   const inner = (
     <>
       <div style={{...cardTitle,display:'flex',justifyContent:'space-between',alignItems:'center', color:'var(--amber)', marginBottom: compact ? '0.4rem' : undefined}}>
         <span>▸ Solo Strikes — {(blocks||[]).length} total</span>
-        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>⬇ CSV</a>}
+        {(blocks||[]).length>0 && <a href="/api/export/blocks.csv" download style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>{tt('⬇ CSV')}</a>}
       </div>
       {!(blocks||[]).length?(
-        <div style={{textAlign:'center',padding: compact ? '0.9rem' : '1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>No block hit yet.<br/><span style={{color:'var(--amber)',fontSize:'0.68rem',display:'inline-flex',alignItems:'center',gap:4}}>Keep mining <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.9rem',height:'0.9rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
+        <div style={{textAlign:'center',padding: compact ? '0.9rem' : '1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)'}}>{tt('No block hit yet.')}<br/><span style={{color:'var(--amber)',fontSize:'0.68rem',display:'inline-flex',alignItems:'center',gap:4}}>{tt('Keep mining')} <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.9rem',height:'0.9rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
       ):(
         <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',maxHeight: compact ? 140 : 240,overflowY:'auto'}}>
           {blocks.map((b,i)=>(
@@ -6896,12 +6937,12 @@ function BlockFeed({ blocks, blockAlert, compact = false }) {
 }
 
 // ── Recent network blocks ─────────────────────────────────────────────────────
-function RecentBlocksPanel({ netBlocks }) {
+function RecentBlocksPanel({ tt = (x) => x, netBlocks }) {
   const list = netBlocks || [];
   if (!list.length) return null;
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ The Ledger — Solo Winners ⚡</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ The Ledger — Solo Winners ⚡')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
           <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(var(--amber-rgb),0.12)':'none', minWidth:0}}>
@@ -6910,7 +6951,7 @@ function RecentBlocksPanel({ netBlocks }) {
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:600,color:b.isSolo?'var(--amber)':'var(--text-1)'}}>#{fmtNum(b.height)}</span>
                 <span style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',color:b.isSolo?'var(--amber)':'var(--text-2)',textTransform:'uppercase'}}>{b.pool}</span>
-                {b.isSolo && <span style={{fontFamily:'var(--fd)',fontSize:'0.52rem',color:'var(--amber)',border:'1px solid var(--amber)',padding:'1px 5px',letterSpacing:'0.12em'}}>SOLO</span>}
+                {b.isSolo && <span style={{fontFamily:'var(--fd)',fontSize:'0.52rem',color:'var(--amber)',border:'1px solid var(--amber)',padding:'1px 5px',letterSpacing:'0.12em'}}>{tt('SOLO')}</span>}
               </div>
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:2}}>
                 {fmtNum(b.tx_count||0)} tx · {blockTimeAgo(b.timestamp)}
@@ -6938,7 +6979,7 @@ function Confetti() {
     <div key={p.id} style={{position:'absolute', top:'-20px', left:`${p.left}%`, width:6, height:14, background:p.color, animation:`confettiFall ${p.duration}s ${p.delay}s linear forwards`, transform:'rotate(0deg)'}}/>
   ))}</div>;
 }
-function BlockAlert({ show, block, onDismiss }) {
+function BlockAlert({ tt = (x) => x, show, block, onDismiss }) {
   if (!show||!block) return null;
   return (
     <>
@@ -6946,10 +6987,10 @@ function BlockAlert({ show, block, onDismiss }) {
       <div onClick={onDismiss} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',cursor:'pointer'}}>
         <div style={{textAlign:'center',background:'var(--bg-elevated, #15161a)',border:'1px solid var(--amber)',padding:'2.4rem 2rem',maxWidth:420,boxShadow:'0 0 50px rgba(var(--amber-rgb),0.5)'}}>
           <div style={{fontSize:60,animation:'pulse 1.2s infinite',willChange:'opacity'}}>⚡</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>BLOCK STRUCK!</div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em',marginTop:14,textShadow:'0 0 25px var(--amber)'}}>{tt('BLOCK STRUCK!')}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'1.05rem',color:'var(--text-1)',marginTop:8}}>Block #{fmtNum(block.height||0)}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'1.4rem',color:'var(--green)',fontWeight:700,marginTop:14,textShadow:'0 0 14px rgba(57,255,106,0.45)'}}>+{(block.reward||0).toFixed(3)} BTC</div>
-          <div style={{fontSize:'0.7rem',color:'var(--text-2)',marginTop:14,fontFamily:'var(--fd)',letterSpacing:'0.1em'}}>tap to dismiss</div>
+          <div style={{fontSize:'0.7rem',color:'var(--text-2)',marginTop:14,fontFamily:'var(--fd)',letterSpacing:'0.1em'}}>{tt('tap to dismiss')}</div>
         </div>
       </div>
     </>
@@ -6957,7 +6998,7 @@ function BlockAlert({ show, block, onDismiss }) {
 }
 
 // ── Setup Form ────────────────────────────────────────────────────────────────
-function SetupForm({ saveConfig }) {
+function SetupForm({ tt = (x) => x, saveConfig }) {
   const [a, setA] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -6975,9 +7016,9 @@ function SetupForm({ saveConfig }) {
           <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1.2rem', height:'1.2rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.5))', flexShrink:0}}/>
           SoloStrike Setup
         </h2>
-        <p style={{color:'var(--text-2)', fontSize:'0.78rem', marginTop:8, lineHeight:1.5}}>Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.</p>
-        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginTop:18, marginBottom:6}}>Bitcoin Payout Address</label>
-        <input type="text" value={a} onChange={e=>setA(e.target.value)} placeholder="bc1q..."
+        <p style={{color:'var(--text-2)', fontSize:'0.78rem', marginTop:8, lineHeight:1.5}}>{tt("Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.")}</p>
+        <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginTop:18, marginBottom:6}}>{tt('Bitcoin Payout Address')}</label>
+        <input type="text" value={a} onChange={e=>setA(e.target.value)} placeholder={tt("bc1q...")}
           style={{width:'100%',padding:'0.7rem',background:'var(--bg-deep)',border:`1px solid ${err?'var(--red)':'var(--border)'}`,color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.85rem',outline:'none',boxSizing:'border-box'}}/>
         {err && <div style={{color:'var(--red)', fontSize:'0.7rem', marginTop:6, fontFamily:'var(--fm)'}}>⚠ {err}</div>}
         <button onClick={submit} disabled={loading} style={{width:'100%',padding:'0.85rem',marginTop:18,background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.85rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
@@ -6993,7 +7034,7 @@ function SetupForm({ saveConfig }) {
 // every 5s. Six indicator rows: containers, api, persistence, ckpool, zmq, disk.
 // Headline state aggregates: ALL SYSTEMS GO / MINOR ISSUES / DEGRADED.
 // Tap card → opens HealthDetailModal with full diagnostic info.
-function HealthStatusCard({ onOpen }) {
+function HealthStatusCard({ tt = (x) => x, onOpen }) {
   const [health, setHealth] = useState(null);
   const [errored, setErrored] = useState(false);
   // v1.11.9: track in-flight AbortController so we can kill zombie fetches.
@@ -7069,9 +7110,9 @@ function HealthStatusCard({ onOpen }) {
   if (!health) {
     return (
       <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-        <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ System Health</div>
+        <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ System Health')}</div>
         <div style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.8rem', padding:'0.5rem 0'}}>
-          Checking…
+          {tt('Checking…')}
         </div>
         <div style={{flex:1, minHeight:0}}/>
       </div>
@@ -7114,7 +7155,7 @@ function HealthStatusCard({ onOpen }) {
       }}
       className="fade-in ss-card-chrome"
     >
-      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>▸ System Health</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ System Health')}</div>
       <div style={{
         fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700,
         color:headline.color,
@@ -7128,7 +7169,7 @@ function HealthStatusCard({ onOpen }) {
             fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)',
             marginLeft:8, fontWeight:400, letterSpacing:0,
           }}>
-            · endpoint unreachable
+            {tt('· endpoint unreachable')}
           </span>
         )}
       </div>
@@ -7170,7 +7211,7 @@ function HealthStatusCard({ onOpen }) {
         fontSize:'0.6rem', letterSpacing:'0.15em',
         marginTop:12, paddingTop:10, borderTop:'1px solid var(--border)',
       }}>
-        Tap for detailed diagnostic ▸
+        {tt('Tap for detailed diagnostic ▸')}
       </div>
     </div>
   );
@@ -7178,7 +7219,7 @@ function HealthStatusCard({ onOpen }) {
 
 // ── System Health Detail Modal (v1.8.4) ───────────────────────────────────────
 // Pattern matches existing ShareStatsModal (fixed-overlay, click-outside-to-close).
-function HealthDetailModal({ initialHealth, onClose }) {
+function HealthDetailModal({ tt = (x) => x, initialHealth, onClose }) {
   const [health, setHealth] = useState(initialHealth);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -7266,7 +7307,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
         {/* Header */}
         <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'0.85rem'}}>
           <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)'}}>
-            ▸ System Diagnostics
+            {tt('▸ System Diagnostics')}
           </span>
           <button onClick={onClose} style={{background:'transparent', border:'none', color:'var(--text-2)', fontSize:'1.4rem', cursor:'pointer', lineHeight:1, padding:'0 4px'}}>×</button>
         </div>
@@ -7287,7 +7328,7 @@ function HealthDetailModal({ initialHealth, onClose }) {
 
         {/* Checks */}
         <div style={section}>
-          <div style={secTitle}>Health checks</div>
+          <div style={secTitle}>{tt('Health checks')}</div>
           {checkRows.map(row => {
             const check = checks[row.key];
             const status = check?.status || 'red';
@@ -7331,30 +7372,30 @@ function HealthDetailModal({ initialHealth, onClose }) {
 
         {/* Diagnostics */}
         <div style={section}>
-          <div style={secTitle}>Diagnostics</div>
+          <div style={secTitle}>{tt('Diagnostics')}</div>
           <div style={kvRow}>
-            <span style={kvLabel}>Memory · RSS</span>
+            <span style={kvLabel}>{tt('Memory · RSS')}</span>
             <span style={kvVal}>{fmtBytes(details.memoryUsage?.rss)}</span>
           </div>
           <div style={kvRow}>
-            <span style={kvLabel}>Memory · Heap</span>
+            <span style={kvLabel}>{tt('Memory · Heap')}</span>
             <span style={kvVal}>{fmtBytes(details.memoryUsage?.heapUsed)} / {fmtBytes(details.memoryUsage?.heapTotal)}</span>
           </div>
           <div style={kvRow}>
-            <span style={kvLabel}>WebSocket Clients</span>
+            <span style={kvLabel}>{tt('WebSocket Clients')}</span>
             <span style={kvVal}>{details.wsClients ?? 0}</span>
           </div>
           <div style={kvRow}>
-            <span style={kvLabel}>Persist file age</span>
+            <span style={kvLabel}>{tt('Persist file age')}</span>
             <span style={kvVal}>{details.persistMtimeAge != null ? fmtDuration(details.persistMtimeAge) : '—'}</span>
           </div>
           <div style={kvRow}>
-            <span style={kvLabel}>Private Mode</span>
+            <span style={kvLabel}>{tt('Private Mode')}</span>
             <span style={kvVal}>{details.privateMode ? 'ON' : 'OFF'}</span>
           </div>
           {details.zmqEndpoint && (
             <div style={kvRow}>
-              <span style={kvLabel}>ZMQ endpoint</span>
+              <span style={kvLabel}>{tt('ZMQ endpoint')}</span>
               <span style={{...kvVal, fontSize:'0.65rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'60%'}}>{details.zmqEndpoint}</span>
             </div>
           )}
@@ -7476,7 +7517,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
           <WebhooksTab tt={tt}/>
         )}
         {tab==='debug' && (
-          <DebugTab settings={debugSettings} onSettingsChange={onDebugSettingsChange}/>
+          <DebugTab tt={tt} settings={debugSettings} onSettingsChange={onDebugSettingsChange}/>
         )}
       </div>
     </div>
@@ -7489,7 +7530,7 @@ function MainTab({tt=(x)=>x,addr,setAddr,currency,onCurrencyChange,onResetLayout
     <>
       <div style={{marginBottom:14}}>
         <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('Bitcoin Payout Address')}</label>
-        <input type="text" value={addr} onChange={e=>setAddr(e.target.value)} placeholder="bc1q..."
+        <input type="text" value={addr} onChange={e=>setAddr(e.target.value)} placeholder={tt("bc1q...")}
           style={{width:'100%',padding:'0.55rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fm)',fontSize:'0.78rem',outline:'none',boxSizing:'border-box'}}/>
         <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-3)', marginTop:5}}>{tt('Where block rewards go. Use a fresh, dedicated address from your own wallet.')}</div>
       </div>
@@ -7507,7 +7548,7 @@ function MainTab({tt=(x)=>x,addr,setAddr,currency,onCurrencyChange,onResetLayout
         </button>
         <button onClick={onResetLayout}
           style={{padding:'0.7rem 1rem', background:'transparent', color:'var(--text-2)', border:'1px solid var(--border)', fontFamily:'var(--fd)', fontWeight:600, letterSpacing:'0.1em', fontSize:'0.65rem', cursor:'pointer', textTransform:'uppercase'}}>
-          Reset Layout
+          {tt('Reset Layout')}
         </button>
       </div>
     </>
@@ -7520,7 +7561,7 @@ function LanguageTab({ tt=(x)=>x, lang = 'en', onLangChange }) {
     <div>
       <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color:'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'0.4rem'}}>▸ {tt('Language')}</div>
       <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginBottom:'0.9rem', lineHeight:1.5}}>
-        {tt('Choose the display language. Mining terms (hashrate, stratum, share, difficulty…) stay in English on purpose — they read correctly to miners everywhere. Auto-detected from your browser on first run; unsupported languages fall back to English.')}
+        {tt('Choose the display language. Mining terms (hashrate, stratum…) stay in English on purpose — they read correctly to miners everywhere. Auto-detected from your browser on first run; unsupported languages fall back to English.')}
       </div>
       <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:'0.5rem'}}>
         {SUPPORTED.map(code => {
@@ -7543,6 +7584,27 @@ function LanguageTab({ tt=(x)=>x, lang = 'en', onLangChange }) {
 }
 
 function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
+  // v1.11.66: Card Frost slider state. 0 = solid/opaque cards, 40 = default
+  // frosted look. Persists to localStorage and drives applyCardFrost().
+  const [frost, setFrost] = useState(() => {
+    try { const s = localStorage.getItem(SS_CARD_FROST_KEY); return s != null ? parseFloat(s) : 40; }
+    catch (e) { return 40; }
+  });
+  // v1.11.67: solid-cards override. When on, cards are fully opaque (no
+  // see-through background) on both mobile and desktop, ignoring the slider.
+  const [solidCards, setSolidCards] = useState(() => {
+    try { return localStorage.getItem(SS_SOLID_CARDS_KEY) === '1'; } catch (e) { return false; }
+  });
+  const changeFrost = (v) => {
+    setFrost(v);
+    applyCardFrost(v, solidCards);
+    try { localStorage.setItem(SS_CARD_FROST_KEY, String(v)); } catch (e) { /* ignore */ }
+  };
+  const changeSolid = (on) => {
+    setSolidCards(on);
+    applyCardFrost(frost, on);
+    try { localStorage.setItem(SS_SOLID_CARDS_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+  };
   const toggleCard = (id) => {
     const next = visibleCards.includes(id) ? visibleCards.filter(x => x !== id) : [...visibleCards, id];
     onVisibleCardsChange(next);
@@ -7586,12 +7648,36 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
 
   return (
     <>
+      <div style={firstSectionTitle}>▸ {tt('Card Frost')}</div>
+      <div style={{padding:'0.75rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.9rem'}}>
+        <div style={{opacity: solidCards ? 0.4 : 1, pointerEvents: solidCards ? 'none' : 'auto', transition:'opacity 0.15s'}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
+            <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-2)'}}>{frost <= 0 ? tt('Solid (off)') : tt('Frosted')}</span>
+            <span style={{fontFamily:'var(--fd)', fontSize:'0.8rem', fontWeight:700, color:'var(--amber)'}}>{Math.round(frost)}</span>
+          </div>
+          <input type="range" min="0" max="100" step="1" value={frost} disabled={solidCards}
+            onChange={(e)=>changeFrost(parseFloat(e.target.value))}
+            style={{width:'100%', accentColor:'var(--amber)', cursor:'pointer', height:6}}/>
+          <div style={{fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.5, marginTop:6}}>
+            {tt('Adjusts the frosted-glass transparency of cards. Drag to 0 for solid, opaque cards.')}
+          </div>
+        </div>
+        <div onClick={()=>changeSolid(!solidCards)} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.75rem', marginTop:12, paddingTop:12, borderTop:'1px solid var(--border)', cursor:'pointer'}}>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--fd)', fontSize:'0.74rem', color: solidCards?'var(--amber)':'var(--text-1)', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase'}}>{tt('Solid Cards')}</div>
+            <div style={{fontFamily:'var(--fm)', fontSize:'0.64rem', color:'var(--text-2)', lineHeight:1.5, marginTop:3}}>{tt('Turns off the see-through background and makes all cards fully solid — mobile and desktop.')}</div>
+          </div>
+          <div style={{flexShrink:0, width:40, height:23, borderRadius:12, background: solidCards?'var(--amber)':'var(--border)', position:'relative', transition:'background 0.15s'}}>
+            <div style={{position:'absolute', top:2, left: solidCards?19:2, width:19, height:19, borderRadius:'50%', background:'#000', transition:'left 0.15s'}}/>
+          </div>
+        </div>
+      </div>
       <div style={firstSectionTitle}>▸ {tt('Minimal Mode')}</div>
       <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem', padding:'0.75rem 0.8rem', background: minimalMode?'rgba(0,255,209,0.06)':'var(--bg-raised)', border:`1px solid ${minimalMode?'rgba(0,255,209,0.35)':'var(--border)'}`}}>
         <div style={{flex:1}}>
           <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: minimalMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>{tt('Bare Bones UI')}</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
-            Hides ticker, block strips, status dot, and shows only Hashrate + Workers + Blocks cards.
+            {tt('Hides ticker, block strips, status dot, and shows only Hashrate + Workers + Blocks cards.')}
           </div>
         </div>
         <button onClick={()=>onMinimalModeChange(!minimalMode)}
@@ -7601,7 +7687,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
       </div>
       {minimalMode && (
         <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
-          🔇 Minimal Mode is on — settings below are overridden until you turn it off.
+          {tt('🔇 Minimal Mode is on — settings below are overridden until you turn it off.')}
         </div>
       )}
 
@@ -7613,7 +7699,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
         <div style={{flex:1}}>
           <div style={{fontFamily:'var(--fd)', fontSize:'0.78rem', color: performanceMode?'var(--cyan)':'var(--text-1)', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase'}}>{tt('Static Mode')}</div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)', marginTop:3, lineHeight:1.4}}>
-            Replaces animated Pulse globe and Hunt canvases with static baked frames. Reduces battery drain and heat on older devices. Strike pulse rings stay live (information-bearing).
+            {tt('Replaces animated Pulse globe and Hunt canvases with static baked frames. Reduces battery drain and heat on older devices. Strike pulse rings stay live (information-bearing).')}
           </div>
         </div>
         <button onClick={()=>onPerformanceModeChange(!performanceMode)}
@@ -7623,7 +7709,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
       </div>
       {performanceMode && (
         <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--cyan)', marginBottom:'0.5rem', padding:'0.4rem 0.6rem', background:'rgba(0,255,209,0.04)', border:'1px dashed rgba(0,255,209,0.2)'}}>
-          ⚡ Performance Mode is on — animations frozen for older or battery-throttled iPhones, budget Android, Pi 4/5, and DIY Umbrel hosts. Live strikes still pulse.
+          {tt('⚡ Performance Mode is on — animations frozen for older or battery-throttled iPhones, budget Android, Pi 4/5, and DIY Umbrel hosts. Live strikes still pulse.')}
         </div>
       )}
 
@@ -7673,7 +7759,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
       <div style={rowLabel}>{tt('Quick presets')}</div>
       <div style={{display:'flex', gap:6, marginBottom:'0.75rem'}}>
         <button onClick={()=>applyPreset(MINIMAL_PRESET)} style={presetBtnStyle(matchesPreset(MINIMAL_PRESET))}>
-          Minimal (3)
+          {tt('Minimal (3)')}
         </button>
         <button onClick={()=>applyPreset(DEFAULT_PRESET)} style={presetBtnStyle(matchesPreset(DEFAULT_PRESET))}>
           Default ({DEFAULT_PRESET.length})
@@ -7699,7 +7785,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
         })}
       </div>
       <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-        Showing: <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
+        {tt('Showing:')} <span style={{color:'var(--amber)'}}>{visibleCards.length}</span> of {ALL_CARDS.length} cards
       </div>
 
       <div style={sectionTitle}>▸ {tt('Scrolling Ticker')}</div>
@@ -7743,11 +7829,11 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
             ))}
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', marginTop:4}}>
-            Selected: <span style={{color:'var(--amber)'}}>{(tickerSettings.metricIds || []).length}</span> metric{(tickerSettings.metricIds || []).length===1?'':'s'}
+            {tt('Selected:')} <span style={{color:'var(--amber)'}}>{(tickerSettings.metricIds || []).length}</span> metric{(tickerSettings.metricIds || []).length===1?'':'s'}
           </div>
 
           <div style={{...rowLabel, marginTop:'0.9rem'}}>
-            Scroll speed: <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
+            {tt('Scroll speed:')} <span style={{color:'var(--amber)'}}>{tickerSettings.speedSec}s per loop</span>
             <span style={{color:'var(--text-3)', marginLeft:6, fontSize:'0.52rem'}}>
               ({tickerSettings.speedSec <= 6 ? 'very fast' : tickerSettings.speedSec <= 15 ? tt('fast') : tickerSettings.speedSec <= 35 ? tt('medium') : 'slow'})
             </span>
@@ -7758,13 +7844,13 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
             <span>{tt('very fast')}</span><span>{tt('slow')}</span>
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.58rem', color:'var(--text-3)', marginTop:6, lineHeight:1.4}}>
-            Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.
+            {tt('Ticker values refresh every 30 seconds. Animation briefly resets on each refresh to sync cleanly with the new data.')}
           </div>
         </>
       )}
 
       <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1rem', textAlign:'center', lineHeight:1.4}}>
-        Changes save automatically and persist on this device
+        {tt('Changes save automatically and persist on this device')}
       </div>
     </>
   );
@@ -7779,7 +7865,7 @@ function ThemesTab({ tt=(x)=>x, themeId, onThemeChange }) {
         fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
         color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
       }}>
-        Theme — Visual Style
+        {tt('Theme — Visual Style')}
       </div>
       <div style={{
         display: 'grid',
@@ -7856,7 +7942,7 @@ function ThemesTab({ tt=(x)=>x, themeId, onThemeChange }) {
         fontFamily: 'var(--fm)', fontSize: '0.65rem', color: 'var(--text-3)',
         marginTop: '1rem', textAlign: 'center', lineHeight: 1.4,
       }}>
-        Changes save automatically and persist on this device
+        {tt('Changes save automatically and persist on this device')}
       </div>
     </>
   );
@@ -7869,7 +7955,7 @@ function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }
         fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
         color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
       }}>
-        The Hunt — Animation Style
+        {tt('The Hunt — Animation Style')}
       </div>
       <div style={{
         display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
@@ -7887,14 +7973,14 @@ function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }
               cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: 2,
               transition: 'all 0.15s ease',
             }}
-          >{opt.label}</button>
+          >{tt(opt.label)}</button>
         ))}
       </div>
       <div style={{
         fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
         marginTop: 6, lineHeight: 1.5,
       }}>
-        Choose how the nonce-search visualization on the Hunt card is rendered.
+        {tt('Choose how the nonce-search visualization on the Hunt card is rendered.')}
       </div>
 
       {/* v1.11.x: Bitcoin Symbols toggle removed entirely. The Hash Ticker
@@ -7932,7 +8018,7 @@ function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }
       )}
 
       <div style={{fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-3)', marginTop:'1.4rem', textAlign:'center', lineHeight:1.4}}>
-        Changes save automatically and persist on this device
+        {tt('Changes save automatically and persist on this device')}
       </div>
     </>
   );
@@ -8052,7 +8138,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
               <div style={{flex:1}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.72rem',fontWeight:700,color:'var(--text-1)',letterSpacing:'0.05em',marginBottom:3}}>{'🧅 '}{tt('Route via Tor')}</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.45}}>
-                  Send broadcasts through Tor so no relay learns your IP address. Adds latency. Requires Umbrel Tor service running.
+                  {tt('Send broadcasts through Tor so no relay learns your IP address. Adds latency. Requires Umbrel Tor service running.')}
                 </div>
               </div>
               <button
@@ -8085,22 +8171,22 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             </div>
             {torMode === 'checking' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',padding:'0.4rem 0.55rem',background:'rgba(255,255,255,0.03)',border:'1px dashed var(--border)',marginTop:6}}>
-                ⏳ Testing Tor reachability…
+                ⏳ {tt('Testing Tor reachability…')}
               </div>
             )}
             {torMode === 'tor' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--green)',padding:'0.4rem 0.55rem',background:'rgba(0,255,128,0.05)',border:'1px dashed rgba(0,255,128,0.3)',marginTop:6}}>
-                🟢 Routing all relays through Tor. Privacy active.
+                🟢 {tt('Routing all relays through Tor. Privacy active.')}
               </div>
             )}
             {torMode === 'unreachable' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px dashed rgba(var(--amber-rgb),0.4)',marginTop:6,lineHeight:1.5}}>
-                ⚠ Tor unreachable: <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{torError || 'check Umbrel Tor service'}</span>. Pulse continues broadcasting direct.
+                ⚠ {tt('Tor unreachable:')} <span style={{fontFamily:'var(--fm)',color:'var(--text-1)'}}>{torError || 'check Umbrel Tor service'}</span>. {tt('Pulse continues broadcasting direct.')}
               </div>
             )}
             {torOn && torMode === 'direct' && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--amber)',padding:'0.4rem 0.55rem',background:'rgba(var(--amber-rgb),0.06)',border:'1px dashed rgba(var(--amber-rgb),0.4)',marginTop:6}}>
-                🟡 Tor degraded — broadcasts using direct routing. Auto-recovery every 5 min.
+                🟡 {tt('Tor degraded — broadcasts using direct routing. Auto-recovery every 5 min.')}
               </div>
             )}
           </div>
@@ -8129,10 +8215,10 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
               } catch(e) { setErr(e.message); }
             }}
             style={{display:'block',width:'100%',padding:'0.5rem 0.7rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-1)',fontFamily:'var(--fd)',fontSize:'0.65rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase',marginBottom:6}}>
-              🔑 Backup Pulse Identity
+              🔑 {tt('Backup Pulse Identity')}
             </button>
             <button onClick={regenerate} style={{display:'block',width:'100%',padding:'0.5rem 0.7rem',background:'var(--bg-deep)',border:'1px solid var(--border)',color:'var(--text-2)',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',cursor:'pointer',textTransform:'uppercase'}}>
-              🔄 Regenerate Identity
+              🔄 {tt('Regenerate Identity')}
             </button>
           </div>
 
@@ -8226,7 +8312,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em',
             color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase',
           }}>
-            Pulse Animation Style
+            {tt('Pulse Animation Style')}
           </div>
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
@@ -8251,7 +8337,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
             marginTop: 6,
           }}>
-            Choose how the SoloStrike Pulse network is visualized.
+            {tt('Choose how the SoloStrike Pulse network is visualized.')}
           </div>
         </div>
       )}
@@ -8271,7 +8357,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fd)', fontSize: '0.72rem', letterSpacing: '0.08em',
             color: 'var(--amber)', textTransform: 'uppercase', marginBottom: 8,
           }}>
-            Your Pool Location
+            {tt('Your Pool Location')}
           </div>
           <div style={{
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
@@ -8279,10 +8365,10 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
           }}>
             {poolPin ? (
               <>
-                Pinned to <span style={{ color: 'var(--text-1)' }}>
+                {tt('Pinned to')} <span style={{ color: 'var(--text-1)' }}>
                   {Math.abs(poolPin.lat)}°{poolPin.lat >= 0 ? 'N' : 'S'},{' '}
                   {Math.abs(poolPin.lon)}°{poolPin.lon >= 0 ? 'E' : 'W'}
-                </span>{' · '}snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.
+                </span>{' · '}{tt('snapped to a 5° grid (~500km cells). Country/region only — no city or GPS.')}
               </>
             ) : (
               <>{tt('Pin shows other Strikers where your pool is. Resolution is fuzzy to ~500km — country / region only, never a city or address. Switch the Pulse animation to')} <span style={{ color: 'var(--text-1)' }}>{tt('Globe')}</span>{tt(', then tap "Pin My Pool" below the globe.')}</>
@@ -8371,7 +8457,8 @@ function useAnimatedNumber(value, durationMs = 600) {
 //   - Sliding logarithmic scrub: peerCount maps to slider via log scale
 //     so 1-2-8-20-50-200-1K-5K stages are roughly evenly spaced.
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClose }) {
+const BlockSimulatorModal = React.memo(function BlockSimulatorModal_Impl({ onClose, lang = 'en' }) {
+  const tt = useMemo(() => makeTT(lang), [lang]);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -9397,7 +9484,53 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       if (window.__ssGlobeRenderer) window.__ssGlobeRenderer = null;
       if (window.__ssGlobeRings)    window.__ssGlobeRings    = null;
     };
-  }, []);
+    // v1.11.66: depend on [enabled], not []. Before opt-in the panel renders a
+    // placeholder with NO canvas, so a mount-once effect ran while
+    // webglCanvasRef was null and never created a renderer; opting in later
+    // didn't re-run it, leaving the globe blank until a manual refresh. Keying
+    // on `enabled` recreates the renderer the moment the canvas mounts on
+    // opt-in (and disposes it on opt-out), so the sphere bakes without a reload.
+  }, [enabled]);
+
+  // v1.11.64: the WebGL globe canvas is NO LONGER remounted on pulseAnim
+  // change (its renderer is created once and bound to the stable node;
+  // remounting orphaned the renderer and left the sphere blank). Instead,
+  // when we return to globe mode, re-bake the world texture onto the
+  // existing renderer so the sphere repaints a complete, current-theme
+  // frame — the "rebake on switch" without tearing down the GL context.
+  useEffect(() => {
+    if (pulseAnim !== 'globe') return;
+    const renderer = webglRendererRef.current;
+    const rings = (typeof window !== 'undefined') ? window.__ssGlobeRings : null;
+    if (renderer && renderer.isReady() && Array.isArray(rings) && rings.length) {
+      try {
+        const texCanvas = bakeWorldMapTexture(rings, { palette: _ssGlobePalette(_ssCurrentTheme()) });
+        renderer.setTexture(texCanvas);
+        webglTextureReadyRef.current = true;
+      } catch (e) { /* keep last good texture */ }
+    }
+  }, [pulseAnim]);
+
+  // v1.11.66: fresh-install self-heal + Join-Pulse trigger. On a brand-new
+  // install the globe sometimes never textures on first load (blank until a
+  // manual refresh). Poll a few times after mount — and re-poll whenever Join
+  // Pulse is toggled — re-arming the globe init (re-fetch + re-bake) until the
+  // sphere actually textures. Guarded by webglTextureReadyRef so a globe that
+  // is already rendering is never disturbed (the interval clears immediately).
+  useEffect(() => {
+    let tries = 0;
+    const id = setInterval(() => {
+      const c = canvasRef.current;
+      if (!c) return;
+      if (webglTextureReadyRef.current) { clearInterval(id); return; }
+      tries++;
+      c._globeInit = undefined;     // forces full re-fetch + re-bake next frame
+      c._globeRings = null;
+      c._globeFetchTries = 0;       // reset the fetch-retry budget
+      if (tries >= 4) clearInterval(id);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [enabled]);
 
   // v1.11.0: Strike Mesh init. Mount-once on canvas ref ready,
   // re-mounts only if pulseAnim changes to/from 'block'. Renders only
@@ -10118,6 +10251,14 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             canvas._globeAllVerts = allVerts;
             canvas._globeInit = true;
 
+            // Stash rings the moment they're decoded — independent of WebGL
+            // readiness. The per-frame retry below and the rebake-on-globe-entry
+            // effect both read window.__ssGlobeRings; on a fresh load the
+            // renderer may not be ready yet when this fetch resolves, so we must
+            // not gate the stash on isReady() (that left rings unstashed and the
+            // sphere blank until a manual refresh).
+            if (typeof window !== 'undefined') window.__ssGlobeRings = rings;
+
             // v1.8.8-rev24: bake the equirectangular world map texture
             // and upload to the WebGL renderer. Uses the SAME rings we
             // just built, so no second fetch. ~30ms one-time work.
@@ -10138,8 +10279,42 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           })
           .catch(e => {
             console.warn('Globe coastline fetch failed:', e);
-            canvas._globeInit = true; // proceed without coastlines
+            // v1.11.66: retry the fetch on a fresh install. The atlas file can
+            // be briefly unavailable on the very first load (assets still
+            // settling / SW not yet in control), which left the sphere blank
+            // until a manual refresh. Re-arm init for another attempt with
+            // backoff; give up (empty ocean) after a few tries.
+            canvas._globeFetchTries = (canvas._globeFetchTries || 0) + 1;
+            if (canvas._globeFetchTries <= 5) {
+              setTimeout(() => { canvas._globeInit = undefined; }, 1000 * canvas._globeFetchTries);
+            } else {
+              canvas._globeInit = true; // proceed without coastlines
+            }
           });
+      }
+
+      // v1.11.65: fresh-install retry. On first load the atlas fetch can
+      // resolve before the WebGL renderer finishes compiling its program +
+      // textures (isReady() === false), so the one-shot bake in the init block
+      // is skipped and the sphere stays blank until a manual page refresh.
+      // Retry the bake on subsequent frames once BOTH the decoded rings and a
+      // ready renderer are available. Self-healing (usually within 1–2 frames)
+      // and cheap: the guard short-circuits the moment a texture is uploaded,
+      // and isReady() returns fast when WebGL is unavailable (2D fallback).
+      if (!webglTextureReadyRef.current
+          && Array.isArray(canvas._globeRings) && canvas._globeRings.length) {
+        const r = webglRendererRef.current;
+        if (r && r.isReady()) {
+          try {
+            const texCanvas = bakeWorldMapTexture(canvas._globeRings, { palette: _ssGlobePalette(_ssCurrentTheme()) });
+            r.setTexture(texCanvas);
+            webglTextureReadyRef.current = true;
+            if (typeof window !== 'undefined') {
+              window.__ssGlobeRings = canvas._globeRings;
+              window.__ssGlobeRenderer = r;
+            }
+          } catch (e) { /* retry next frame */ }
+        }
       }
 
       canvas._globeT += dt;
@@ -11066,6 +11241,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
               rev70k: receives pointer events when active; supports drag
               to rotate + pinch / wheel to zoom + double-click to reset. */}
           <canvas
+            key={'mesh-'+pulseAnim}
             ref={constellationCanvasRef}
             onPointerDown={handleConstellationPointerDown}
             onPointerMove={handleConstellationPointerMove}
@@ -11262,7 +11438,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
           borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
           paddingTop:'0.4rem',
           fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
-          lineHeight:1.4, paddingRight:'0.5rem', whiteSpace:'nowrap',
+          lineHeight:1.4, paddingRight:'0.5rem', whiteSpace: pulseAnim === 'globe' ? 'nowrap' : 'normal',
           cursor: onOpenStrikers ? 'pointer' : 'default',
         }}>
           {pulseAnim === 'globe' ? (
@@ -11347,6 +11523,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
             only one is display:block at a time.
             rev70k: receives pointer events when active. */}
         <canvas
+          key={'mesh-'+pulseAnim}
           ref={constellationCanvasRef}
           onPointerDown={handleConstellationPointerDown}
           onPointerMove={handleConstellationPointerMove}
@@ -11542,7 +11719,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         borderTop:'1px dashed rgba(var(--amber-rgb),0.18)',
         paddingTop:'0.5rem',
         fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)',
-        lineHeight:1.5, paddingRight:'0.5rem', whiteSpace:'nowrap',
+        lineHeight:1.5, paddingRight:'0.5rem', whiteSpace: pulseAnim === 'globe' ? 'nowrap' : 'normal',
         cursor: onOpenStrikers ? 'pointer' : 'default',
       }}>
         {pulseAnim === 'globe' ? (
@@ -11567,7 +11744,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         synthesizes peers + share traffic internally. Closes via the X
         button or by tapping outside the picker drawer. */}
     {simulatorOpen && (
-      <BlockSimulatorModal onClose={() => setSimulatorOpen(false)}/>
+      <BlockSimulatorModal onClose={() => setSimulatorOpen(false)} lang={lang}/>
     )}
     </>
   );
@@ -11592,11 +11769,11 @@ PulsePanel.displayName = "PulsePanel";
 // Stacks Claim Jumpers (top — pool find counts) with Gold Strikes (bottom —
 // our own found blocks). Both sections render compact (no outer card wrapper,
 // smaller padding/font, internal scroll caps). Section names preserved.
-function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
+function JumpersPanel({ tt = (x) => x, topFinders, netBlocks, blocks, blockAlert }) {
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
       {/* Claim Jumpers section (top) */}
-      <TopFindersPanel topFinders={topFinders} netBlocks={netBlocks} compact />
+      <TopFindersPanel tt={tt} topFinders={topFinders} netBlocks={netBlocks} compact />
 
       {/* Divider */}
       <div style={{
@@ -11606,7 +11783,7 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
       }}/>
 
       {/* Gold Strikes section (bottom) */}
-      <BlockFeed blocks={blocks} blockAlert={blockAlert} compact />
+      <BlockFeed tt={tt} blocks={blocks} blockAlert={blockAlert} compact />
       <div style={{flex:1,minHeight:0}}/>
     </div>
   );
@@ -11616,7 +11793,7 @@ function JumpersPanel({ topFinders, netBlocks, blocks, blockAlert }) {
 // Shows every Striker (anonymous SoloStrike operator) currently on the network.
 // You're pinned at the top, then everyone else by hashrate descending.
 // Outlier-filtered peers hidden by default; toggle reveals them.
-function StrikersModal({ networkStats, onClose }) {
+function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   const [showFiltered, setShowFiltered] = useState(false);
 
   // v1.11.2: ENGAGEMENT FEATURES
@@ -11936,7 +12113,7 @@ function StrikersModal({ networkStats, onClose }) {
     if (ranked.length < 3 || dispHash <= 0) return null;
     return (
       <div style={section}>
-        <div style={secTitle}>▸ Hashrate Distribution</div>
+        <div style={secTitle}>{tt('▸ Hashrate Distribution')}</div>
         <div style={{
           display:'flex', height:12, borderRadius:4, overflow:'hidden',
           background:'rgba(20,20,22,0.6)',
@@ -11985,7 +12162,7 @@ function StrikersModal({ networkStats, onClose }) {
     if (recentStrikes.length === 0) return null;
     return (
       <div style={section}>
-        <div style={secTitle}>▸ Recent Strikes</div>
+        <div style={secTitle}>{tt('▸ Recent Strikes')}</div>
         {recentStrikes.map(s => (
           <div key={s.pubkey + '-' + s.height} style={{
             display:'flex', justifyContent:'space-between', alignItems:'center',
@@ -12096,12 +12273,12 @@ function StrikersModal({ networkStats, onClose }) {
               </span>
             ))}
             {p.filtered && !isOwn && (
-              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>FILTERED</span>
+              <span style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.12em', background:'rgba(255,255,255,0.05)', border:'1px solid var(--border)', padding:'1px 6px'}}>{tt('FILTERED')}</span>
             )}
           </div>
           <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)'}}>
             {p.workers} worker{p.workers===1?'':'s'} · v{p.version || '?'}
-            {joined && (<> · <span title="Joined">{joined}</span></>)}
+            {joined && (<> · <span title={tt("Joined")}>{joined}</span></>)}
             {dispHash > 0 && ranked.length >= 2 && (
               <> · <span style={{color:'rgba(var(--amber-rgb),0.65)'}}>{pct.toFixed(1)}% of network</span></>
             )}
@@ -12131,11 +12308,11 @@ function StrikersModal({ networkStats, onClose }) {
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📡</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>Pulse Strikers</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('Pulse Strikers')}</span>
             {/* v1.11.2: help icon → opens onboarding */}
             <button
               onClick={() => setShowOnboard(true)}
-              aria-label="What is Pulse?"
+              aria-label={tt("What is Pulse?")}
               style={{
                 background:'none', border:'1px solid var(--border)',
                 color:'var(--text-2)', cursor:'pointer',
@@ -12185,21 +12362,21 @@ function StrikersModal({ networkStats, onClose }) {
               letterSpacing: '0.1em',
               boxShadow: '0 0 24px rgba(255, 140, 26, 0.6)',
             }}>
-              ⛏ STRIKE! · NETWORK FOUND A BLOCK
+              {tt('⛏ STRIKE! · NETWORK FOUND A BLOCK')}
             </div>
           )}
 
           <div style={section}>
-            <div style={secTitle}>▸ Network Snapshot</div>
+            <div style={secTitle}>{tt('▸ Network Snapshot')}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'0.5rem'}}>
               <div style={heroBox}>
-                <div style={heroLbl}>Strikers</div>
+                <div style={heroLbl}>{tt('Strikers')}</div>
                 <div key={strikersPulseKey} className="ss-pop-pop" style={heroVal}>
                   {Math.round(animatedDispCount)}
                 </div>
               </div>
               <div style={heroBox}>
-                <div style={heroLbl}>Hashrate</div>
+                <div style={heroLbl}>{tt('Hashrate')}</div>
                 <div style={{...heroVal, fontSize:'0.95rem', display:'flex', alignItems:'center', justifyContent:'center', gap:4}}>
                   <span>{fmtPulseHr(animatedDispHash)}</span>
                   {trendPct !== null && (
@@ -12212,7 +12389,7 @@ function StrikersModal({ networkStats, onClose }) {
                   )}
                 </div>
               </div>
-              <div style={heroBox}><div style={heroLbl}>Miners</div><div style={heroVal}>{Math.round(animatedDispWorkers)}</div></div>
+              <div style={heroBox}><div style={heroLbl}>{tt('Miners')}</div><div style={heroVal}>{Math.round(animatedDispWorkers)}</div></div>
             </div>
             {/* v1.11.6: network ATH + total strikes (small text below hero grid) */}
             {(peakHr > 0 || totalStrikes > 0) && (
@@ -12239,7 +12416,7 @@ function StrikersModal({ networkStats, onClose }) {
             color:'var(--text-3)', marginBottom:'0.9rem',
             paddingBottom:'0.6rem', borderBottom:'1px solid var(--border)',
           }}>
-            Hashrate is self-reported, not verified — figures are approximate and an ambient community snapshot, not exact measurements.
+            {tt('Hashrate is self-reported, not verified — figures are approximate and an ambient community snapshot, not exact measurements.')}
           </div>
 
           <DistributionBar/>
@@ -12258,7 +12435,7 @@ function StrikersModal({ networkStats, onClose }) {
                     type="number"
                     min="0"
                     step="10"
-                    placeholder="Goal (TH/s)"
+                    placeholder={tt("Goal (TH/s)")}
                     value={hashGoal || ''}
                     onChange={e => setHashGoal(parseFloat(e.target.value) || 0)}
                     style={{
@@ -12296,7 +12473,7 @@ function StrikersModal({ networkStats, onClose }) {
                 )}
                 {!goal && (
                   <div style={{fontFamily:'var(--fm)', fontSize:'0.62rem', color:'var(--text-2)'}}>
-                    Set a target hashrate to track your progress.
+                    {tt('Set a target hashrate to track your progress.')}
                   </div>
                 )}
               </div>
@@ -12305,7 +12482,7 @@ function StrikersModal({ networkStats, onClose }) {
 
           <div style={section}>
             <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <span>▸ Roster</span>
+              <span>{tt('▸ Roster')}</span>
               {filteredCount > 0 && (
                 <button
                   onClick={() => setShowFiltered(v => !v)}
@@ -12339,13 +12516,13 @@ function StrikersModal({ networkStats, onClose }) {
                   fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--amber)',
                   letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:6,
                 }}>
-                  Scanning for peers
+                  {tt('Scanning for peers')}
                 </div>
                 <div style={{
                   fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)',
                   lineHeight:1.5,
                 }}>
-                  Your pulse broadcasts every 2.5 min over nostr.<br/>
+                  {tt('Your pulse broadcasts every 2.5 min over nostr.')}<br/>
                   Other Strikers will appear here as they come online.
                 </div>
               </div>
@@ -12361,7 +12538,7 @@ function StrikersModal({ networkStats, onClose }) {
                   marginTop:'0.35rem',
                 }}>
                   <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', lineHeight:1.5}}>
-                    You're broadcasting solo. Other Strikers will appear here as they come online.
+                    {tt("You're broadcasting solo. Other Strikers will appear here as they come online.")}
                   </div>
                 </div>
               </>
@@ -12385,9 +12562,9 @@ function StrikersModal({ networkStats, onClose }) {
               fontFamily:'var(--fm)', fontSize:'0.75rem', color:'var(--text-1)',
               lineHeight:1.5,
             }}>
-              Pulse is a census, not a pool. <span style={{color:'var(--amber)', fontWeight:600}}>Your blocks stay 100% yours.</span>
+              {tt('Pulse is a census, not a pool.')} <span style={{color:'var(--amber)', fontWeight:600}}>{tt('Your blocks stay 100% yours.')}</span>
               <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-                Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.
+                {tt('Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.')}
               </div>
             </div>
             {/* v1.12.0-fix2: SOLO stamp pinned to the BOTTOM-RIGHT of the footer
@@ -12412,7 +12589,7 @@ function StrikersModal({ networkStats, onClose }) {
               willChange:'opacity',
             }}>
               <div>100%</div>
-              <div>SOLO</div>
+              <div>{tt('SOLO')}</div>
             </div>
           </div>
 
@@ -12441,13 +12618,13 @@ function StrikersModal({ networkStats, onClose }) {
               color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'1.05rem',
               fontWeight:700, letterSpacing:'0.08em', marginBottom:'0.75rem',
             }}>
-              WHAT IS PULSE?
+              {tt('WHAT IS PULSE?')}
             </div>
             <p style={{color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.75rem', lineHeight:1.6, margin:'0 0 0.75rem 0'}}>
-              Pulse is an <strong style={{color:'var(--amber)'}}>anonymous census</strong> of solo Bitcoin miners running SoloStrike. Hashrate is broadcast over <strong style={{color:'var(--amber)'}}>nostr</strong> — no names, no IPs, no pool affiliation.
+              {tt('Pulse is an')} <strong style={{color:'var(--amber)'}}>{tt('anonymous census')}</strong> {tt('of solo Bitcoin miners running SoloStrike. Hashrate is broadcast over')} <strong style={{color:'var(--amber)'}}>{tt('nostr')}</strong> {tt('— no names, no IPs, no pool affiliation.')}
             </p>
             <p style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.7rem', lineHeight:1.6, margin:'0 0 1rem 0'}}>
-              You see who else is broadcasting, roughly where they are, and how the network grows. <strong style={{color:'var(--text-1)'}}>Your blocks always stay 100% yours.</strong> Tap any Striker for details.
+              {tt('You see who else is broadcasting, roughly where they are, and how the network grows.')} <strong style={{color:'var(--text-1)'}}>{tt('Your blocks always stay 100% yours.')}</strong> {tt('Tap any Striker for details.')}
             </p>
             <button
               onClick={dismissOnboard}
@@ -12458,7 +12635,7 @@ function StrikersModal({ networkStats, onClose }) {
                 fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.15em',
                 cursor:'pointer', fontWeight:700,
               }}
-            >GOT IT</button>
+            >{tt('GOT IT')}</button>
           </div>
         </div>
       )}
@@ -12531,19 +12708,19 @@ function StrikersModal({ networkStats, onClose }) {
               {/* stat grid */}
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:'1rem'}}>
                 <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>WORKERS</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>{tt('WORKERS')}</div>
                   <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>{p.workers || 0}</div>
                 </div>
                 <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>VERSION</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>{tt('VERSION')}</div>
                   <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>v{p.version || '?'}</div>
                 </div>
                 <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>JOINED</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>{tt('JOINED')}</div>
                   <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>{joined || '—'}</div>
                 </div>
                 <div style={{padding:'0.5rem 0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)'}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>LAST SEEN</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', color:'var(--text-2)', letterSpacing:'0.15em', marginBottom:3}}>{tt('LAST SEEN')}</div>
                   <div style={{fontFamily:'var(--fd)', fontSize:'0.9rem', fontWeight:700, color:'var(--amber)'}}>{fmtAgo(p.lastSeenAgoSec)}</div>
                 </div>
               </div>
@@ -12554,7 +12731,7 @@ function StrikersModal({ networkStats, onClose }) {
                   <div style={{
                     fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--amber)',
                     letterSpacing:'0.2em', marginBottom:8,
-                  }}>▸ BADGES</div>
+                  }}>{tt('▸ BADGES')}</div>
                   {badges.map(b => {
                     const m = BADGE_META[b];
                     return (
@@ -12582,7 +12759,7 @@ function StrikersModal({ networkStats, onClose }) {
                   fontFamily:'var(--fm)', fontSize:'0.65rem', color:'var(--text-2)',
                   marginBottom:'1rem',
                 }}>
-                  No badges yet. Broadcast longer to earn 🥇 OG status.
+                  {tt('No badges yet. Broadcast longer to earn 🥇 OG status.')}
                 </div>
               )}
             </div>
@@ -12604,7 +12781,7 @@ function StrikersModal({ networkStats, onClose }) {
 //   blocks-to-X-percent = log(1-X) / log(1-p)
 // Bitcoin produces 1 block per 10 minutes on average, so:
 //   days-to-X-percent = (blocks * 10) / (60 * 24)
-function ReckoningModal({ poolState, currency, onClose }) {
+function ReckoningModal({ tt = (x) => x, poolState, currency, onClose }) {
   const baseHash = poolState?.hashrate?.current || 0;
   const netHash = poolState?.network?.hashrate || 0;
 // blockReward is an object { subsidyBtc, feesBtc, totalBtc, totalSats } — use totalBtc
@@ -12793,7 +12970,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:18,color:'var(--amber)'}}>⚡</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>The Reckoning</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1.05rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('The Reckoning')}</span>
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
         </div>
@@ -12802,7 +12979,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
 
           {!haveData && (
             <div style={{textAlign:'center', padding:'2rem 1rem', color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.85rem'}}>
-              The Reckoning needs your hashrate and the current network hashrate to forecast your strike. Waiting for first data…
+              {tt('The Reckoning needs your hashrate and the current network hashrate to forecast your strike. Waiting for first data…')}
             </div>
           )}
 
@@ -12810,7 +12987,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
             <>
               {/* The "if you struck right now" hero */}
               <div style={section}>
-                <div style={secTitle}>▸ If You Struck Right Now</div>
+                <div style={secTitle}>{tt('▸ If You Struck Right Now')}</div>
                 <div style={{
                   background:'linear-gradient(135deg, rgba(var(--amber-rgb),0.08) 0%, rgba(var(--amber-rgb),0.02) 100%)',
                   border:'1px solid var(--amber)',
@@ -12819,7 +12996,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                   textAlign:'center',
                 }}>
                   <div style={{ fontFamily:'var(--fd)', fontSize:'2rem', fontWeight:800, color:'var(--amber)', lineHeight:1.1, textShadow:'0 0 12px rgba(var(--amber-rgb),0.5)' }}>
-                    {rewardBtc.toFixed(3)} <span style={{fontSize:'1rem'}}>BTC</span>
+                    {rewardBtc.toFixed(3)} <span style={{fontSize:'1rem'}}>{tt('BTC')}</span>
                   </div>
                   {fiatPrice > 0 && (
                     <div style={{ fontFamily:'var(--fd)', fontSize:'1.15rem', fontWeight:700, color:'var(--text-1)', marginTop:5 }}>
@@ -12827,7 +13004,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                     </div>
                   )}
                   <div style={{ fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', marginTop:6, lineHeight:1.5 }}>
-                    Block subsidy at current height. <span style={{color:'var(--amber)'}}>100% yours.</span>
+                    {tt('Block subsidy at current height.')} <span style={{color:'var(--amber)'}}>{tt('100% yours.')}</span>
                   </div>
                 </div>
               </div>
@@ -12835,14 +13012,14 @@ function ReckoningModal({ poolState, currency, onClose }) {
               {/* Hashrate slider — the simulator */}
               <div style={section}>
                 <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
-                  <span>▸ Firepower Simulator</span>
+                  <span>{tt('▸ Firepower Simulator')}</span>
                   <span style={{fontFamily:'var(--fd)', fontSize:'0.65rem', color: hashMult === 1 ? 'var(--text-2)' : 'var(--amber)', fontWeight:700, letterSpacing:'0.05em'}}>
                     {hashMult.toFixed(2)}× current
                   </span>
                 </div>
                 <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.85rem 1rem'}}>
                   <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
-                    <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-2)', letterSpacing:'0.08em'}}>SIMULATED HASHRATE</span>
+                    <span style={{fontFamily:'var(--fd)', fontSize:'0.7rem', color:'var(--text-2)', letterSpacing:'0.08em'}}>{tt('SIMULATED HASHRATE')}</span>
                     <span style={{fontFamily:'var(--fd)', fontSize:'1.1rem', fontWeight:700, color:'var(--amber)'}}>{fmtHr(simHash)}</span>
                   </div>
                   <input
@@ -12871,7 +13048,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                         padding:'2px 8px', cursor:'pointer', textTransform:'uppercase',
                         borderColor: hashMult === 1 ? 'var(--amber)' : 'var(--border)',
                       }}>
-                      RESET
+                      {tt('RESET')}
                     </button>
                     <span>10× ({fmtHr(baseHash * 10)})</span>
                   </div>
@@ -12884,7 +13061,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                       textAlign:'center', lineHeight:1.5,
                     }}>
                       {simHash > baseHash ? 'Adding ' : 'Removing '}
-                      <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(Math.abs(simHash - baseHash))}</span> moves your strike horizon from
+                      <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(Math.abs(simHash - baseHash))}</span> {tt('moves your strike horizon from')}
                       <span style={{color:'var(--text-2)'}}> {fmtDays(baselineP50)}</span>
                       <span style={{color:'var(--text-2)'}}> → </span>
                       <span style={{color: simHash > baseHash ? 'var(--amber)' : 'var(--text-1)', fontWeight:700}}>{fmtDays(horizon.p50)}</span>
@@ -12895,32 +13072,32 @@ function ReckoningModal({ poolState, currency, onClose }) {
 
               {/* The horizon — probability waterfall */}
               <div style={section}>
-                <div style={secTitle}>▸ Strike Horizon</div>
+                <div style={secTitle}>{tt('▸ Strike Horizon')}</div>
                 <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.9rem 1rem' }}>
-                  <HorizonRow pct={25} days={horizon.p25} label="First strike likely" accent="var(--text-1)"/>
-                  <HorizonRow pct={50} days={horizon.p50} label="Coin flip" accent="var(--amber)"/>
-                  <HorizonRow pct={75} days={horizon.p75} label="Probably struck" accent="var(--text-1)"/>
-                  <HorizonRow pct={90} days={horizon.p90} label="Almost certain" accent="var(--text-1)"/>
+                  <HorizonRow pct={25} days={horizon.p25} label={tt("First strike likely")} accent="var(--text-1)"/>
+                  <HorizonRow pct={50} days={horizon.p50} label={tt("Coin flip")} accent="var(--amber)"/>
+                  <HorizonRow pct={75} days={horizon.p75} label={tt("Probably struck")} accent="var(--text-1)"/>
+                  <HorizonRow pct={90} days={horizon.p90} label={tt("Almost certain")} accent="var(--text-1)"/>
                 </div>
                 <div style={{ marginTop:'0.55rem', fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)', lineHeight:1.5 }}>
-                  Each bar shows how long until your cumulative strike probability reaches that mark, at the simulated hashrate. The 50% line is your "expected" strike — half of all installs at this hashrate would have struck by then.
+                  {tt('Each bar shows how long until your cumulative strike probability reaches that mark, at the simulated hashrate. The 50% line is your "expected" strike — half of all installs at this hashrate would have struck by then.')}
                 </div>
               </div>
 
               {/* Short-term probabilities */}
               <div style={section}>
-                <div style={secTitle}>▸ Short-Term Strike Odds</div>
+                <div style={secTitle}>{tt('▸ Short-Term Strike Odds')}</div>
                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.55rem'}}>
                   <div style={heroBox}>
-                    <div style={heroLbl}>This Day</div>
+                    <div style={heroLbl}>{tt('This Day')}</div>
                     <div style={{...heroVal, fontSize: probDay >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probDay)}</div>
                   </div>
                   <div style={heroBox}>
-                    <div style={heroLbl}>This Week</div>
+                    <div style={heroLbl}>{tt('This Week')}</div>
                     <div style={{...heroVal, fontSize: probWeek >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probWeek)}</div>
                   </div>
                   <div style={heroBox}>
-                    <div style={heroLbl}>This Month</div>
+                    <div style={heroLbl}>{tt('This Month')}</div>
                     <div style={{...heroVal, fontSize: probMonth >= 0.01 ? '1.05rem' : '0.9rem'}}>{fmtOddsIn(probMonth)}</div>
                   </div>
                 </div>
@@ -12929,24 +13106,24 @@ function ReckoningModal({ poolState, currency, onClose }) {
              {/* Your slice of the entire Bitcoin network */}
               {haveData && (
                 <div style={section}>
-                  <div style={secTitle}>▸ Your Slice</div>
+                  <div style={secTitle}>{tt('▸ Your Slice')}</div>
                   <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.85rem 1rem' }}>
                     <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8}}>
                       <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color:'var(--text-1)', letterSpacing:'0.05em'}}>
-                        Of the global Bitcoin network
+                        {tt('Of the global Bitcoin network')}
                       </span>
                       <span style={{fontFamily:'var(--fd)', fontSize:'1rem', fontWeight:700, color:'var(--amber)'}}>
                         1 in {(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}
                       </span>
                     </div>
                     <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', lineHeight:1.5}}>
-                      Your <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(baseHash)}</span> is{' '}
+                      {tt('Your')} <span style={{color:'var(--amber)', fontWeight:600}}>{fmtHr(baseHash)}</span> is{' '}
                       <span style={{color:'var(--amber)', fontWeight:600}}>
                         {basePoolSharePct >= 0.0001
                           ? basePoolSharePct.toFixed(6) + '%'
                           : basePoolSharePct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(basePoolSharePct)) + 1))) + '%'}
                       </span>{' '}
-                      of all Bitcoin hashrate worldwide ({fmtHr(netHash)}). Every block, you're one of <span style={{color:'var(--amber)', fontWeight:600}}>{(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}</span> tickets in the lottery — and yours pays the full <span style={{color:'var(--amber)', fontWeight:600}}>{rewardBtc.toFixed(3)} BTC</span> if it wins.
+                      of all Bitcoin hashrate worldwide ({fmtHr(netHash)}). Every block, you're one of <span style={{color:'var(--amber)', fontWeight:600}}>{(netHash / baseHash).toLocaleString(undefined, {maximumFractionDigits:0})}</span> {tt('tickets in the lottery — and yours pays the full')} <span style={{color:'var(--amber)', fontWeight:600}}>{rewardBtc.toFixed(3)} BTC</span> {tt('if it wins.')}
                     </div>
                   </div>
                 </div>
@@ -12956,7 +13133,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
               {/* ── The Burn — power cost integration (v1.7.7) ── */}
               <div style={section}>
                 <div style={{...secTitle, display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
-                  <span>▸ The Burn</span>
+                  <span>{tt('▸ The Burn')}</span>
                   {haveBurn && netP50 != null && (
                     <span style={{
                       fontFamily:'var(--fd)', fontSize:'0.65rem', fontWeight:700,
@@ -12972,7 +13149,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                   <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.6rem', marginBottom:'0.7rem'}}>
                     <div>
                       <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:4}}>
-                        POWER (W)
+                        {tt('POWER (W)')}
                       </div>
                       <input
                         type="number"
@@ -12993,7 +13170,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                     </div>
                     <div>
                       <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:4}}>
-                        ELECTRICITY ($/kWh)
+                        {tt('ELECTRICITY ($/kWh)')}
                       </div>
                       <input
                         type="number"
@@ -13019,7 +13196,7 @@ function ReckoningModal({ poolState, currency, onClose }) {
                       fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-2)',
                       lineHeight:1.5, marginTop:6,
                     }}>
-                      Enter your rig's total wattage and your $/kWh rate to see the real cost of mining and your break-even electricity price.
+                      {tt("Enter your rig's total wattage and your $/kWh rate to see the real cost of mining and your break-even electricity price.")}
                     </div>
                   )}
 
@@ -13031,19 +13208,19 @@ function ReckoningModal({ poolState, currency, onClose }) {
                         marginBottom:'0.7rem',
                       }}>
                         <div style={{textAlign:'center', padding:'0.5rem 0.4rem', background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-                          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>PER DAY</div>
+                          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>{tt('PER DAY')}</div>
                           <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', fontWeight:700, color:'var(--text-1)', marginTop:3}}>
                             {fmtFiat(costPerDay, currency)}
                           </div>
                         </div>
                         <div style={{textAlign:'center', padding:'0.5rem 0.4rem', background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-                          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>PER MONTH</div>
+                          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>{tt('PER MONTH')}</div>
                           <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', fontWeight:700, color:'var(--text-1)', marginTop:3}}>
                             {fmtFiat(costPerMonth, currency)}
                           </div>
                         </div>
                         <div style={{textAlign:'center', padding:'0.5rem 0.4rem', background:'var(--bg-deep)', border:'1px solid var(--border)'}}>
-                          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>PER YEAR</div>
+                          <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>{tt('PER YEAR')}</div>
                           <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', fontWeight:700, color:'var(--text-1)', marginTop:3}}>
                             {fmtFiat(costPerYear, currency)}
                           </div>
@@ -13059,18 +13236,18 @@ function ReckoningModal({ poolState, currency, onClose }) {
                           marginBottom:'0.7rem',
                         }}>
                           <div style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.12em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:8, textAlign:'center'}}>
-                            IF YOU STRIKE AT THE 50% MARK
+                            {tt('IF YOU STRIKE AT THE 50% MARK')}
                           </div>
                           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, alignItems:'center'}}>
                             <div style={{textAlign:'center'}}>
-                              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.1em', textTransform:'uppercase'}}>STRIKE PAYS</div>
+                              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.1em', textTransform:'uppercase'}}>{tt('STRIKE PAYS')}</div>
                               <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:'var(--amber)', marginTop:3}}>
                                 {fmtFiat(rewardFiat, currency)}
                               </div>
                             </div>
                             <div style={{textAlign:'center', fontFamily:'var(--fd)', fontSize:'1.2rem', color:'var(--text-2)'}}>−</div>
                             <div style={{textAlign:'center'}}>
-                              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.1em', textTransform:'uppercase'}}>POWER COST</div>
+                              <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', color:'var(--text-2)', letterSpacing:'0.1em', textTransform:'uppercase'}}>{tt('POWER COST')}</div>
                               <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:'var(--text-1)', marginTop:3}}>
                                 {fmtFiat(costToP50, currency)}
                               </div>
@@ -13101,14 +13278,14 @@ function ReckoningModal({ poolState, currency, onClose }) {
                           fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)',
                           lineHeight:1.5,
                         }}>
-                          Your <span style={{color:'var(--amber)', fontWeight:600}}>break-even rate</span> is{' '}
+                          {tt('Your')} <span style={{color:'var(--amber)', fontWeight:600}}>{tt('break-even rate')}</span> is{' '}
                           <span style={{color: rateNum < breakEvenRate ? 'var(--green)' : 'var(--red)', fontWeight:700}}>
                             {fmtFiat(breakEvenRate, currency)}/kWh
                           </span>.{' '}
                           {rateNum < breakEvenRate ? (
-                            <>You're <span style={{color:'var(--green)', fontWeight:600}}>under</span> that — every strike pays for itself with profit left over.</>
+                            <>You're <span style={{color:'var(--green)', fontWeight:600}}>{tt('under')}</span> {tt('that — every strike pays for itself with profit left over.')}</>
                           ) : (
-                            <>You're <span style={{color:'var(--red)', fontWeight:600}}>above</span> that — at this rate, even a strike at the 50% horizon won't cover your power bill. Consider cheaper power, lower-wattage miners, or treating mining as a long-shot lottery.</>
+                            <>You're <span style={{color:'var(--red)', fontWeight:600}}>{tt('above')}</span> {tt("that — at this rate, even a strike at the 50% horizon won't cover your power bill. Consider cheaper power, lower-wattage miners, or treating mining as a long-shot lottery.")}</>
                           )}
                         </div>
                       )}
@@ -13126,9 +13303,9 @@ function ReckoningModal({ poolState, currency, onClose }) {
                 lineHeight:1.5,
                 paddingRight:'5rem',
               }}>
-                The Reckoning is a forecast, not a promise. <span style={{color:'var(--amber)', fontWeight:600}}>The next block is always a coin flip.</span>
+                {tt('The Reckoning is a forecast, not a promise.')} <span style={{color:'var(--amber)', fontWeight:600}}>{tt('The next block is always a coin flip.')}</span>
                 <div style={{marginTop:6, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-                  Math assumes constant network difficulty and your simulated hashrate. Real strikes can come tomorrow or in a decade — the math is the average across many possible timelines, not yours specifically.
+                  {tt('Math assumes constant network difficulty and your simulated hashrate. Real strikes can come tomorrow or in a decade — the math is the average across many possible timelines, not yours specifically.')}
                 </div>
               </div>
             </>
@@ -13231,7 +13408,7 @@ function WebhooksTab({tt=(x)=>x}) {
   return (
     <>
       <div style={{padding:'0.65rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.5}}>
-        Get a HTTP POST when blocks are found or workers go offline. Use Discord, Slack, custom endpoint, etc.
+        {tt('Get a HTTP POST when blocks are found or workers go offline. Use Discord, Slack, custom endpoint, etc.')}
       </div>
       <div style={{marginBottom:14}}>
         <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginBottom:4, textTransform:'uppercase'}}>{tt('Name')}</label>
@@ -13267,12 +13444,12 @@ function WebhooksTab({tt=(x)=>x}) {
           <input type="checkbox" checked={allowInternal} onChange={e=>setAllowInternal(e.target.checked)} style={{accentColor:'var(--amber)', marginTop:2, flexShrink:0}}/>
           <div style={{flex:1, minWidth:0}}>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:600, marginBottom:2}}>
-              Allow internal/LAN URL
+              {tt('Allow internal/LAN URL')}
             </div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-2)', lineHeight:1.5}}>
-              Required for self-hosted services on your local network — Home Assistant on 192.168.x.x, self-hosted ntfy on a Pi, etc. Leave OFF for public services like Discord, Slack, or hosted ntfy.sh.
+              {tt('Required for self-hosted services on your local network — Home Assistant on 192.168.x.x, self-hosted ntfy on a Pi, etc. Leave OFF for public services like Discord, Slack, or hosted ntfy.sh.')}
               <span style={{color:'var(--amber)', display:'block', marginTop:3}}>
-                ⚠ Only enable if you trust the URL. Internal URLs can be abused to probe services on your home network.
+                {tt('⚠ Only enable if you trust the URL. Internal URLs can be abused to probe services on your home network.')}
               </span>
             </div>
           </div>
@@ -13308,7 +13485,7 @@ function WebhooksTab({tt=(x)=>x}) {
 // across reloads. The "Copy snapshot" button reads from window._ssDebugSnapshot
 // — populated by DebugOverlay on every update tick — and serializes it for
 // pasting into a chat or bug report.
-function DebugTab({ settings, onSettingsChange }) {
+function DebugTab({ tt = (x) => x, settings, onSettingsChange }) {
   const [copied, setCopied] = useState(false);
 
   // rev70b: Toggle is always interactive. Two reasons:
@@ -13440,37 +13617,37 @@ function DebugTab({ settings, onSettingsChange }) {
   return (
     <>
       <div style={{padding:'0.65rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:14, fontFamily:'var(--fm)', fontSize:'0.66rem', color:'var(--text-2)', lineHeight:1.5}}>
-        Floating diagnostic overlay. 13 toggleable sections covering layout, state, performance, errors, console, network, device, caches, and more. Diagnostic streams (errors, console, fetch) are captured continuously starting at page load — flipping a section ON instantly shows pre-existing history.
+        {tt('Floating diagnostic overlay. 13 toggleable sections covering layout, state, performance, errors, console, network, device, caches, and more. Diagnostic streams (errors, console, fetch) are captured continuously starting at page load — flipping a section ON instantly shows pre-existing history.')}
       </div>
 
-      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:4}}>Master</div>
-      <Toggle k="enabled" label="Show debug overlay" helper="Top-right green panel that updates live."/>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginBottom:4}}>{tt('Master')}</div>
+      <Toggle k="enabled" label={tt("Show debug overlay")} helper="Top-right green panel that updates live."/>
 
-      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Page</div>
-      <Toggle k="layout"  label="Layout"   helper="Viewport, header/footer, carousel/slot/card metrics. WASTED >20px = under-fill bug."/>
-      <Toggle k="state"   label="State"    helper="Display mode (PWA/browser/iframe), breakpoint, body classes, useCarousel."/>
-      <Toggle k="network" label="Network"  helper="Pool loaded, last update, connection status, stratum port health."/>
-      <Toggle k="build"   label="Build"    helper="Compose version, active SW cache name, SW state, current path."/>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>{tt('Page')}</div>
+      <Toggle k="layout"  label={tt("Layout")}   helper="Viewport, header/footer, carousel/slot/card metrics. WASTED >20px = under-fill bug."/>
+      <Toggle k="state"   label={tt("State")}    helper="Display mode (PWA/browser/iframe), breakpoint, body classes, useCarousel."/>
+      <Toggle k="network" label={tt("Network")}  helper="Pool loaded, last update, connection status, stratum port health."/>
+      <Toggle k="build"   label={tt("Build")}    helper="Compose version, active SW cache name, SW state, current path."/>
 
-      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Diagnostic streams</div>
-      <Toggle k="performance" label="Performance" helper="FPS (current + 30s avg), JS memory (Chrome only), long-task count, DOM nodes, page-load timing."/>
-      <Toggle k="errors"      label="Errors"      helper="window.error count + last few, plus unhandled promise rejections."/>
-      <Toggle k="consoleLog"  label="Console capture" helper="Last 15 console.log/warn/error messages with timestamps. Critical when iOS DevTools isn't an option."/>
-      <Toggle k="api"         label="API trace"   helper="Every fetch() call: method, path, status, latency. Status ≥400 or >1s flagged."/>
-      <Toggle k="transport"   label="Transport (WS/SSE)" helper="Every WebSocket and EventSource: URL, ready state, message count, time since last frame, close code/reason. Catches stale-data bugs from silently closed sockets."/>
-      <Toggle k="resources"   label="Resource timing" helper="Last 10 slow (>500ms) or large (>100KB) resource loads. Diagnoses CDN issues and oversized assets."/>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>{tt('Diagnostic streams')}</div>
+      <Toggle k="performance" label={tt("Performance")} helper="FPS (current + 30s avg), JS memory (Chrome only), long-task count, DOM nodes, page-load timing."/>
+      <Toggle k="errors"      label={tt("Errors")}      helper="window.error count + last few, plus unhandled promise rejections."/>
+      <Toggle k="consoleLog"  label={tt("Console capture")} helper="Last 15 console.log/warn/error messages with timestamps. Critical when iOS DevTools isn't an option."/>
+      <Toggle k="api"         label={tt("API trace")}   helper="Every fetch() call: method, path, status, latency. Status ≥400 or >1s flagged."/>
+      <Toggle k="transport"   label={tt("Transport (WS/SSE)")} helper="Every WebSocket and EventSource: URL, ready state, message count, time since last frame, close code/reason. Catches stale-data bugs from silently closed sockets."/>
+      <Toggle k="resources"   label={tt("Resource timing")} helper="Last 10 slow (>500ms) or large (>100KB) resource loads. Diagnoses CDN issues and oversized assets."/>
 
-      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>Environment</div>
-      <Toggle k="device"       label="Device"      helper="UA, DPR, online, connection type/downlink, touch points, orientation, prefers-* settings, safe-area insets, visualViewport."/>
-      <Toggle k="visibility"   label="Visibility"  helper="Page visible/hidden state, transition count, time since last change. Catches iOS PWA suspend/resume."/>
-      <Toggle k="battery"      label="Battery"     helper="Level, charging state, time-to-full or time-remaining. Not exposed by iOS Safari."/>
-      <Toggle k="webgl"        label="WebGL"       helper="Every <canvas> with intrinsic + rendered size, GPU renderer string, context-loss event count."/>
-      <Toggle k="caches"       label="Cache storage" helper="Every Cache Storage cache + entry count, plus origin storage usage/quota/persisted-flag from StorageManager."/>
-      <Toggle k="capabilities" label="Capabilities" helper="Feature support matrix: WebGL2, Wasm, ServiceWorker, Cache, IDB, WakeLock, Push, Clipboard, isSecureContext, etc."/>
-      <Toggle k="theme"        label="Theme vars"  helper="Every --ss-* CSS custom property declared at :root, with computed values. Useful for skin/theme debugging."/>
-      <Toggle k="pool"         label="Pool detail" helper="Worker count breakdown (online/stale/offline), hashrate, last share age, recent block count."/>
-      <Toggle k="interaction"  label="Interaction" helper="Last tap coords + idle time. Useful for swipe/touch debugging."/>
-      <Toggle k="storage"      label="LocalStorage" helper="Every ss_* localStorage key + value + total size. Verbose."/>
+      <div style={{fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.12em', color:'var(--text-3)', textTransform:'uppercase', marginTop:'1.2rem', marginBottom:4}}>{tt('Environment')}</div>
+      <Toggle k="device"       label={tt("Device")}      helper="UA, DPR, online, connection type/downlink, touch points, orientation, prefers-* settings, safe-area insets, visualViewport."/>
+      <Toggle k="visibility"   label={tt("Visibility")}  helper="Page visible/hidden state, transition count, time since last change. Catches iOS PWA suspend/resume."/>
+      <Toggle k="battery"      label={tt("Battery")}     helper="Level, charging state, time-to-full or time-remaining. Not exposed by iOS Safari."/>
+      <Toggle k="webgl"        label={tt("WebGL")}       helper="Every <canvas> with intrinsic + rendered size, GPU renderer string, context-loss event count."/>
+      <Toggle k="caches"       label={tt("Cache storage")} helper="Every Cache Storage cache + entry count, plus origin storage usage/quota/persisted-flag from StorageManager."/>
+      <Toggle k="capabilities" label={tt("Capabilities")} helper="Feature support matrix: WebGL2, Wasm, ServiceWorker, Cache, IDB, WakeLock, Push, Clipboard, isSecureContext, etc."/>
+      <Toggle k="theme"        label={tt("Theme vars")}  helper="Every --ss-* CSS custom property declared at :root, with computed values. Useful for skin/theme debugging."/>
+      <Toggle k="pool"         label={tt("Pool detail")} helper="Worker count breakdown (online/stale/offline), hashrate, last share age, recent block count."/>
+      <Toggle k="interaction"  label={tt("Interaction")} helper="Last tap coords + idle time. Useful for swipe/touch debugging."/>
+      <Toggle k="storage"      label={tt("LocalStorage")} helper="Every ss_* localStorage key + value + total size. Verbose."/>
 
       <div style={{display:'flex', gap:8, marginTop:'1.2rem', flexWrap:'wrap'}}>
         <button onClick={copySnapshot} style={{
@@ -13488,7 +13665,7 @@ function DebugTab({ settings, onSettingsChange }) {
           fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em',
           textTransform:'uppercase', cursor:'pointer',
         }}>
-          Download logs
+          {tt('Download logs')}
         </button>
         <button onClick={resetDefaults} style={{
           padding:'0.55rem 0.9rem', background:'var(--bg-raised)',
@@ -13496,12 +13673,12 @@ function DebugTab({ settings, onSettingsChange }) {
           fontFamily:'var(--fd)', fontSize:'0.65rem', letterSpacing:'0.1em',
           textTransform:'uppercase', cursor:'pointer',
         }}>
-          Reset
+          {tt('Reset')}
         </button>
       </div>
 
       <div style={{marginTop:'1rem', fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-3)', lineHeight:1.5}}>
-        Snapshot is the latest values from the overlay (regardless of which sections are on screen). Paste into a chat to share a complete diagnostic.
+        {tt('Snapshot is the latest values from the overlay (regardless of which sections are on screen). Paste into a chat to share a complete diagnostic.')}
       </div>
     </>
   );
@@ -14792,6 +14969,9 @@ export default function App() {
   if (showOnboarding) {
     return (
       <OnboardingWizard
+        tt={tt}
+        lang={lang}
+        onLangChange={onLangChange}
         onComplete={async (data) => {
           await saveConfig(data);
           setShowOnboarding(false);
@@ -14805,7 +14985,7 @@ export default function App() {
     return (
       <>
         <Header connected={connected} status="setup" onSettings={()=>setShowSettings(true)} privateMode={!!poolState.privateMode} minimalMode={minimalMode} performanceMode={performanceMode} zmq={poolState?.zmq}/>
-        <SetupForm saveConfig={saveConfig}/>
+        <SetupForm tt={tt} saveConfig={saveConfig}/>
         {showSettings && (
           <SettingsModal
             onClose={()=>setShowSettings(false)}
@@ -14881,17 +15061,17 @@ export default function App() {
     hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
-    shares: <ShareStats shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
-    best: <BestShareLeaderboard workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
+    shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
+    best: <BestShareLeaderboard tt={tt} workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
     closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
-    jumpers: <JumpersPanel
+    jumpers: <JumpersPanel tt={tt}
       topFinders={poolState?.topFinders}
       netBlocks={poolState?.netBlocks}
       blocks={poolState?.blocks}
       blockAlert={blockAlert}
     />,
-    recent: <RecentBlocksPanel netBlocks={poolState?.netBlocks}/>,
-    health: <HealthStatusCard onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
+    recent: <RecentBlocksPanel tt={tt} netBlocks={poolState?.netBlocks}/>,
+    health: <HealthStatusCard tt={tt} onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
     // ── v1.12.0 analytics cards ───────────────────────────────────────────
     hashwindows: <PoolHashrateWindows pool={poolState?.pool} themeKey={themeId} />,
     spswindows:  <SpsWindows pool={poolState?.pool} />,
@@ -15031,7 +15211,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.64 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v2.0.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -15041,7 +15221,7 @@ export default function App() {
       </footer>
       )}
 
-      <BlockAlert show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
+      <BlockAlert tt={tt} show={!!blockAlert} block={lastBlock} onDismiss={()=>setBlockAlert(false)}/>
       <OfflineToasts workers={workers} aliases={aliases}/>
       <HotMinerBanner workers={workers} aliases={aliases}/>
       {selectedWorker && (
@@ -15050,24 +15230,24 @@ export default function App() {
           notes={notes} onNotesChange={onNotesChange}/>
       )}
         {showShareStats && (
-        <ShareStatsModal shares={poolState?.shares} workers={workers} aliases={aliases}
+        <ShareStatsModal tt={tt} shares={poolState?.shares} workers={workers} aliases={aliases}
           onClose={()=>setShowShareStats(false)} onWorkerSelect={setSelectedWorker}
           trackingSince={poolState?.shareStatsStartedAt}/>
       )}
        {showStrikers && (
-        <StrikersModal
+        <StrikersModal tt={tt}
           networkStats={poolState?.networkStats}
           onClose={()=>setShowStrikers(false)}/>
       )}
       {showReckoning && (
-        <ReckoningModal
+        <ReckoningModal tt={tt}
           poolState={poolState}
           currency={currency}
           onClose={()=>setShowReckoning(false)}/>
       )}
 
       {healthDetailSnapshot && (
-        <HealthDetailModal
+        <HealthDetailModal tt={tt}
           initialHealth={healthDetailSnapshot}
           onClose={()=>setHealthDetailSnapshot(null)}/>
       )}
