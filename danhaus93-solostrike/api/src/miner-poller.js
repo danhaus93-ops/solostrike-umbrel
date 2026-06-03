@@ -338,6 +338,16 @@ function extractCgminerLive(summary, stats) {
     efficiencyJTH: null,
     frequencyMhz: null,
     coreVoltageMv: null,
+    inputVoltageV: null,
+    coreVoltageSetMv: null,
+    sharesAccepted: null,
+    sharesRejected: null,
+    rejectPct: null,
+    bestDiff: null,
+    bestSessionDiff: null,
+    expectedHashrate: null,
+    defaultFrequencyMhz: null,
+    defaultCoreVoltageMv: null,
   };
 
   const sm = Array.isArray(summary) ? summary[0] : summary;
@@ -450,14 +460,22 @@ function extractCgminerLive(summary, stats) {
         // v2.x: tuning knobs from the MM blob — Avalon reports an average
         // frequency (Freq/Frequency/Fac) and core voltage (Vol/MV). Field names
         // vary by firmware, so try several. Used by the benchmark layer.
+        // v2.x: Avalon reports average frequency as Freq[438.56] (MHz). It does
+        // NOT expose a per-ASIC core voltage in mV like ESP-Miner — the closest
+        // is the PS[] power-supply array, index 2 = INPUT voltage in centivolts
+        // (27493 → 274.93 V). Different metric from BitAxe core mV, so stored
+        // separately as inputVoltageV and labelled accordingly.
         const mmFreq = parseAvalonMmField(v, 'Freq', 'Frequency', 'Fac', 'FreqAvg');
-        const mmVolt = parseAvalonMmField(v, 'Vol', 'MV', 'Voltage', 'CoreVoltage');
 
         if (mmFreq !== null && mmFreq > 0 && mmFreq < 2000) {
           if (live.frequencyMhz == null || mmFreq > live.frequencyMhz) live.frequencyMhz = mmFreq;
         }
-        if (mmVolt !== null && mmVolt > 0 && mmVolt < 3000) {
-          if (live.coreVoltageMv == null) live.coreVoltageMv = mmVolt;
+        const psMatch = /\bPS\[([0-9 .\-]+)\]/.exec(v);
+        if (psMatch) {
+          const ps = psMatch[1].trim().split(/\s+/).map(Number);
+          if (ps.length > 2 && Number.isFinite(ps[2]) && ps[2] > 5000 && ps[2] < 30000) {
+            if (live.inputVoltageV == null) live.inputVoltageV = ps[2] / 100;
+          }
         }
 
         if (mmPower !== null && mmPower > 0 && mmPower < 20000) {
@@ -498,6 +516,23 @@ function extractCgminerLive(summary, stats) {
 }
 
 // v1.12.0: J/TH = watts / (hashrate in TH/s). hashrate is stored in H/s.
+// v2.x: best-share difficulty arrives in two firmware formats — a raw number
+// (NerdQAxe/TNA, e.g. 23715853416) or a pre-formatted string with a unit
+// suffix (BitAxe AxeOS, e.g. "86.75 G"). Normalize both to a plain number of
+// difficulty units so the UI formats them consistently.
+function normalizeDiff(v) {
+  if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+  if (typeof v === 'string') {
+    const m = /^\s*([0-9]*\.?[0-9]+)\s*([kKmMgGtTpPeE]?)/.exec(v);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    if (!Number.isFinite(n)) return null;
+    const mult = { '': 1, k: 1e3, m: 1e6, g: 1e9, t: 1e12, p: 1e15, e: 1e18 };
+    return n * (mult[m[2].toLowerCase()] || 1);
+  }
+  return null;
+}
+
 function computeEfficiency(powerW, hashrateHs) {
   if (!powerW || powerW <= 0) return null;
   if (!hashrateHs || hashrateHs <= 0) return null;
@@ -584,6 +619,15 @@ function extractEspMinerLive(d) {
     asicModel: null,
     frequencyMhz: null,
     coreVoltageMv: null,
+    coreVoltageSetMv: null,
+    sharesAccepted: null,
+    sharesRejected: null,
+    rejectPct: null,
+    bestDiff: null,
+    bestSessionDiff: null,
+    expectedHashrate: null,
+    defaultFrequencyMhz: null,
+    defaultCoreVoltageMv: null,
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
   if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
@@ -610,6 +654,26 @@ function extractEspMinerLive(d) {
   if (typeof d.frequency === 'number' && d.frequency > 0 && d.frequency < 2000) live.frequencyMhz = d.frequency;
   if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 3000) live.coreVoltageMv = d.coreVoltageActual;
   else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 3000) live.coreVoltageMv = d.coreVoltage;
+  // v2.x Tier-1: the CONFIGURED core voltage (target). Shown alongside the
+  // measured value as "set → actual" so VR sag is visible at a glance.
+  if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 3000) live.coreVoltageSetMv = d.coreVoltage;
+  // v2.x Tier-1: share counters → reject %. Present on both BitAxe & NerdQAxe.
+  if (typeof d.sharesAccepted === 'number' && d.sharesAccepted >= 0) live.sharesAccepted = d.sharesAccepted;
+  if (typeof d.sharesRejected === 'number' && d.sharesRejected >= 0) live.sharesRejected = d.sharesRejected;
+  if (live.sharesAccepted != null && live.sharesRejected != null) {
+    const tot = live.sharesAccepted + live.sharesRejected;
+    live.rejectPct = tot > 0 ? (live.sharesRejected / tot) * 100 : 0;
+  }
+  // v2.x Tier-1: best share. BitAxe sends a pre-formatted STRING ("86.75 G");
+  // NerdQAxe/TNA sends a raw integer (23715853416). Normalize both to a number
+  // of difficulty units so the UI can format consistently.
+  live.bestDiff = normalizeDiff(d.bestDiff);
+  live.bestSessionDiff = normalizeDiff(d.bestSessionDiff);
+  // v2.x Tier-1: expected hashrate (BitAxe) — actual-vs-expected health signal.
+  if (typeof d.expectedHashrate === 'number' && d.expectedHashrate > 0) live.expectedHashrate = d.expectedHashrate * 1e9;
+  // v2.x Tier-1: stock baselines — the OC reference point for the benchmark layer.
+  if (typeof d.defaultFrequency === 'number' && d.defaultFrequency > 0 && d.defaultFrequency < 2000) live.defaultFrequencyMhz = d.defaultFrequency;
+  if (typeof d.defaultCoreVoltage === 'number' && d.defaultCoreVoltage > 0 && d.defaultCoreVoltage < 3000) live.defaultCoreVoltageMv = d.defaultCoreVoltage;
   live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
 
   if (live.tempC !== null) {
