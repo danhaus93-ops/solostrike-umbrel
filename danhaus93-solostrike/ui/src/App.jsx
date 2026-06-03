@@ -11919,9 +11919,16 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const conf = benchConfidence(bucket.sampleCount || 0, minSample);
   const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
   const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
+  // v2.x: Avalon core voltage is a per-chip measured average, not a settable
+  // per-domain knob like the BitAxe — label it so nobody tries to type it in.
+  const isAvalon = /avalon/i.test(bucket.model || '');
 
   const doCopy = (c) => {
-    const text = `${tt('Frequency')}: ${c.freq} MHz, ${tt('Core Voltage')}: ${c.coreVoltage != null ? c.coreVoltage + ' mV' : '—'}`;
+    // copy only the SETTINGS (inputs you type into the miner), never the outcomes.
+    // Avalon voltage isn't settable, so copy frequency only for it.
+    const text = isAvalon
+      ? `${tt('Frequency')}: ${c.freq} MHz`
+      : `${tt('Frequency')}: ${c.freq} MHz, ${tt('Core Voltage')}: ${c.coreVoltage != null ? c.coreVoltage + ' mV' : '—'}`;
     try { navigator.clipboard && navigator.clipboard.writeText(text); } catch {}
     setCopied(true); setTimeout(() => setCopied(false), 1800);
   };
@@ -11984,11 +11991,36 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-3)' }}>J/TH</span>
           <span style={{ marginLeft:'auto', fontFamily:'var(--fm)', fontSize:'0.5rem', color: conf.color }}>{tt(conf.label)}</span>
         </div>
-        <div style={{ fontFamily:'var(--fm)', fontSize:'0.46rem', color:'var(--text-3)', marginBottom:10 }}>{tt('24h sustained avg · stable rigs only')}</div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
-          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 6px', textAlign:'center' }}><div style={lbl}>{tt('Freq')}</div><div style={val}>{champ.freq} MHz</div></div>
-          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 6px', textAlign:'center' }}><div style={lbl}>{tt('Voltage')}</div><div style={val}>{champ.coreVoltage != null ? champ.coreVoltage + ' mV' : '—'}</div></div>
-          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 6px', textAlign:'center' }}><div style={lbl}>{tt('Hashrate')}</div><div style={val}>{champ.ths} TH/s</div></div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.46rem', color:'var(--text-3)', marginBottom:10 }}>{tt('sustained ~10-min avg · stable rigs only')}</div>
+
+        {/* SETTINGS to copy — the knobs (set/target values) */}
+        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5 }}>
+          <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Settings to copy')}</span>
+          <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(245,166,35,0.16)', color:'var(--amber)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('SET / TARGET')}</span>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:11 }}>
+          <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
+            <div style={lbl}>{tt('Frequency')}</div>
+            <div style={{ ...val, color:'var(--amber)' }}>{champ.freq} MHz</div>
+            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{tt('enter in miner')}</div>
+          </div>
+          <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
+            <div style={lbl}>{tt('Core Voltage')}</div>
+            <div style={{ ...val, color:'var(--amber)' }}>{isAvalon && champ.coreVoltage != null ? '~' + champ.coreVoltage + ' mV' : (champ.coreVoltage != null ? champ.coreVoltage + ' mV' : '—')}</div>
+            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{isAvalon ? tt('per-chip avg · not directly settable') : tt('set / target')}</div>
+          </div>
+        </div>
+
+        {/* OUTCOMES — measured results */}
+        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5 }}>
+          <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Achieved outcomes')}</span>
+          <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(0,255,209,0.12)', color:'var(--cyan)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('MEASURED · AVG')}</span>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Hashrate')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.ths}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('J/TH')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.jth}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Temp')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.tempC != null ? champ.tempC + '°' : '—'}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Reject')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.rejectPct != null ? champ.rejectPct + '%' : '—'}</div></div>
         </div>
       </div>
 
@@ -11999,12 +12031,19 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: i === 0 ? 'var(--green)' : (r.isOwn ? 'var(--cyan)' : 'var(--text-3)'), width:24, textAlign:'center' }}>{i === 0 ? '👑' : i + 1}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
             {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
-            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? r.coreVoltage + ' mV' : '—'}</span>
+            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color: i === 0 ? 'var(--green)' : 'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
         </div>
       ))}
+
+      {/* v2.x: accuracy caption — explains the averaging method so the numbers
+          aren't read as "wrong" when they differ from the miner's live UI. */}
+      <div style={{ marginTop:14, padding:'9px 11px', background:'rgba(245,166,35,0.05)', border:'1px solid var(--border)', borderRadius:8, display:'flex', gap:8 }}>
+        <span style={{ color:'var(--amber)', fontSize:'0.7rem', flexShrink:0 }}>ⓘ</span>
+        <p style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', lineHeight:1.6, color:'var(--text-2)' }}>{tt('These are sustained ~10-min averages from each miner\u2019s reported telemetry \u2014 they won\u2019t match the live, instant numbers in your miner\u2019s UI, which fluctuate constantly. Settings (freq, voltage) are the values to enter in your miner. Outcomes (hashrate, J/TH, temp) are measured results. Power is as the miner reports it (chip + board), not wall draw \u2014 a plug meter reads higher.')}</p>
+      </div>
 
       {/* inline risk one-liner (permanent) */}
       <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--amber)', textAlign:'center', margin:'12px 0 6px', opacity:0.85, lineHeight:1.4 }}>
