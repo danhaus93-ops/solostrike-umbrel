@@ -12042,7 +12042,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           aren't read as "wrong" when they differ from the miner's live UI. */}
       <div style={{ marginTop:14, padding:'9px 11px', background:'rgba(245,166,35,0.05)', border:'1px solid var(--border)', borderRadius:8, display:'flex', gap:8 }}>
         <span style={{ color:'var(--amber)', fontSize:'0.7rem', flexShrink:0 }}>ⓘ</span>
-        <p style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', lineHeight:1.6, color:'var(--text-2)' }}>{tt('These are sustained ~10-min averages from each miner\u2019s reported telemetry \u2014 they won\u2019t match the live, instant numbers in your miner\u2019s UI, which fluctuate constantly. Settings (freq, voltage) are the values to enter in your miner. Outcomes (hashrate, J/TH, temp) are measured results. Power is as the miner reports it (chip + board), not wall draw \u2014 a plug meter reads higher.')}</p>
+        <p style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', lineHeight:1.6, color:'var(--text-2)' }}>{tt('These are sustained ~10-min averages from each miner\u2019s reported telemetry \u2014 they won\u2019t match the live, instant numbers in your miner\u2019s UI, which fluctuate constantly. Settings (freq, voltage) are the values to enter in your miner. Outcomes (hashrate, J/TH, temp) are measured results. Power is as the miner reports it (chip + board), not wall draw \u2014 a plug meter reads higher.')} <span style={{ color:'var(--text-1)' }}>{tt('This shares only your hardware model and these performance numbers \u2014 frequency, voltage, hashrate, J/TH, temp, and reject rate. Not your wallet address, IP, hostname, or worker names. You appear only as a random handle unless you set an alias.')}</span></p>
       </div>
 
       {/* inline risk one-liner (permanent) */}
@@ -12613,7 +12613,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📡</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('Pulse Strikers')}</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('Pulse')}</span>
             {/* v1.11.2: help icon → opens onboarding */}
             <button
               onClick={() => setShowOnboard(true)}
@@ -12653,7 +12653,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
 
           {/* v2.x: tab bar — NETWORK | BENCHMARKS */}
           <div style={{display:'flex', gap:4, marginBottom:'1rem', borderBottom:'1px solid var(--border)'}}>
-            {[['network','Network'],['benchmarks','Benchmarks']].map(([id,label])=>(
+            {[['network','Strikers'],['benchmarks','Top Strikers']].map(([id,label])=>(
               <button key={id} onClick={()=>setPulseTab(id)} style={{
                 flex:1, padding:'9px 8px', background:'transparent', border:'none',
                 borderBottom: pulseTab===id ? '2px solid var(--amber)' : '2px solid transparent',
