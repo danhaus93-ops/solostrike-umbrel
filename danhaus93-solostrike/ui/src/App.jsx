@@ -13911,6 +13911,8 @@ function LiveStatsBlock({ worker }) {
   const hasAny = (live.tempC != null) || (live.fanRpm != null) || (live.fanPct != null)
               || (live.hashrateReported != null) || (live.hwErrors != null)
               || (live.uptimeSec != null) || (live.firmwareVersion != null)
+              || (live.frequencyMhz != null) || (live.coreVoltageMv != null)
+              || (live.powerW != null) || (live.efficiencyJTH != null)
               || (Array.isArray(live.tempDetails) && live.tempDetails.length > 0);
   if (!hasAny) return null;
 
@@ -13965,6 +13967,30 @@ function LiveStatsBlock({ worker }) {
         <div style={kvRow}>
           <span style={kvLabel}>Reported Hashrate</span>
           <span style={{...kvVal, color: 'var(--cyan)'}}>{hrLine}</span>
+        </div>
+      )}
+      {live.frequencyMhz != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Frequency</span>
+          <span style={kvVal}>{Math.round(live.frequencyMhz)} MHz</span>
+        </div>
+      )}
+      {live.coreVoltageMv != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Core Voltage</span>
+          <span style={kvVal}>{Math.round(live.coreVoltageMv)} mV</span>
+        </div>
+      )}
+      {live.powerW != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Power</span>
+          <span style={kvVal}>{live.powerW.toFixed(1)} W</span>
+        </div>
+      )}
+      {live.efficiencyJTH != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>Efficiency</span>
+          <span style={{...kvVal, color: 'var(--amber)'}}>{live.efficiencyJTH.toFixed(1)} J/TH</span>
         </div>
       )}
       {live.hwErrors != null && (
