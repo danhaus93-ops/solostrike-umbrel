@@ -13906,6 +13906,7 @@ function PoolAlignmentBlock({ worker }) {
 
 function LiveStatsBlock({ tt = (x) => x, worker }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showChips, setShowChips] = useState(false);
   const live = worker.live;
   if (!live) return null;
   // Hide if there's truly nothing to show (all fields null)
@@ -13918,6 +13919,7 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
               || (live.tempTargetC != null) || (live.inputCurrentA != null) || (live.overclockEnabled != null)
               || (live.hr1h != null) || (live.hr1d != null) || (live.stratumConnected != null)
               || (live.advanced && Object.keys(live.advanced).length > 0)
+              || (Array.isArray(live.chipTemps) && live.chipTemps.length > 0) || (live.outletTempC != null)
               || (Array.isArray(live.tempDetails) && live.tempDetails.length > 0);
   if (!hasAny) return null;
 
@@ -14077,6 +14079,43 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
           </span>
         </div>
       )}
+      {/* ── Avalon per-chip telemetry ── */}
+      {live.outletTempC != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Outlet Temp')}</span><span style={kvVal}>{Math.round(live.outletTempC)}°C</span></div>
+      )}
+      {Array.isArray(live.chipTemps) && live.chipTemps.length > 0 && (
+        <>
+          <div
+            onClick={() => setShowChips(v => !v)}
+            style={{ ...kvRow, cursor:'pointer' }}
+          >
+            <span style={kvLabel}>{showChips ? '▾' : '▸'} {tt('Chip Details')}</span>
+            <span style={{...kvVal, fontSize:'0.62rem', color:'var(--text-2)'}}>
+              {tt('avg')} {live.chipTempAvg != null ? Math.round(live.chipTempAvg) : '–'}°C / {tt('max')} {live.chipTempMax != null ? live.chipTempMax : '–'}°C{live.chipVoltAvg != null ? ` · ${live.chipVoltAvg} mV` : ''}
+            </span>
+          </div>
+          {showChips && (
+            <div style={{ padding:'0.3rem 0 0.5rem' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.15rem 0.5rem', fontFamily:'var(--fm)', fontSize:'0.58rem' }}>
+                <span style={{ color:'var(--text-3)', letterSpacing:'0.06em' }}>{tt('Chip')}</span>
+                <span style={{ color:'var(--text-3)', letterSpacing:'0.06em', textAlign:'right' }}>{tt('Temp')}</span>
+                <span style={{ color:'var(--text-3)', letterSpacing:'0.06em', textAlign:'right' }}>{tt('Voltage')}</span>
+                {live.chipTemps.map((t, i) => {
+                  const mv = Array.isArray(live.chipVolts) ? live.chipVolts[i] : null;
+                  const tColor = t >= TEMP_RED_C ? 'var(--red)' : t >= TEMP_AMBER_C ? 'var(--amber)' : 'var(--green)';
+                  return (
+                    <React.Fragment key={i}>
+                      <span style={{ color:'var(--text-2)' }}>{i + 1}</span>
+                      <span style={{ color: tColor, textAlign:'right' }}>{Math.round(t)}°C</span>
+                      <span style={{ color:'var(--text-2)', textAlign:'right' }}>{mv != null ? `${mv} mV` : '—'}</span>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
       {/* ── Tier 3: Advanced / System (operator-only, collapsed) ── */}
       {live.advanced && Object.keys(live.advanced).length > 0 && (
         <>
@@ -14108,6 +14147,7 @@ const ADV_LABELS = {
   stratumURL:'Stratum URL', pid:'Fan PID', jobInterval:'Job Interval', smallCoreCount:'Small Cores',
   asicCount:'ASIC Count', defaultTheme:'Device Theme', display:'Display', freeHeapInt:'Free Heap (int)',
   proxyDifficulty:'Proxy Difficulty', army:'Army Mode',
+  perChainFreq:'Per-chain Freq', siliconBin:'Silicon Bin', workMode:'Work Mode',
 };
 
 function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
