@@ -11866,6 +11866,198 @@ function JumpersPanel({ tt = (x) => x, topFinders, netBlocks, blocks, blockAlert
 // Shows every Striker (anonymous SoloStrike operator) currently on the network.
 // You're pinned at the top, then everyone else by hashrate descending.
 // Outlier-filtered peers hidden by default; toggle reveals them.
+// ── v2.x: Crowdsourced tuning Benchmark section (Pulse Strikers modal) ────────
+// Reads networkStats.benchmarks (per-bucket aggregates from the backend). Shows
+// only buckets the operator actually owns (picker built from own rigs). Champion
+// banner + ranked leaderboard, a client-side confidence slider (2–25, never
+// hides — labels low/med/high), copy-only action behind a one-time, version-
+// stamped disclaimer gate, plus a permanent inline risk one-liner. Self-chosen
+// alias (local) names the operator's own rows.
+const BENCH_DISCLAIMER_VERSION = 1;
+const LS_BENCH_DISCLAIMER = 'ss_bench_disclaimer_v' + BENCH_DISCLAIMER_VERSION;
+const LS_BENCH_ALIAS = 'ss_bench_alias_v1';
+
+function benchConfidence(sampleCount, threshold) {
+  // relative to the user's chosen threshold; never hides, just labels
+  if (sampleCount >= threshold) return { key: 'high', label: 'high confidence', color: 'var(--green)' };
+  if (sampleCount >= Math.max(2, Math.ceil(threshold / 2))) return { key: 'med', label: 'medium confidence', color: 'var(--amber)' };
+  return { key: 'low', label: 'low sample — treat as a hint', color: 'var(--text-3)' };
+}
+
+function BenchmarkSection({ tt = (x) => x, networkStats }) {
+  const buckets = Array.isArray(networkStats && networkStats.benchmarks) ? networkStats.benchmarks : [];
+  // own buckets = those where any leaderboard row is ours
+  const owned = buckets.filter(b => Array.isArray(b.leaderboard) && b.leaderboard.some(r => r.isOwn));
+  const shown = owned.length ? owned : buckets; // fallback so it's not empty in testing
+  const [sel, setSel] = useState(0);
+  const [minSample, setMinSample] = useState(5);
+  const [accepted, setAccepted] = useState(() => {
+    try { return !!localStorage.getItem(LS_BENCH_DISCLAIMER); } catch { return false; }
+  });
+  const [showDisc, setShowDisc] = useState(false);
+  const [discChecked, setDiscChecked] = useState(false);
+  const [pendingCopy, setPendingCopy] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [alias, setAlias] = useState(() => {
+    try { return localStorage.getItem(LS_BENCH_ALIAS) || ''; } catch { return ''; }
+  });
+  const [editAlias, setEditAlias] = useState(false);
+
+  if (!shown.length) {
+    return (
+      <div style={{ marginBottom:'1.5rem' }}>
+        <div style={{ fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' }}>{tt('▸ Tuning Benchmarks')}</div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)', padding:'0.75rem', border:'1px solid var(--border)', textAlign:'center' }}>
+          {tt('Gathering benchmark data from the network — check back soon.')}
+        </div>
+      </div>
+    );
+  }
+
+  const bucket = shown[Math.min(sel, shown.length - 1)];
+  const champ = bucket.champion || {};
+  const conf = benchConfidence(bucket.sampleCount || 0, minSample);
+  const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
+  const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
+
+  const doCopy = (c) => {
+    const text = `${tt('Frequency')}: ${c.freq} MHz, ${tt('Core Voltage')}: ${c.coreVoltage != null ? c.coreVoltage + ' mV' : '—'}`;
+    try { navigator.clipboard && navigator.clipboard.writeText(text); } catch {}
+    setCopied(true); setTimeout(() => setCopied(false), 1800);
+  };
+  const onCopyClick = (c) => {
+    if (accepted) { doCopy(c); return; }
+    setPendingCopy(c); setDiscChecked(false); setShowDisc(true);
+  };
+  const acceptDisclaimer = () => {
+    if (!discChecked) return;
+    try { localStorage.setItem(LS_BENCH_DISCLAIMER, String(Date.now())); } catch {}
+    setAccepted(true); setShowDisc(false);
+    if (pendingCopy) { doCopy(pendingCopy); setPendingCopy(null); }
+  };
+  const saveAlias = (v) => {
+    const clean = (v || '').slice(0, 24).replace(/[^\w \-.]/g, '');
+    setAlias(clean); setEditAlias(false);
+    try { clean ? localStorage.setItem(LS_BENCH_ALIAS, clean) : localStorage.removeItem(LS_BENCH_ALIAS); } catch {}
+  };
+
+  const lbl = { fontFamily:'var(--fd)', fontSize:'0.4rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase' };
+  const val = { fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.74rem', color:'var(--text-1)' };
+
+  return (
+    <div style={{ marginBottom:'1.5rem' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'0.5rem', flexWrap:'wrap', gap:6 }}>
+        <div style={{ fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)' }}>{tt('▸ Tuning Benchmarks')}</div>
+        {/* confidence slider */}
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <span style={{ ...lbl }}>{tt('Min sample')}: {minSample}</span>
+          <input type="range" min={2} max={25} value={minSample}
+            onChange={e => setMinSample(parseInt(e.target.value, 10))}
+            style={{ width:90, accentColor:'var(--amber)' }} />
+        </div>
+      </div>
+
+      {/* bucket picker chips */}
+      <div style={{ display:'flex', gap:5, marginBottom:10, flexWrap:'wrap' }}>
+        {shown.map((b, i) => (
+          <button key={i} onClick={() => setSel(i)} style={{
+            fontFamily:'var(--fd)', fontSize:'0.52rem', padding:'5px 10px', borderRadius:18,
+            border:'1px solid ' + (i === sel ? 'var(--amber)' : 'var(--border)'),
+            background: i === sel ? 'rgba(245,166,35,0.08)' : 'var(--bg-deep)',
+            color: i === sel ? 'var(--amber)' : 'var(--text-3)', cursor:'pointer' }}>
+            {bucketLabel(b)} <span style={{ opacity:0.7 }}>· {b.sampleCount}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* champion banner (A) */}
+      <div style={{ background:'linear-gradient(135deg,rgba(57,255,106,0.10),rgba(0,255,209,0.03))', border:'1px solid rgba(57,255,106,0.32)', borderRadius:11, padding:'12px 13px', marginBottom:12, position:'relative' }}>
+        <div style={{ fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.15em', color:'var(--green)', textTransform:'uppercase', marginBottom:6 }}>{tt('⚡ Most efficient · sustained')}</div>
+        <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champ.isOwn ? 'var(--cyan)' : 'var(--green)', marginBottom:2 }}>
+          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
+        </div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-2)', marginBottom:8 }}>
+          {bucket.model}{bucket.asic ? ' · ' + bucket.asic : ''}{bucket.boardVersion ? ' · ' + tt('rev') + ' ' + bucket.boardVersion : ''} · {bucket.sampleCount} {tt('miners ranked')}
+        </div>
+        <div style={{ display:'flex', alignItems:'baseline', gap:6, marginBottom:3 }}>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'1.7rem', color:'var(--green)', lineHeight:1 }}>{champ.jth}</span>
+          <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-3)' }}>J/TH</span>
+          <span style={{ marginLeft:'auto', fontFamily:'var(--fm)', fontSize:'0.5rem', color: conf.color }}>{tt(conf.label)}</span>
+        </div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.46rem', color:'var(--text-3)', marginBottom:10 }}>{tt('24h sustained avg · stable rigs only')}</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 6px', textAlign:'center' }}><div style={lbl}>{tt('Freq')}</div><div style={val}>{champ.freq} MHz</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 6px', textAlign:'center' }}><div style={lbl}>{tt('Voltage')}</div><div style={val}>{champ.coreVoltage != null ? champ.coreVoltage + ' mV' : '—'}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 6px', textAlign:'center' }}><div style={lbl}>{tt('Hashrate')}</div><div style={val}>{champ.ths} TH/s</div></div>
+        </div>
+      </div>
+
+      {/* leaderboard (B) */}
+      <div style={{ fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:6 }}>{tt('Efficiency leaderboard')}</div>
+      {(bucket.leaderboard || []).map((r, i) => (
+        <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: i === 0 ? 'var(--green)' : (r.isOwn ? 'var(--cyan)' : 'var(--text-3)'), width:24, textAlign:'center' }}>{i === 0 ? '👑' : i + 1}</span>
+          <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
+            {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
+            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? r.coreVoltage + ' mV' : '—'}</span>
+          </span>
+          <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color: i === 0 ? 'var(--green)' : 'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
+        </div>
+      ))}
+
+      {/* inline risk one-liner (permanent) */}
+      <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--amber)', textAlign:'center', margin:'12px 0 6px', opacity:0.85, lineHeight:1.4 }}>
+        {tt('⚠ Settings are crowdsourced & unverified — applied at your own risk')}
+      </div>
+      <button onClick={() => onCopyClick(champ)} style={{
+        width:'100%', padding:9, borderRadius:7, cursor:'pointer',
+        border:'1px solid ' + (copied ? 'var(--green)' : 'var(--border-hot)'),
+        background:'transparent', color: copied ? 'var(--green)' : 'var(--amber)',
+        fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase' }}>
+        {copied ? tt('✓ Copied to clipboard') : tt('⬇ Copy champion\u2019s settings')}
+      </button>
+
+      {/* alias control */}
+      <div style={{ marginTop:10, fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-3)', textAlign:'center' }}>
+        {editAlias ? (
+          <span style={{ display:'inline-flex', gap:6, alignItems:'center' }}>
+            <input autoFocus defaultValue={alias} placeholder={tt('your alias')} maxLength={24}
+              onKeyDown={e => { if (e.key === 'Enter') saveAlias(e.target.value); }}
+              style={{ background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.55rem', padding:'3px 6px', width:120 }} />
+            <button onClick={e => saveAlias(e.target.previousSibling.value)} style={{ background:'none', border:'1px solid var(--border)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', padding:'3px 8px', cursor:'pointer' }}>{tt('Save')}</button>
+          </span>
+        ) : (
+          <button onClick={() => setEditAlias(true)} style={{ background:'none', border:'none', color:'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
+            {alias ? tt('Your alias') + ': ' + alias : tt('Set a leaderboard alias (optional)')}
+          </button>
+        )}
+      </div>
+
+      {/* disclaimer gate (one-time) */}
+      {showDisc && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(3,4,5,0.86)', backdropFilter:'blur(3px)', display:'flex', alignItems:'center', justifyContent:'center', padding:18, zIndex:300 }} onClick={e => e.target === e.currentTarget && setShowDisc(false)}>
+          <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border-hot)', borderRadius:14, padding:'17px 16px', maxWidth:380, boxShadow:'0 20px 50px rgba(0,0,0,0.8)' }}>
+            <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.82rem', color:'var(--amber)', marginBottom:11 }}>{tt('Tuning settings — use at your own risk')}</div>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('These settings are crowdsourced from other miners\u2019 hardware and shown for informational purposes only. Every chip, board, power supply, and cooling setup is different — settings that are stable on someone else\u2019s device may overheat, damage, destabilize, or shorten the life of yours.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('Overclocking and voltage changes carry inherent risk, including hardware failure, fire, property damage, or data loss. You are solely responsible for any changes you make to your equipment and for operating it safely.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('SoloStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
+            <div onClick={() => setDiscChecked(v => !v)} style={{ display:'flex', gap:9, alignItems:'flex-start', margin:'13px 0', cursor:'pointer' }}>
+              <div style={{ width:18, height:18, borderRadius:4, border:'1.5px solid ' + (discChecked ? 'var(--green)' : 'var(--border-hot)'), flexShrink:0, display:'grid', placeItems:'center', color:'var(--green)', fontSize:'0.7rem', background:'var(--bg-deep)' }}>{discChecked ? '✓' : ''}</div>
+              <span style={{ fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--text-1)' }}>{tt('I understand and accept these risks.')}</span>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setShowDisc(false)} style={{ flex:1, padding:9, borderRadius:7, fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.58rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer', border:'1px solid var(--border)', background:'transparent', color:'var(--text-2)' }}>{tt('Cancel')}</button>
+              <button onClick={acceptDisclaimer} disabled={!discChecked} style={{ flex:1, padding:9, borderRadius:7, fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.58rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor: discChecked ? 'pointer' : 'default', border:'none', background: discChecked ? 'var(--amber)' : 'var(--text-3)', color:'#000', opacity: discChecked ? 1 : 0.5 }}>{tt('Accept & Copy')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   const [showFiltered, setShowFiltered] = useState(false);
 
@@ -11959,6 +12151,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   // When totalStrikes increments (any peer found a block), show a
   // celebration banner that animates in for ~6 seconds, then fades.
   const [strikeBannerShown, setStrikeBannerShown] = useState(false);
+  const [pulseTab, setPulseTab] = useState('network'); // v2.x: NETWORK | BENCHMARKS
   const prevStrikesRef = useRef(totalStrikes);
   useEffect(() => {
     if (totalStrikes > prevStrikesRef.current) {
@@ -12419,6 +12612,23 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
 
         <div style={{padding:'1rem 1.25rem 4.5rem 1.25rem'}}>
 
+          {/* v2.x: tab bar — NETWORK | BENCHMARKS */}
+          <div style={{display:'flex', gap:4, marginBottom:'1rem', borderBottom:'1px solid var(--border)'}}>
+            {[['network','Network'],['benchmarks','Benchmarks']].map(([id,label])=>(
+              <button key={id} onClick={()=>setPulseTab(id)} style={{
+                flex:1, padding:'9px 8px', background:'transparent', border:'none',
+                borderBottom: pulseTab===id ? '2px solid var(--amber)' : '2px solid transparent',
+                color: pulseTab===id ? 'var(--amber)' : 'var(--text-2)',
+                fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.12em',
+                textTransform:'uppercase', cursor:'pointer',
+              }}>{tt(label)}</button>
+            ))}
+          </div>
+
+          {pulseTab==='benchmarks' && <BenchmarkSection tt={tt} networkStats={networkStats} />}
+
+          <div style={{display: pulseTab==='network' ? 'block' : 'none'}}>
+
           {/* v1.11.6: strike celebration banner — fires when totalStrikes
               increments (any peer found a block). Shows for ~6s then fades. */}
           {strikeBannerShown && (
@@ -12666,6 +12876,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
             </div>
           </div>
 
+          </div>{/* /network tab pane */}
         </div>
       </div>
 
