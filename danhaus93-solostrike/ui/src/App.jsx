@@ -13904,7 +13904,7 @@ function PoolAlignmentBlock({ worker }) {
   );
 }
 
-function LiveStatsBlock({ worker }) {
+function LiveStatsBlock({ tt = (x) => x, worker }) {
   const live = worker.live;
   if (!live) return null;
   // Hide if there's truly nothing to show (all fields null)
@@ -13912,7 +13912,8 @@ function LiveStatsBlock({ worker }) {
               || (live.hashrateReported != null) || (live.hwErrors != null)
               || (live.uptimeSec != null) || (live.firmwareVersion != null)
               || (live.frequencyMhz != null) || (live.coreVoltageMv != null)
-              || (live.powerW != null) || (live.efficiencyJTH != null)
+              || (live.inputVoltageV != null) || (live.powerW != null) || (live.efficiencyJTH != null)
+              || (live.rejectPct != null) || (live.bestDiff != null) || (live.expectedHashrate != null)
               || (Array.isArray(live.tempDetails) && live.tempDetails.length > 0);
   if (!hasAny) return null;
 
@@ -13944,11 +13945,11 @@ function LiveStatsBlock({ worker }) {
 
   return (
     <div style={section}>
-      <div style={secTitle}>▸ Live telemetry</div>
+      <div style={secTitle}>{tt('▸ Live telemetry')}</div>
 
       {t != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Temperature</span>
+          <span style={kvLabel}>{tt('Temperature')}</span>
           <span style={{...kvVal, color: tColor, fontWeight:600}}>{Math.round(t)}°C</span>
         </div>
       )}
@@ -13959,43 +13960,75 @@ function LiveStatsBlock({ worker }) {
       )}
       {fanLine && (
         <div style={kvRow}>
-          <span style={kvLabel}>Fan</span>
+          <span style={kvLabel}>{tt('Fan')}</span>
           <span style={kvVal}>{fanLine}</span>
         </div>
       )}
       {hrLine && (
         <div style={kvRow}>
-          <span style={kvLabel}>Reported Hashrate</span>
+          <span style={kvLabel}>{tt('Reported Hashrate')}</span>
           <span style={{...kvVal, color: 'var(--cyan)'}}>{hrLine}</span>
         </div>
       )}
       {live.frequencyMhz != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Frequency</span>
+          <span style={kvLabel}>{tt('Frequency')}</span>
           <span style={kvVal}>{Math.round(live.frequencyMhz)} MHz</span>
         </div>
       )}
       {live.coreVoltageMv != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Core Voltage</span>
-          <span style={kvVal}>{Math.round(live.coreVoltageMv)} mV</span>
+          <span style={kvLabel}>{tt('Core Voltage')}</span>
+          <span style={kvVal}>
+            {live.coreVoltageSetMv != null && Math.round(live.coreVoltageSetMv) !== Math.round(live.coreVoltageMv)
+              ? `${Math.round(live.coreVoltageSetMv)} → ${Math.round(live.coreVoltageMv)} mV`
+              : `${Math.round(live.coreVoltageMv)} mV`}
+          </span>
+        </div>
+      )}
+      {live.inputVoltageV != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Input Voltage')}</span>
+          <span style={kvVal}>{live.inputVoltageV.toFixed(1)} V</span>
         </div>
       )}
       {live.powerW != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Power</span>
+          <span style={kvLabel}>{tt('Power')}</span>
           <span style={kvVal}>{live.powerW.toFixed(1)} W</span>
         </div>
       )}
       {live.efficiencyJTH != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Efficiency</span>
+          <span style={kvLabel}>{tt('Efficiency')}</span>
           <span style={{...kvVal, color: 'var(--amber)'}}>{live.efficiencyJTH.toFixed(1)} J/TH</span>
+        </div>
+      )}
+      {live.expectedHashrate != null && live.hashrateReported != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Actual vs Expected')}</span>
+          <span style={{...kvVal, color: live.hashrateReported >= live.expectedHashrate ? 'var(--green)' : 'var(--amber)'}}>
+            {Math.round((live.hashrateReported / live.expectedHashrate) * 100)}%
+          </span>
+        </div>
+      )}
+      {live.rejectPct != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Reject %')}</span>
+          <span style={{...kvVal, color: live.rejectPct > 2 ? 'var(--red)' : live.rejectPct > 0.5 ? 'var(--amber)' : 'var(--green)'}}>
+            {live.rejectPct.toFixed(2)}%
+          </span>
+        </div>
+      )}
+      {live.bestDiff != null && live.bestDiff > 0 && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Best Share')}</span>
+          <span style={{...kvVal, color: 'var(--cyan)'}}>{fmtDiff(live.bestDiff)}</span>
         </div>
       )}
       {live.hwErrors != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Hardware Errors</span>
+          <span style={kvLabel}>{tt('Hardware Errors')}</span>
           <span style={{...kvVal, color: live.hwErrors > 0 ? 'var(--amber)' : 'var(--text-2)'}}>
             {fmtNum(live.hwErrors)}
           </span>
@@ -14003,13 +14036,13 @@ function LiveStatsBlock({ worker }) {
       )}
       {uptimeLine && (
         <div style={kvRow}>
-          <span style={kvLabel}>Miner Uptime</span>
+          <span style={kvLabel}>{tt('Miner Uptime')}</span>
           <span style={kvVal}>{uptimeLine}</span>
         </div>
       )}
       {live.firmwareVersion && (
         <div style={kvRow}>
-          <span style={kvLabel}>Firmware</span>
+          <span style={kvLabel}>{tt('Firmware')}</span>
           <span style={{...kvVal, fontFamily:'var(--fm)', fontSize:'0.65rem'}}>{live.firmwareVersion}</span>
         </div>
       )}
@@ -14017,7 +14050,7 @@ function LiveStatsBlock({ worker }) {
   );
 }
 
-function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
+function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
   const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
@@ -14146,16 +14179,16 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 
         <div style={{padding:'1rem 1.25rem'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
-            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Hashrate')}</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Best Diff')}</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Work Done')}</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Last Share')}</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
 
           {/* v1.9.0: Pool alignment — verify miner is pointed at SoloStrike via TCP 4028 */}
           <PoolAlignmentBlock worker={w}/>
           {/* v1.9.0: Live telemetry — temps, fans, hardware errors from the miner's local API */}
-          <LiveStatsBlock worker={w}/>
+          <LiveStatsBlock tt={tt} worker={w}/>
 
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
@@ -14169,7 +14202,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
               }}>
                 <span style={{fontSize:22, flexShrink:0}}>🌐</span>
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>OPEN MINER WEB UI</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>{tt('OPEN MINER WEB UI')}</div>
                   <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{minerUrl}</div>
                 </div>
                 <span style={{color:'var(--cyan)', fontSize:16, fontFamily:'var(--fm)', flexShrink:0}}>↗</span>
@@ -14179,25 +14212,25 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 
           <div style={section}>
             <div style={secTitle}>▸ Shares</div>
-            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Work Accepted')}</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
             {workRej > 0 && (
               <>
-                <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Work Rejected')}</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Accept Rate')}</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
               </>
             )}
             {se && seTot > 0 && (
               <>
-                <div style={kvRow}><span style={kvLabel}>Accepted (session)</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Rejected (session)</span><span style={{...kvVal,color:seRej > 0 ? 'var(--red)' : 'var(--text-2)'}}>{fmtNum(seRej)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Stale (session)</span><span style={{...kvVal,color:seStale > 0 ? 'var(--amber)' : 'var(--text-2)'}}>{fmtNum(seStale)}</span></div>
-                {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>Accept Rate (session)</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
-                {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
+                <div style={kvRow}><span style={kvLabel}>{tt('Accepted (session)')}</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Rejected (session)')}</span><span style={{...kvVal,color:seRej > 0 ? 'var(--red)' : 'var(--text-2)'}}>{fmtNum(seRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Stale (session)')}</span><span style={{...kvVal,color:seStale > 0 ? 'var(--amber)' : 'var(--text-2)'}}>{fmtNum(seStale)}</span></div>
+                {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>{tt('Accept Rate (session)')}</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
+                {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Best Share (session)')}</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
               </>
             )}
-            {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
-            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
-            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
+            {raw > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Raw Shares')}</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
+            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Raw Rejected')}</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
+            <div style={kvRow}><span style={kvLabel}>{tt('Shares/min (est)')}</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
           </div>
 
           {seReasonRows.length > 0 && (
@@ -14219,10 +14252,10 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 
           <div style={section}>
             <div style={secTitle}>▸ Connection</div>
-            <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
             <div style={kvRow}>
-              <span style={kvLabel}>Miner IP</span>
+              <span style={kvLabel}>{tt('Miner IP')}</span>
               {w.ip ? (
                 <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{...kvVal, color:'var(--cyan)', textDecoration:'underline', cursor:'pointer', fontWeight:600}}>
                   {w.ip} ↗
@@ -14231,28 +14264,28 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
                 <span style={{...kvVal, color:'var(--text-3)'}}>— <span style={{fontSize:'0.6rem'}}>(waiting for auth)</span></span>
               )}
             </div>
-            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Worker User')}</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
           </div>
 
           <div style={section}>
             <div style={secTitle}>▸ Health</div>
-            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
-            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
-            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Status')}</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
+            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Reject Ratio')}</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
+            <div style={kvRow}><span style={kvLabel}>{tt('Share Freshness')}</span><span style={kvVal}>{freshness}</span></div>
           </div>
 
           <div style={section}>
             <div style={secTitle}>▸ Options</div>
             <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>{tt('Display Name')}</div>
               <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
             </div>
             <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>{tt('Notes (private)')}</div>
               <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
             </div>
             {dirty && (
-              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
+              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>{tt('Save Changes')}</button>
             )}
           </div>
 
@@ -15333,7 +15366,7 @@ export default function App() {
       <OfflineToasts workers={workers} aliases={aliases}/>
       <HotMinerBanner workers={workers} aliases={aliases}/>
       {selectedWorker && (
-        <WorkerDetailModal worker={selectedWorker} onClose={()=>setSelectedWorker(null)}
+        <WorkerDetailModal tt={tt} worker={selectedWorker} onClose={()=>setSelectedWorker(null)}
           aliases={aliases} onAliasesChange={onAliasesChange}
           notes={notes} onNotesChange={onNotesChange}/>
       )}
