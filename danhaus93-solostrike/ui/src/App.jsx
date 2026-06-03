@@ -13905,6 +13905,7 @@ function PoolAlignmentBlock({ worker }) {
 }
 
 function LiveStatsBlock({ tt = (x) => x, worker }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const live = worker.live;
   if (!live) return null;
   // Hide if there's truly nothing to show (all fields null)
@@ -13914,6 +13915,9 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
               || (live.frequencyMhz != null) || (live.coreVoltageMv != null)
               || (live.inputVoltageV != null) || (live.powerW != null) || (live.efficiencyJTH != null)
               || (live.rejectPct != null) || (live.bestDiff != null) || (live.expectedHashrate != null)
+              || (live.tempTargetC != null) || (live.inputCurrentA != null) || (live.overclockEnabled != null)
+              || (live.hr1h != null) || (live.hr1d != null) || (live.stratumConnected != null)
+              || (live.advanced && Object.keys(live.advanced).length > 0)
               || (Array.isArray(live.tempDetails) && live.tempDetails.length > 0);
   if (!hasAny) return null;
 
@@ -14046,9 +14050,65 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
           <span style={{...kvVal, fontFamily:'var(--fm)', fontSize:'0.65rem'}}>{live.firmwareVersion}</span>
         </div>
       )}
+      {/* ── Tier 2 operator telemetry ── */}
+      {live.tempTargetC != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Fan Target')}</span><span style={kvVal}>{Math.round(live.tempTargetC)}°C</span></div>
+      )}
+      {live.inputCurrentA != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Input Current')}</span><span style={kvVal}>{live.inputCurrentA.toFixed(2)} A</span></div>
+      )}
+      {live.overclockEnabled != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Overclock')}</span><span style={{...kvVal, color: live.overclockEnabled ? 'var(--amber)' : 'var(--text-2)'}}>{live.overclockEnabled ? tt('On') : tt('Off')}</span></div>
+      )}
+      {live.overheatMode === true && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Overheat Mode')}</span><span style={{...kvVal, color:'var(--red)'}}>{tt('On')}</span></div>
+      )}
+      {(live.hr1h != null || live.hr1d != null) && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Avg 1h / 24h')}</span>
+          <span style={{...kvVal, fontSize:'0.62rem'}}>{live.hr1h != null ? fmtHr(live.hr1h) : '—'} / {live.hr1d != null ? fmtHr(live.hr1d) : '—'}</span>
+        </div>
+      )}
+      {live.stratumConnected != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Pool Link')}</span>
+          <span style={{...kvVal, color: live.stratumConnected ? 'var(--green)' : 'var(--red)'}}>
+            {live.stratumConnected ? tt('connected') : tt('disconnected')}{live.pingRttMs != null ? ` · ${live.pingRttMs}ms` : ''}
+          </span>
+        </div>
+      )}
+      {/* ── Tier 3: Advanced / System (operator-only, collapsed) ── */}
+      {live.advanced && Object.keys(live.advanced).length > 0 && (
+        <>
+          <div
+            onClick={() => setShowAdvanced(v => !v)}
+            style={{ ...kvRow, cursor:'pointer', marginTop:'0.5rem', borderTop:'1px solid var(--border)', paddingTop:'0.5rem' }}
+          >
+            <span style={{...kvLabel, color:'var(--text-2)'}}>{showAdvanced ? '▾' : '▸'} {tt('Advanced / System')}</span>
+            <span style={{...kvVal, color:'var(--text-3)', fontSize:'0.6rem'}}>{showAdvanced ? tt('hide') : tt('show')}</span>
+          </div>
+          {showAdvanced && Object.entries(live.advanced).map(([k, v]) => (
+            <div key={k} style={kvRow}>
+              <span style={{...kvLabel, textTransform:'none', letterSpacing:'0.02em', color:'var(--text-3)'}}>{tt(ADV_LABELS[k] || k)}</span>
+              <span style={{...kvVal, fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-2)', wordBreak:'break-all', textAlign:'right', maxWidth:'60%'}}>{String(v)}</span>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
+
+// Tier 3 advanced-field label map (operator-only panel). Keys are the raw
+// live.advanced field names; values are human labels routed through tt().
+const ADV_LABELS = {
+  hostname:'Hostname', ssid:'Wi-Fi SSID', wifiRSSI:'Wi-Fi Signal', networkMode:'Network Mode',
+  macAddr:'MAC Address', ethIPv4:'IP Address', freeHeap:'Free Memory', lastResetReason:'Last Reset',
+  runningPartition:'Partition', idfVersion:'ESP-IDF', axeOSVersion:'AxeOS Version', stratumUser:'Stratum User',
+  stratumURL:'Stratum URL', pid:'Fan PID', jobInterval:'Job Interval', smallCoreCount:'Small Cores',
+  asicCount:'ASIC Count', defaultTheme:'Device Theme', display:'Display', freeHeapInt:'Free Heap (int)',
+  proxyDifficulty:'Proxy Difficulty', army:'Army Mode',
+};
 
 function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
@@ -14085,12 +14145,12 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
     return 'var(--red)';
   };
   const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
-  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
+  const healthMap = { green:'🟢 '+tt('GREEN · fresh shares'), amber:'🟡 '+tt('AMBER · stale or rejects'), red:'🔴 '+tt('RED · offline or failing') };
   const freshness = (() => {
     const age = Date.now() - (w.lastSeen || 0);
-    if (age < 2*60*1000) return 'fresh (<2m)';
-    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
-    return `offline (${Math.floor(age/60000)}m)`;
+    if (age < 2*60*1000) return tt('fresh (<2m)');
+    if (age < 10*60*1000) return `${tt('stale')} (${Math.floor(age/60000)}m)`;
+    return `${tt('offline')} (${Math.floor(age/60000)}m)`;
   })();
 
   const host = loadStratumHost() || 'umbrel.local';
@@ -14211,7 +14271,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
           )}
 
           <div style={section}>
-            <div style={secTitle}>▸ Shares</div>
+            <div style={secTitle}>{tt('▸ Shares')}</div>
             <div style={kvRow}><span style={kvLabel}>{tt('Work Accepted')}</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
             {workRej > 0 && (
               <>
@@ -14235,7 +14295,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
 
           {seReasonRows.length > 0 && (
             <div style={section}>
-              <div style={secTitle}>▸ Reject Reasons</div>
+              <div style={secTitle}>{tt('▸ Reject Reasons')}</div>
               {seReasonRows.map(([reason, count]) => (
                 <div key={reason} style={kvRow}>
                   <span style={{...kvLabel,textTransform:'none',letterSpacing:'0.02em',color:classifySeReason(reason)}}>{reason}</span>
@@ -14244,14 +14304,14 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
               ))}
               {se && se.lastRejectAt && (
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem'}}>
-                  Last reject: {fmtAgoShort(se.lastRejectAt)}
+                  {tt('Last reject')}: {fmtAgoShort(se.lastRejectAt)}
                 </div>
               )}
             </div>
           )}
 
           <div style={section}>
-            <div style={secTitle}>▸ Connection</div>
+            <div style={secTitle}>{tt('▸ Connection')}</div>
             <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
             <div style={kvRow}>
@@ -14268,21 +14328,21 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Health</div>
+            <div style={secTitle}>{tt('▸ Health')}</div>
             <div style={kvRow}><span style={kvLabel}>{tt('Status')}</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
             {workRej > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Reject Ratio')}</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
             <div style={kvRow}><span style={kvLabel}>{tt('Share Freshness')}</span><span style={kvVal}>{freshness}</span></div>
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Options</div>
+            <div style={secTitle}>{tt('▸ Options')}</div>
             <div style={{marginBottom:'0.6rem'}}>
               <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>{tt('Display Name')}</div>
               <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
             </div>
             <div style={{marginBottom:'0.6rem'}}>
               <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>{tt('Notes (private)')}</div>
-              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
+              <textarea rows={2} value={noteVal} placeholder={tt("e.g. living room, next to router")} maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
             </div>
             {dirty && (
               <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>{tt('Save Changes')}</button>
@@ -14290,13 +14350,13 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Actions</div>
+            <div style={secTitle}>{tt('▸ Actions')}</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
-              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
-              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?'✓ Copied':'Copy Miner IP'}</button>}
-              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
-              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
+              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?tt('✓ Copied'):tt('Copy ASIC URL')}</button>
+              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?tt('✓ Copied'):tt('Copy Hobby URL')}</button>
+              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?tt('✓ Copied'):tt('Copy Miner IP')}</button>}
+              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?tt('✓ Copied'):tt('Copy Workername')}</button>
+              <button onClick={exportCsv} style={btn}>⬇ {tt('Export CSV')}</button>
             </div>
           </div>
         </div>
