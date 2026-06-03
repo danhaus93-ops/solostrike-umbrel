@@ -387,6 +387,12 @@ function extractCgminerLive(summary, stats) {
     pingRttMs: null,
     pingLossPct: null,
     advanced: {},
+    chipTemps: null,
+    chipVolts: null,
+    chipTempAvg: null,
+    chipTempMax: null,
+    chipVoltAvg: null,
+    outletTempC: null,
   };
 
   const sm = Array.isArray(summary) ? summary[0] : summary;
@@ -517,6 +523,37 @@ function extractCgminerLive(summary, stats) {
           }
         }
 
+        // v2.x: Avalon per-chip telemetry, confirmed real via HashWatcher. The
+        // MM blob carries per-chip temps (PVT_T0[...]), per-chip core voltages
+        // (PVT_V0[...], mV — a REAL tunable signal, just per-chip scale ~306mV
+        // vs BitAxe's single ~1170mV domain), outlet/exhaust temp (OTemp), and
+        // per-chain frequency (SF0). parseAvalonMmArray pulls a bracketed,
+        // space-separated numeric array (handles leading/irregular spaces).
+        const chipTemps = parseAvalonMmArray(v, 'PVT_T0');
+        const chipVolts = parseAvalonMmArray(v, 'PVT_V0');
+        if (chipTemps && chipTemps.length) {
+          live.chipTemps = chipTemps;
+          live.chipTempAvg = +(chipTemps.reduce((a, b) => a + b, 0) / chipTemps.length).toFixed(1);
+          live.chipTempMax = Math.max(...chipTemps);
+        }
+        if (chipVolts && chipVolts.length) {
+          live.chipVolts = chipVolts;
+          const avgMv = chipVolts.reduce((a, b) => a + b, 0) / chipVolts.length;
+          live.chipVoltAvg = Math.round(avgMv);
+          // Surface as core voltage so it shows in the standard row AND feeds the
+          // benchmark (model-bucketed, so it only ever compares Nano-to-Nano).
+          if (live.coreVoltageMv == null && avgMv > 0 && avgMv < 3000) live.coreVoltageMv = Math.round(avgMv);
+        }
+        const otemp = parseAvalonMmField(v, 'OTemp');
+        if (otemp !== null && otemp > 0 && otemp < 200) live.outletTempC = otemp;
+        const sf0 = parseAvalonMmArray(v, 'SF0');
+        if (sf0 && sf0.length) live.advanced.perChainFreq = sf0.join(' / ') + ' MHz';
+        const bin = parseAvalonMmField(v, 'BIN');
+        if (bin !== null) live.advanced.siliconBin = String(bin);
+        const wm = parseAvalonMmField(v, 'WORKMODE');
+        const wl = parseAvalonMmField(v, 'WORKLEVEL');
+        if (wm !== null) live.advanced.workMode = wl !== null ? `mode ${wm} · level ${wl}` : `mode ${wm}`;
+
         if (mmPower !== null && mmPower > 0 && mmPower < 20000) {
           if (live.powerW === null || mmPower > live.powerW) live.powerW = mmPower;
         }
@@ -598,6 +635,17 @@ function parseAvalonMmField(str, ...keys) {
     }
   }
   return null;
+}
+
+// v2.x: parse a bracketed, space-separated numeric array from an MM string,
+// e.g. PVT_T0[ 54  62  65 ...] or SF0[396 414 435 456]. Handles leading and
+// irregular internal spaces. Returns an array of finite numbers, or null.
+function parseAvalonMmArray(str, key) {
+  const re = new RegExp(`\\b${key}\\[([0-9.\\-\\s]+)\\]`, 'i');
+  const m = re.exec(str);
+  if (!m) return null;
+  const arr = m[1].trim().split(/\s+/).map(Number).filter(Number.isFinite);
+  return arr.length ? arr : null;
 }
 
 // ── ESP-Miner adapter ────────────────────────────────────────────────────────
