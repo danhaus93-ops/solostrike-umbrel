@@ -102,6 +102,7 @@ const BENCHMARK_BROADCAST_ALLOWED_FIELDS = Object.freeze([
   'coreVoltage',   // mV (set/target)
   'ths',           // reported hashrate, TH/s
   'jth',           // efficiency, J/TH
+  'tempC',         // chip temp °C — an OUTCOME (measured), part of tuning picture
   'rejectPct',     // share reject %
 ]);
 // Sanitize a candidate benchmark payload down to only allowed numeric/string
@@ -155,11 +156,22 @@ function buildBenchmarkSummaries(liveMap) {
       ? +(pw / thsVal).toFixed(2)
       : (w.efficiencyJTH != null ? +w.efficiencyJTH.toFixed(2) : null);
     if (jth == null) continue; // can't benchmark without an efficiency figure
+    // v2.x: SETTINGS half of the benchmark = the values a user would TYPE into
+    // their miner. Core voltage must be the SET/target (coreVoltageSetMv), not the
+    // measured/sagged reading (coreVoltageMv) — otherwise "copy the champion's
+    // settings" hands people the wrong number. Avalon has no settable per-domain
+    // voltage, so it falls back to its per-chip measured avg (frontend labels it
+    // "not directly settable"). Temp/reject are OUTCOMES (measured), kept as-is.
+    const setV = (w.coreVoltageSetMv != null ? w.coreVoltageSetMv : w.coreVoltageMv);
+    const temp = (w.tempC != null ? w.tempC
+                  : w.chipTempAvg != null ? w.chipTempAvg
+                  : null);
     buckets.get(key).rows.push({
       freq: w.frequencyMhz,
-      coreVoltage: w.coreVoltageMv,
+      coreVoltage: setV,
       ths: thsVal != null ? +thsVal.toFixed(3) : null,
       jth,
+      tempC: temp != null ? +Number(temp).toFixed(1) : null,
       rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : 0,
     });
   }
@@ -179,6 +191,7 @@ function buildBenchmarkSummaries(liveMap) {
       coreVoltage: Math.round(med(b.rows.map(r => r.coreVoltage))),
       ths: +(med(b.rows.map(r => r.ths)) || 0).toFixed(3),
       jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
+      tempC: +(med(b.rows.map(r => r.tempC)) || 0).toFixed(1) || undefined,
       rejectPct: +(med(b.rows.map(r => r.rejectPct)) || 0).toFixed(3),
     });
     if (summary.freq > 0 && summary.jth > 0) out.push(summary);
@@ -432,6 +445,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
       if (!model) continue;
       const freq = Number(b.freq), cv = Number(b.coreVoltage);
       const ths = Number(b.ths), jth = Number(b.jth), rej = Number(b.rejectPct);
+      const tmp = Number(b.tempC);
       if (!Number.isFinite(freq) || freq <= 0 || freq > 2000) continue;
       if (!Number.isFinite(jth) || jth <= 0 || jth > 500) continue;
       if (!Number.isFinite(ths) || ths < 0 || ths > 2000) continue;
@@ -443,6 +457,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
         coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 3000) ? Math.round(cv) : null,
         ths: +ths.toFixed(3),
         jth: +jth.toFixed(2),
+        tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
         rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : 0,
       });
     }
@@ -844,12 +859,13 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         bestJth: champ.jth,
         champion: {
           jth: champ.jth, ths: champ.ths, freq: champ.freq,
-          coreVoltage: champ.coreVoltage, rejectPct: champ.rejectPct,
+          coreVoltage: champ.coreVoltage, tempC: champ.tempC, rejectPct: champ.rejectPct,
           isOwn: champ.isOwn,
           handle: 'striker-' + String(champ.pk || '').slice(0, 4),
         },
         leaderboard: sorted.slice(0, 25).map(r => ({
           jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
+          tempC: r.tempC, rejectPct: r.rejectPct,
           isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
         })),
       });
