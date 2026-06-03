@@ -1410,7 +1410,7 @@ async function main() {
   startStratumHealthPoller();
   startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir: CKPOOL_LOG_DIR });
   startShareWatcher({ state, logDir: CKPOOL_LOG_DIR, savePersist, broadcast });
-  networkStatsController = startNetworkStats({ state, cfg, savePersist });
+  networkStatsController = startNetworkStats({ state, cfg, savePersist, getLive: getAllLive });
 
   // iter28-fix: persist Strike Velocity ring buffer + per-worker uptime
   // sparklines to disk every 60 seconds so they survive restarts.

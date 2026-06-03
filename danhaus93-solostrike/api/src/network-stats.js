@@ -96,6 +96,7 @@ const TAG_NAME            = 'solostrike-stats';
 // included unless explicitly allowed here.
 const BENCHMARK_BROADCAST_ALLOWED_FIELDS = Object.freeze([
   'model',         // e.g. "BitAxe Gamma" — hardware class, not identity
+  'asic',          // e.g. "BM1370" — ASIC chip model, hardware class
   'boardVersion',  // e.g. "601" — hardware variant for bucketing
   'freq',          // MHz
   'coreVoltage',   // mV (set/target)
@@ -115,6 +116,62 @@ function sanitizeBenchmarkPayload(candidate) {
     else if (typeof v === 'string') out[k] = v.slice(0, 40); // bounded, no nested objects
   }
   return out;
+}
+
+// v2.x: build this node's per-model benchmark summaries from local telemetry.
+// One summary per BUCKET (model + ASIC chip + board revision), NOT per worker —
+// a striker with 4 Nanos contributes one Nano summary, protecting fleet size
+// and keeping the payload tiny. Only STABLE rigs are eligible: warmed up
+// (uptime past the warm-up window), a real efficiency reading, and a low reject
+// rate — because hashrate and power fluctuate, a fresh or unstable rig would
+// post a misleading number. Each summary is routed through
+// sanitizeBenchmarkPayload() so only whitelisted fields can ever leave.
+const BENCH_MIN_UPTIME_SEC = 3600;   // 1h warmed up
+const BENCH_MAX_REJECT_PCT = 2;      // exclude unstable rigs
+function buildBenchmarkSummaries(liveMap) {
+  if (!liveMap || typeof liveMap !== 'object') return [];
+  const buckets = new Map();
+  for (const w of Object.values(liveMap)) {
+    if (!w) continue;
+    if (w.efficiencyJTH == null || !(w.efficiencyJTH > 0)) continue;
+    if (w.uptimeSec == null || w.uptimeSec < BENCH_MIN_UPTIME_SEC) continue;
+    if (w.rejectPct != null && w.rejectPct > BENCH_MAX_REJECT_PCT) continue;
+    if (w.frequencyMhz == null || w.coreVoltageMv == null) continue;
+    const model = (w.model || w.asicModel || 'unknown');
+    const board = (w.boardVersion != null ? String(w.boardVersion) : '');
+    const asic = (w.asicModel || '');
+    const key = `${model}|${asic}|${board}`;
+    if (!buckets.has(key)) buckets.set(key, { model, asic, board, rows: [] });
+    const ths = (w.hr1d != null ? w.hr1d : w.hashrateReported);
+    buckets.get(key).rows.push({
+      freq: w.frequencyMhz,
+      coreVoltage: w.coreVoltageMv,
+      ths: ths != null ? +(ths / 1e12).toFixed(3) : null,
+      jth: +w.efficiencyJTH.toFixed(2),
+      rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : 0,
+    });
+  }
+  const med = (arr) => {
+    const a = arr.filter(x => x != null && Number.isFinite(x)).sort((x, y) => x - y);
+    if (!a.length) return null;
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  };
+  const out = [];
+  for (const b of buckets.values()) {
+    const summary = sanitizeBenchmarkPayload({
+      model: b.model,
+      asic: b.asic || undefined,
+      boardVersion: b.board || undefined,
+      freq: Math.round(med(b.rows.map(r => r.freq))),
+      coreVoltage: Math.round(med(b.rows.map(r => r.coreVoltage))),
+      ths: +(med(b.rows.map(r => r.ths)) || 0).toFixed(3),
+      jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
+      rejectPct: +(med(b.rows.map(r => r.rejectPct)) || 0).toFixed(3),
+    });
+    if (summary.freq > 0 && summary.jth > 0) out.push(summary);
+  }
+  return out.slice(0, 12);
 }
 
 
@@ -350,6 +407,36 @@ function validateAndExtractEvent(ev, ourPubkey) {
     }
   }
 
+  // v2.x: optional benchmarks — peer's per-bucket tuning summaries. Each entry
+  // is independently shape-validated and range-clamped; anything malformed is
+  // dropped. Hard sanity ceilings defend against forged "champion" numbers (the
+  // consumer also applies MAD + per-model floor).
+  let benchmarks = null;
+  if (Array.isArray(data.benchmarks)) {
+    const clean = [];
+    for (const b of data.benchmarks.slice(0, 12)) {
+      if (!b || typeof b !== 'object') continue;
+      const model = typeof b.model === 'string' ? b.model.slice(0, 40) : null;
+      if (!model) continue;
+      const freq = Number(b.freq), cv = Number(b.coreVoltage);
+      const ths = Number(b.ths), jth = Number(b.jth), rej = Number(b.rejectPct);
+      if (!Number.isFinite(freq) || freq <= 0 || freq > 2000) continue;
+      if (!Number.isFinite(jth) || jth <= 0 || jth > 500) continue;
+      if (!Number.isFinite(ths) || ths < 0 || ths > 2000) continue;
+      clean.push({
+        model,
+        asic: typeof b.asic === 'string' ? b.asic.slice(0, 24) : '',
+        boardVersion: typeof b.boardVersion === 'string' ? b.boardVersion.slice(0, 16) : '',
+        freq: Math.round(freq),
+        coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 3000) ? Math.round(cv) : null,
+        ths: +ths.toFixed(3),
+        jth: +jth.toFixed(2),
+        rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : 0,
+      });
+    }
+    if (clean.length) benchmarks = clean;
+  }
+
   // Signature — verify last (most expensive). Skip our own (we trust local).
   if (ev.pubkey === ourPubkey) {
     // Echo of our own broadcast — fine, accept
@@ -363,12 +450,12 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks },
   };
 }
 
 // ── Main controller factory ─────────────────────────────────────────────────
-function startNetworkStats({ state, cfg, savePersist }) {
+function startNetworkStats({ state, cfg, savePersist, getLive }) {
   // ── Identity bootstrap ─────────────────────────────────────────────────
   // First boot: generate and encrypt. Existing install: decrypt. Plaintext
   // legacy keys get re-encrypted on first save.
@@ -455,6 +542,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     // pubkey is the only stable handle and is never exposed to the UI here.
     // Includes BOTH filtered and outlier entries; the UI decides what to show.
     peers: [],
+    benchmarks: [],  // v2.x: per-bucket crowdsourced tuning aggregates
     ownPubkey: '',  // populated below once pubkey closure var exists
     // v1.11.6: network historical stats — restored from persist.json if present
     peakHashrate: cfg.networkStatsPeakHashrate || 0,
@@ -684,9 +772,72 @@ function startNetworkStats({ state, cfg, savePersist }) {
       firstSeen: peerFirstSeen,
       // v1.12.x: most recent block this peer claims to have found
       lastStrike: result.payload.lastStrike || (existing && existing.lastStrike) || null,
+      benchmarks: result.payload.benchmarks || (existing && existing.benchmarks) || null,
     });
     state.networkStats.security.eventsAccepted++;
     recomputeAggregates();
+  }
+
+  // v2.x: aggregate per-bucket benchmark data across all peers (+ ourself).
+  // Bucket key = model|asic|boardVersion (strict). Per bucket: apply a per-model
+  // J/TH sanity floor, MAD outlier rejection on efficiency (reuses the census
+  // anti-gaming approach), then compute champion (best efficiency), median, and
+  // a ranked leaderboard. Sample count is returned raw so the UI confidence
+  // slider can label/threshold client-side. Our own rigs are injected from fresh
+  // local telemetry so we always appear even before a peer echoes us back.
+  const BENCH_JTH_FLOOR = 10;
+  function aggregateBenchmarks(entries, ownPk) {
+    const buckets = new Map();
+    let ownRows = [];
+    if (typeof getLive === 'function') {
+      try { ownRows = buildBenchmarkSummaries(getLive()) || []; } catch { ownRows = []; }
+    }
+    for (const b of ownRows) {
+      const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
+      if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
+      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true });
+    }
+    for (const [pk, e] of entries) {
+      if (pk === ownPk) continue;
+      if (!Array.isArray(e.benchmarks)) continue;
+      for (const b of e.benchmarks) {
+        if (!b || b.jth == null || b.jth < BENCH_JTH_FLOOR) continue;
+        const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
+        if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
+        buckets.get(key).rows.push({ ...b, pk, isOwn: false });
+      }
+    }
+    const out = [];
+    for (const bk of buckets.values()) {
+      let rows = bk.rows;
+      if (rows.length >= OUTLIER_MIN_SAMPLES) {
+        const jths = rows.map(r => r.jth);
+        const m = median(jths);
+        const mad = medianAbsoluteDeviation(jths, m);
+        if (mad > 0) rows = rows.filter(r => !isOutlier(r.jth, m, mad));
+      }
+      if (!rows.length) continue;
+      const sorted = [...rows].sort((a, b) => a.jth - b.jth);
+      const champ = sorted[0];
+      const jths = rows.map(r => r.jth);
+      out.push({
+        model: bk.model, asic: bk.asic, boardVersion: bk.boardVersion,
+        sampleCount: rows.length,
+        medianJth: +median(jths).toFixed(2),
+        bestJth: champ.jth,
+        champion: {
+          jth: champ.jth, ths: champ.ths, freq: champ.freq,
+          coreVoltage: champ.coreVoltage, rejectPct: champ.rejectPct,
+          isOwn: champ.isOwn,
+          handle: 'striker-' + String(champ.pk || '').slice(0, 4),
+        },
+        leaderboard: sorted.slice(0, 25).map(r => ({
+          jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
+          isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
+        })),
+      });
+    }
+    return out.sort((a, b) => b.sampleCount - a.sampleCount);
   }
 
   function recomputeAggregates() {
@@ -754,6 +905,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     state.networkStats.blocks = blocks;
     state.networkStats.versions = versions;
     state.networkStats.peers = peers;
+    state.networkStats.benchmarks = aggregateBenchmarks(activeEntries, pubkey);
     state.networkStats.lastUpdate = Date.now();
     state.networkStats.security.outliersFiltered += outliersFilteredThisRound;
 
@@ -857,6 +1009,15 @@ function startNetworkStats({ state, cfg, savePersist }) {
       // show our "Joined Nd ago" badge in their UI.
       ...(Number.isFinite(cfg.pulseFirstSeen) && cfg.pulseFirstSeen > 0
         ? { firstSeen: cfg.pulseFirstSeen }
+        : {}),
+      // v2.x: crowdsourced tuning benchmarks — ALWAYS shared (no opt-in toggle).
+      // Per-bucket summaries only, each already passed through
+      // sanitizeBenchmarkPayload() (fail-closed whitelist). Only Tier-3 operator
+      // data (address, hostname, MAC, the live.advanced blob) is ever withheld.
+      ...(typeof getLive === 'function'
+        ? (() => { try { const b = buildBenchmarkSummaries(getLive());
+            return (Array.isArray(b) && b.length) ? { benchmarks: b } : {}; }
+          catch { return {}; } })()
         : {}),
     });
 
