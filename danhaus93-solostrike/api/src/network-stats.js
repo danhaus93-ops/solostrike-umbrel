@@ -145,11 +145,21 @@ function buildBenchmarkSummaries(liveMap) {
     const ths = (w.hashrateSustained != null ? w.hashrateSustained
                  : w.hr1d != null ? w.hr1d
                  : w.hashrateReported);
+    // v2.x: derive efficiency from the SAME sustained hashrate we report as ths,
+    // AND from smoothed power (powerSustained) — instantaneous power bounces, so
+    // using it against a smoothed hashrate made J/TH swing (26→22 poll-to-poll).
+    // Both sides now averaged → stable, believable efficiency.
+    const thsVal = ths != null ? ths / 1e12 : null;
+    const pw = (w.powerSustained != null ? w.powerSustained : w.powerW);
+    const jth = (pw > 0 && thsVal > 0)
+      ? +(pw / thsVal).toFixed(2)
+      : (w.efficiencyJTH != null ? +w.efficiencyJTH.toFixed(2) : null);
+    if (jth == null) continue; // can't benchmark without an efficiency figure
     buckets.get(key).rows.push({
       freq: w.frequencyMhz,
       coreVoltage: w.coreVoltageMv,
-      ths: ths != null ? +(ths / 1e12).toFixed(3) : null,
-      jth: +w.efficiencyJTH.toFixed(2),
+      ths: thsVal != null ? +thsVal.toFixed(3) : null,
+      jth,
       rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : 0,
     });
   }
@@ -804,6 +814,12 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       if (!Array.isArray(e.benchmarks)) continue;
       for (const b of e.benchmarks) {
         if (!b || b.jth == null || b.jth < BENCH_JTH_FLOOR) continue;
+        // v2.x: drop stale pre-label entries — older nodes (or our own pre-patch
+        // broadcasts echoed back by relays) sent model="unknown" or the raw chip
+        // name ("BM1370") with no friendly model. These pollute the view until
+        // they TTL out of seenEvents, so skip any entry without a real model.
+        const m = (b.model || '').trim();
+        if (!m || m.toLowerCase() === 'unknown' || /^BM\d{3,4}$/i.test(m)) continue;
         const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
         if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
         buckets.get(key).rows.push({ ...b, pk, isOwn: false });

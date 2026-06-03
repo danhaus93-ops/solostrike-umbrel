@@ -143,6 +143,15 @@ function getAllLive() {
          : live.hr1d != null ? live.hr1d
          : roll != null ? roll
          : live.hashrateReported);
+      // v2.x: smoothed power (10-min window) so J/TH doesn't bounce with the
+      // instantaneous power reading. Prefer a device-reported average if the
+      // firmware exposes one (live.powerAvg); none currently do, so in practice
+      // this uses our own rolling average, falling back to instant.
+      const rollPw = rollingAvgPw(r.hrSamples, 10 * 60 * 1000);
+      live.powerSustained =
+        (live.powerAvg != null ? live.powerAvg
+         : rollPw != null ? rollPw
+         : live.powerW);
       out[name] = live;
     }
   }
@@ -158,6 +167,15 @@ function rollingAvgHr(samples, windowMs) {
   const recent = samples.filter(s => s && s.ts >= cutoff && Number.isFinite(s.hr) && s.hr > 0);
   if (!recent.length) return null;
   return recent.reduce((a, s) => a + s.hr, 0) / recent.length;
+}
+
+// v2.x: rolling average of recent power samples (W) within a window, or null.
+function rollingAvgPw(samples, windowMs) {
+  if (!Array.isArray(samples) || !samples.length) return null;
+  const cutoff = Date.now() - windowMs;
+  const recent = samples.filter(s => s && s.ts >= cutoff && Number.isFinite(s.pw) && s.pw > 0);
+  if (!recent.length) return null;
+  return recent.reduce((a, s) => a + s.pw, 0) / recent.length;
 }
 
 // v2.x: friendly model name for benchmark bucketing/labels. NerdQAxe reports
@@ -395,6 +413,8 @@ function extractCgminerLive(summary, stats) {
     model: null,
     hashrateAvg: null,
     hashrateSustained: null,
+    powerAvg: null,
+    powerSustained: null,
     // v1.12.0: power draw (watts) + computed efficiency (J/TH) for Fleet
     // Efficiency. ckpool has no concept of power; this comes from the rig's
     // own API. Not all firmwares report it — null when unavailable.
@@ -759,6 +779,8 @@ function extractEspMinerLive(d) {
     model: null,
     hashrateAvg: null,
     hashrateSustained: null,
+    powerAvg: null,
+    powerSustained: null,
     asicModel: null,
     frequencyMhz: null,
     coreVoltageMv: null,
@@ -1094,8 +1116,9 @@ function saveRecord(workerName, partial) {
   const prev = records.get(workerName);
   let hrSamples = (prev && Array.isArray(prev.hrSamples)) ? prev.hrSamples : [];
   const hr = partial && partial.live && partial.live.hashrateReported;
+  const pw = partial && partial.live && partial.live.powerW;
   if (Number.isFinite(hr) && hr > 0) {
-    hrSamples = hrSamples.concat([{ ts: Date.now(), hr }]);
+    hrSamples = hrSamples.concat([{ ts: Date.now(), hr, pw: (Number.isFinite(pw) && pw > 0 ? pw : null) }]);
     const cutoff = Date.now() - 60 * 60 * 1000; // keep ~1h
     hrSamples = hrSamples.filter(s => s.ts >= cutoff).slice(-120); // cap 120 samples
   }
