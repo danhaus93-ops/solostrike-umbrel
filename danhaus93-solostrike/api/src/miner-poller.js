@@ -188,6 +188,28 @@ function friendlyEspModel(d) {
   return map[asic] || (asic ? 'BitAxe (' + asic + ')' : 'BitAxe');
 }
 
+// v2.x: derive a friendly label for a GENERIC cgminer-family device from its
+// firmware Description string (used only when we couldn't get a real model name
+// from DEVS and it isn't an Avalon). These devices are for MONITORING; they
+// usually don't expose core voltage, so they stay benchmark-ineligible.
+function cgminerFamilyLabel(desc) {
+  const s = (desc || '').toLowerCase();
+  if (s.includes('luxminer') || s.includes('luxos'))                 return 'ASIC (LuxOS)';
+  if (s.includes('boser') || s.includes('bosminer') || s.includes('braiins')) return 'ASIC (Braiins OS)';
+  if (s.includes('btminer') || s.includes('whatsminer'))             return 'Whatsminer';
+  if (s.includes('vnish'))                                           return 'ASIC (Vnish)';
+  if (s.includes('bmminer'))                                         return 'Antminer';
+  if (s.includes('cgminer'))                                         return 'ASIC (cgminer)';
+  return 'ASIC';
+}
+
+// pick first non-null value among candidate keys (firmwares vary on casing/naming)
+function pickField(o, keys) {
+  if (!o || typeof o !== 'object') return undefined;
+  for (const k of keys) { if (o[k] != null) return o[k]; }
+  return undefined;
+}
+
 async function pollOne(workerName) {
   if (!getMetaFn) return null;
   const all = getMetaFn();
@@ -319,19 +341,20 @@ async function pollMiner(workerName, ip) {
 
 function tryCgminer(ip) {
   return new Promise(async (resolve) => {
-    const [poolsRes, summaryRes, statsRes] = await Promise.all([
+    const [poolsRes, summaryRes, statsRes, devsRes] = await Promise.all([
       cgminerCommand(ip, 'pools'),
       cgminerCommand(ip, 'summary'),
       cgminerCommand(ip, 'stats'),
+      cgminerCommand(ip, 'devs'),
     ]);
 
-    // If ALL three failed, treat as unreachable/disabled. We surface the
+    // If ALL failed, treat as unreachable/disabled. We surface the
     // most informative error (prefer ECONNREFUSED → 'disabled', else
     // 'unreachable').
-    if (!poolsRes.ok && !summaryRes.ok && !statsRes.ok) {
-      const allRefused = [poolsRes, summaryRes, statsRes].every(r => r.error === 'ECONNREFUSED');
+    if (!poolsRes.ok && !summaryRes.ok && !statsRes.ok && !devsRes.ok) {
+      const allRefused = [poolsRes, summaryRes, statsRes, devsRes].every(r => r.error === 'ECONNREFUSED');
       const status = allRefused ? 'disabled' : 'unreachable';
-      const err    = poolsRes.error || summaryRes.error || statsRes.error || 'unknown';
+      const err    = poolsRes.error || summaryRes.error || statsRes.error || devsRes.error || 'unknown';
       resolve({ ok: false, alignmentStatus: status, error: err });
       return;
     }
@@ -341,7 +364,14 @@ function tryCgminer(ip) {
     const pools   = poolsRes.ok   ? (poolsRes.data.POOLS   || poolsRes.data.pools   || []) : [];
     const summary = summaryRes.ok ? (summaryRes.data.SUMMARY || summaryRes.data.summary || []) : [];
     const stats   = statsRes.ok   ? (statsRes.data.STATS   || statsRes.data.stats   || []) : [];
-    const live    = extractCgminerLive(summary, stats);
+    // v2.x: devs carries per-board Temperature/Frequency/Fan on GENERIC cgminer
+    // firmwares (Antminer/LuxOS/Braiins/Whatsminer/Vnish); Avalon doesn't need it.
+    const devs    = devsRes.ok    ? (devsRes.data.DEVS     || devsRes.data.devs     || []) : [];
+    // firmware id from any STATUS block → labels generic devices
+    const fwDesc  = [summaryRes, statsRes, devsRes, poolsRes]
+      .map(r => r && r.ok && r.data && Array.isArray(r.data.STATUS) && r.data.STATUS[0] && r.data.STATUS[0].Description)
+      .find(d => typeof d === 'string' && d.trim()) || '';
+    const live    = extractCgminerLive(summary, stats, devs, fwDesc);
 
     resolve({ ok: true, adapter: 'cgminer', pools, live });
   });
@@ -400,7 +430,7 @@ function cgminerCommand(ip, command) {
   });
 }
 
-function extractCgminerLive(summary, stats) {
+function extractCgminerLive(summary, stats, devs, fwDesc) {
   const live = {
     tempC: null,
     tempDetails: [],
@@ -671,6 +701,63 @@ function extractCgminerLive(summary, stats) {
   // warm-up window so the artifact doesn't show or feed the benchmark layer.
   const cgWarmup = live.uptimeSec != null && live.uptimeSec < 180;
   live.efficiencyJTH = cgWarmup ? null : computeEfficiency(live.powerW, live.hashrateReported);
+
+  // ── v2.x: GENERIC cgminer-family fallbacks ────────────────────────────────
+  // Everything above is tuned for Avalon (MM-string). Stock Antminer, LuxOS,
+  // Braiins OS+ (socket), Whatsminer and Vnish instead expose per-board values
+  // in DEVS and a firmware id in STATUS.Description. We fill ONLY fields still
+  // null, so Avalon's richer parse is never overridden. Result: universal
+  // monitoring (hashrate/temp/reject/uptime/fan) for any cgminer device. Core
+  // voltage stays null on firmwares that don't expose it, which correctly keeps
+  // those devices benchmark-ineligible (the gate requires freq + coreVoltage).
+  const devList = Array.isArray(devs) ? devs.filter(x => x && typeof x === 'object') : [];
+  if (devList.length) {
+    if (live.tempC == null) {
+      let t = null;
+      for (const d of devList) {
+        const v = numOr(pickField(d, ['Temperature', 'Temp', 'temp']));
+        if (v != null && v > 0 && v < 200 && (t == null || v > t)) t = v;
+      }
+      if (t != null) { live.tempC = t; live.tempDetails.push({ id: 'devs', tempC: t }); }
+    }
+    if (live.frequencyMhz == null) {
+      let f = null;
+      for (const d of devList) {
+        const v = numOr(pickField(d, ['Frequency', 'frequency', 'Freq']));
+        if (v != null && v > 0 && v < 5000 && (f == null || v > f)) f = v;
+      }
+      if (f != null) live.frequencyMhz = f;
+    }
+    if (live.fanRpm == null) {
+      let fr = null;
+      for (const d of devList) {
+        const v = numOr(pickField(d, ['Fan Speed', 'FanSpeed', 'Fan Speed In', 'fan']));
+        if (v != null && v > 0 && (fr == null || v > fr)) fr = v;
+      }
+      if (fr != null) live.fanRpm = fr;
+    }
+    // per-device share totals if summary didn't carry them
+    if (live.sharesAccepted == null || live.sharesRejected == null) {
+      let acc = 0, rej = 0, seen = false;
+      for (const d of devList) {
+        const a = numOr(d.Accepted), r = numOr(d.Rejected);
+        if (a != null || r != null) { seen = true; acc += (a || 0); rej += (r || 0); }
+      }
+      if (seen) {
+        if (live.sharesAccepted == null) live.sharesAccepted = acc;
+        if (live.sharesRejected == null) live.sharesRejected = rej;
+        if (live.rejectPct == null && (acc + rej) > 0) live.rejectPct = (rej / (acc + rej)) * 100;
+      }
+    }
+  }
+  // model label only if the Avalon parse didn't already set one
+  if (!live.model) {
+    const d0 = devList[0] || {};
+    const fromDev = pickField(d0, ['Model', 'Name', 'Board', 'Type']);
+    const devName = (typeof fromDev === 'string' && fromDev.trim()) ? fromDev.trim() : '';
+    live.model = devName || cgminerFamilyLabel(fwDesc);
+  }
+  if (!live.firmwareVersion && fwDesc) live.firmwareVersion = String(fwDesc).slice(0, 60);
 
   return live;
 }
