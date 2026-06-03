@@ -180,6 +180,34 @@ async function startUaTailer({ configDir, logDir }) {
     fileSize = stat.size;
   } catch {}
 
+  // v2.x ROOT-CAUSE FIX for "telemetry blank until miner reboot": ckpool writes
+  // the "Authorised client <id> <ip> worker <name>" line ONCE, at connect time.
+  // The tailer previously seeked straight to end-of-file on boot, so any miner
+  // that had already authorised BEFORE the api container started never had its
+  // IP harvested — the poller then had no IP and showed no telemetry until that
+  // miner re-authorised (i.e. you rebooted it). Fix: before live-tailing, do a
+  // one-time bounded backscan of the recent tail of the log to seed IPs for
+  // miners that are already connected. Reading only the last slice keeps memory
+  // bounded even on a large rotated log.
+  try {
+    const BACKSCAN_BYTES = 2 * 1024 * 1024; // last 2 MB is plenty of auth history
+    const start = Math.max(0, fileSize - BACKSCAN_BYTES);
+    if (fileSize > start) {
+      const buf = Buffer.alloc(fileSize - start);
+      const fd = await fs.open(logFile, 'r');
+      try { await fs.read(fd, buf, 0, buf.length, start); }
+      finally { await fs.close(fd); }
+      let seeded = 0;
+      for (const l of buf.toString('utf8').split('\n')) {
+        if (l.trim() && (AUTH_PATTERN.test(l) || DROP_PATTERN.test(l))) {
+          parseLine(l, configDir);
+          seeded++;
+        }
+      }
+      if (seeded) console.log(`[UA-Tailer] Backscan seeded ${seeded} auth/drop lines from existing log (${metaByWorker.size} workers known)`);
+    }
+  } catch (e) { console.error('[UA-Tailer] backscan failed (non-fatal):', e.message); }
+
   const read = async () => {
     try {
       const stat = await fs.stat(logFile).catch(() => null);
