@@ -85,6 +85,39 @@ const RECONNECT_DELAY_MS  = 30 * 1000;              // 30s between reconnect att
 const EVENT_KIND          = 30078;                  // parameterized replaceable
 const TAG_NAME            = 'solostrike-stats';
 
+// ── v2.x: Benchmark broadcast whitelist (FAIL-CLOSED) ────────────────────────
+// The crowdsourced tuning benchmark will broadcast per-model aggregates. This
+// is the SINGLE chokepoint every benchmark payload MUST pass through before it
+// can leave this node. It is a WHITELIST, not a blocklist: only the fields
+// named here can ever be emitted. Anything not on this list — identity (BTC
+// address, hostname, MAC, ssid), IPs, the entire `live.advanced` blob, and any
+// field added by future firmware — is dropped by default. This fails closed:
+// forgetting to exclude a sensitive field cannot leak it, because nothing is
+// included unless explicitly allowed here.
+const BENCHMARK_BROADCAST_ALLOWED_FIELDS = Object.freeze([
+  'model',         // e.g. "BitAxe Gamma" — hardware class, not identity
+  'boardVersion',  // e.g. "601" — hardware variant for bucketing
+  'freq',          // MHz
+  'coreVoltage',   // mV (set/target)
+  'ths',           // reported hashrate, TH/s
+  'jth',           // efficiency, J/TH
+  'rejectPct',     // share reject %
+]);
+// Sanitize a candidate benchmark payload down to only allowed numeric/string
+// fields. Any object/array/identity value or unknown key is discarded.
+function sanitizeBenchmarkPayload(candidate) {
+  const out = {};
+  if (!candidate || typeof candidate !== 'object') return out;
+  for (const k of BENCHMARK_BROADCAST_ALLOWED_FIELDS) {
+    const v = candidate[k];
+    if (v == null) continue;
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    else if (typeof v === 'string') out[k] = v.slice(0, 40); // bounded, no nested objects
+  }
+  return out;
+}
+
+
 // Outbound throttle: we never broadcast our own pool more than once every 4 min,
 // regardless of how many times we get poked
 const MIN_OWN_BROADCAST_INTERVAL_MS = 4 * 60 * 1000;

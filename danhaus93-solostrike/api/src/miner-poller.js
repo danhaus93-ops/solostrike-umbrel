@@ -375,6 +375,18 @@ function extractCgminerLive(summary, stats) {
     expectedHashrate: null,
     defaultFrequencyMhz: null,
     defaultCoreVoltageMv: null,
+    inputVoltageV: null,
+    inputCurrentA: null,
+    tempTargetC: null,
+    overclockEnabled: null,
+    overheatMode: null,
+    boardVersion: null,
+    hr1m: null, hr10m: null, hr1h: null, hr1d: null,
+    vrTempC: null,
+    stratumConnected: null,
+    pingRttMs: null,
+    pingLossPct: null,
+    advanced: {},
   };
 
   const sm = Array.isArray(summary) ? summary[0] : summary;
@@ -660,6 +672,18 @@ function extractEspMinerLive(d) {
     expectedHashrate: null,
     defaultFrequencyMhz: null,
     defaultCoreVoltageMv: null,
+    inputVoltageV: null,
+    inputCurrentA: null,
+    tempTargetC: null,
+    overclockEnabled: null,
+    overheatMode: null,
+    boardVersion: null,
+    hr1m: null, hr10m: null, hr1h: null, hr1d: null,
+    vrTempC: null,
+    stratumConnected: null,
+    pingRttMs: null,
+    pingLossPct: null,
+    advanced: {},
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
   if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
@@ -716,6 +740,61 @@ function extractEspMinerLive(d) {
   if (typeof d.defaultFrequency === 'number' && d.defaultFrequency > 0 && d.defaultFrequency < 2000) live.defaultFrequencyMhz = d.defaultFrequency;
   if (typeof d.defaultCoreVoltage === 'number' && d.defaultCoreVoltage > 0 && d.defaultCoreVoltage < 3000) live.defaultCoreVoltageMv = d.defaultCoreVoltage;
   live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
+
+  // ── Tier 2: operator telemetry (some benchmark-eligible) ──────────────────
+  // Input rail (BitAxe `voltage` mV → V, `current` mA → A; NerdQAxe similar).
+  if (typeof d.voltage === 'number' && d.voltage > 0) live.inputVoltageV = d.voltage / 1000;
+  if (typeof d.current === 'number' && d.current > 0) live.inputCurrentA = d.current / 1000;
+  // Fan PID setpoint (BitAxe `temptarget`, NerdQAxe `pidTargetTemp`).
+  if (typeof d.temptarget === 'number' && d.temptarget > 0) live.tempTargetC = d.temptarget;
+  else if (typeof d.pidTargetTemp === 'number' && d.pidTargetTemp > 0) live.tempTargetC = d.pidTargetTemp;
+  if (typeof d.overclockEnabled !== 'undefined') live.overclockEnabled = !!d.overclockEnabled;
+  if (typeof d.overheat_mode !== 'undefined') live.overheatMode = !!d.overheat_mode;
+  if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
+  else if (typeof d.boardVersion === 'number') live.boardVersion = String(d.boardVersion);
+  // Rolling hashrate windows (NerdQAxe exposes these directly; H/s).
+  if (typeof d.hashRate_1m === 'number')  live.hr1m  = d.hashRate_1m  * 1e9;
+  if (typeof d.hashRate_10m === 'number') live.hr10m = d.hashRate_10m * 1e9;
+  if (typeof d.hashRate_1h === 'number')  live.hr1h  = d.hashRate_1h  * 1e9;
+  if (typeof d.hashRate_1d === 'number')  live.hr1d  = d.hashRate_1d  * 1e9;
+  if (typeof d.vrTemp === 'number' && d.vrTemp > 0) live.vrTempC = d.vrTemp;
+  // Connection health.
+  if (typeof d.isStratumConnected !== 'undefined') live.stratumConnected = !!d.isStratumConnected;
+  if (typeof d.lastpingrtt === 'number' && d.lastpingrtt >= 0) live.pingRttMs = d.lastpingrtt;
+  if (typeof d.recentpingloss === 'number' && d.recentpingloss >= 0) live.pingLossPct = d.recentpingloss;
+
+  // ── Tier 3: OPERATOR-ONLY system/identity/noise → live.advanced ───────────
+  // Captured for the operator's Advanced panel. NEVER broadcast — the benchmark
+  // whitelist only reads a fixed top-level field set and cannot reach in here.
+  const adv = live.advanced;
+  const setAdv = (k, v) => { if (v !== undefined && v !== null && v !== '') adv[k] = v; };
+  setAdv('hostname', d.hostname);
+  setAdv('ssid', d.ssid);
+  setAdv('wifiRSSI', (typeof d.wifiRSSI === 'number' && d.wifiRSSI !== 0 && d.wifiRSSI !== -128) ? d.wifiRSSI : null);
+  setAdv('networkMode', d.networkMode);
+  setAdv('macAddr', (d.macAddr && d.macAddr.trim()) ? d.macAddr.trim() : (d.ethMac || null));
+  setAdv('ethIPv4', d.ethIPv4 || d.ipv4 || d.hostip);
+  setAdv('freeHeap', d.freeHeap);
+  setAdv('lastResetReason', d.lastResetReason);
+  setAdv('runningPartition', d.runningPartition);
+  setAdv('idfVersion', d.idfVersion);
+  setAdv('axeOSVersion', d.axeOSVersion);
+  setAdv('stratumUser', d.stratumUser);            // contains payout address — operator-only
+  setAdv('stratumURL', (d.stratumURL != null && d.stratumPort != null) ? `${d.stratumURL}:${d.stratumPort}` : null);
+  if (typeof d.pidP === 'number' || typeof d.pidI === 'number' || typeof d.pidD === 'number') {
+    setAdv('pid', `P${d.pidP ?? '–'} I${d.pidI ?? '–'} D${d.pidD ?? '–'}`);
+  }
+  setAdv('jobInterval', d.jobInterval);
+  setAdv('smallCoreCount', d.smallCoreCount);
+  setAdv('asicCount', d.asicCount);
+  setAdv('defaultTheme', d.defaultTheme);
+  setAdv('display', d.display);
+  setAdv('freeHeapInt', d.freeHeapInt);
+  setAdv('proxyDifficulty', d.proxyDifficulty);
+  setAdv('jobInterval', d.jobInterval);
+  if (typeof d.armyEnabled !== 'undefined') {
+    setAdv('army', d.armyEnabled ? `enabled (${d.armyConnected ? 'connected' : 'disconnected'})` : 'disabled');
+  }
 
   if (live.tempC !== null) {
     live.tempDetails.push({ id: 'asic', tempC: live.tempC });
