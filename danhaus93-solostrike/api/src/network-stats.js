@@ -142,7 +142,9 @@ function buildBenchmarkSummaries(liveMap) {
     const asic = (w.asicModel || '');
     const key = `${model}|${asic}|${board}`;
     if (!buckets.has(key)) buckets.set(key, { model, asic, board, rows: [] });
-    const ths = (w.hr1d != null ? w.hr1d : w.hashrateReported);
+    const ths = (w.hashrateSustained != null ? w.hashrateSustained
+                 : w.hr1d != null ? w.hr1d
+                 : w.hashrateReported);
     buckets.get(key).rows.push({
       freq: w.frequencyMhz,
       coreVoltage: w.coreVoltageMv,

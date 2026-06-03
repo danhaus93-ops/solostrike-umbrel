@@ -131,9 +131,43 @@ function getLiveForWorker(workerName) {
 function getAllLive() {
   const out = {};
   for (const [name, r] of records) {
-    if (r && r.live) out[name] = { ...r.live, lastCheckedAt: r.lastCheckedAt };
+    if (r && r.live) {
+      const live = { ...r.live, lastCheckedAt: r.lastCheckedAt };
+      // v2.x: sustained hashrate for benchmarking (hashrate fluctuates, so a
+      // single instant reading is noise). Priority: device-reported average
+      // (Avalon GHSavg → hashrateAvg; NerdQAxe 24h → hr1d) → our own server-side
+      // rolling average over recent polls → instantaneous (last resort).
+      const roll = rollingAvgHr(r.hrSamples, 30 * 60 * 1000);
+      live.hashrateSustained =
+        (live.hashrateAvg != null ? live.hashrateAvg
+         : live.hr1d != null ? live.hr1d
+         : roll != null ? roll
+         : live.hashrateReported);
+      out[name] = live;
+    }
   }
   return out;
+}
+
+// v2.x: average of recent hashrateReported samples within a time window (H/s),
+// or null if no samples. Used as the fallback sustained hashrate for devices
+// that don't report their own average (e.g. BitAxe AxeOS has no rolling field).
+function rollingAvgHr(samples, windowMs) {
+  if (!Array.isArray(samples) || !samples.length) return null;
+  const cutoff = Date.now() - windowMs;
+  const recent = samples.filter(s => s && s.ts >= cutoff && Number.isFinite(s.hr) && s.hr > 0);
+  if (!recent.length) return null;
+  return recent.reduce((a, s) => a + s.hr, 0) / recent.length;
+}
+
+// v2.x: friendly model name for benchmark bucketing/labels. NerdQAxe reports
+// deviceModel directly; BitAxe (AxeOS) doesn't, so derive its family from the
+// ASIC chip. Falls back to the chip name, never blank.
+function friendlyEspModel(d) {
+  if (d && typeof d.deviceModel === 'string' && d.deviceModel.trim()) return d.deviceModel.trim();
+  const asic = (d && typeof d.ASICModel === 'string' ? d.ASICModel.trim() : '');
+  const map = { BM1370: 'BitAxe Gamma', BM1368: 'BitAxe Supra', BM1366: 'BitAxe Ultra', BM1397: 'BitAxe Max' };
+  return map[asic] || (asic ? 'BitAxe (' + asic + ')' : 'BitAxe');
 }
 
 async function pollOne(workerName) {
@@ -358,6 +392,9 @@ function extractCgminerLive(summary, stats) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    model: null,
+    hashrateAvg: null,
+    hashrateSustained: null,
     // v1.12.0: power draw (watts) + computed efficiency (J/TH) for Fleet
     // Efficiency. ckpool has no concept of power; this comes from the rig's
     // own API. Not all firmwares report it — null when unavailable.
@@ -529,6 +566,17 @@ function extractCgminerLive(summary, stats) {
         // vs BitAxe's single ~1170mV domain), outlet/exhaust temp (OTemp), and
         // per-chain frequency (SF0). parseAvalonMmArray pulls a bracketed,
         // space-separated numeric array (handles leading/irregular spaces).
+        // v2.x: device-reported AVERAGE hashrate (GHSavg, GH/s → H/s) — a smoothed
+        // sustained figure, far better for benchmarking than the bouncing instant
+        // reading. The Avalon has no hr1d field, so this is its sustained source.
+        const ghsAvg = parseAvalonMmField(v, 'GHSavg');
+        if (ghsAvg != null && ghsAvg > 0) live.hashrateAvg = ghsAvg * 1e9;
+        // v2.x: friendly model name. The Ver[...] string carries the model
+        // (e.g. "Nano3s-25061101_..."). Without this the bucket reads "unknown".
+        const verStr = (mmVer && mmVer[1]) || live.firmwareVersion || '';
+        if (/nano\s*3s/i.test(verStr)) live.model = 'Avalon Nano 3S';
+        else if (/nano/i.test(verStr)) live.model = 'Avalon Nano';
+        else if (!live.model) live.model = 'Avalon';
         const chipTemps = parseAvalonMmArray(v, 'PVT_T0');
         const chipVolts = parseAvalonMmArray(v, 'PVT_V0');
         if (chipTemps && chipTemps.length) {
@@ -708,6 +756,9 @@ function extractEspMinerLive(d) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    model: null,
+    hashrateAvg: null,
+    hashrateSustained: null,
     asicModel: null,
     frequencyMhz: null,
     coreVoltageMv: null,
@@ -756,6 +807,9 @@ function extractEspMinerLive(d) {
   // and consumed by miner-detect's detectFromAsicModel().
   if (typeof d.ASICModel === 'string' && d.ASICModel.trim()) live.asicModel = d.ASICModel.trim();
   else if (typeof d.asicModel === 'string' && d.asicModel.trim()) live.asicModel = d.asicModel.trim();
+  // v2.x: friendly model name (NerdQAxe++ / BitAxe Gamma / …) for benchmark
+  // bucketing & labels — without this, buckets read the raw chip ("BM1370").
+  live.model = friendlyEspModel(d);
   if (typeof d.asicCount === 'number' && d.asicCount > 0) live.asicCount = d.asicCount;
   if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
   // v1.12.0: ESP-Miner reports instantaneous power draw in watts.
@@ -1033,7 +1087,19 @@ function numOr(v) {
 }
 
 function saveRecord(workerName, partial) {
-  records.set(workerName, { ...partial, lastCheckedAt: Date.now() });
+  // v2.x: maintain a small ring buffer of recent hashrate samples per worker so
+  // we can compute a server-side rolling average for the benchmark (fallback for
+  // devices that don't report their own average). Carries across poll cycles
+  // (saveRecord replaces the record, so we must preserve it explicitly).
+  const prev = records.get(workerName);
+  let hrSamples = (prev && Array.isArray(prev.hrSamples)) ? prev.hrSamples : [];
+  const hr = partial && partial.live && partial.live.hashrateReported;
+  if (Number.isFinite(hr) && hr > 0) {
+    hrSamples = hrSamples.concat([{ ts: Date.now(), hr }]);
+    const cutoff = Date.now() - 60 * 60 * 1000; // keep ~1h
+    hrSamples = hrSamples.filter(s => s.ts >= cutoff).slice(-120); // cap 120 samples
+  }
+  records.set(workerName, { ...partial, hrSamples, lastCheckedAt: Date.now() });
   scheduleSave();
 }
 
