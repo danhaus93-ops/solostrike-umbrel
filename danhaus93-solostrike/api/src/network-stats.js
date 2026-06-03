@@ -812,18 +812,17 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       let rows = bk.rows;
       if (rows.length >= OUTLIER_MIN_SAMPLES) {
         const jths = rows.map(r => r.jth);
-        const m = median(jths);
-        const mad = medianAbsoluteDeviation(jths, m);
+        const { median: m, mad } = medianAbsoluteDeviation(jths);
         if (mad > 0) rows = rows.filter(r => !isOutlier(r.jth, m, mad));
       }
       if (!rows.length) continue;
       const sorted = [...rows].sort((a, b) => a.jth - b.jth);
       const champ = sorted[0];
-      const jths = rows.map(r => r.jth);
+      const { median: medJth } = medianAbsoluteDeviation(rows.map(r => r.jth));
       out.push({
         model: bk.model, asic: bk.asic, boardVersion: bk.boardVersion,
         sampleCount: rows.length,
-        medianJth: +median(jths).toFixed(2),
+        medianJth: +Number(medJth).toFixed(2),
         bestJth: champ.jth,
         champion: {
           jth: champ.jth, ths: champ.ths, freq: champ.freq,
@@ -905,7 +904,15 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     state.networkStats.blocks = blocks;
     state.networkStats.versions = versions;
     state.networkStats.peers = peers;
-    state.networkStats.benchmarks = aggregateBenchmarks(activeEntries, pubkey);
+    // v2.x: benchmark aggregation is a display feature — it must NEVER be able
+    // to crash the api (which feeds the whole pool dashboard). Isolate it: on
+    // any error, log once and keep the last good value rather than throwing.
+    try {
+      state.networkStats.benchmarks = aggregateBenchmarks(activeEntries, pubkey);
+    } catch (e) {
+      console.warn('[network-stats] benchmark aggregation skipped:', e && e.message);
+      if (!Array.isArray(state.networkStats.benchmarks)) state.networkStats.benchmarks = [];
+    }
     state.networkStats.lastUpdate = Date.now();
     state.networkStats.security.outliersFiltered += outliersFilteredThisRound;
 
