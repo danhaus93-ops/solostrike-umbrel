@@ -172,7 +172,10 @@ function buildBenchmarkSummaries(liveMap) {
       ths: thsVal != null ? +thsVal.toFixed(3) : null,
       jth,
       tempC: temp != null ? +Number(temp).toFixed(1) : null,
-      rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : 0,
+      // v2.x: do NOT coerce unknown reject to 0 — that fabricates a "0%" reading
+      // for miners we don't capture reject data from (e.g. Avalon/cgminer). Keep
+      // null so the UI shows "—" (unknown) instead of an invented clean rate.
+      rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : null,
     });
   }
   const med = (arr) => {
@@ -192,7 +195,7 @@ function buildBenchmarkSummaries(liveMap) {
       ths: +(med(b.rows.map(r => r.ths)) || 0).toFixed(3),
       jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
       tempC: +(med(b.rows.map(r => r.tempC)) || 0).toFixed(1) || undefined,
-      rejectPct: +(med(b.rows.map(r => r.rejectPct)) || 0).toFixed(3),
+      rejectPct: (() => { const m = med(b.rows.map(r => r.rejectPct)); return m != null ? +m.toFixed(3) : undefined; })(),
     });
     if (summary.freq > 0 && summary.jth > 0) out.push(summary);
   }
@@ -458,7 +461,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
         ths: +ths.toFixed(3),
         jth: +jth.toFixed(2),
         tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
-        rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : 0,
+        rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : null,
       });
     }
     if (clean.length) benchmarks = clean;

@@ -457,6 +457,17 @@ function extractCgminerLive(summary, stats) {
     if (typeof sm.Elapsed === 'number')          live.uptimeSec = sm.Elapsed;
     if (typeof sm['Hardware Errors'] === 'number') live.hwErrors = sm['Hardware Errors'];
     if (typeof sm.HardwareErrors === 'number')   live.hwErrors = sm.HardwareErrors;
+    // v2.x: Avalon/cgminer reject rate. Prefer cgminer's own computed
+    // "Device Rejected%" (e.g. 0.2099); else derive from Accepted/Rejected
+    // counts. Previously unparsed → benchmark showed a fabricated 0%.
+    {
+      const devRej = numOr(sm['Device Rejected%']);
+      const acc = numOr(sm.Accepted), rej = numOr(sm.Rejected);
+      if (acc !== null) live.sharesAccepted = acc;
+      if (rej !== null) live.sharesRejected = rej;
+      if (devRej !== null && devRej >= 0) live.rejectPct = devRej;
+      else if (acc !== null && rej !== null && (acc + rej) > 0) live.rejectPct = (rej / (acc + rej)) * 100;
+    }
 
     const ghsAv = numOr(sm['GHS av']);
     const ghs5s = numOr(sm['GHS 5s']);
