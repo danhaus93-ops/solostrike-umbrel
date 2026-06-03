@@ -336,6 +336,8 @@ function extractCgminerLive(summary, stats) {
     // own API. Not all firmwares report it — null when unavailable.
     powerW: null,
     efficiencyJTH: null,
+    frequencyMhz: null,
+    coreVoltageMv: null,
   };
 
   const sm = Array.isArray(summary) ? summary[0] : summary;
@@ -445,6 +447,18 @@ function extractCgminerLive(summary, stats) {
         const mmVer  = /Ver\[([^\]]+)\]/.exec(v);
         const mmElapsed = parseAvalonMmField(v, 'ELAPSED', 'Elapsed');
         const mmPower = parseAvalonMmField(v, 'MPO', 'Power', 'Pmax', 'PWR');
+        // v2.x: tuning knobs from the MM blob — Avalon reports an average
+        // frequency (Freq/Frequency/Fac) and core voltage (Vol/MV). Field names
+        // vary by firmware, so try several. Used by the benchmark layer.
+        const mmFreq = parseAvalonMmField(v, 'Freq', 'Frequency', 'Fac', 'FreqAvg');
+        const mmVolt = parseAvalonMmField(v, 'Vol', 'MV', 'Voltage', 'CoreVoltage');
+
+        if (mmFreq !== null && mmFreq > 0 && mmFreq < 2000) {
+          if (live.frequencyMhz == null || mmFreq > live.frequencyMhz) live.frequencyMhz = mmFreq;
+        }
+        if (mmVolt !== null && mmVolt > 0 && mmVolt < 3000) {
+          if (live.coreVoltageMv == null) live.coreVoltageMv = mmVolt;
+        }
 
         if (mmPower !== null && mmPower > 0 && mmPower < 20000) {
           if (live.powerW === null || mmPower > live.powerW) live.powerW = mmPower;
@@ -568,6 +582,8 @@ function extractEspMinerLive(d) {
     uptimeSec: null,
     firmwareVersion: null,
     asicModel: null,
+    frequencyMhz: null,
+    coreVoltageMv: null,
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
   if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
@@ -587,6 +603,13 @@ function extractEspMinerLive(d) {
   if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
   // v1.12.0: ESP-Miner reports instantaneous power draw in watts.
   if (typeof d.power === 'number' && d.power > 0 && d.power < 20000) live.powerW = d.power;
+  // v2.x: tuning knobs from the SAME /api/system/info payload — frequency (MHz)
+  // and core voltage (mV). coreVoltageActual is the measured value (preferred);
+  // coreVoltage is the configured target. These feed the crowdsourced benchmark
+  // layer and the per-worker tuning detail. Bounds guard against bad firmware.
+  if (typeof d.frequency === 'number' && d.frequency > 0 && d.frequency < 2000) live.frequencyMhz = d.frequency;
+  if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 3000) live.coreVoltageMv = d.coreVoltageActual;
+  else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 3000) live.coreVoltageMv = d.coreVoltage;
   live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
 
   if (live.tempC !== null) {
