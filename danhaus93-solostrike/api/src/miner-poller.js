@@ -163,14 +163,39 @@ function isEspMinerVendor(workerName, vendor) {
   return null;
 }
 
+// v2.x: tracks consecutive failed poll cycles per worker, for backoff.
+const pollFailStreak = new Map();
+let pollCycleCount = 0;
+
 async function pollAll() {
   if (!getMetaFn) return;
   const allMeta = getMetaFn() || [];
-  await Promise.allSettled(
-    allMeta
-      .filter(m => m && m.name && m.ip)
-      .map(m => pollMiner(m.name, m.ip))
-  );
+  pollCycleCount++;
+  // v2.x reliability fix: re-resolve each miner's IP from the LATEST ckpool
+  // metadata every cycle (getMetaFn already returns fresh data), and no longer
+  // permanently skip miners that previously failed or had no IP. Previously a
+  // miner whose IP wasn't yet harvested — or that was briefly unreachable —
+  // would stay blank until a manual reboot forced a fresh stratum reconnect.
+  // Now telemetry self-heals as soon as the IP/endpoint becomes reachable.
+  //
+  // Gentle backoff: a miner that keeps failing is retried less often (every
+  // 2^streak cycles, capped at every 10) so long-dead rigs don't generate a
+  // timeout attempt every single 60s cycle — keeps CPU/sockets quiet.
+  const targets = allMeta.filter(m => {
+    if (!m || !m.name || !m.ip) return false;
+    const streak = pollFailStreak.get(m.name) || 0;
+    if (streak === 0) return true;                 // healthy → always poll
+    const everyN = Math.min(10, Math.pow(2, Math.min(streak, 4))); // 2,4,8,10,10…
+    return (pollCycleCount % everyN) === 0;        // backed-off retry
+  });
+  await Promise.allSettled(targets.map(m => pollMiner(m.name, m.ip)));
+}
+
+// v2.x: record poll outcome for backoff. ok=true resets the streak so a
+// recovered miner immediately returns to every-cycle polling.
+function notePollOutcome(workerName, ok) {
+  if (ok) pollFailStreak.delete(workerName);
+  else pollFailStreak.set(workerName, (pollFailStreak.get(workerName) || 0) + 1);
 }
 
 async function pollMiner(workerName, ip) {
@@ -206,6 +231,7 @@ async function pollMiner(workerName, ip) {
   }
 
   if (!result.ok) {
+    notePollOutcome(workerName, false);
     saveRecord(workerName, {
       alignment: { status: result.alignmentStatus || 'unreachable', error: result.error },
       live: null,
@@ -214,6 +240,7 @@ async function pollMiner(workerName, ip) {
     });
     return;
   }
+  notePollOutcome(workerName, true);
 
   const payoutAddress = (getPayoutAddressFn && getPayoutAddressFn()) || null;
   const alignment = result.adapter === 'cgminer'
@@ -510,7 +537,12 @@ function extractCgminerLive(summary, stats) {
 
   // v1.12.0: efficiency = watts per terahash. Needs both a power reading and
   // a reported hashrate; null if either is missing.
-  live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
+  // v2.x: right after a reboot Avalon reports a depressed hashrate (averaging
+  // window not yet filled) while power is already at full draw — that yields an
+  // absurd J/TH spike (e.g. 507 instead of 34). Suppress efficiency during the
+  // warm-up window so the artifact doesn't show or feed the benchmark layer.
+  const cgWarmup = live.uptimeSec != null && live.uptimeSec < 180;
+  live.efficiencyJTH = cgWarmup ? null : computeEfficiency(live.powerW, live.hashrateReported);
 
   return live;
 }
@@ -633,9 +665,18 @@ function extractEspMinerLive(d) {
   if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
   if (typeof d.fanspeed === 'number' && d.fanspeed >= 0 && d.fanspeed <= 100)
     live.fanPct = d.fanspeed;
-  if (typeof d.hashRate === 'number' && d.hashRate >= 0)
-    live.hashrateReported = d.hashRate * 1e9;
   if (typeof d.uptimeSeconds === 'number')            live.uptimeSec = d.uptimeSeconds;
+  // v2.x: ESP/TNA firmware reports hashRate:0 for the first ~minutes after boot
+  // while its averaging window fills. Showing a stark "0 H/s" next to a healthy
+  // pool-side hashrate is misleading, and it also poisons the efficiency calc
+  // (power ÷ ~0 = absurd J/TH). Treat 0 during the warm-up window as "not yet
+  // reported" (null → UI hides the row) rather than a real zero. A genuine 0 on
+  // an established miner (uptime past the window) is a real fault, so keep it.
+  const WARMUP_SEC = 180;
+  if (typeof d.hashRate === 'number' && d.hashRate >= 0) {
+    const warmingUp = d.hashRate === 0 && live.uptimeSec != null && live.uptimeSec < WARMUP_SEC;
+    live.hashrateReported = warmingUp ? null : d.hashRate * 1e9;
+  }
   if (typeof d.version === 'string')                  live.firmwareVersion = d.version;
   // v1.12.x: ESP-Miner reports the actual mining chip in ASICModel
   // (e.g. "BM1370", "BM1366"). This is the authoritative model signal —
