@@ -960,11 +960,11 @@ function extractEspMinerLive(d) {
   // coreVoltage is the configured target. These feed the crowdsourced benchmark
   // layer and the per-worker tuning detail. Bounds guard against bad firmware.
   if (typeof d.frequency === 'number' && d.frequency > 0 && d.frequency < 2000) live.frequencyMhz = d.frequency;
-  if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 3000) live.coreVoltageMv = d.coreVoltageActual;
-  else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 3000) live.coreVoltageMv = d.coreVoltage;
+  if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 20000) live.coreVoltageMv = d.coreVoltageActual;
+  else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageMv = d.coreVoltage;
   // v2.x Tier-1: the CONFIGURED core voltage (target). Shown alongside the
   // measured value as "set → actual" so VR sag is visible at a glance.
-  if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 3000) live.coreVoltageSetMv = d.coreVoltage;
+  if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageSetMv = d.coreVoltage;
   // v2.x Tier-1: share counters → reject %. Present on both BitAxe & NerdQAxe.
   if (typeof d.sharesAccepted === 'number' && d.sharesAccepted >= 0) live.sharesAccepted = d.sharesAccepted;
   if (typeof d.sharesRejected === 'number' && d.sharesRejected >= 0) live.sharesRejected = d.sharesRejected;
@@ -981,7 +981,7 @@ function extractEspMinerLive(d) {
   if (typeof d.expectedHashrate === 'number' && d.expectedHashrate > 0) live.expectedHashrate = d.expectedHashrate * 1e9;
   // v2.x Tier-1: stock baselines — the OC reference point for the benchmark layer.
   if (typeof d.defaultFrequency === 'number' && d.defaultFrequency > 0 && d.defaultFrequency < 2000) live.defaultFrequencyMhz = d.defaultFrequency;
-  if (typeof d.defaultCoreVoltage === 'number' && d.defaultCoreVoltage > 0 && d.defaultCoreVoltage < 3000) live.defaultCoreVoltageMv = d.defaultCoreVoltage;
+  if (typeof d.defaultCoreVoltage === 'number' && d.defaultCoreVoltage > 0 && d.defaultCoreVoltage < 20000) live.defaultCoreVoltageMv = d.defaultCoreVoltage;
   live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
 
   // ── Tier 2: operator telemetry (some benchmark-eligible) ──────────────────

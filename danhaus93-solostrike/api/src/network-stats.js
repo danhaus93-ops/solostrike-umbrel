@@ -457,7 +457,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
         asic: typeof b.asic === 'string' ? b.asic.slice(0, 24) : '',
         boardVersion: typeof b.boardVersion === 'string' ? b.boardVersion.slice(0, 16) : '',
         freq: Math.round(freq),
-        coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 3000) ? Math.round(cv) : null,
+        coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 20000) ? Math.round(cv) : null,
         ths: +ths.toFixed(3),
         jth: +jth.toFixed(2),
         tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
