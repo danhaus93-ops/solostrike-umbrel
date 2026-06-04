@@ -70,14 +70,19 @@ ok(detectMinerBest('bc1qaddr.s21xp', '', null, null).type === 'Antminer S21 XP',
 // ── 6. End-to-end: real extractEspMinerLive on merged /info + /asic ───────────
 hr('6. End-to-end (real extract: /info + /asic merged)');
 const info = { ASICModel: 'BM1370', hashRate: 1200, uptimeSeconds: 7200, version: 'AxeOS/v2.12.2', hostname: 'bitaxe' };
+// deviceModel/boardVersion values below are the REAL strings from ESP-Miner's
+// config-*.cvs board files (lowercase; GT's literal is "gammaturbo", not "GT").
 const cases = [
-  { name: 'Gamma',        d: { ...info, boardVersion: '601', deviceModel: 'Gamma', asicCount: 1 },                 model: 'BitAxe Gamma', card: 'BitAxe Gamma' },
-  { name: 'GT',           d: { ...info, boardVersion: '801', deviceModel: 'GT',    asicCount: 2 },                 model: 'BitAxe GT',    card: 'BitAxe GT' },
-  { name: 'Gamma Duo',    d: { ...info, boardVersion: '650', deviceModel: 'GammaDuo', asicCount: 2 },              model: 'BitAxe Gamma Duo', card: 'BitAxe Gamma Duo' },
-  { name: 'Hex',          d: { ...info, ASICModel: 'BM1366', boardVersion: '300', deviceModel: 'Hex', asicCount: 4 }, model: 'BitAxe Hex', card: 'BitAxe Hex' },
-  { name: 'NerdQAxe++',   d: { ...info, boardVersion: '', deviceModel: 'NerdQAxe++', asicCount: 4 },               model: 'NerdQAxe++',   card: 'NerdQaxe++' },
-  { name: 'GekkoAxe(Hex OS)', d: { ...info, boardVersion: '801', deviceModel: 'GekkoAxe', asicCount: 2 },          model: 'GekkoAxe',     card: 'GekkoAxe' },
-  { name: 'GekkoAxe(stock→GT)', d: { ...info, boardVersion: '801', deviceModel: 'GT', asicCount: 2 },              model: 'BitAxe GT',    card: 'BitAxe GT' },
+  { name: 'Gamma (gamma/601)',       d: { ...info, boardVersion: '601', deviceModel: 'gamma', asicCount: 1 },                 model: 'BitAxe Gamma',     card: 'BitAxe Gamma' },
+  { name: 'GT (gammaturbo/801)',     d: { ...info, boardVersion: '801', deviceModel: 'gammaturbo', asicCount: 2 },           model: 'BitAxe GT',        card: 'BitAxe GT' },
+  { name: 'Gamma Duo (gammaduo/650)',d: { ...info, boardVersion: '650', deviceModel: 'gammaduo', asicCount: 2 },             model: 'BitAxe Gamma Duo', card: 'BitAxe Gamma Duo' },
+  { name: 'Hex (hex/302)',           d: { ...info, ASICModel: 'BM1366', boardVersion: '302', deviceModel: 'hex', asicCount: 4 }, model: 'BitAxe Hex',    card: 'BitAxe Hex' },
+  { name: 'Supra (supra/402)',       d: { ...info, ASICModel: 'BM1368', boardVersion: '402', deviceModel: 'supra', asicCount: 1 }, model: 'BitAxe Supra', card: 'BitAxe Supra' },
+  { name: 'Ultra (ultra/201)',       d: { ...info, ASICModel: 'BM1366', boardVersion: '201', deviceModel: 'ultra', asicCount: 1 }, model: 'BitAxe Ultra', card: 'BitAxe Ultra' },
+  { name: 'Max (max/102)',           d: { ...info, ASICModel: 'BM1397', boardVersion: '102', deviceModel: 'max', asicCount: 1 },   model: 'BitAxe Max',   card: 'BitAxe Max' },
+  { name: 'NerdQAxe++ (×4)',         d: { ...info, boardVersion: '', deviceModel: 'NerdQAxe++', asicCount: 4 },               model: 'NerdQAxe++',       card: 'NerdQaxe++' },
+  { name: 'GekkoAxe (HexOS token)',  d: { ...info, boardVersion: '801', deviceModel: 'GekkoAxe', asicCount: 2 },             model: 'GekkoAxe',         card: 'GekkoAxe' },
+  { name: 'GekkoAxe (stock→gammaturbo)', d: { ...info, boardVersion: '801', deviceModel: 'gammaturbo', asicCount: 2 },       model: 'BitAxe GT',        card: 'BitAxe GT' },
 ];
 for (const c of cases) {
   const live = extractEspMinerLive(c.d);
