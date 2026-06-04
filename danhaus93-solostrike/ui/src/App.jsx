@@ -12261,12 +12261,15 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   // 3rd time). It re-arms and pops again on the next visit until it has been
   // acknowledged 3 separate times, after which it's remembered for good and
   // never shown again (short of a reinstall, which clears localStorage).
-  // Count is persisted in ss_bench_disclaimer_v1; legacy installs stored a
-  // Date.now() timestamp there, which parseInt's to a huge number (>=3) — so
-  // anyone who already accepted under the old build stays learned, not re-nagged.
+  // NOTE: this uses its OWN dedicated key (ss_topstrikers_seen_v1), separate
+  // from the copy-gate's ss_bench_disclaimer_v1. They were sharing a key, and
+  // the copy-gate writes a Date.now() timestamp — which parseInt's to a huge
+  // number (>=3) and made this gate read as already-learned, so it never fired
+  // for anyone who'd accepted the copy disclaimer. Dedicated key = clean count,
+  // starts at 0, fires correctly for everyone.
   const BENCH_ACCEPTS_REQUIRED = 3;
   const [benchCount, setBenchCount] = useState(() => {
-    try { return parseInt(localStorage.getItem('ss_bench_disclaimer_v1') || '0', 10) || 0; } catch { return 0; }
+    try { return parseInt(localStorage.getItem('ss_topstrikers_seen_v1') || '0', 10) || 0; } catch { return 0; }
   });
   const [benchChecked, setBenchChecked] = useState(false);
   const [benchAckedView, setBenchAckedView] = useState(false); // acknowledged during THIS tab visit
@@ -12278,7 +12281,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
     setBenchCount(next);
     setBenchAckedView(true);   // reveal the benchmarks for the rest of this visit
     setBenchChecked(false);
-    try { localStorage.setItem('ss_bench_disclaimer_v1', String(next)); } catch {}
+    try { localStorage.setItem('ss_topstrikers_seen_v1', String(next)); } catch {}
   };
   // Re-arm the gate when the user leaves the benchmarks tab, so the next fresh
   // tap pops the disclaimer again — until it's been seen 3 times (learned).
