@@ -345,13 +345,56 @@ async function pollMiner(workerName, ip) {
 // parallel TCP connections and merge the results. Slightly more network
 // chatter, but trivial at fleet scale and dramatically more compatible.
 
+// v2.x: LuxOS exposes per-board voltage ONLY via its HTTP API
+// (POST :8080/api  {"command":"voltageget"}  -> VOLTAGE[].Voltage, in volts).
+// The 4028-socket voltage command is unstable (it crashed a miner once), so we
+// never poll that. One gentle POST per cycle, LuxOS-only, errors swallowed.
+function luxosVoltageMv(ip) {
+  return new Promise((resolve) => {
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const body = JSON.stringify({ command: 'voltageget' });
+      const req = http.request({
+        host: ip, port: 8080, path: '/api', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        timeout: 3000,
+      }, (res) => {
+        let d = '';
+        res.on('data', (c) => { d += c; if (d.length > 16384) req.destroy(); });
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            const arr = j && (j.VOLTAGE || j.voltage);
+            if (Array.isArray(arr)) {
+              let best = null;
+              for (const e of arr) {
+                const n = Number(e && (e.Voltage != null ? e.Voltage : e.voltage));
+                if (Number.isFinite(n) && n > 0 && (best == null || n > best)) best = n;
+              }
+              // LuxOS reports volts (e.g. 14.21); normalise to mV.
+              if (best != null) return fin(best < 100 ? Math.round(best * 1000) : Math.round(best));
+            }
+          } catch (e) {}
+          fin(null);
+        });
+      });
+      req.on('error', () => fin(null));
+      req.on('timeout', () => { req.destroy(); fin(null); });
+      req.write(body);
+      req.end();
+    } catch (e) { fin(null); }
+  });
+}
+
 function tryCgminer(ip) {
   return new Promise(async (resolve) => {
-    const [poolsRes, summaryRes, statsRes, devsRes] = await Promise.all([
+    const [poolsRes, summaryRes, statsRes, devsRes, powerRes] = await Promise.all([
       cgminerCommand(ip, 'pools'),
       cgminerCommand(ip, 'summary'),
       cgminerCommand(ip, 'stats'),
       cgminerCommand(ip, 'devs'),
+      cgminerCommand(ip, 'power'),
     ]);
 
     // If ALL failed, treat as unreachable/disabled. We surface the
@@ -377,7 +420,19 @@ function tryCgminer(ip) {
     const fwDesc  = [summaryRes, statsRes, devsRes, poolsRes]
       .map(r => r && r.ok && r.data && Array.isArray(r.data.STATUS) && r.data.STATUS[0] && r.data.STATUS[0].Description)
       .find(d => typeof d === 'string' && d.trim()) || '';
-    const live    = extractCgminerLive(summary, stats, devs, fwDesc);
+    const power   = powerRes.ok ? (powerRes.data.POWER || powerRes.data.power || []) : [];
+    const live    = extractCgminerLive(summary, stats, devs, fwDesc, power);
+
+    // LuxOS-only: read board voltage over the stable HTTP API (never the 4028
+    // socket). Fills coreVoltage so the rig gets full telemetry + a real
+    // benchmark voltage. Silent on failure — voltage just stays null.
+    if (live.coreVoltageMv == null && /lux(miner|os)/i.test(fwDesc || '')) {
+      const vmv = await luxosVoltageMv(ip);
+      if (vmv != null && vmv > 0 && vmv < 20000) {
+        live.coreVoltageMv = vmv;
+        if (live.coreVoltageSetMv == null) live.coreVoltageSetMv = vmv;
+      }
+    }
 
     resolve({ ok: true, adapter: 'cgminer', pools, live });
   });
@@ -436,7 +491,7 @@ function cgminerCommand(ip, command) {
   });
 }
 
-function extractCgminerLive(summary, stats, devs, fwDesc) {
+function extractCgminerLive(summary, stats, devs, fwDesc, power = []) {
   const live = {
     tempC: null,
     tempDetails: [],
@@ -705,6 +760,24 @@ function extractCgminerLive(summary, stats, devs, fwDesc) {
   // window not yet filled) while power is already at full draw — that yields an
   // absurd J/TH spike (e.g. 507 instead of 34). Suppress efficiency during the
   // warm-up window so the artifact doesn't show or feed the benchmark layer.
+  // v2.x: LuxOS / generic cgminer expose total power via the `power` command
+  // (POWER[].Watts — absent from summary/stats) and aggregate frequency in
+  // `stats` (frequency / total_freqavg). Fill BOTH before efficiency so J/TH
+  // computes and the rig clears the Top Strikers gate.
+  if (live.powerW == null && Array.isArray(power)) {
+    for (const p of power) {
+      if (!p || typeof p !== 'object') continue;
+      const w = numOr(pickField(p, ['Watts', 'watts', 'Power', 'power', 'Watt']));
+      if (w != null && w > 0 && w < 20000) { live.powerW = w; break; }
+    }
+  }
+  if (live.frequencyMhz == null && Array.isArray(stats)) {
+    for (const st of stats) {
+      if (!st || typeof st !== 'object') continue;
+      const f = numOr(pickField(st, ['frequency', 'total_freqavg', 'freqavg', 'FreqAvg', 'freq_avg', 'Frequency']));
+      if (f != null && f > 0 && f < 5000) { live.frequencyMhz = f; break; }
+    }
+  }
   const cgWarmup = live.uptimeSec != null && live.uptimeSec < 180;
   live.efficiencyJTH = cgWarmup ? null : computeEfficiency(live.powerW, live.hashrateReported);
 
@@ -760,7 +833,15 @@ function extractCgminerLive(summary, stats, devs, fwDesc) {
   if (!live.model) {
     const d0 = devList[0] || {};
     const fromDev = pickField(d0, ['Model', 'Name', 'Board', 'Type']);
-    const devName = (typeof fromDev === 'string' && fromDev.trim()) ? fromDev.trim() : '';
+    let devName = (typeof fromDev === 'string' && fromDev.trim()) ? fromDev.trim() : '';
+    // LuxOS/cgminer often leave DEVS.Name blank but carry the real model in
+    // STATS[0].Type (e.g. "Antminer S21 XP"); prefer that over the family label.
+    if (!devName && Array.isArray(stats)) {
+      for (const st of stats) {
+        const t = st && (st.Type || st.type);
+        if (typeof t === 'string' && t.trim()) { devName = t.trim(); break; }
+      }
+    }
     live.model = devName || cgminerFamilyLabel(fwDesc);
   }
   if (!live.firmwareVersion && fwDesc) live.firmwareVersion = String(fwDesc).slice(0, 60);
