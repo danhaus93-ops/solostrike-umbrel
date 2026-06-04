@@ -297,9 +297,15 @@ async function pollMiner(workerName, ip) {
       if (fallback.ok) result = fallback;
     }
   } else {
-    result = await tryCgminer(ip);
+    // v2.x: unknown vendor — probe the HTTP/AxeOS endpoint FIRST. AxeOS-style
+    // firmwares that don't get a vendor classification (e.g. TNA-OS on big
+    // Antminers) serve a rich /api/system/info with model/freq/coreVoltage;
+    // their cgminer 4028 reply is a thin, sometimes non-standard envelope.
+    // cgminer-only devices simply 404/refuse port 80, so we fall back cleanly.
+    // HTTP is strictly richer for any device that answers both.
+    result = await tryEspMiner(ip);
     if (!result.ok) {
-      const fallback = await tryEspMiner(ip);
+      const fallback = await tryCgminer(ip);
       if (fallback.ok) result = fallback;
     }
   }
@@ -905,9 +911,24 @@ function extractEspMinerLive(d) {
     advanced: {},
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
-  if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
-  if (typeof d.fanspeed === 'number' && d.fanspeed >= 0 && d.fanspeed <= 100)
-    live.fanPct = d.fanspeed;
+  // fan rpm: AxeOS sends fanrpm (number); TNA-OS sends fanRpm (per-fan array)
+  {
+    let fr = (typeof d.fanrpm === 'number') ? d.fanrpm : null;
+    if (fr == null && d.fanRpm != null) {
+      if (Array.isArray(d.fanRpm)) {
+        const nums = d.fanRpm.filter(x => typeof x === 'number' && x >= 0);
+        if (nums.length) fr = Math.max(...nums);
+      } else if (typeof d.fanRpm === 'number') {
+        fr = d.fanRpm;
+      }
+    }
+    if (typeof fr === 'number' && fr >= 0) live.fanRpm = fr;
+  }
+  {
+    const fp = (typeof d.fanspeed === 'number') ? d.fanspeed
+             : (typeof d.fanSpeed === 'number') ? d.fanSpeed : null;
+    if (fp != null && fp >= 0 && fp <= 100) live.fanPct = fp;
+  }
   if (typeof d.uptimeSeconds === 'number')            live.uptimeSec = d.uptimeSeconds;
   // v2.x: ESP/TNA firmware reports hashRate:0 for the first ~minutes after boot
   // while its averaging window fills. Showing a stark "0 H/s" next to a healthy
