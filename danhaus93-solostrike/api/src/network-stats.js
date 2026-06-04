@@ -104,6 +104,8 @@ const BENCHMARK_BROADCAST_ALLOWED_FIELDS = Object.freeze([
   'jth',           // efficiency, J/TH
   'tempC',         // chip temp °C — an OUTCOME (measured), part of tuning picture
   'rejectPct',     // share reject %
+  'fanRpm',        // fan speed RPM — measured cooling reading (non-identifying)
+  'fanPct',        // fan duty % — measured cooling reading (non-identifying)
 ]);
 // Sanitize a candidate benchmark payload down to only allowed numeric/string
 // fields. Any object/array/identity value or unknown key is discarded.
@@ -176,6 +178,10 @@ function buildBenchmarkSummaries(liveMap) {
       // for miners we don't capture reject data from (e.g. Avalon/cgminer). Keep
       // null so the UI shows "—" (unknown) instead of an invented clean rate.
       rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : null,
+      // Fan is a MEASURED cooling reading (usually auto, not a set knob). Ride it
+      // along like temp/reject; null stays null so fanless/passive rigs show "—".
+      fanRpm: w.fanRpm != null ? Math.round(w.fanRpm) : null,
+      fanPct: w.fanPct != null ? Math.round(w.fanPct) : null,
     });
   }
   const med = (arr) => {
@@ -196,6 +202,8 @@ function buildBenchmarkSummaries(liveMap) {
       jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
       tempC: +(med(b.rows.map(r => r.tempC)) || 0).toFixed(1) || undefined,
       rejectPct: (() => { const m = med(b.rows.map(r => r.rejectPct)); return m != null ? +m.toFixed(3) : undefined; })(),
+      fanRpm: (() => { const m = med(b.rows.map(r => r.fanRpm)); return m != null ? Math.round(m) : undefined; })(),
+      fanPct: (() => { const m = med(b.rows.map(r => r.fanPct)); return m != null ? Math.round(m) : undefined; })(),
     });
     if (summary.freq > 0 && summary.jth > 0) out.push(summary);
   }
@@ -863,12 +871,13 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         champion: {
           jth: champ.jth, ths: champ.ths, freq: champ.freq,
           coreVoltage: champ.coreVoltage, tempC: champ.tempC, rejectPct: champ.rejectPct,
+          fanRpm: champ.fanRpm, fanPct: champ.fanPct,
           isOwn: champ.isOwn,
           handle: 'striker-' + String(champ.pk || '').slice(0, 4),
         },
         leaderboard: sorted.slice(0, 25).map(r => ({
           jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
-          tempC: r.tempC, rejectPct: r.rejectPct,
+          tempC: r.tempC, rejectPct: r.rejectPct, fanRpm: r.fanRpm, fanPct: r.fanPct,
           isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
         })),
       });
