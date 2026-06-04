@@ -11,14 +11,12 @@ export function createAnimatedBackground(canvas, options = {}) {
   if (!canvas) return null;
   const theme = options.theme || null;
 
-  // ── Paper Light branch: 2D blueprint renderer ─────────────────────────────
-  // Light mode requires a fundamentally different background structure —
-  // the dark-mode additive grid doesn't translate. We render a static
-  // blueprint grid (minor + major lines) with a very slow horizontal drift
-  // matching the deployed shader's 0.012 units/sec scroll.
-  if (theme && theme.special === 'lightMode') {
-    return createBlueprintBackground(canvas, theme);
-  }
+  // v1.11.65: Paper Light now runs the SAME drift-blocks shader as every other
+  // theme, via a light-mode subtractive branch (uLight=1) — blocks darken the
+  // paper toward blueprint-blue instead of adding light. The old static 2D
+  // blueprint renderer (createBlueprintBackground) is retained only as the
+  // no-WebGL fallback for light themes.
+  let lightMode = !!(theme && (theme.special === 'lightMode' || theme.special === 'lightBlocks'));
 
   // ── Default WebGL path (themed via uniforms) ──────────────────────────────
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false });
@@ -33,6 +31,7 @@ export function createAnimatedBackground(canvas, options = {}) {
     }, false);
   } catch (_) {}
   if (!gl) {
+    if (lightMode) return createBlueprintBackground(canvas, theme);
     console.warn('Animated bg: WebGL unavailable, fallback to static body bg');
     return null;
   }
@@ -47,15 +46,15 @@ export function createAnimatedBackground(canvas, options = {}) {
     varying vec2 uv;
     uniform float uT;
     uniform vec2 uRes;
-    uniform vec3 uBgBase;       // base canvas color
-    uniform vec3 uBlockBase;    // dark amber base (was vec3(0.06,0.04,0.02))
-    uniform vec3 uBlockPulse;   // pulse heat add (was vec3(0.30,0.18,0.04))
-    uniform vec3 uBlockBevel;   // bevel highlight (was vec3(0.08,0.05,0.02))
-    uniform vec3 uTopRadial;    // top-edge radial (was vec3(0.05,0.03,0.01))
+    uniform float uLight;       // 0 = dark/additive, 1 = light/subtractive (Paper)
+    uniform vec3 uBgBase;       // base canvas color (dark) / paper base (light)
+    uniform vec3 uBlockBase;    // dark amber base (dark) / block tint to subtract (light)
+    uniform vec3 uBlockPulse;   // pulse heat add (dark only)
+    uniform vec3 uBlockBevel;   // bevel highlight (dark only)
+    uniform vec3 uTopRadial;    // top-edge radial (dark) / top darken tint (light)
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     void main() {
-      vec3 col = uBgBase;
-
+      // shared structure: grid scan, drift, pulse, bevel, vignette coord
       vec2 grid = vec2(20.0, 12.0);
       vec2 cuv = vec2(uv.x + uT * 0.012, uv.y);
       vec2 cId = floor(cuv * grid);
@@ -71,18 +70,29 @@ export function createAnimatedBackground(canvas, options = {}) {
 
       vec2 bevD = (fr - 0.5);
       float bevel = (bevD.x + bevD.y) * 4.0;
-
-      vec3 blockBase = uBlockBase;
-      blockBase += uBlockPulse * pulse;
-      blockBase += uBlockBevel * (1.0 - smoothstep(-1.0, 0.5, bevel)) * pulse;
-
-      col += blockBase * inBlock * 0.35;
+      float bevT = (1.0 - smoothstep(-1.0, 0.5, bevel)) * pulse;
 
       vec2 vp = uv - 0.5;
       vp.x *= uRes.x / uRes.y;
-      col *= 1.0 - smoothstep(0.3, 0.85, length(vp)) * 0.5;
 
-      col += uTopRadial * exp(-pow((1.0 - uv.y) * 1.5, 2.0));
+      vec3 col;
+      if (uLight > 0.5) {
+        // ── light mode: same pattern, subtractive — darken paper toward blue ──
+        col = uBgBase;
+        float amt = 0.45 + 0.85 * pulse + 0.30 * bevT;
+        col -= uBlockBase * inBlock * amt * 0.5;
+        col -= uTopRadial * exp(-pow((1.0 - uv.y) * 1.5, 2.0));
+        col -= 0.05 * smoothstep(0.3, 0.9, length(vp));
+      } else {
+        // ── dark mode: additive drift-blocks (unchanged) ─────────────────────
+        col = uBgBase;
+        vec3 blockBase = uBlockBase;
+        blockBase += uBlockPulse * pulse;
+        blockBase += uBlockBevel * bevT;
+        col += blockBase * inBlock * 0.35;
+        col *= 1.0 - smoothstep(0.3, 0.85, length(vp)) * 0.5;
+        col += uTopRadial * exp(-pow((1.0 - uv.y) * 1.5, 2.0));
+      }
 
       gl_FragColor = vec4(col, 1.0);
     }`;
@@ -120,6 +130,7 @@ export function createAnimatedBackground(canvas, options = {}) {
   const uBlockPulse = gl.getUniformLocation(prog, 'uBlockPulse');
   const uBlockBevel = gl.getUniformLocation(prog, 'uBlockBevel');
   const uTopRadial  = gl.getUniformLocation(prog, 'uTopRadial');
+  const uLight      = gl.getUniformLocation(prog, 'uLight');
 
   // Default to Classic theme (deployed hardcoded values)
   let currentColors = {
@@ -168,6 +179,7 @@ export function createAnimatedBackground(canvas, options = {}) {
     gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
     gl.uniform1f(uT, t);
     gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uLight, lightMode ? 1.0 : 0.0);
     gl.uniform3fv(uBgBase,     currentColors.bgBase);
     gl.uniform3fv(uBlockBase,  currentColors.blockBase);
     gl.uniform3fv(uBlockPulse, currentColors.blockPulse);
@@ -198,6 +210,7 @@ export function createAnimatedBackground(canvas, options = {}) {
     pause, resume,
     // v1.11.47: live theme update without rebuilding the WebGL context
     setTheme(newTheme) {
+      lightMode = !!(newTheme && (newTheme.special === 'lightMode' || newTheme.special === 'lightBlocks'));
       if (newTheme && newTheme.bg) {
         currentColors = {
           bgBase:     [0.024, 0.027, 0.031],

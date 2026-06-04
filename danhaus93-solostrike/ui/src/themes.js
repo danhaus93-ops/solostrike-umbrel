@@ -39,11 +39,11 @@ export const THEMES = {
       '--green':          '#39FF6A',
     },
     bg: {
-      bgBase:    [0.024, 0.027, 0.031],
-      blockBase: [0.06, 0.04, 0.02],
-      blockPulse:[0.30, 0.18, 0.04],
-      blockBevel:[0.08, 0.05, 0.02],
-      topRadial: [0.05, 0.03, 0.01],
+      bgBase:    [0.045, 0.027, 0.006],
+      blockBase: [0.26, 0.153, 0.027],
+      blockPulse:[1.40, 0.830, 0.147],
+      blockBevel:[0.32, 0.189, 0.034],
+      topRadial: [0.18, 0.106, 0.019],
     },
     lightning: {
       core:  [1.0, 1.0, 0.95],
@@ -434,7 +434,18 @@ export const THEMES = {
       '--red':            '#B91C1C',
       '--green':          '#15803D',
     },
-    bg: null,  // special-cased — uses 2D blueprint renderer instead
+    // v1.11.65: Paper now uses the shared drift-blocks shader in its light
+    // (subtractive) branch — see animated-bg-webgl.js uLight. bgBase = paper
+    // base; blockBase = the per-channel tint SUBTRACTED inside blocks (more
+    // R/G than B, so blocks shift toward blueprint-blue); topRadial = top
+    // darken tint. blockPulse/blockBevel are unused by the light branch.
+    bg: {
+      bgBase:    [0.91, 0.94, 0.96],
+      blockBase: [0.28, 0.18, 0.07],
+      blockPulse:[0.0, 0.0, 0.0],
+      blockBevel:[0.0, 0.0, 0.0],
+      topRadial: [0.05, 0.035, 0.015],
+    },
     special: 'lightMode',
     lightning: {
       // v1.11.51: white-hot core + Paper Light blue halo, designed to
