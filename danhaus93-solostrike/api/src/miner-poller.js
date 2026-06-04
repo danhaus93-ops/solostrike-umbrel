@@ -345,46 +345,51 @@ async function pollMiner(workerName, ip) {
 // parallel TCP connections and merge the results. Slightly more network
 // chatter, but trivial at fleet scale and dramatically more compatible.
 
-// v2.x: LuxOS exposes per-board voltage ONLY via its HTTP API
-// (POST :8080/api  {"command":"voltageget"}  -> VOLTAGE[].Voltage, in volts).
-// The 4028-socket voltage command is unstable (it crashed a miner once), so we
-// never poll that. One gentle POST per cycle, LuxOS-only, errors swallowed.
-function luxosVoltageMv(ip) {
+// LuxOS board voltage WITHOUT the unsafe `voltageget` hardware read (that live
+// bus poll crashes/restarts the miner). Instead read the CONFIGURED voltage from
+// the active tuning profile: `config` names the active profile, `profiles` lists
+// each profile's Voltage. Both are config-FILE reads over HTTP :8080 — verified
+// safe to poll. Returns mV or null.
+function luxosHttp(ip, command) {
   return new Promise((resolve) => {
     let done = false;
     const fin = (v) => { if (!done) { done = true; resolve(v); } };
     try {
-      const body = JSON.stringify({ command: 'voltageget' });
+      const body = JSON.stringify({ command });
       const req = http.request({
         host: ip, port: 8080, path: '/api', method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
         timeout: 3000,
       }, (res) => {
         let d = '';
-        res.on('data', (c) => { d += c; if (d.length > 16384) req.destroy(); });
-        res.on('end', () => {
-          try {
-            const j = JSON.parse(d);
-            const arr = j && (j.VOLTAGE || j.voltage);
-            if (Array.isArray(arr)) {
-              let best = null;
-              for (const e of arr) {
-                const n = Number(e && (e.Voltage != null ? e.Voltage : e.voltage));
-                if (Number.isFinite(n) && n > 0 && (best == null || n > best)) best = n;
-              }
-              // LuxOS reports volts (e.g. 14.21); normalise to mV.
-              if (best != null) return fin(best < 100 ? Math.round(best * 1000) : Math.round(best));
-            }
-          } catch (e) {}
-          fin(null);
-        });
+        res.on('data', (c) => { d += c; if (d.length > 65536) req.destroy(); });
+        res.on('end', () => { try { fin(JSON.parse(d)); } catch (e) { fin(null); } });
       });
       req.on('error', () => fin(null));
       req.on('timeout', () => { req.destroy(); fin(null); });
-      req.write(body);
-      req.end();
+      req.write(body); req.end();
     } catch (e) { fin(null); }
   });
+}
+async function luxosProfileVoltageMv(ip, freqHint) {
+  const [cfg, profs] = await Promise.all([luxosHttp(ip, 'config'), luxosHttp(ip, 'profiles')]);
+  const list = profs && Array.isArray(profs.PROFILES) ? profs.PROFILES : null;
+  if (!list || !list.length) return null;
+  const c = cfg && Array.isArray(cfg.CONFIG) ? cfg.CONFIG[0] : null;
+  const name = c && c.Profile != null ? String(c.Profile) : null;
+  const step = c && c.ProfileStep != null ? String(c.ProfileStep) : null;
+  let p = null;
+  if (name) p = list.find(x => String(x['Profile Name']) === name);
+  if (!p && step != null) p = list.find(x => String(x.Step) === step);
+  if (!p && freqHint != null) {
+    let best = null, bd = Infinity;
+    for (const x of list) { const d = Math.abs(Number(x.Frequency) - Number(freqHint)); if (Number.isFinite(d) && d < bd) { bd = d; best = x; } }
+    if (bd <= 13) p = best; // within half a 25 MHz step
+  }
+  if (!p) return null;
+  const v = Number(p.Voltage);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return v < 100 ? Math.round(v * 1000) : Math.round(v); // volts -> mV
 }
 
 function tryCgminer(ip) {
@@ -423,11 +428,11 @@ function tryCgminer(ip) {
     const power   = powerRes.ok ? (powerRes.data.POWER || powerRes.data.power || []) : [];
     const live    = extractCgminerLive(summary, stats, devs, fwDesc, power);
 
-    // LuxOS-only: read board voltage over the stable HTTP API (never the 4028
-    // socket). Fills coreVoltage so the rig gets full telemetry + a real
-    // benchmark voltage. Silent on failure — voltage just stays null.
+    // LuxOS: take board voltage from the active tuning profile (config + profiles,
+    // safe file reads). NEVER `voltageget` — its live hardware read crashes the
+    // miner. Silent on failure; voltage just stays null (gate is voltage-optional).
     if (live.coreVoltageMv == null && /lux(miner|os)/i.test(fwDesc || '')) {
-      const vmv = await luxosVoltageMv(ip);
+      const vmv = await luxosProfileVoltageMv(ip, live.frequencyMhz);
       if (vmv != null && vmv > 0 && vmv < 20000) {
         live.coreVoltageMv = vmv;
         if (live.coreVoltageSetMv == null) live.coreVoltageSetMv = vmv;

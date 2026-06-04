@@ -137,7 +137,7 @@ function buildBenchmarkSummaries(liveMap) {
     if (w.efficiencyJTH == null || !(w.efficiencyJTH > 0)) continue;
     if (w.uptimeSec == null || w.uptimeSec < BENCH_MIN_UPTIME_SEC) continue;
     if (w.rejectPct != null && w.rejectPct > BENCH_MAX_REJECT_PCT) continue;
-    if (w.frequencyMhz == null || w.coreVoltageMv == null) continue;
+    if (w.frequencyMhz == null) continue; // voltage optional: LuxOS/Whatsminer don't expose it
     const model = (w.model || w.asicModel || 'unknown');
     const board = (w.boardVersion != null ? String(w.boardVersion) : '');
     const asic = (w.asicModel || '');
@@ -191,7 +191,7 @@ function buildBenchmarkSummaries(liveMap) {
       asic: b.asic || undefined,
       boardVersion: b.board || undefined,
       freq: Math.round(med(b.rows.map(r => r.freq))),
-      coreVoltage: Math.round(med(b.rows.map(r => r.coreVoltage))),
+      coreVoltage: (() => { const m = med(b.rows.map(r => r.coreVoltage)); return m != null ? Math.round(m) : undefined; })(),
       ths: +(med(b.rows.map(r => r.ths)) || 0).toFixed(3),
       jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
       tempC: +(med(b.rows.map(r => r.tempC)) || 0).toFixed(1) || undefined,
