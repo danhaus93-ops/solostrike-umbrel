@@ -23,6 +23,7 @@ const WORKERNAME_PATTERNS = [
   { match: /\.bitaxe[\s_.-]*gamma|\.gamma[\s_.-]*60[12]|\.bitaxe[\s_.-]*60[12]|\.60[12](?:$|[\s_.-])/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*supra/i,                           type: 'BitAxe Supra',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*ultra/i,                           type: 'BitAxe Ultra',         icon: '◆',  vendor: 'OSS' },
+  { match: /\.gekko[\s_.-]*axe|\.gekko/i,                       type: 'GekkoAxe',             icon: '❖',  vendor: 'GekkoScience' },
   { match: /\.bitaxe/i,                                        type: 'BitAxe',               icon: '◆',  vendor: 'OSS' },
   { match: /\.braiins|\.hashpower|\.rental/i,                  type: 'Braiins Rental',       icon: '⚡', vendor: 'Rented' },
   { match: /\.whatsminer|\.m3[0-9]|\.m5[0-9]|\.m6[0-9]/i,      type: 'Whatsminer',           icon: '⛏',  vendor: 'MicroBT' },
@@ -57,7 +58,12 @@ const ASIC_MODEL_MAP = {
   BM1397: { type: 'BitAxe Max',   icon: '◆', vendor: 'OSS' },
 };
 
-function detectFromAsicModel(asicModel, asicCount) {
+// GekkoScience boards (GekkoAxe) run STOCK AxeOS on Bitmain chips — the V2.0 GT
+// is 2× BM1370 — so by chip alone they're identical to a Bitaxe/NerdQaxe. They
+// can only be told apart by a "gekko" token in deviceModel/hostname/UA/workername.
+const GEKKO_RE = /gekko/i;
+
+function detectFromAsicModel(asicModel, asicCount, deviceHint) {
   if (!asicModel || typeof asicModel !== 'string') {
     return { type: null, icon: null, vendor: null };
   }
@@ -65,6 +71,11 @@ function detectFromAsicModel(asicModel, asicCount) {
   const key = asicModel.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const base = ASIC_MODEL_MAP[key];
   if (!base) return { type: null, icon: null, vendor: null };
+  // A "gekko" token (deviceModel / hostname / friendly model label) wins over
+  // the chip-based guess — otherwise a 2× BM1370 GekkoAxe reads as a NerdQaxe++.
+  if (deviceHint && GEKKO_RE.test(deviceHint)) {
+    return { type: 'GekkoAxe', icon: '❖', vendor: 'GekkoScience' };
+  }
   // multi-chip BM1370/BM1368 boards are NerdQaxe variants, not single Bitaxe
   const n = Number(asicCount) || 0;
   if (n >= 2) {
@@ -75,9 +86,9 @@ function detectFromAsicModel(asicModel, asicCount) {
 
 // Best-effort detection combining user-agent (preferred) and workername fallback.
 // Returns { type, icon, vendor, source } — `source` tells you which method won.
-function detectMinerBest(workername, userAgent, asicModel, asicCount) {
+function detectMinerBest(workername, userAgent, asicModel, asicCount, deviceHint) {
   // v1.12.x: the physical chip ID is the most authoritative signal — use it first.
-  const asic = detectFromAsicModel(asicModel, asicCount);
+  const asic = detectFromAsicModel(asicModel, asicCount, deviceHint);
   if (asic.type) return { ...asic, source: 'asic-model' };
 
   const ua = detectFromUserAgent(userAgent);

@@ -182,6 +182,11 @@ function rollingAvgPw(samples, windowMs) {
 // deviceModel directly; BitAxe (AxeOS) doesn't, so derive its family from the
 // ASIC chip. Falls back to the chip name, never blank.
 function friendlyEspModel(d) {
+  // GekkoScience GekkoAxe runs stock AxeOS on Bitmain chips (V2.0 GT = 2× BM1370),
+  // so the only thing that distinguishes it from a Bitaxe/NerdQaxe is a "gekko"
+  // token in deviceModel or hostname. Check that before the chip-based fallback.
+  const gekkoHint = [d && d.deviceModel, d && d.hostname].filter(Boolean).join(' ');
+  if (/gekko/i.test(gekkoHint)) return 'GekkoAxe';
   if (d && typeof d.deviceModel === 'string' && d.deviceModel.trim()) return d.deviceModel.trim();
   const asic = (d && typeof d.ASICModel === 'string' ? d.ASICModel.trim() : '');
   const map = { BM1370: 'BitAxe Gamma', BM1368: 'BitAxe Supra', BM1366: 'BitAxe Ultra', BM1397: 'BitAxe Max' };

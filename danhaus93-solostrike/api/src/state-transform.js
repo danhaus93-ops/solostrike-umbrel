@@ -11,7 +11,9 @@ const { detectFromAsicModel } = require('./miner-detect');
 // authoritative and overrides any earlier workername/UA guess.
 function applyAsicModelUpgrade(w, live) {
   if (!live || !live.asicModel) return w;
-  const det = detectFromAsicModel(live.asicModel, live.asicCount);
+  // live.model already folds in deviceModel/hostname (incl. a "GekkoAxe" token),
+  // so pass it as the hint that disambiguates multi-chip BM1370 boards.
+  const det = detectFromAsicModel(live.asicModel, live.asicCount, live.model);
   if (!det.type) return w;
   return { ...w, minerType: det.type, minerIcon: det.icon || w.minerIcon, minerVendor: det.vendor, minerSource: 'asic-model' };
 }
