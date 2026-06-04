@@ -911,8 +911,37 @@ const FLAG_IMG = {
   "JP": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48ZGVmcz48Y2xpcFBhdGggaWQ9ImEiPjxwYXRoIGZpbGwtb3BhY2l0eT0iLjciIGQ9Ik0tODggMzJoNjQwdjQ4MEgtODh6Ii8+PC9jbGlwUGF0aD48L2RlZnM+PGcgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2Utd2lkdGg9IjFwdCIgY2xpcC1wYXRoPSJ1cmwoI2EpIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg4OCAtMzIpIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNLTEyOCAzMmg3MjB2NDgwaC03MjB6Ii8+PGNpcmNsZSBjeD0iNTIzLjEiIGN5PSIzNDQuMSIgcj0iMTk0LjkiIGZpbGw9IiNiYzAwMmQiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0xNjguNCA4LjYpc2NhbGUoLjc2NTU0KSIvPjwvZz48L3N2Zz4=",
   "AU": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDAwMDhiIiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtMzcuNSAwIDEyMiA5MC41TDI4MSAwaDM5djMxbC0xMjAgODkuNSAxMjAgODlWMjQwaC00MGwtMTIwLTg5LjVMNDAuNSAyNDBIMHYtMzBsMTE5LjUtODlMMCAzMlYweiIvPjxwYXRoIGZpbGw9InJlZCIgZD0iTTIxMiAxNDAuNSAzMjAgMjIwdjIwbC0xMzUuNS05OS41em0tOTIgMTAgMyAxNy41LTk2IDcySDB6TTMyMCAwdjEuNWwtMTI0LjUgOTQgMS0yMkwyOTUgMHpNMCAwbDExOS41IDg4aC0zMEwwIDIxeiIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik0xMjAuNSAwdjI0MGg4MFYwek0wIDgwdjgwaDMyMFY4MHoiLz48cGF0aCBmaWxsPSJyZWQiIGQ9Ik0wIDk2LjV2NDhoMzIwdi00OHpNMTM2LjUgMHYyNDBoNDhWMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNTI3IDM5Ni43LTIwLjUgMi42IDIuMiAyMC41LTE0LjgtMTQuNC0xNC43IDE0LjUgMi0yMC41LTIwLjUtMi40IDE3LjMtMTEuMi0xMC45LTE3LjUgMTkuNiA2LjUgNi45LTE5LjUgNy4xIDE5LjQgMTkuNS02LjctMTAuNyAxNy42em0tMy43LTExNy4yIDIuNy0xMy05LjgtOSAxMy4yLTEuNSA1LjUtMTIuMSA1LjUgMTIuMSAxMy4yIDEuNS05LjggOSAyLjcgMTMtMTEuNi02LjZ6bS0xMDQuMS02MC0yMC4zIDIuMiAxLjggMjAuMy0xNC40LTE0LjUtMTQuOCAxNC4xIDIuNC0yMC4zLTIwLjItMi43IDE3LjMtMTAuOC0xMC41LTE3LjUgMTkuMyA2LjhMMzg3IDE3OGw2LjcgMTkuMyAxOS40LTYuMy0xMC45IDE3LjMgMTcuMSAxMS4yWk02MjMgMTg2LjdsLTIwLjkgMi43IDIuMyAyMC45LTE1LjEtMTQuNy0xNSAxNC44IDIuMS0yMS0yMC45LTIuNCAxNy43LTExLjUtMTEuMS0xNy45IDIwIDYuNyA3LTE5LjggNy4yIDE5LjggMTkuOS02LjktMTEgMTh6bS05Ni4xLTgzLjUtMjAuNyAyLjMgMS45IDIwLjgtMTQuNy0xNC44LTE1LjEgMTQuNCAyLjQtMjAuNy0yMC43LTIuOCAxNy43LTExTDQ2NyA3My41bDE5LjcgNi45IDcuMy0xOS41IDYuOCAxOS43IDE5LjgtNi41LTExLjEgMTcuNnpNMjM0IDM4NS43bC00NS44IDUuNCA0LjYgNDUuOS0zMi44LTMyLjQtMzMgMzIuMiA0LjktNDUuOS00NS44LTUuOCAzOC45LTI0LjgtMjQtMzkuNCA0My42IDE1IDE1LjgtNDMuNCAxNS41IDQzLjUgNDMuNy0xNC43LTI0LjMgMzkuMiAzOC44IDI1LjFaIi8+PC9zdmc+"
 };
-function FlagGlyph({ geo, size = 14 }) {
+let _flagEmojiOK = null;
+// Feature-detect (once) whether this platform renders regional-indicator flag
+// emoji as real glyphs. iOS / macOS / Android / Firefox do (colored pixels);
+// Chrome & Edge on Windows do NOT (letter-boxes). Keep native emoji wherever
+// they render — iPhone & Mac look exactly as before — SVG fallback only on Windows.
+function supportsFlagEmoji() {
+  if (_flagEmojiOK !== null) return _flagEmojiOK;
+  try {
+    if (typeof document === 'undefined') { _flagEmojiOK = true; return true; }
+    const c = document.createElement('canvas');
+    c.width = 24; c.height = 16;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) { _flagEmojiOK = true; return true; }
+    ctx.textBaseline = 'top';
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#000';
+    ctx.fillText('\uD83C\uDDFA\uD83C\uDDF8', 0, 0); // US flag
+    const d = ctx.getImageData(0, 0, 24, 16).data;
+    let colored = false;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+      if (a > 16 && (Math.max(r, g, b) - Math.min(r, g, b)) > 40) { colored = true; break; }
+    }
+    _flagEmojiOK = colored;
+  } catch (e) { _flagEmojiOK = true; }
+  return _flagEmojiOK;
+}
+function FlagGlyph({ geo, size = 14, emojiStyle }) {
   if (!geo) return null;
+  const eStyle = emojiStyle || { fontSize: size + 2, lineHeight: 1 };
+  if (supportsFlagEmoji()) return <span style={eStyle} title={geo.label}>{geo.flag}</span>;
   const uri = FLAG_IMG[geo.label];
   if (uri) {
     return (
@@ -922,7 +951,7 @@ function FlagGlyph({ geo, size = 14 }) {
                  boxShadow: '0 0 0 0.5px rgba(255,255,255,0.25)' }} />
     );
   }
-  return <span style={{ fontSize: size + 2, lineHeight: 1 }} title={geo.label}>{geo.flag}</span>;
+  return <span style={eStyle} title={geo.label}>{geo.flag}</span>;
 }
 
 function fmtBytes(bytes) {
@@ -12583,7 +12612,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
               {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
             </span>
             {geo && (
-              <FlagGlyph geo={geo} size={14} />
+              <FlagGlyph geo={geo} size={14} emojiStyle={{fontSize:'0.85rem', lineHeight:1}} />
             )}
             {ranked.length >= 2 && (
               <span style={{
@@ -13034,7 +13063,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
                   }}>
                     {isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`}
                   </span>
-                  {geo && <FlagGlyph geo={geo} size={18} />}
+                  {geo && <FlagGlyph geo={geo} size={18} emojiStyle={{fontSize:'1.1rem'}} />}
                   <span style={{
                     color:'rgba(var(--amber-rgb),0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
                     background:'rgba(var(--amber-rgb),0.1)', border:'1px solid rgba(var(--amber-rgb),0.2)',
