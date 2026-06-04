@@ -88,7 +88,11 @@ function detectFromAsicModel(asicModel, asicCount, deviceHint) {
 // Returns { type, icon, vendor, source } — `source` tells you which method won.
 function detectMinerBest(workername, userAgent, asicModel, asicCount, deviceHint) {
   // v1.12.x: the physical chip ID is the most authoritative signal — use it first.
-  const asic = detectFromAsicModel(asicModel, asicCount, deviceHint);
+  // But a "gekko" token can ride in on the workername/UA/deviceModel; fold them all
+  // into the hint so a GekkoAxe (2× BM1370) isn't mislabeled NerdQaxe++ before the
+  // workername/UA tiers are ever consulted.
+  const asicHint = [deviceHint, workername, userAgent].filter(Boolean).join(' ');
+  const asic = detectFromAsicModel(asicModel, asicCount, asicHint);
   if (asic.type) return { ...asic, source: 'asic-model' };
 
   const ua = detectFromUserAgent(userAgent);

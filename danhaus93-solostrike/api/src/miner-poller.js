@@ -1387,3 +1387,9 @@ module.exports = {
   getAllLive,
   pollOne,
 };
+
+// ── test-only exports ───────────────────────────────────────────────────────
+// Exposed for gekko-test.js / fixture harnesses. Harmless in production: these
+// are pure functions with no side effects and the running server never calls them.
+module.exports.extractEspMinerLive = extractEspMinerLive;
+module.exports.friendlyEspModel = friendlyEspModel;
