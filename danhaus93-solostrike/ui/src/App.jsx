@@ -890,6 +890,41 @@ function displayName(fullName, aliases) {
   return stripAddr(fullName);
 }
 
+function minerLabel(w) {
+  const m = w && w.live && w.live.model;
+  const generic = !m || m === 'ASIC' || m === 'BitAxe'
+    || (typeof m === 'string' && m.indexOf('ASIC (') === 0);
+  if (!generic) return m;
+  return (w && w.minerType) || m || null;
+}
+
+// Windows/Chrome don't render regional-indicator flag emoji (e.g. US/CA) as
+// glyphs; they show letter-boxes. iOS/macOS do. So the Strikers list draws real
+// flags as inline base64-SVG <img> for the country buckets. Globe/region symbols
+// (Asia/Africa/unknown) keep their emoji since those render on every platform.
+const FLAG_IMG = {
+  "US": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjYmQzZDQ0IiBkPSJNMCAwaDY0MHY0ODBIMCIvPjxwYXRoIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzNyIgZD0iTTAgNTUuM2g2NDBNMCAxMjloNjQwTTAgMjAzaDY0ME0wIDI3N2g2NDBNMCAzNTFoNjQwTTAgNDI1aDY0MCIvPjxwYXRoIGZpbGw9IiMxOTJmNWQiIGQ9Ik0wIDBoMzY0Ljh2MjU4LjVIMCIvPjxtYXJrZXIgaWQ9ImEiIG1hcmtlckhlaWdodD0iMzAiIG1hcmtlcldpZHRoPSIzMCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0ibTE0IDAgOSAyN0wwIDEwaDI4TDUgMjd6Ii8+PC9tYXJrZXI+PHBhdGggZmlsbD0ibm9uZSIgbWFya2VyLW1pZD0idXJsKCNhKSIgZD0ibTAgMCAxNiAxMWg2MSA2MSA2MSA2MSA2MEw0NyAzN2g2MSA2MSA2MCA2MUwxNiA2M2g2MSA2MSA2MSA2MSA2MEw0NyA4OWg2MSA2MSA2MCA2MUwxNiAxMTVoNjEgNjEgNjEgNjEgNjBMNDcgMTQxaDYxIDYxIDYwIDYxTDE2IDE2Nmg2MSA2MSA2MSA2MSA2MEw0NyAxOTJoNjEgNjEgNjAgNjFMMTYgMjE4aDYxIDYxIDYxIDYxIDYweiIvPjwvc3ZnPg==",
+  "CA": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMTUwLjEgMGgzMzkuN3Y0ODBIMTUweiIvPjxwYXRoIGZpbGw9IiNkNTJiMWUiIGQ9Ik0tMTkuNyAwaDE2OS44djQ4MEgtMTkuN3ptNTA5LjUgMGgxNjkuOHY0ODBINDg5Ljl6TTIwMSAyMzJsLTEzLjMgNC40IDYxLjQgNTRjNC43IDEzLjctMS42IDE3LjgtNS42IDI1bDY2LjYtOC40LTEuNiA2NyAxMy45LS4zLTMuMS02Ni42IDY2LjcgOGMtNC4xLTguNy03LjgtMTMuMy00LTI3LjJsNjEuMy01MS0xMC43LTRjLTguOC02LjggMy44LTMyLjYgNS42LTQ4LjkgMCAwLTM1LjcgMTIuMy0zOCA1LjhsLTkuMi0xNy41LTMyLjYgMzUuOGMtMy41LjktNS0uNS01LjktMy41bDE1LTc0LjgtMjMuOCAxMy40cS0zLjIgMS4zLTUuMi0yLjJsLTIzLTQ2LTIzLjYgNDcuOHEtMi44IDIuNS01IC43TDI2NCAxMzAuOGwxMy43IDc0LjFjLTEuMSAzLTMuNyAzLjgtNi43IDIuMmwtMzEuMi0zNS4zYy00IDYuNS02LjggMTcuMS0xMi4yIDE5LjVzLTIzLjUtNC41LTM1LjYtN2M0LjIgMTQuOCAxNyAzOS42IDkgNDcuNyIvPjwvc3ZnPg==",
+  "SA": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDA5YjNhIiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmVkZjAwIiBkPSJtMzIwIDQ4IDI3NiAxOTItMjc2IDE5Mkw0NCAyNDB6Ii8+PGNpcmNsZSBjeD0iMzIwIiBjeT0iMjQwIiByPSI5NiIgZmlsbD0iIzAwMjc3NiIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxNCIgZD0iTTI0MyAyMzJhOTYgOTYgMCAwIDEgMTU0IDI4Ii8+PC9zdmc+",
+  "EU": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgNjQwIDQ4MCI+PGRlZnM+PGcgaWQ9ImQiPjxnIGlkPSJiIj48cGF0aCBpZD0iYSIgZD0ibTAtMS0uMyAxIC41LjF6Ii8+PHVzZSB4bGluazpocmVmPSIjYSIgdHJhbnNmb3JtPSJzY2FsZSgtMSAxKSIvPjwvZz48ZyBpZD0iYyI+PHVzZSB4bGluazpocmVmPSIjYiIgdHJhbnNmb3JtPSJyb3RhdGUoNzIpIi8+PHVzZSB4bGluazpocmVmPSIjYiIgdHJhbnNmb3JtPSJyb3RhdGUoMTQ0KSIvPjwvZz48dXNlIHhsaW5rOmhyZWY9IiNjIiB0cmFuc2Zvcm09InNjYWxlKC0xIDEpIi8+PC9nPjwvZGVmcz48cGF0aCBmaWxsPSIjMDM5IiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48ZyBmaWxsPSIjZmMwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzMjAgMjQyLjMpc2NhbGUoMjMuNzAzNykiPjx1c2UgeGxpbms6aHJlZj0iI2QiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHk9Ii02Ii8+PHVzZSB4bGluazpocmVmPSIjZCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgeT0iNiIvPjxnIGlkPSJlIj48dXNlIHhsaW5rOmhyZWY9IiNkIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4PSItNiIvPjx1c2UgeGxpbms6aHJlZj0iI2QiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHRyYW5zZm9ybT0icm90YXRlKC0xNDQgLTIuMyAtMi4xKSIvPjx1c2UgeGxpbms6aHJlZj0iI2QiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHRyYW5zZm9ybT0icm90YXRlKDE0NCAtMi4xIC0yLjMpIi8+PHVzZSB4bGluazpocmVmPSIjZCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgdHJhbnNmb3JtPSJyb3RhdGUoNzIgLTQuNyAtMikiLz48dXNlIHhsaW5rOmhyZWY9IiNkIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB0cmFuc2Zvcm09InJvdGF0ZSg3MiAtNSAuNSkiLz48L2c+PHVzZSB4bGluazpocmVmPSIjZSIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgdHJhbnNmb3JtPSJzY2FsZSgtMSAxKSIvPjwvZz48L3N2Zz4=",
+  "UK": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDEyMTY5IiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNzUgMCAyNDQgMTgxTDU2MiAwaDc4djYyTDQwMCAyNDFsMjQwIDE3OHY2MWgtODBMMzIwIDMwMSA4MSA0ODBIMHYtNjBsMjM5LTE3OEwwIDY0VjB6Ii8+PHBhdGggZmlsbD0iI2M4MTAyZSIgZD0ibTQyNCAyODEgMjE2IDE1OXY0MEwzNjkgMjgxem0tMTg0IDIwIDYgMzVMNTQgNDgwSDB6TTY0MCAwdjNMMzkxIDE5MWwyLTQ0TDU5MCAwek0wIDBsMjM5IDE3NmgtNjBMMCA0MnoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMjQxIDB2NDgwaDE2MFYwek0wIDE2MHYxNjBoNjQwVjE2MHoiLz48cGF0aCBmaWxsPSIjYzgxMDJlIiBkPSJNMCAxOTN2OTZoNjQwdi05NnpNMjczIDB2NDgwaDk2VjB6Ii8+PC9zdmc+",
+  "JP": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48ZGVmcz48Y2xpcFBhdGggaWQ9ImEiPjxwYXRoIGZpbGwtb3BhY2l0eT0iLjciIGQ9Ik0tODggMzJoNjQwdjQ4MEgtODh6Ii8+PC9jbGlwUGF0aD48L2RlZnM+PGcgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2Utd2lkdGg9IjFwdCIgY2xpcC1wYXRoPSJ1cmwoI2EpIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg4OCAtMzIpIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNLTEyOCAzMmg3MjB2NDgwaC03MjB6Ii8+PGNpcmNsZSBjeD0iNTIzLjEiIGN5PSIzNDQuMSIgcj0iMTk0LjkiIGZpbGw9IiNiYzAwMmQiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0xNjguNCA4LjYpc2NhbGUoLjc2NTU0KSIvPjwvZz48L3N2Zz4=",
+  "AU": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDAwMDhiIiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtMzcuNSAwIDEyMiA5MC41TDI4MSAwaDM5djMxbC0xMjAgODkuNSAxMjAgODlWMjQwaC00MGwtMTIwLTg5LjVMNDAuNSAyNDBIMHYtMzBsMTE5LjUtODlMMCAzMlYweiIvPjxwYXRoIGZpbGw9InJlZCIgZD0iTTIxMiAxNDAuNSAzMjAgMjIwdjIwbC0xMzUuNS05OS41em0tOTIgMTAgMyAxNy41LTk2IDcySDB6TTMyMCAwdjEuNWwtMTI0LjUgOTQgMS0yMkwyOTUgMHpNMCAwbDExOS41IDg4aC0zMEwwIDIxeiIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik0xMjAuNSAwdjI0MGg4MFYwek0wIDgwdjgwaDMyMFY4MHoiLz48cGF0aCBmaWxsPSJyZWQiIGQ9Ik0wIDk2LjV2NDhoMzIwdi00OHpNMTM2LjUgMHYyNDBoNDhWMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNTI3IDM5Ni43LTIwLjUgMi42IDIuMiAyMC41LTE0LjgtMTQuNC0xNC43IDE0LjUgMi0yMC41LTIwLjUtMi40IDE3LjMtMTEuMi0xMC45LTE3LjUgMTkuNiA2LjUgNi45LTE5LjUgNy4xIDE5LjQgMTkuNS02LjctMTAuNyAxNy42em0tMy43LTExNy4yIDIuNy0xMy05LjgtOSAxMy4yLTEuNSA1LjUtMTIuMSA1LjUgMTIuMSAxMy4yIDEuNS05LjggOSAyLjcgMTMtMTEuNi02LjZ6bS0xMDQuMS02MC0yMC4zIDIuMiAxLjggMjAuMy0xNC40LTE0LjUtMTQuOCAxNC4xIDIuNC0yMC4zLTIwLjItMi43IDE3LjMtMTAuOC0xMC41LTE3LjUgMTkuMyA2LjhMMzg3IDE3OGw2LjcgMTkuMyAxOS40LTYuMy0xMC45IDE3LjMgMTcuMSAxMS4yWk02MjMgMTg2LjdsLTIwLjkgMi43IDIuMyAyMC45LTE1LjEtMTQuNy0xNSAxNC44IDIuMS0yMS0yMC45LTIuNCAxNy43LTExLjUtMTEuMS0xNy45IDIwIDYuNyA3LTE5LjggNy4yIDE5LjggMTkuOS02LjktMTEgMTh6bS05Ni4xLTgzLjUtMjAuNyAyLjMgMS45IDIwLjgtMTQuNy0xNC44LTE1LjEgMTQuNCAyLjQtMjAuNy0yMC43LTIuOCAxNy43LTExTDQ2NyA3My41bDE5LjcgNi45IDcuMy0xOS41IDYuOCAxOS43IDE5LjgtNi41LTExLjEgMTcuNnpNMjM0IDM4NS43bC00NS44IDUuNCA0LjYgNDUuOS0zMi44LTMyLjQtMzMgMzIuMiA0LjktNDUuOS00NS44LTUuOCAzOC45LTI0LjgtMjQtMzkuNCA0My42IDE1IDE1LjgtNDMuNCAxNS41IDQzLjUgNDMuNy0xNC43LTI0LjMgMzkuMiAzOC44IDI1LjFaIi8+PC9zdmc+"
+};
+function FlagGlyph({ geo, size = 14 }) {
+  if (!geo) return null;
+  const uri = FLAG_IMG[geo.label];
+  if (uri) {
+    return (
+      <img src={uri} alt={geo.label} title={geo.label}
+        style={{ height: size, width: Math.round(size * 4 / 3), borderRadius: 1.5,
+                 objectFit: 'cover', verticalAlign: 'middle', flexShrink: 0,
+                 boxShadow: '0 0 0 0.5px rgba(255,255,255,0.25)' }} />
+    );
+  }
+  return <span style={{ fontSize: size + 2, lineHeight: 1 }} title={geo.label}>{geo.flag}</span>;
+}
+
 function fmtBytes(bytes) {
   if (!bytes) return '—';
   const mb = bytes / 1_000_000;
@@ -2505,12 +2540,12 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                         : healthC === 'var(--red)'   ? 'ss-status-dot ss-status-dot-red'
                         : 'ss-status-dot ss-status-dot-green'
                       }/>
-                <span title={w.minerType||'Unknown'} style={{fontSize:11,color:on?'var(--cyan)':'var(--text-3)',width:12,textAlign:'center',flexShrink:0}}>{icon}</span>
+                <span title={minerLabel(w)||'Unknown'} style={{fontSize:11,color:on?'var(--cyan)':'var(--text-3)',width:12,textAlign:'center',flexShrink:0}}>{icon}</span>
                 {/* Middle: name + miner type stacked, with thin progress bar below */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',alignItems:'baseline',gap:6,minWidth:0}}>
                     <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500,minWidth:0}} title={w.name}>{disp}</span>
-                    {w.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{w.minerType}</span>}
+                    {minerLabel(w) && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{minerLabel(w)}</span>}
                     {(() => {
                       // v1.9.0: tiny pool-alignment badge — only renders when
                       // miner-poller has produced a result. Tap the row to see
@@ -2654,9 +2689,9 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
                   <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0}} title={c.workerName}>
                     {disp}
                   </span>
-                  {c.minerType && (
+                  {minerLabel(c) && (
                     <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.08em', color:'var(--text-3)', textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0}}>
-                      {c.minerType}
+                      {minerLabel(c)}
                     </span>
                   )}
                   <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.10em', color:tier.color, textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0, fontWeight:700, textShadow: tier.glow ? `0 0 4px ${tier.color}` : 'none'}}>
@@ -6863,7 +6898,7 @@ function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:27,fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)'}}>
                   <div title={w.health||'unknown'} style={{width:6,height:6,borderRadius:'50%',background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 4px ${healthC}`:'none',flexShrink:0}}/>
-                  {w.minerType && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.58rem'}}>{w.minerType}</span><span style={{color:'var(--text-3)'}}>·</span></>}
+                  {minerLabel(w) && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.58rem'}}>{minerLabel(w)}</span><span style={{color:'var(--text-3)'}}>·</span></>}
                   <span style={{color: on?'var(--amber)':'var(--text-3)'}}>{on ? fmtHr(w.hashrate) : 'offline'}</span>
                 </div>
               </div>
@@ -12548,7 +12583,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
               {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
             </span>
             {geo && (
-              <span style={{fontSize:'0.85rem', lineHeight:1}} title={geo.label}>{geo.flag}</span>
+              <FlagGlyph geo={geo} size={14} />
             )}
             {ranked.length >= 2 && (
               <span style={{
@@ -12999,7 +13034,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
                   }}>
                     {isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`}
                   </span>
-                  {geo && <span style={{fontSize:'1.1rem'}}>{geo.flag}</span>}
+                  {geo && <FlagGlyph geo={geo} size={18} />}
                   <span style={{
                     color:'rgba(var(--amber-rgb),0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
                     background:'rgba(var(--amber-rgb),0.1)', border:'1px solid rgba(var(--amber-rgb),0.2)',
@@ -14516,7 +14551,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
               <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
             </div>
             <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
-              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
+              {minerLabel(w) || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
             </div>
             <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
               <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none',willChange:on?'opacity':'auto'}}/>
