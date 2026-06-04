@@ -41,6 +41,7 @@ const net  = require('net');
 const http = require('http');
 const fs   = require('fs-extra');
 const path = require('path');
+const { boardModelString } = require('./miner-detect');
 
 const POLL_INTERVAL_MS  = 60_000;
 const POLL_TIMEOUT_MS   = 5_000;
@@ -184,13 +185,32 @@ function rollingAvgPw(samples, windowMs) {
 function friendlyEspModel(d) {
   // GekkoScience GekkoAxe runs stock AxeOS on Bitmain chips (V2.0 GT = 2× BM1370),
   // so the only thing that distinguishes it from a Bitaxe/NerdQaxe is a "gekko"
-  // token in deviceModel or hostname. Check that before the chip-based fallback.
+  // token in deviceModel or hostname. Check that before anything else.
   const gekkoHint = [d && d.deviceModel, d && d.hostname].filter(Boolean).join(' ');
   if (/gekko/i.test(gekkoHint)) return 'GekkoAxe';
-  if (d && typeof d.deviceModel === 'string' && d.deviceModel.trim()) return d.deviceModel.trim();
-  const asic = (d && typeof d.ASICModel === 'string' ? d.ASICModel.trim() : '');
-  const map = { BM1370: 'BitAxe Gamma', BM1368: 'BitAxe Supra', BM1366: 'BitAxe Ultra', BM1397: 'BitAxe Max' };
-  return map[asic] || (asic ? 'BitAxe (' + asic + ')' : 'BitAxe');
+  // /api/system/asic gives a short deviceModel ("Gamma", "GT", "Hex"…). Normalize
+  // the Bitaxe ones to the friendly family label; trust anything else (e.g.
+  // "NerdQAxe++") verbatim.
+  const dm = (d && typeof d.deviceModel === 'string') ? d.deviceModel.trim() : '';
+  if (dm) {
+    const DM = {
+      'gamma': 'BitAxe Gamma', 'gammaduo': 'BitAxe Gamma Duo', 'gamma duo': 'BitAxe Gamma Duo',
+      'gt': 'BitAxe GT', 'gammaturbo': 'BitAxe GT', 'gamma turbo': 'BitAxe GT',
+      'hex': 'BitAxe Hex', 'supra': 'BitAxe Supra', 'ultra': 'BitAxe Ultra', 'max': 'BitAxe Max',
+    };
+    return DM[dm.toLowerCase()] || dm;
+  }
+  // No deviceModel (older stock AxeOS, /info only): boardVersion is authoritative.
+  const bv = boardModelString(d && d.boardVersion);
+  if (bv) return bv;
+  // Last resort: chip + count.
+  const asic = (d && typeof d.ASICModel === 'string') ? d.ASICModel.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+  const n = (d && typeof d.asicCount === 'number') ? d.asicCount : 0;
+  if (asic === 'BM1370') return n >= 4 ? 'NerdQAxe++' : (n === 2 ? 'BitAxe GT' : 'BitAxe Gamma');
+  if (asic === 'BM1368') return n >= 4 ? 'NerdQAxe+'  : 'BitAxe Supra';
+  if (asic === 'BM1366') return n >= 4 ? 'BitAxe Hex' : 'BitAxe Ultra';
+  if (asic === 'BM1397') return 'BitAxe Max';
+  return asic ? 'BitAxe (' + asic + ')' : 'BitAxe';
 }
 
 // v2.x: derive a friendly label for a GENERIC cgminer-family device from its
@@ -913,51 +933,56 @@ function parseAvalonMmArray(str, key) {
 
 // ── ESP-Miner adapter ────────────────────────────────────────────────────────
 
-function tryEspMiner(ip) {
+// Single AxeOS HTTP GET → JSON. Resolves { ok:true, data } | { ok:false, status|error }.
+// Pure read; harmless against any device (a non-AxeOS box just 404s or times out).
+function fetchEspJson(ip, reqPath) {
   return new Promise((resolve) => {
-    let resolved = false;
-    const finish = (out) => {
-      if (resolved) return;
-      resolved = true;
-      resolve(out);
-    };
-
+    let done = false;
+    const finish = (out) => { if (!done) { done = true; resolve(out); } };
     const req = http.get({
       host: ip,
       port: HTTP_PORT,
-      path: '/api/system/info',
+      path: reqPath,
       timeout: POLL_TIMEOUT_MS,
       headers: { 'Accept': 'application/json' },
     }, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        finish({ ok: false, alignmentStatus: 'disabled', error: `http_${res.statusCode}` });
-        return;
-      }
+      if (res.statusCode !== 200) { res.resume(); finish({ ok: false, status: res.statusCode }); return; }
       let data = '';
       res.setEncoding('utf8');
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          const live = extractEspMinerLive(parsed);
-          finish({ ok: true, adapter: 'esp-miner', pools: [], live });
-        } catch (e) {
-          finish({ ok: false, alignmentStatus: 'disabled', error: 'invalid_json' });
-        }
+        try { finish({ ok: true, data: JSON.parse(data) }); }
+        catch { finish({ ok: false, error: 'invalid_json' }); }
       });
     });
-
-    req.on('error', (err) => {
-      const code = err.code || '';
-      const status = code === 'ECONNREFUSED' ? 'disabled' : 'unreachable';
-      finish({ ok: false, alignmentStatus: status, error: code || 'unknown' });
-    });
-    req.on('timeout', () => {
-      try { req.destroy(); } catch {}
-      finish({ ok: false, alignmentStatus: 'unreachable', error: 'timeout' });
-    });
+    req.on('error', (err) => finish({ ok: false, error: err.code || 'unknown' }));
+    req.on('timeout', () => { try { req.destroy(); } catch {} finish({ ok: false, error: 'timeout' }); });
   });
+}
+
+async function tryEspMiner(ip) {
+  // Tier 1: /api/system/info. If this isn't a clean 200 + JSON, the device is NOT
+  // AxeOS (e.g. a LuxOS S21 XP, which 404s / returns HTML here) — bail out now.
+  // This is the gate that guarantees the /api/system/asic call below can only ever
+  // reach a confirmed AxeOS device.
+  const info = await fetchEspJson(ip, '/api/system/info');
+  if (!info.ok) {
+    let alignmentStatus = 'unreachable', error = info.error || 'unknown';
+    if (info.status)                        { alignmentStatus = 'disabled'; error = `http_${info.status}`; }
+    else if (info.error === 'invalid_json') { alignmentStatus = 'disabled'; error = 'invalid_json'; }
+    else if (info.error === 'ECONNREFUSED') { alignmentStatus = 'disabled'; }
+    return { ok: false, alignmentStatus, error };
+  }
+  // Tier 2: confirmed AxeOS — enrich with /api/system/asic (deviceModel, asicCount,
+  // swarmColor). Failure-tolerant: forks / older firmware may lack the endpoint, and
+  // a missing or bad /asic must never sink the /info result.
+  let merged = info.data;
+  const asic = await fetchEspJson(ip, '/api/system/asic');
+  if (asic.ok && asic.data && typeof asic.data === 'object') {
+    merged = Object.assign({}, info.data, asic.data);
+  }
+  const live = extractEspMinerLive(merged);
+  return { ok: true, adapter: 'esp-miner', pools: [], live };
 }
 
 function extractEspMinerLive(d) {
@@ -1121,6 +1146,8 @@ function extractEspMinerLive(d) {
   setAdv('jobInterval', d.jobInterval);
   setAdv('smallCoreCount', d.smallCoreCount);
   setAdv('asicCount', d.asicCount);
+  setAdv('deviceModel', d.deviceModel);   // from /api/system/asic — "Gamma"/"GT"/"Hex"/…
+  setAdv('swarmColor', d.swarmColor);     // from /api/system/asic — per-board accent
   setAdv('defaultTheme', d.defaultTheme);
   setAdv('display', d.display);
   setAdv('freeHeapInt', d.freeHeapInt);

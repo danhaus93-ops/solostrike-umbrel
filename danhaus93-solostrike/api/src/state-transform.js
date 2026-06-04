@@ -16,7 +16,7 @@ function applyAsicModelUpgrade(w, live) {
   // detected type, the worker name, the UA) into the hint. Without this, a worker
   // tagged ".gekko" or a gekko UA would get clobbered back to NerdQaxe++ here.
   const hint = [live.model, w.minerType, w.name, w.userAgent].filter(Boolean).join(' ');
-  const det = detectFromAsicModel(live.asicModel, live.asicCount, hint);
+  const det = detectFromAsicModel(live.asicModel, live.asicCount, hint, live.boardVersion);
   if (!det.type) return w;
   return { ...w, minerType: det.type, minerIcon: det.icon || w.minerIcon, minerVendor: det.vendor, minerSource: 'asic-model' };
 }
