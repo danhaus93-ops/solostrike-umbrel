@@ -12062,7 +12062,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Settings to copy')}</span>
           <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(245,166,35,0.16)', color:'var(--amber)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('SET / TARGET')}</span>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:11 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:11 }}>
           <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
             <div style={lbl}>{tt('Frequency')}</div>
             <div style={{ ...val, color:'var(--amber)' }}>{champ.freq} MHz</div>
@@ -12072,6 +12072,14 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
             <div style={lbl}>{tt('Core Voltage')}</div>
             <div style={{ ...val, color:'var(--amber)' }}>{isAvalon && champ.coreVoltage != null ? '~' + champ.coreVoltage + ' mV' : (champ.coreVoltage != null ? champ.coreVoltage + ' mV' : '—')}</div>
             <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{isAvalon ? tt('per-chip avg · not directly settable') : tt('set / target')}</div>
+          </div>
+          {/* Fan — a MEASURED reading (usually auto), not a set knob: cyan value
+              (the app's measured color) distinguishes it from the amber set-values.
+              "—" when a rig reports no fan (fanless / passive). */}
+          <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
+            <div style={lbl}>{tt('Fan')}</div>
+            <div style={{ ...val, color:'var(--cyan)' }}>{champ.fanPct != null ? champ.fanPct + '%' : (champ.fanRpm != null ? fmtNum(champ.fanRpm) + ' rpm' : '—')}</div>
+            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{(champ.fanPct != null && champ.fanRpm != null) ? fmtNum(champ.fanRpm) + ' rpm' : '\u00A0'}</div>
           </div>
         </div>
 
@@ -12095,7 +12103,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: i === 0 ? 'var(--green)' : (r.isOwn ? 'var(--cyan)' : 'var(--text-3)'), width:24, textAlign:'center' }}>{i === 0 ? '👑' : i + 1}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
             {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
-            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}</span>
+            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}{r.fanPct != null ? ' · ' + r.fanPct + '% ' + tt('fan') : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color: i === 0 ? 'var(--green)' : 'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
