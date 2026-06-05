@@ -294,7 +294,7 @@ const cardTitle = {
   backgroundSize: '100% 1px',
   backgroundPosition: 'bottom left',
 };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'transparent', border:'1px solid transparent', borderBottom:'1px solid rgba(var(--amber-rgb),0.07)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
@@ -2703,7 +2703,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
           return (
             <div key={`${c.workerName}-${c.ts}`} style={{
               padding:'0.45rem 0.6rem',
-              background: tier.bgTint === 'transparent' ? 'var(--bg-raised)' : tier.bgTint,
+              background: tier.bgTint === 'transparent' ? 'transparent' : tier.bgTint,
               border: `1px solid ${tier.borderTint}`,
               minWidth:0,
               boxShadow: tier.glow ? `0 0 12px ${tier.color}55` : 'none',
@@ -3868,21 +3868,21 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
         {/* Fee tier strip — Fast / Mid / Low (sat/vB) (UNCHANGED) */}
         {(feeFast || feeMid || feeLow) && (
           <div style={{display:'flex', gap:6, flexShrink:0}}>
-            <div style={{flex:1, background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.4rem 0.35rem', textAlign:'center'}}>
+            <div style={{flex:1, background:'transparent', border:'1px solid transparent', padding:'0.4rem 0.35rem', textAlign:'center'}}>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--green)', textTransform:'uppercase'}}>⚡ FAST</div>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', fontWeight:700, marginTop:3}}>
                 {feeFast != null ? feeFast : '—'}
               </div>
               <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)', marginTop:1}}>sat/vB</div>
             </div>
-            <div style={{flex:1, background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.4rem 0.35rem', textAlign:'center'}}>
+            <div style={{flex:1, background:'transparent', border:'1px solid transparent', padding:'0.4rem 0.35rem', textAlign:'center'}}>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--amber)', textTransform:'uppercase'}}>◐ MID</div>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', fontWeight:700, marginTop:3}}>
                 {feeMid != null ? feeMid : '—'}
               </div>
               <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)', marginTop:1}}>sat/vB</div>
             </div>
-            <div style={{flex:1, background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.4rem 0.35rem', textAlign:'center'}}>
+            <div style={{flex:1, background:'transparent', border:'1px solid transparent', padding:'0.4rem 0.35rem', textAlign:'center'}}>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>◯ LOW</div>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', fontWeight:700, marginTop:3}}>
                 {feeLow != null ? feeLow : '—'}
@@ -3894,25 +3894,25 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
 
         {/* Stats — single row of 4 (was 2x2 grid, saves vertical space in carousel mode) */}
         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:4, flexShrink:0}}>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Expected</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--amber)', fontWeight:700, marginTop:2}}>
               {fmtOdds(expectedDays)}
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
               {perYear>0 ? (perYear < 0.0001 ? (perYear*100).toFixed(Math.min(10, Math.max(5, -Math.floor(Math.log10(perYear*100)) + 1))) + '%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Daily</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
               {perDay>0 ? fmtPct(perDay*100, 3) : '—'}
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Sats/d</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--cyan)', fontWeight:700, marginTop:2}}>
               {expectedDailySats > 0 ? expectedDailySats.toLocaleString() : '—'}
@@ -6303,7 +6303,7 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
   // ── Shared styles for the editable fields ─────────────────────────────────
   // iter27c: tightened padding/margins to fit the whole card on one screen.
   const fieldRowStyle = {
-    background:'var(--bg-raised)', border:'1px solid var(--border)',
+    background:'transparent', border:'1px solid transparent',
     padding:'0.5rem 0.65rem', marginBottom:'0.4rem',
   };
   const labelStyle = {
@@ -6518,11 +6518,11 @@ function PoolUptimeStrip({ startedAt }) {
       gridTemplateColumns:'1fr 1fr',
       gap:'0.5rem',
     }}>
-      <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
+      <div style={{background:'transparent', border:'1px solid transparent', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.13em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:3}}>Uptime</div>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:'var(--green)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{uptimeStr}</div>
       </div>
-      <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
+      <div style={{background:'transparent', border:'1px solid transparent', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.13em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:3}}>Started</div>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', fontWeight:700, color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{startedStr}</div>
       </div>
@@ -6858,7 +6858,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
         <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>{tt('⬇ CSV')}</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-        <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
+        <div style={{background:'transparent',border:'1px solid transparent',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Accepted Work')}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-2)',marginTop:6}}>
@@ -6870,7 +6870,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
         {(rejectPct !== null || lifeAccepted > 0) && (
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem'}}>
             {rejectPct !== null && (
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
+              <div style={{background:'transparent',border:'1px solid transparent',padding:'0.65rem 0.5rem', minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>{tt('Reject Rate')}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {rejectPct < 0.001 ? rejectPct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(rejectPct)) + 1))) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
@@ -6878,7 +6878,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
               </div>
             )}
             {lifeAccepted > 0 && (
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
+              <div style={{background:'transparent',border:'1px solid transparent',padding:'0.65rem 0.5rem', minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>{tt('Lifetime Shares')}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {fmtNum(lifeAccepted)}
@@ -6887,7 +6887,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
             )}
           </div>
         )}
-        <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
+        <div style={{background:'transparent',border:'1px solid transparent',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Best Difficulty')}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('all-time')}</span></div>
         </div>
@@ -6919,7 +6919,7 @@ function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
             const on = w.status !== 'offline';
             const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
             return (
-              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(var(--amber-rgb),0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
+              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'transparent',border:`1px solid ${i===0?'rgba(var(--amber-rgb),0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:3}}>
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:22, flexShrink:0}}>#{i+1}</span>
                   <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
@@ -7026,7 +7026,7 @@ function RecentBlocksPanel({ tt = (x) => x, netBlocks }) {
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ The Ledger — Solo Winners ⚡')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
-          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(var(--amber-rgb),0.12)':'none', minWidth:0}}>
+          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'transparent',border:`1px solid ${b.isSolo?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(var(--amber-rgb),0.12)':'none', minWidth:0}}>
             <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -11526,15 +11526,15 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+          <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.pools || 0}</div>
           </div>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+          <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '1rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
           </div>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+          <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.workers || 0}</div>
           </div>
@@ -11808,15 +11808,15 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
 
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
-        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+        <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.pools || 0}</div>
         </div>
-        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+        <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
         </div>
-        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+        <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.workers || 0}</div>
         </div>
