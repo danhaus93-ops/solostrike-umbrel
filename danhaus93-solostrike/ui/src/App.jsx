@@ -12096,19 +12096,26 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         </div>
       </div>
 
-      {/* leaderboard (B) */}
+      {/* leaderboard (B) — runners-up only. The champion (#1) is the hero card
+          above, so listing it again here just duplicated it (most visible when a
+          bucket has a single miner). Show ranks 2+ and hide the whole section
+          when there are no runners-up. */}
+      {(bucket.leaderboard || []).length > 1 && (
+      <>
       <div style={{ fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:6 }}>{tt('Efficiency leaderboard')}</div>
-      {(bucket.leaderboard || []).map((r, i) => (
+      {(bucket.leaderboard || []).slice(1).map((r, i) => (
         <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
-          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: i === 0 ? 'var(--green)' : (r.isOwn ? 'var(--cyan)' : 'var(--text-3)'), width:24, textAlign:'center' }}>{i === 0 ? '👑' : i + 1}</span>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
             {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
             <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}{r.fanPct != null ? ' · ' + r.fanPct + '% ' + tt('fan') : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
-          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color: i === 0 ? 'var(--green)' : 'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color:'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
         </div>
       ))}
+      </>
+      )}
 
       {/* v2.x: accuracy caption — explains the averaging method so the numbers
           aren't read as "wrong" when they differ from the miner's live UI. */}
