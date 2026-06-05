@@ -188,7 +188,7 @@ const CSS = `
 /* Frost ONLY col-holding data bands (Intel page, page 4/5 bottom rows).
    Panel-holding bands (b-live/b-field/top rows) are NOT frosted — their
    panels carry the frosting, so frosting the band too would double-stack. */
-.ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent);backdrop-filter:blur(var(--card-blur,7px));-webkit-backdrop-filter:blur(var(--card-blur,7px));border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+.ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent);backdrop-filter:blur(var(--card-blur-desk,7px));-webkit-backdrop-filter:blur(var(--card-blur-desk,7px));border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
 .ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
@@ -196,7 +196,7 @@ const CSS = `
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-data{grid-template-columns:repeat(8,1fr);min-height:0;align-self:end}
 .ssdesk .b-data-7{grid-template-columns:repeat(7,1fr)}
-.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(var(--card-blur,7px));-webkit-backdrop-filter:blur(var(--card-blur,7px));border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
+.ssdesk .panel{min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-surface);backdrop-filter:blur(var(--card-blur-desk,7px));-webkit-backdrop-filter:blur(var(--card-blur-desk,7px));border:1px solid var(--hair);border-radius:10px;padding:7px 13px 11px}
 @supports (background:color-mix(in srgb,red,blue)){.ssdesk .panel{background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent)}}
 .ssdesk .zlabel{font-family:var(--fd);font-size:.62rem;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text-2);margin:0 0 3px;padding-bottom:.22rem;background-image:linear-gradient(90deg,rgba(var(--amber-rgb),0.55),rgba(var(--amber-rgb),0.45) 30%,rgba(var(--amber-rgb),0.12) 70%,rgba(var(--amber-rgb),0) 100%);background-repeat:no-repeat;background-size:100% 1px;background-position:bottom left;flex:0 0 auto}
 .ssdesk .clk{cursor:pointer;border-radius:9px;transition:background .15s,box-shadow .15s;position:relative}
@@ -261,6 +261,12 @@ const CSS = `
    so it can never be pushed off-screen. */
 .ssdesk .slot-globe > * > *:nth-child(2){flex:1 1 auto!important;max-height:none!important;min-height:0!important}
 .ssdesk .slot-globe > * > *:nth-child(2) > *{max-height:none!important}
+/* v2.0.x: the mounted PulsePanel's own "⟲ rebuild pulse" row. The panel is
+   forced to inset:0 inside .slot-globe, which would bury this last child at the
+   clipped bottom edge. Pin it into the visible bottom-right corner instead so
+   desktop matches mobile. zIndex keeps it above the canvas; pointer-events
+   re-enabled on the row only. */
+.ssdesk .slot-globe .ss-rebuild-row{position:absolute!important;right:12px!important;bottom:8px!important;margin:0!important;width:auto!important;z-index:6!important;inset:auto!important;height:auto!important}
 /* the mounted PulsePanel renders a rotated "100% SOLO" stamp + text overlays
    absolutely-positioned; on desktop they bleed over the Miners box below. Keep
    ONLY the canvas — hide any non-canvas positioned children in the globe slot.
@@ -642,13 +648,22 @@ export default function DesktopPages({
   const SV_WIN_MS={'1H':3600e3,'6H':6*3600e3,'24H':24*3600e3};
   const svCut=SV_WIN_MS[svRange]||3600e3;
   const spsWindowed=(()=>{const now=Date.now();const w=spsFull.filter(p=>p.ts&&(now-p.ts)<=svCut);return w.length?w:spsFull;})();
-  const spsHist=spsWindowed.slice(-96);
+  // v1.11.65: was spsWindowed.slice(-96) — that kept only the last 96 RAW samples,
+  // so 6H/24H collapsed to the same recent tail and never reached the older,
+  // sparser samples. Match mobile exactly: cap at 140 and only downsample above
+  // it. spsHistory is a non-uniform bounded buffer (~71 pts/1h, ~108/6h, ~131/24h),
+  // all under 140 — so every windowed sample renders 1:1, identical to mobile.
+  const SV_MAX_BARS=140;
+  const svBucket=spsWindowed.length>SV_MAX_BARS?Math.ceil(spsWindowed.length/SV_MAX_BARS):1;
+  const spsHist=svBucket<=1?spsWindowed:(()=>{const out=[];for(let i=0;i<spsWindowed.length;i+=svBucket){const sl=spsWindowed.slice(i,i+svBucket);out.push({ts:sl[Math.floor(sl.length/2)].ts,sps:sl.reduce((s,p)=>s+(p.sps||0),0)/sl.length});}return out;})();
   const spsMax=Math.max(...spsHist.map(p=>p.sps||0),1);
   // v1.12.x: match production mobile SV readouts — median (for coloring +
   // footer), per-bar anomaly color, and "each bar = N min".
   const svSorted=spsHist.map(p=>p.sps||0).filter(v=>v>0).sort((a,b)=>a-b);
   const svMedian=svSorted.length?svSorted[Math.floor(svSorted.length/2)]:(sps||0);
-  const svBarMin={'1H':1,'6H':4,'24H':11}[svRange]||1;
+  // v1.11.65: derive minutes-per-bar from the real windowed timespan (was a
+  // hardcoded {1H:1,6H:4,24H:11} that no longer matches the downsampled buckets).
+  const svBarMin=(()=>{if(spsWindowed.length<2)return 1;const span=(spsWindowed[spsWindowed.length-1].ts-spsWindowed[0].ts)/60000;return Math.max(1,Math.round(span/Math.max(1,spsHist.length)));})();
   const svColor=v=>{ if(v<=0)return 'var(--red)'; if(svMedian<=0)return 'var(--amber)'; if(v>svMedian*1.5||v<svMedian*0.5)return 'var(--amber)'; return 'var(--green)'; };
   const svFmt=v=>v>0?(v>=1?v.toFixed(1)+'/s':(v*60).toFixed(1)+'/m'):'—';
 
@@ -863,7 +878,7 @@ export default function DesktopPages({
       </div>
 
       <footer className="ss-foot">
-        <span className="ff-brand">SoloStrike v2.0.2 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
+        <span className="ff-brand">SoloStrike v2.0.3 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
         <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title={_tt("View source on GitHub")}>
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>

@@ -33,7 +33,7 @@ const cardTitle = {
   backgroundSize: '100% 1px',
   backgroundPosition: 'bottom left',
 };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.45rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.45rem 0.7rem', background:'transparent', border:'1px solid transparent', borderBottom:'1px solid rgba(var(--amber-rgb),0.07)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const valMono = { fontFamily:'var(--fm)', fontSize:'0.8rem', color:'var(--text-1)', fontWeight:600 };
 // v1.12.0-fix: card chrome matching App.jsx's `card` const. The analytics
@@ -44,15 +44,21 @@ const valMono = { fontFamily:'var(--fm)', fontSize:'0.8rem', color:'var(--text-1
 // and desktop.
 const cardShell = {
   background:
-    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
-    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
-    'linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-surface) 100%)',
-  border:'1px solid rgba(var(--amber-rgb),0.22)',
+    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),calc(0.45 * var(--card-chrome,1))) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),calc(0.13 * var(--card-chrome,1))) 0%, transparent 70%), ' +
+    // v2.0.x: frost-aware base fill — driven by the Display → Card Frost slider
+    // (--card-fill) and Solid Cards toggle, exactly like the main mobile/desktop
+    // card style. Was a hardcoded opaque gradient, which is why these analytics
+    // cards stayed solid while every other card frosted. Falls back to 60%.
+    'linear-gradient(180deg, color-mix(in srgb, var(--bg-raised) var(--card-fill, 60%), transparent) 0%, color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent) 100%)',
+  backdropFilter: 'blur(var(--card-blur, 7px))',
+  WebkitBackdropFilter: 'blur(var(--card-blur, 7px))',
+  border:'1px solid rgba(var(--amber-rgb),calc(0.22 * var(--card-chrome,1)))',
   borderRadius:'16px',
   padding:'1.3rem',
   boxShadow:
-    'inset 0 1px 0 rgba(var(--amber-rgb),0.18), inset 0 0 0 1px rgba(0,0,0,0.4), ' +
-    '0 8px 24px rgba(0,0,0,0.6), 0 0 32px rgba(var(--amber-rgb),0.06)',
+    'inset 0 1px 0 rgba(var(--amber-rgb),calc(0.18 * var(--card-chrome,1))), inset 0 0 0 1px rgba(0,0,0,calc(0.4 * var(--card-chrome,1))), ' +
+    '0 8px 24px rgba(0,0,0,calc(0.6 * var(--card-chrome,1))), 0 0 32px rgba(var(--amber-rgb),calc(0.06 * var(--card-chrome,1)))',
   minWidth:0, maxWidth:'100%', overflow:'hidden',
   display:'flex', flexDirection:'column', height:'100%', boxSizing:'border-box',
 };
@@ -214,8 +220,15 @@ export function SpsWindows({ tt = (x) => x, pool }) {
 }
 
 // ── Connection States donut (Page 2) ────────────────────────────────────────
-export function ConnectionStates({ tt = (x) => x, pool }) {
-  const active = Math.max(0, (pool?.workers || 0) - (pool?.idle || 0) - (pool?.disconnected || 0));
+export function ConnectionStates({ tt = (x) => x, pool, workers = [] }) {
+  // v2.0.x: "Active" is now the TRUE count of currently-mining rigs, taken from
+  // the per-worker list (same source the Crew card trusts: live unless status
+  // is 'offline'). The old value subtracted ckpool's Idle+Disconnected from its
+  // Workers total, which rental connection churn inflated until the result
+  // floored to 0 — falsely showing no live rigs while mining. Idle and
+  // Disconnected remain ckpool's real summary counters (connection churn).
+  const wl = Array.isArray(workers) ? workers : Object.values(workers || {});
+  const active = wl.filter(w => w && w.status !== 'offline').length;
   const idle = pool?.idle || 0;
   const disc = pool?.disconnected || 0;
   const total = active + idle + disc || 1;
