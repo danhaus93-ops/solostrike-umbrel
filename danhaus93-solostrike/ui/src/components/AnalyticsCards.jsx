@@ -33,7 +33,7 @@ const cardTitle = {
   backgroundSize: '100% 1px',
   backgroundPosition: 'bottom left',
 };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.45rem 0.7rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.45rem 0.7rem', background:'transparent', border:'1px solid transparent', borderBottom:'1px solid rgba(var(--amber-rgb),0.07)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const valMono = { fontFamily:'var(--fm)', fontSize:'0.8rem', color:'var(--text-1)', fontWeight:600 };
 // v1.12.0-fix: card chrome matching App.jsx's `card` const. The analytics
