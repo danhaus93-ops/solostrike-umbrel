@@ -137,8 +137,8 @@ void main() {
   if (yt > 0.45) { gl_FragColor = vec4(0.0); return; }
   float cloudFade = 1.0 - smoothstep(0.30, 0.45, yt);
   float n = fbm(vec2(px.x * 0.012 + uTime * 0.05, px.y * 0.020));
-  float clouds = smoothstep(0.4, 0.85, n) * cloudFade;
-  vec3 baseCloud = vec3(0.16, 0.12, 0.08) * clouds;
+  float clouds = smoothstep(0.30, 0.78, n) * cloudFade;
+  vec3 baseCloud = vec3(0.24, 0.18, 0.11) * clouds;
   vec3 pulseGlow = vec3(0.0);
   for (int i = 0; i < 16; i++) {
     if (i >= uPulseCount) break;
@@ -150,7 +150,7 @@ void main() {
     pulseGlow += vec3(1.0, 0.75, 0.32) * falloff * p.y * cloudFade;
   }
   vec3 finalRgb = baseCloud + pulseGlow;
-  float a = (clouds * 0.5 + length(pulseGlow) * 0.5);
+  float a = (clouds * 0.72 + length(pulseGlow) * 0.5);
   gl_FragColor = vec4(finalRgb, a);
 }
 `;

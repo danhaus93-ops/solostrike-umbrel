@@ -205,10 +205,12 @@ function drawBtcCelebrate(ctx, cx, cy, size, brightness) {
 // min-height resolves to auto when parent height is auto).
 const card = {
   background:
-    /* Hot amber edge along the top (centered, fading out at the sides) */
-    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),0.45) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
+    /* Hot amber edge along the top (centered, fading out at the sides) —
+       v2.0.x: opacity now scales with --card-chrome so the decorative
+       overlays fade out as the card approaches fully transparent. */
+    'linear-gradient(90deg, transparent 10%, rgba(var(--amber-rgb),calc(0.45 * var(--card-chrome,1))) 50%, transparent 90%) top center / 100% 1.5px no-repeat, ' +
     /* Soft inner glow fading from the top edge into the card */
-    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),0.13) 0%, transparent 70%), ' +
+    'radial-gradient(ellipse 70% 90px at 50% 0%, rgba(var(--amber-rgb),calc(0.13 * var(--card-chrome,1))) 0%, transparent 70%), ' +
     /* Base vertical fill — v1.11.66: translucent fill driven by the
        --card-fill CSS var (set by the Display → Card Frost slider; falls back
        to 60% = the default frosted look). Mirrors the desktop .panel frost. */
@@ -216,19 +218,19 @@ const card = {
   /* v1.11.66: frosted-glass blur, also slider-driven via --card-blur. */
   backdropFilter: 'blur(var(--card-blur, 7px))',
   WebkitBackdropFilter: 'blur(var(--card-blur, 7px))',
-  border:'1px solid rgba(var(--amber-rgb),0.22)',
+  border:'1px solid rgba(var(--amber-rgb),calc(0.22 * var(--card-chrome,1)))',
   borderRadius:'16px',
   padding:'1.3rem',
   boxShadow:
-    'inset 0 1px 0 rgba(var(--amber-rgb),0.18), '   /* sheen along very top edge */ +
-    'inset 0 0 0 1px rgba(0,0,0,0.4), '       /* dark inner ring (depth) */ +
-    '0 8px 24px rgba(0,0,0,0.6), '            /* main drop shadow */ +
-    '0 0 32px rgba(var(--amber-rgb),0.06)',         /* faint amber halo */
+    'inset 0 1px 0 rgba(var(--amber-rgb),calc(0.18 * var(--card-chrome,1))), '   /* sheen along very top edge */ +
+    'inset 0 0 0 1px rgba(0,0,0,calc(0.4 * var(--card-chrome,1))), '       /* dark inner ring (depth) */ +
+    '0 8px 24px rgba(0,0,0,calc(0.6 * var(--card-chrome,1))), '            /* main drop shadow */ +
+    '0 0 32px rgba(var(--amber-rgb),calc(0.06 * var(--card-chrome,1)))',         /* faint amber halo */
 };
 // v1.11.66: user-adjustable card frost (Display → Card Frost slider).
-// frost 0..100: 0 = fully solid/opaque (no blur), 40 = the default frosted
-// look (60% fill + 7px blur), higher = more transparent + blurrier. Drives the
-// --card-fill / --card-blur CSS vars consumed by the `card` style above.
+// frost 0..100: 0 = fully solid/opaque, 40 = the default frosted look,
+// 100 = fully transparent (clear — fill 0%, blur 0, chrome faded out).
+// Drives --card-fill / --card-blur / --card-chrome consumed by `card` above.
 const SS_CARD_FROST_KEY = 'ss_card_frost';
 const SS_SOLID_CARDS_KEY = 'ss_solid_cards';
 function applyCardFrost(frost, solid) {
@@ -239,13 +241,28 @@ function applyCardFrost(frost, solid) {
   if (solid) {
     root.style.setProperty('--card-fill', '100%');
     root.style.setProperty('--card-blur', '0px');
+    root.style.setProperty('--card-blur-desk', '0px');
+    root.style.setProperty('--card-chrome', '1');
     return;
   }
   const t = Math.max(0, Math.min(100, Number(frost)));
+  // Fill fades linearly: 100% opaque at frost 0 → 0% (fully see-through) at 100.
   const fillPct = (100 - t).toFixed(0) + '%';
-  const blurPx = (t * 0.175).toFixed(2) + 'px';
+  // v2.0.x: MOBILE blur peaks around the mid/frosted range, then eases back
+  // toward 0 as the slider nears the transparent end — so max frost is CLEAR
+  // glass, not a heavy foggy wash. Peak ~9px at frost≈55, →0 at frost 100.
+  const blurPx = (Math.sin(Math.min(t, 100) / 100 * Math.PI) * 9).toFixed(2) + 'px';
+  // v2.0.x: DESKTOP keeps a stronger, steadily-increasing blur (it looked good
+  // before and reads better a touch heavier). Linear ramp, no easing back.
+  const blurDeskPx = (t * 0.22).toFixed(2) + 'px';
+  // v2.0.x: decorative chrome (amber edges, glow, inner ring, shadows) holds at
+  // full strength until ~70, then fades to 0 by 100 so nothing tints the glass
+  // at the fully-transparent end.
+  const chrome = (t <= 70 ? 1 : Math.max(0, (100 - t) / 30)).toFixed(3);
   root.style.setProperty('--card-fill', fillPct);
   root.style.setProperty('--card-blur', blurPx);
+  root.style.setProperty('--card-blur-desk', blurDeskPx);
+  root.style.setProperty('--card-chrome', chrome);
 }
 // Apply the persisted values once at load so cards render correctly before the
 // settings panel is ever opened. Absent values → CSS fallbacks (60% / 7px).
@@ -277,7 +294,7 @@ const cardTitle = {
   backgroundSize: '100% 1px',
   backgroundPosition: 'bottom left',
 };
-const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.3rem', borderRadius:'4px' };
+const statRow = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0.55rem 0.8rem', background:'transparent', border:'1px solid transparent', borderBottom:'1px solid rgba(var(--amber-rgb),0.07)', marginBottom:'0.3rem', borderRadius:'4px' };
 const label = { fontFamily:'var(--fd)', fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--text-2)' };
 const HEALTH_COLOR = { green:'var(--green)', amber:'var(--amber)', red:'var(--red)' };
 
@@ -871,6 +888,70 @@ function displayName(fullName, aliases) {
   if (!fullName) return '';
   if (aliases && aliases[fullName]) return aliases[fullName];
   return stripAddr(fullName);
+}
+
+function minerLabel(w) {
+  const m = w && w.live && w.live.model;
+  const generic = !m || m === 'ASIC' || m === 'BitAxe'
+    || (typeof m === 'string' && m.indexOf('ASIC (') === 0);
+  if (!generic) return m;
+  return (w && w.minerType) || m || null;
+}
+
+// Windows/Chrome don't render regional-indicator flag emoji (e.g. US/CA) as
+// glyphs; they show letter-boxes. iOS/macOS do. So the Strikers list draws real
+// flags as inline base64-SVG <img> for the country buckets. Globe/region symbols
+// (Asia/Africa/unknown) keep their emoji since those render on every platform.
+const FLAG_IMG = {
+  "US": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjYmQzZDQ0IiBkPSJNMCAwaDY0MHY0ODBIMCIvPjxwYXRoIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzNyIgZD0iTTAgNTUuM2g2NDBNMCAxMjloNjQwTTAgMjAzaDY0ME0wIDI3N2g2NDBNMCAzNTFoNjQwTTAgNDI1aDY0MCIvPjxwYXRoIGZpbGw9IiMxOTJmNWQiIGQ9Ik0wIDBoMzY0Ljh2MjU4LjVIMCIvPjxtYXJrZXIgaWQ9ImEiIG1hcmtlckhlaWdodD0iMzAiIG1hcmtlcldpZHRoPSIzMCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0ibTE0IDAgOSAyN0wwIDEwaDI4TDUgMjd6Ii8+PC9tYXJrZXI+PHBhdGggZmlsbD0ibm9uZSIgbWFya2VyLW1pZD0idXJsKCNhKSIgZD0ibTAgMCAxNiAxMWg2MSA2MSA2MSA2MSA2MEw0NyAzN2g2MSA2MSA2MCA2MUwxNiA2M2g2MSA2MSA2MSA2MSA2MEw0NyA4OWg2MSA2MSA2MCA2MUwxNiAxMTVoNjEgNjEgNjEgNjEgNjBMNDcgMTQxaDYxIDYxIDYwIDYxTDE2IDE2Nmg2MSA2MSA2MSA2MSA2MEw0NyAxOTJoNjEgNjEgNjAgNjFMMTYgMjE4aDYxIDYxIDYxIDYxIDYweiIvPjwvc3ZnPg==",
+  "CA": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMTUwLjEgMGgzMzkuN3Y0ODBIMTUweiIvPjxwYXRoIGZpbGw9IiNkNTJiMWUiIGQ9Ik0tMTkuNyAwaDE2OS44djQ4MEgtMTkuN3ptNTA5LjUgMGgxNjkuOHY0ODBINDg5Ljl6TTIwMSAyMzJsLTEzLjMgNC40IDYxLjQgNTRjNC43IDEzLjctMS42IDE3LjgtNS42IDI1bDY2LjYtOC40LTEuNiA2NyAxMy45LS4zLTMuMS02Ni42IDY2LjcgOGMtNC4xLTguNy03LjgtMTMuMy00LTI3LjJsNjEuMy01MS0xMC43LTRjLTguOC02LjggMy44LTMyLjYgNS42LTQ4LjkgMCAwLTM1LjcgMTIuMy0zOCA1LjhsLTkuMi0xNy41LTMyLjYgMzUuOGMtMy41LjktNS0uNS01LjktMy41bDE1LTc0LjgtMjMuOCAxMy40cS0zLjIgMS4zLTUuMi0yLjJsLTIzLTQ2LTIzLjYgNDcuOHEtMi44IDIuNS01IC43TDI2NCAxMzAuOGwxMy43IDc0LjFjLTEuMSAzLTMuNyAzLjgtNi43IDIuMmwtMzEuMi0zNS4zYy00IDYuNS02LjggMTcuMS0xMi4yIDE5LjVzLTIzLjUtNC41LTM1LjYtN2M0LjIgMTQuOCAxNyAzOS42IDkgNDcuNyIvPjwvc3ZnPg==",
+  "SA": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDA5YjNhIiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmVkZjAwIiBkPSJtMzIwIDQ4IDI3NiAxOTItMjc2IDE5Mkw0NCAyNDB6Ii8+PGNpcmNsZSBjeD0iMzIwIiBjeT0iMjQwIiByPSI5NiIgZmlsbD0iIzAwMjc3NiIvPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxNCIgZD0iTTI0MyAyMzJhOTYgOTYgMCAwIDEgMTU0IDI4Ii8+PC9zdmc+",
+  "EU": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgNjQwIDQ4MCI+PGRlZnM+PGcgaWQ9ImQiPjxnIGlkPSJiIj48cGF0aCBpZD0iYSIgZD0ibTAtMS0uMyAxIC41LjF6Ii8+PHVzZSB4bGluazpocmVmPSIjYSIgdHJhbnNmb3JtPSJzY2FsZSgtMSAxKSIvPjwvZz48ZyBpZD0iYyI+PHVzZSB4bGluazpocmVmPSIjYiIgdHJhbnNmb3JtPSJyb3RhdGUoNzIpIi8+PHVzZSB4bGluazpocmVmPSIjYiIgdHJhbnNmb3JtPSJyb3RhdGUoMTQ0KSIvPjwvZz48dXNlIHhsaW5rOmhyZWY9IiNjIiB0cmFuc2Zvcm09InNjYWxlKC0xIDEpIi8+PC9nPjwvZGVmcz48cGF0aCBmaWxsPSIjMDM5IiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48ZyBmaWxsPSIjZmMwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzMjAgMjQyLjMpc2NhbGUoMjMuNzAzNykiPjx1c2UgeGxpbms6aHJlZj0iI2QiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHk9Ii02Ii8+PHVzZSB4bGluazpocmVmPSIjZCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgeT0iNiIvPjxnIGlkPSJlIj48dXNlIHhsaW5rOmhyZWY9IiNkIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4PSItNiIvPjx1c2UgeGxpbms6aHJlZj0iI2QiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHRyYW5zZm9ybT0icm90YXRlKC0xNDQgLTIuMyAtMi4xKSIvPjx1c2UgeGxpbms6aHJlZj0iI2QiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHRyYW5zZm9ybT0icm90YXRlKDE0NCAtMi4xIC0yLjMpIi8+PHVzZSB4bGluazpocmVmPSIjZCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgdHJhbnNmb3JtPSJyb3RhdGUoNzIgLTQuNyAtMikiLz48dXNlIHhsaW5rOmhyZWY9IiNkIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB0cmFuc2Zvcm09InJvdGF0ZSg3MiAtNSAuNSkiLz48L2c+PHVzZSB4bGluazpocmVmPSIjZSIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgdHJhbnNmb3JtPSJzY2FsZSgtMSAxKSIvPjwvZz48L3N2Zz4=",
+  "UK": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDEyMTY5IiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNzUgMCAyNDQgMTgxTDU2MiAwaDc4djYyTDQwMCAyNDFsMjQwIDE3OHY2MWgtODBMMzIwIDMwMSA4MSA0ODBIMHYtNjBsMjM5LTE3OEwwIDY0VjB6Ii8+PHBhdGggZmlsbD0iI2M4MTAyZSIgZD0ibTQyNCAyODEgMjE2IDE1OXY0MEwzNjkgMjgxem0tMTg0IDIwIDYgMzVMNTQgNDgwSDB6TTY0MCAwdjNMMzkxIDE5MWwyLTQ0TDU5MCAwek0wIDBsMjM5IDE3NmgtNjBMMCA0MnoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMjQxIDB2NDgwaDE2MFYwek0wIDE2MHYxNjBoNjQwVjE2MHoiLz48cGF0aCBmaWxsPSIjYzgxMDJlIiBkPSJNMCAxOTN2OTZoNjQwdi05NnpNMjczIDB2NDgwaDk2VjB6Ii8+PC9zdmc+",
+  "JP": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48ZGVmcz48Y2xpcFBhdGggaWQ9ImEiPjxwYXRoIGZpbGwtb3BhY2l0eT0iLjciIGQ9Ik0tODggMzJoNjQwdjQ4MEgtODh6Ii8+PC9jbGlwUGF0aD48L2RlZnM+PGcgZmlsbC1ydWxlPSJldmVub2RkIiBzdHJva2Utd2lkdGg9IjFwdCIgY2xpcC1wYXRoPSJ1cmwoI2EpIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg4OCAtMzIpIj48cGF0aCBmaWxsPSIjZmZmIiBkPSJNLTEyOCAzMmg3MjB2NDgwaC03MjB6Ii8+PGNpcmNsZSBjeD0iNTIzLjEiIGN5PSIzNDQuMSIgcj0iMTk0LjkiIGZpbGw9IiNiYzAwMmQiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0xNjguNCA4LjYpc2NhbGUoLjc2NTU0KSIvPjwvZz48L3N2Zz4=",
+  "AU": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NDAgNDgwIj48cGF0aCBmaWxsPSIjMDAwMDhiIiBkPSJNMCAwaDY0MHY0ODBIMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtMzcuNSAwIDEyMiA5MC41TDI4MSAwaDM5djMxbC0xMjAgODkuNSAxMjAgODlWMjQwaC00MGwtMTIwLTg5LjVMNDAuNSAyNDBIMHYtMzBsMTE5LjUtODlMMCAzMlYweiIvPjxwYXRoIGZpbGw9InJlZCIgZD0iTTIxMiAxNDAuNSAzMjAgMjIwdjIwbC0xMzUuNS05OS41em0tOTIgMTAgMyAxNy41LTk2IDcySDB6TTMyMCAwdjEuNWwtMTI0LjUgOTQgMS0yMkwyOTUgMHpNMCAwbDExOS41IDg4aC0zMEwwIDIxeiIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik0xMjAuNSAwdjI0MGg4MFYwek0wIDgwdjgwaDMyMFY4MHoiLz48cGF0aCBmaWxsPSJyZWQiIGQ9Ik0wIDk2LjV2NDhoMzIwdi00OHpNMTM2LjUgMHYyNDBoNDhWMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJtNTI3IDM5Ni43LTIwLjUgMi42IDIuMiAyMC41LTE0LjgtMTQuNC0xNC43IDE0LjUgMi0yMC41LTIwLjUtMi40IDE3LjMtMTEuMi0xMC45LTE3LjUgMTkuNiA2LjUgNi45LTE5LjUgNy4xIDE5LjQgMTkuNS02LjctMTAuNyAxNy42em0tMy43LTExNy4yIDIuNy0xMy05LjgtOSAxMy4yLTEuNSA1LjUtMTIuMSA1LjUgMTIuMSAxMy4yIDEuNS05LjggOSAyLjcgMTMtMTEuNi02LjZ6bS0xMDQuMS02MC0yMC4zIDIuMiAxLjggMjAuMy0xNC40LTE0LjUtMTQuOCAxNC4xIDIuNC0yMC4zLTIwLjItMi43IDE3LjMtMTAuOC0xMC41LTE3LjUgMTkuMyA2LjhMMzg3IDE3OGw2LjcgMTkuMyAxOS40LTYuMy0xMC45IDE3LjMgMTcuMSAxMS4yWk02MjMgMTg2LjdsLTIwLjkgMi43IDIuMyAyMC45LTE1LjEtMTQuNy0xNSAxNC44IDIuMS0yMS0yMC45LTIuNCAxNy43LTExLjUtMTEuMS0xNy45IDIwIDYuNyA3LTE5LjggNy4yIDE5LjggMTkuOS02LjktMTEgMTh6bS05Ni4xLTgzLjUtMjAuNyAyLjMgMS45IDIwLjgtMTQuNy0xNC44LTE1LjEgMTQuNCAyLjQtMjAuNy0yMC43LTIuOCAxNy43LTExTDQ2NyA3My41bDE5LjcgNi45IDcuMy0xOS41IDYuOCAxOS43IDE5LjgtNi41LTExLjEgMTcuNnpNMjM0IDM4NS43bC00NS44IDUuNCA0LjYgNDUuOS0zMi44LTMyLjQtMzMgMzIuMiA0LjktNDUuOS00NS44LTUuOCAzOC45LTI0LjgtMjQtMzkuNCA0My42IDE1IDE1LjgtNDMuNCAxNS41IDQzLjUgNDMuNy0xNC43LTI0LjMgMzkuMiAzOC44IDI1LjFaIi8+PC9zdmc+"
+};
+let _flagEmojiOK = null;
+// Feature-detect (once) whether this platform renders regional-indicator flag
+// emoji as real glyphs. iOS / macOS / Android / Firefox do (colored pixels);
+// Chrome & Edge on Windows do NOT (letter-boxes). Keep native emoji wherever
+// they render — iPhone & Mac look exactly as before — SVG fallback only on Windows.
+function supportsFlagEmoji() {
+  if (_flagEmojiOK !== null) return _flagEmojiOK;
+  try {
+    if (typeof document === 'undefined') { _flagEmojiOK = true; return true; }
+    const c = document.createElement('canvas');
+    c.width = 24; c.height = 16;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) { _flagEmojiOK = true; return true; }
+    ctx.textBaseline = 'top';
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#000';
+    ctx.fillText('\uD83C\uDDFA\uD83C\uDDF8', 0, 0); // US flag
+    const d = ctx.getImageData(0, 0, 24, 16).data;
+    let colored = false;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+      if (a > 16 && (Math.max(r, g, b) - Math.min(r, g, b)) > 40) { colored = true; break; }
+    }
+    _flagEmojiOK = colored;
+  } catch (e) { _flagEmojiOK = true; }
+  return _flagEmojiOK;
+}
+function FlagGlyph({ geo, size = 14, emojiStyle }) {
+  if (!geo) return null;
+  const eStyle = emojiStyle || { fontSize: size + 2, lineHeight: 1 };
+  if (supportsFlagEmoji()) return <span style={eStyle} title={geo.label}>{geo.flag}</span>;
+  const uri = FLAG_IMG[geo.label];
+  if (uri) {
+    return (
+      <img src={uri} alt={geo.label} title={geo.label}
+        style={{ height: size, width: Math.round(size * 4 / 3), borderRadius: 1.5,
+                 objectFit: 'cover', verticalAlign: 'middle', flexShrink: 0,
+                 boxShadow: '0 0 0 0.5px rgba(255,255,255,0.25)' }} />
+    );
+  }
+  return <span style={eStyle} title={geo.label}>{geo.flag}</span>;
 }
 
 function fmtBytes(bytes) {
@@ -2488,12 +2569,12 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                         : healthC === 'var(--red)'   ? 'ss-status-dot ss-status-dot-red'
                         : 'ss-status-dot ss-status-dot-green'
                       }/>
-                <span title={w.minerType||'Unknown'} style={{fontSize:11,color:on?'var(--cyan)':'var(--text-3)',width:12,textAlign:'center',flexShrink:0}}>{icon}</span>
+                <span title={minerLabel(w)||'Unknown'} style={{fontSize:11,color:on?'var(--cyan)':'var(--text-3)',width:12,textAlign:'center',flexShrink:0}}>{icon}</span>
                 {/* Middle: name + miner type stacked, with thin progress bar below */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',alignItems:'baseline',gap:6,minWidth:0}}>
                     <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500,minWidth:0}} title={w.name}>{disp}</span>
-                    {w.minerType && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{w.minerType}</span>}
+                    {minerLabel(w) && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{minerLabel(w)}</span>}
                     {(() => {
                       // v1.9.0: tiny pool-alignment badge — only renders when
                       // miner-poller has produced a result. Tap the row to see
@@ -2622,7 +2703,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
           return (
             <div key={`${c.workerName}-${c.ts}`} style={{
               padding:'0.45rem 0.6rem',
-              background: tier.bgTint === 'transparent' ? 'var(--bg-raised)' : tier.bgTint,
+              background: tier.bgTint === 'transparent' ? 'transparent' : tier.bgTint,
               border: `1px solid ${tier.borderTint}`,
               minWidth:0,
               boxShadow: tier.glow ? `0 0 12px ${tier.color}55` : 'none',
@@ -2637,9 +2718,9 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
                   <span style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--text-1)', fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0}} title={c.workerName}>
                     {disp}
                   </span>
-                  {c.minerType && (
+                  {minerLabel(c) && (
                     <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.08em', color:'var(--text-3)', textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0}}>
-                      {c.minerType}
+                      {minerLabel(c)}
                     </span>
                   )}
                   <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.10em', color:tier.color, textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0, fontWeight:700, textShadow: tier.glow ? `0 0 4px ${tier.color}` : 'none'}}>
@@ -3787,21 +3868,21 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
         {/* Fee tier strip — Fast / Mid / Low (sat/vB) (UNCHANGED) */}
         {(feeFast || feeMid || feeLow) && (
           <div style={{display:'flex', gap:6, flexShrink:0}}>
-            <div style={{flex:1, background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.4rem 0.35rem', textAlign:'center'}}>
+            <div style={{flex:1, background:'transparent', border:'1px solid transparent', padding:'0.4rem 0.35rem', textAlign:'center'}}>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--green)', textTransform:'uppercase'}}>⚡ FAST</div>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', fontWeight:700, marginTop:3}}>
                 {feeFast != null ? feeFast : '—'}
               </div>
               <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)', marginTop:1}}>sat/vB</div>
             </div>
-            <div style={{flex:1, background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.4rem 0.35rem', textAlign:'center'}}>
+            <div style={{flex:1, background:'transparent', border:'1px solid transparent', padding:'0.4rem 0.35rem', textAlign:'center'}}>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--amber)', textTransform:'uppercase'}}>◐ MID</div>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', fontWeight:700, marginTop:3}}>
                 {feeMid != null ? feeMid : '—'}
               </div>
               <div style={{fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)', marginTop:1}}>sat/vB</div>
             </div>
-            <div style={{flex:1, background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.4rem 0.35rem', textAlign:'center'}}>
+            <div style={{flex:1, background:'transparent', border:'1px solid transparent', padding:'0.4rem 0.35rem', textAlign:'center'}}>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.1em', color:'var(--text-2)', textTransform:'uppercase'}}>◯ LOW</div>
               <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', color:'var(--text-1)', fontWeight:700, marginTop:3}}>
                 {feeLow != null ? feeLow : '—'}
@@ -3813,25 +3894,25 @@ function HuntPanel({ odds, hashrate, blockReward, mempool, prices, currency, hun
 
         {/* Stats — single row of 4 (was 2x2 grid, saves vertical space in carousel mode) */}
         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:4, flexShrink:0}}>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Expected</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.72rem', color:'var(--amber)', fontWeight:700, marginTop:2}}>
               {fmtOdds(expectedDays)}
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Yearly</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
               {perYear>0 ? (perYear < 0.0001 ? (perYear*100).toFixed(Math.min(10, Math.max(5, -Math.floor(Math.log10(perYear*100)) + 1))) + '%' : fmtPct(perYear*100, perYear < 0.01 ? 3 : 2)) : '—'}
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Daily</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-1)', fontWeight:700, marginTop:2}}>
               {perDay>0 ? fmtPct(perDay*100, 3) : '—'}
             </div>
           </div>
-          <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.35rem 0.3rem', textAlign:'center'}}>
+          <div style={{background:'transparent', border:'1px solid transparent', padding:'0.35rem 0.3rem', textAlign:'center'}}>
             <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.08em', color:'var(--text-2)', textTransform:'uppercase'}}>Sats/d</div>
             <div style={{fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--cyan)', fontWeight:700, marginTop:2}}>
               {expectedDailySats > 0 ? expectedDailySats.toLocaleString() : '—'}
@@ -6222,7 +6303,7 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
   // ── Shared styles for the editable fields ─────────────────────────────────
   // iter27c: tightened padding/margins to fit the whole card on one screen.
   const fieldRowStyle = {
-    background:'var(--bg-raised)', border:'1px solid var(--border)',
+    background:'transparent', border:'1px solid transparent',
     padding:'0.5rem 0.65rem', marginBottom:'0.4rem',
   };
   const labelStyle = {
@@ -6437,11 +6518,11 @@ function PoolUptimeStrip({ startedAt }) {
       gridTemplateColumns:'1fr 1fr',
       gap:'0.5rem',
     }}>
-      <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
+      <div style={{background:'transparent', border:'1px solid transparent', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.13em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:3}}>Uptime</div>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.95rem', fontWeight:700, color:'var(--green)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{uptimeStr}</div>
       </div>
-      <div style={{background:'var(--bg-raised)', border:'1px solid var(--border)', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
+      <div style={{background:'transparent', border:'1px solid transparent', padding:'0.5rem 0.4rem', textAlign:'center', minWidth:0, overflow:'hidden'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.13em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:3}}>Started</div>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.85rem', fontWeight:700, color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{startedStr}</div>
       </div>
@@ -6777,7 +6858,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
         <a href="/api/export/workers.csv" download onClick={e=>e.stopPropagation()} style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.1em',color:'var(--cyan)',textDecoration:'none',padding:'4px 8px',marginRight:'14px',whiteSpace:'nowrap'}}>{tt('⬇ CSV')}</a>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.6rem'}}>
-        <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
+        <div style={{background:'transparent',border:'1px solid transparent',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Accepted Work')}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--green)',lineHeight:1}}>{fmtDiff(workAccepted)}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.75rem',color:'var(--text-2)',marginTop:6}}>
@@ -6789,7 +6870,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
         {(rejectPct !== null || lifeAccepted > 0) && (
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem'}}>
             {rejectPct !== null && (
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
+              <div style={{background:'transparent',border:'1px solid transparent',padding:'0.65rem 0.5rem', minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>{tt('Reject Rate')}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color: rejectPct < 0.5 ? 'var(--green)' : rejectPct < 2 ? 'var(--amber)' : 'var(--red)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {rejectPct < 0.001 ? rejectPct.toFixed(Math.min(10, Math.max(4, -Math.floor(Math.log10(rejectPct)) + 1))) : rejectPct.toFixed(rejectPct < 0.1 ? 3 : 2)}%
@@ -6797,7 +6878,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
               </div>
             )}
             {lifeAccepted > 0 && (
-              <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.65rem 0.5rem', minWidth:0}}>
+              <div style={{background:'transparent',border:'1px solid transparent',padding:'0.65rem 0.5rem', minWidth:0}}>
                 <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',letterSpacing:'0.13em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:4}}>{tt('Lifetime Shares')}</div>
                 <div style={{fontFamily:'var(--fd)',fontSize:'1.25rem',fontWeight:700,lineHeight:1,color:'var(--cyan)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>
                   {fmtNum(lifeAccepted)}
@@ -6806,7 +6887,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
             )}
           </div>
         )}
-        <div style={{background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.875rem'}}>
+        <div style={{background:'transparent',border:'1px solid transparent',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Best Difficulty')}</div>
           <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('all-time')}</span></div>
         </div>
@@ -6838,7 +6919,7 @@ function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
             const on = w.status !== 'offline';
             const healthC = HEALTH_COLOR[w.health] || 'var(--text-3)';
             return (
-              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'var(--bg-raised)',border:`1px solid ${i===0?'rgba(var(--amber-rgb),0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
+              <div key={w.name} style={{padding:'0.55rem 0.7rem',background:'transparent',border:`1px solid ${i===0?'rgba(var(--amber-rgb),0.3)':'var(--border)'}`,opacity:on?1:0.55, minWidth:0, overflow:'hidden'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:3}}>
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:22, flexShrink:0}}>#{i+1}</span>
                   <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
@@ -6846,7 +6927,7 @@ function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:27,fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)'}}>
                   <div title={w.health||'unknown'} style={{width:6,height:6,borderRadius:'50%',background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 4px ${healthC}`:'none',flexShrink:0}}/>
-                  {w.minerType && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.58rem'}}>{w.minerType}</span><span style={{color:'var(--text-3)'}}>·</span></>}
+                  {minerLabel(w) && <><span style={{color:'var(--text-3)',letterSpacing:'0.05em',textTransform:'uppercase',fontSize:'0.58rem'}}>{minerLabel(w)}</span><span style={{color:'var(--text-3)'}}>·</span></>}
                   <span style={{color: on?'var(--amber)':'var(--text-3)'}}>{on ? fmtHr(w.hashrate) : 'offline'}</span>
                 </div>
               </div>
@@ -6945,7 +7026,7 @@ function RecentBlocksPanel({ tt = (x) => x, netBlocks }) {
       <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ The Ledger — Solo Winners ⚡')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',flex:1,minHeight:0,overflowY:'auto'}}>
         {list.slice(0,15).map(b=>(
-          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'var(--bg-raised)',border:`1px solid ${b.isSolo?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(var(--amber-rgb),0.12)':'none', minWidth:0}}>
+          <div key={b.id} style={{display:'flex',alignItems:'center',gap:'0.6rem',padding:'0.55rem 0.8rem',background:'transparent',border:`1px solid ${b.isSolo?'rgba(var(--amber-rgb),0.35)':'var(--border)'}`,boxShadow:b.isSolo?'0 0 10px rgba(var(--amber-rgb),0.12)':'none', minWidth:0}}>
             <span style={{fontSize:13,color:b.isSolo?'var(--amber)':'var(--text-3)',flexShrink:0}}>{b.isSolo?'⚡':'▪'}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -9312,7 +9393,7 @@ function StaticPulseMesh({ peers, ownPin }) {
 
 
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en', showStamp = true }) {
+const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSettings, onOpenStrikers, pulseAnim = 'block', performanceMode = false, compact = false, poolPin = null, onPoolPinChange = null, lastShareAt = null, acceptedCount = 0, workers = null, lang = 'en', showStamp = true, onRebuild = null }) {
   const tt = useMemo(() => makeTT(lang), [lang]);
   // v1.11.47: re-create constellation cube when theme changes.
   const [_pulsePanelThemeTick, _setPulsePanelThemeTick] = useState(0);
@@ -9331,6 +9412,13 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
   // internally so users can preview Bar/Corners/Edges/Faces/Volume stages
   // without waiting for the network to grow.
   const [simulatorOpen, setSimulatorOpen] = useState(false);
+
+  // v2.0.x: bumped by the "rebuild pulse" control. Wired into the globe and
+  // mesh renderer-creation effects so a tap tears down + recreates the active
+  // renderer fresh — the same thing opening the full-screen pop-out does,
+  // minus the pop-out. This is what actually rebuilds a blank globe; poking the
+  // draw-loop alone can't help if the renderer was never created.
+  const [rebuildTick, setRebuildTick] = useState(0);
 
   // v1.11.x: latest-value refs. The Pulse animation useEffect (line ~8134)
   // used to depend on [ns.hashrate, ns.pools, ns.workers, ns.peers, workers,
@@ -9474,6 +9562,16 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
       webglRendererRef.current = null;
       console.warn('WebGL globe init failed; falling back to vector renderer');
     }
+    // v2.0.x: re-arm the 2D draw-loop so it (re)fetches coastlines + (re)bakes
+    // the world texture onto THIS freshly-created renderer next frame. Done
+    // here (not in the click handler) so it always runs AFTER the renderer
+    // exists — on a rebuildTick recreation, _globeInit would otherwise still be
+    // `true` from the previous renderer and the new sphere would stay blank.
+    {
+      const c2d = canvasRef.current;
+      if (c2d) { c2d._globeInit = undefined; c2d._globeRings = null; c2d._globeFetchTries = 0; }
+      webglTextureReadyRef.current = false;
+    }
     return () => {
       if (webglRendererRef.current) {
         webglRendererRef.current.destroy();
@@ -9490,7 +9588,9 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
     // didn't re-run it, leaving the globe blank until a manual refresh. Keying
     // on `enabled` recreates the renderer the moment the canvas mounts on
     // opt-in (and disposes it on opt-out), so the sphere bakes without a reload.
-  }, [enabled]);
+    // v2.0.x: also keyed on rebuildTick so the "rebuild pulse" control recreates
+    // the renderer fresh (same as the pop-out remount) when a globe comes up blank.
+  }, [enabled, rebuildTick]);
 
   // v1.11.64: the WebGL globe canvas is NO LONGER remounted on pulseAnim
   // change (its renderer is created once and bound to the stable node;
@@ -9556,7 +9656,26 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         constellationRendererRef.current = null;
       }
     };
-  }, [pulseAnim]);
+    // v2.0.x: rebuildTick recreates the mesh renderer on a "rebuild pulse" tap.
+  }, [pulseAnim, rebuildTick]);
+
+  // v2.0.x: manual "rebuild pulse" trigger. Tapping it does what opening the
+  // full-screen pop-out does — tears down and recreates the active WebGL
+  // renderer from scratch — minus the pop-out. Bumping rebuildTick re-runs the
+  // globe/mesh renderer-creation effects (recreating the renderer fresh), and
+  // re-arming the globe draw-loop (_globeInit = undefined) makes it re-fetch
+  // coastlines + re-bake the world texture onto the new renderer next frame.
+  // This is what fixes a globe that came up blank: poking the draw-loop alone
+  // can't help when the renderer itself was never created.
+  const rebuildPulse = () => {
+    // Primary path: ask the parent to remount this whole PulsePanel (changes
+    // its React key). That is exactly what the desktop pop-out does to build
+    // the globe — a brand-new instance with fresh refs + all renderer effects
+    // re-run — and it works identically on mobile and desktop. Fallback to the
+    // in-place tick only if no parent callback was provided.
+    if (typeof onRebuild === 'function') { onRebuild(); return; }
+    setRebuildTick(t => t + 1);
+  };
 
   // Inverse orthographic projection — converts a tap on the canvas to
   // lat/lon (in degrees), un-rotated against the current globe rotation,
@@ -11407,15 +11526,15 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.6rem' }}>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+          <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.pools || 0}</div>
           </div>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+          <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '1rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
           </div>
-          <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
+          <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.6rem 0.35rem', textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
             <div style={{ fontFamily: 'var(--fd)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.workers || 0}</div>
           </div>
@@ -11689,15 +11808,15 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
 
       {/* The 3 stat tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.7rem' }}>
-        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+        <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Pools</div>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.pools || 0}</div>
         </div>
-        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+        <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Hashrate</div>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1 }}>{fmtPulseHr(ns.hashrate)}</div>
         </div>
-        <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
+        <div style={{ background: 'transparent', border: '1px solid transparent', padding: '0.65rem 0.4rem', textAlign: 'center' }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)', marginBottom: 4 }}>Miners</div>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '1.6rem', fontWeight: 700, color: 'var(--amber)', lineHeight: 1, textShadow: '0 0 14px rgba(var(--amber-rgb),0.4)' }}>{ns.workers || 0}</div>
         </div>
@@ -11734,6 +11853,24 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         {onOpenStrikers && (ns.peers && ns.peers.length > 0) && (
           <span style={{display:'block', marginTop:4, color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.12em'}}>▸ TAP TO SEE STRIKERS</span>
         )}
+      </div>
+      {/* v2.0.x: manual rebuild — placed in the card BODY (outside the canvas)
+          so it sits in the card's bottom-right, clear of the globe/mesh and
+          their in-canvas corner controls. Forces the active visual to rebuild. */}
+      <div className="ss-rebuild-row" style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
+        <span
+          onClick={(e) => { e.stopPropagation(); rebuildPulse(); }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); rebuildPulse(); } }}
+          style={{
+            fontFamily:'var(--fd)', fontSize:'0.55rem', fontWeight:600,
+            letterSpacing:'0.18em', color:'var(--text-2)', cursor:'pointer',
+            userSelect:'none', display:'inline-flex', alignItems:'center', gap:4,
+          }}
+          aria-label="Rebuild pulse visualization"
+          title="Rebuild the globe / mesh"
+        >{tt('⟲ rebuild pulse')}</span>
       </div>
       </div>
       <StampSolo/>
@@ -11793,6 +11930,252 @@ function JumpersPanel({ tt = (x) => x, topFinders, netBlocks, blocks, blockAlert
 // Shows every Striker (anonymous SoloStrike operator) currently on the network.
 // You're pinned at the top, then everyone else by hashrate descending.
 // Outlier-filtered peers hidden by default; toggle reveals them.
+// ── v2.x: Crowdsourced tuning Benchmark section (Pulse Strikers modal) ────────
+// Reads networkStats.benchmarks (per-bucket aggregates from the backend). Shows
+// only buckets the operator actually owns (picker built from own rigs). Champion
+// banner + ranked leaderboard, a client-side confidence slider (2–25, never
+// hides — labels low/med/high), copy-only action behind a one-time, version-
+// stamped disclaimer gate, plus a permanent inline risk one-liner. Self-chosen
+// alias (local) names the operator's own rows.
+const BENCH_DISCLAIMER_VERSION = 1;
+const LS_BENCH_DISCLAIMER = 'ss_bench_disclaimer_v' + BENCH_DISCLAIMER_VERSION;
+const LS_BENCH_ALIAS = 'ss_bench_alias_v1';
+
+function benchConfidence(sampleCount, threshold) {
+  // relative to the user's chosen threshold; never hides, just labels
+  if (sampleCount >= threshold) return { key: 'high', label: 'high confidence', color: 'var(--green)' };
+  if (sampleCount >= Math.max(2, Math.ceil(threshold / 2))) return { key: 'med', label: 'medium confidence', color: 'var(--amber)' };
+  return { key: 'low', label: 'low sample — treat as a hint', color: 'var(--text-3)' };
+}
+
+function BenchmarkSection({ tt = (x) => x, networkStats }) {
+  const buckets = Array.isArray(networkStats && networkStats.benchmarks) ? networkStats.benchmarks : [];
+  // own buckets = those where any leaderboard row is ours
+  const owned = buckets.filter(b => Array.isArray(b.leaderboard) && b.leaderboard.some(r => r.isOwn));
+  const shown = owned.length ? owned : buckets; // fallback so it's not empty in testing
+  const [sel, setSel] = useState(0);
+  const [minSample, setMinSample] = useState(5);
+  const [accepted, setAccepted] = useState(() => {
+    try { return !!localStorage.getItem(LS_BENCH_DISCLAIMER); } catch { return false; }
+  });
+  const [showDisc, setShowDisc] = useState(false);
+  const [discChecked, setDiscChecked] = useState(false);
+  const [pendingCopy, setPendingCopy] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [alias, setAlias] = useState(() => {
+    try { return localStorage.getItem(LS_BENCH_ALIAS) || ''; } catch { return ''; }
+  });
+  const [editAlias, setEditAlias] = useState(false);
+
+  if (!shown.length) {
+    return (
+      <div style={{ marginBottom:'1.5rem' }}>
+        <div style={{ fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)', marginBottom:'0.5rem' }}>{tt('▸ Tuning Benchmarks')}</div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.7rem', color:'var(--text-3)', padding:'0.75rem', border:'1px solid var(--border)', textAlign:'center' }}>
+          {tt('Gathering benchmark data from the network — check back soon.')}
+        </div>
+      </div>
+    );
+  }
+
+  const bucket = shown[Math.min(sel, shown.length - 1)];
+  const champ = bucket.champion || {};
+  const conf = benchConfidence(bucket.sampleCount || 0, minSample);
+  const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
+  const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
+  // v2.x: Avalon core voltage is a per-chip measured average, not a settable
+  // per-domain knob like the BitAxe — label it so nobody tries to type it in.
+  const isAvalon = /avalon/i.test(bucket.model || '');
+
+  const doCopy = (c) => {
+    // copy only the SETTINGS (inputs you type into the miner), never the outcomes.
+    // Avalon voltage isn't settable, so copy frequency only for it.
+    const text = isAvalon
+      ? `${tt('Frequency')}: ${c.freq} MHz`
+      : `${tt('Frequency')}: ${c.freq} MHz, ${tt('Core Voltage')}: ${c.coreVoltage != null ? c.coreVoltage + ' mV' : '—'}`;
+    try { navigator.clipboard && navigator.clipboard.writeText(text); } catch {}
+    setCopied(true); setTimeout(() => setCopied(false), 1800);
+  };
+  const onCopyClick = (c) => {
+    if (accepted) { doCopy(c); return; }
+    setPendingCopy(c); setDiscChecked(false); setShowDisc(true);
+  };
+  const acceptDisclaimer = () => {
+    if (!discChecked) return;
+    try { localStorage.setItem(LS_BENCH_DISCLAIMER, String(Date.now())); } catch {}
+    setAccepted(true); setShowDisc(false);
+    if (pendingCopy) { doCopy(pendingCopy); setPendingCopy(null); }
+  };
+  const saveAlias = (v) => {
+    const clean = (v || '').slice(0, 24).replace(/[^\w \-.]/g, '');
+    setAlias(clean); setEditAlias(false);
+    try { clean ? localStorage.setItem(LS_BENCH_ALIAS, clean) : localStorage.removeItem(LS_BENCH_ALIAS); } catch {}
+  };
+
+  const lbl = { fontFamily:'var(--fd)', fontSize:'0.4rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase' };
+  const val = { fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.74rem', color:'var(--text-1)' };
+
+  return (
+    <div style={{ marginBottom:'1.5rem' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'0.5rem', flexWrap:'wrap', gap:6 }}>
+        <div style={{ fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.2em', textTransform:'uppercase', color:'var(--amber)' }}>{tt('▸ Tuning Benchmarks')}</div>
+        {/* confidence slider */}
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <span style={{ ...lbl }}>{tt('Min sample')}: {minSample}</span>
+          <input type="range" min={2} max={25} value={minSample}
+            onChange={e => setMinSample(parseInt(e.target.value, 10))}
+            style={{ width:90, accentColor:'var(--amber)' }} />
+        </div>
+      </div>
+
+      {/* bucket picker chips */}
+      <div style={{ display:'flex', gap:5, marginBottom:10, flexWrap:'wrap' }}>
+        {shown.map((b, i) => (
+          <button key={i} onClick={() => setSel(i)} style={{
+            fontFamily:'var(--fd)', fontSize:'0.52rem', padding:'5px 10px', borderRadius:18,
+            border:'1px solid ' + (i === sel ? 'var(--amber)' : 'var(--border)'),
+            background: i === sel ? 'rgba(245,166,35,0.08)' : 'var(--bg-deep)',
+            color: i === sel ? 'var(--amber)' : 'var(--text-3)', cursor:'pointer' }}>
+            {bucketLabel(b)} <span style={{ opacity:0.7 }}>· {b.sampleCount}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* champion banner (A) */}
+      <div style={{ background:'linear-gradient(135deg,rgba(57,255,106,0.10),rgba(0,255,209,0.03))', border:'1px solid rgba(57,255,106,0.32)', borderRadius:11, padding:'12px 13px', marginBottom:12, position:'relative' }}>
+        <div style={{ fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.15em', color:'var(--green)', textTransform:'uppercase', marginBottom:6 }}>{tt('⚡ Most efficient · sustained')}</div>
+        <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champ.isOwn ? 'var(--cyan)' : 'var(--green)', marginBottom:2 }}>
+          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
+        </div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-2)', marginBottom:8 }}>
+          {bucket.model}{bucket.asic ? ' · ' + bucket.asic : ''}{bucket.boardVersion ? ' · ' + tt('rev') + ' ' + bucket.boardVersion : ''} · {bucket.sampleCount} {tt('miners ranked')}
+        </div>
+        <div style={{ display:'flex', alignItems:'baseline', gap:6, marginBottom:3 }}>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'1.7rem', color:'var(--green)', lineHeight:1 }}>{champ.jth}</span>
+          <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-3)' }}>J/TH</span>
+          <span style={{ marginLeft:'auto', fontFamily:'var(--fm)', fontSize:'0.5rem', color: conf.color }}>{tt(conf.label)}</span>
+        </div>
+        <div style={{ fontFamily:'var(--fm)', fontSize:'0.46rem', color:'var(--text-3)', marginBottom:10 }}>{tt('sustained ~10-min avg · stable rigs only')}</div>
+
+        {/* SETTINGS to copy — the knobs (set/target values) */}
+        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5 }}>
+          <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Settings to copy')}</span>
+          <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(245,166,35,0.16)', color:'var(--amber)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('SET / TARGET')}</span>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:11 }}>
+          <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
+            <div style={lbl}>{tt('Frequency')}</div>
+            <div style={{ ...val, color:'var(--amber)' }}>{champ.freq} MHz</div>
+            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{tt('enter in miner')}</div>
+          </div>
+          <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
+            <div style={lbl}>{tt('Core Voltage')}</div>
+            <div style={{ ...val, color:'var(--amber)' }}>{isAvalon && champ.coreVoltage != null ? '~' + champ.coreVoltage + ' mV' : (champ.coreVoltage != null ? champ.coreVoltage + ' mV' : '—')}</div>
+            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{isAvalon ? tt('per-chip avg · not directly settable') : tt('set / target')}</div>
+          </div>
+          {/* Fan — a MEASURED reading (usually auto), not a set knob: cyan value
+              (the app's measured color) distinguishes it from the amber set-values.
+              "—" when a rig reports no fan (fanless / passive). */}
+          <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
+            <div style={lbl}>{tt('Fan')}</div>
+            <div style={{ ...val, color:'var(--cyan)' }}>{champ.fanPct != null ? champ.fanPct + '%' : (champ.fanRpm != null ? fmtNum(champ.fanRpm) + ' rpm' : '—')}</div>
+            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{(champ.fanPct != null && champ.fanRpm != null) ? fmtNum(champ.fanRpm) + ' rpm' : '\u00A0'}</div>
+          </div>
+        </div>
+
+        {/* OUTCOMES — measured results */}
+        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5 }}>
+          <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Achieved outcomes')}</span>
+          <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(0,255,209,0.12)', color:'var(--cyan)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('MEASURED · AVG')}</span>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Hashrate')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.ths}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('J/TH')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.jth}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Temp')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.tempC != null ? champ.tempC + '°' : '—'}</div></div>
+          <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Reject')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.rejectPct != null ? champ.rejectPct + '%' : '—'}</div></div>
+        </div>
+      </div>
+
+      {/* leaderboard (B) — runners-up only. The champion (#1) is the hero card
+          above, so listing it again here just duplicated it (most visible when a
+          bucket has a single miner). Show ranks 2+ and hide the whole section
+          when there are no runners-up. */}
+      {(bucket.leaderboard || []).length > 1 && (
+      <>
+      <div style={{ fontFamily:'var(--fd)', fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--text-2)', textTransform:'uppercase', marginBottom:6 }}>{tt('Efficiency leaderboard')}</div>
+      {(bucket.leaderboard || []).slice(1).map((r, i) => (
+        <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
+          <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
+            {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
+            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}{r.fanPct != null ? ' · ' + r.fanPct + '% ' + tt('fan') : ''}</span>
+          </span>
+          <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
+          <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color:'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
+        </div>
+      ))}
+      </>
+      )}
+
+      {/* v2.x: accuracy caption — explains the averaging method so the numbers
+          aren't read as "wrong" when they differ from the miner's live UI. */}
+      <div style={{ marginTop:14, padding:'9px 11px', background:'rgba(245,166,35,0.05)', border:'1px solid var(--border)', borderRadius:8, display:'flex', gap:8 }}>
+        <span style={{ color:'var(--amber)', fontSize:'0.7rem', flexShrink:0 }}>ⓘ</span>
+        <p style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', lineHeight:1.6, color:'var(--text-2)' }}>{tt('These are sustained ~10-min averages from each miner\u2019s reported telemetry \u2014 they won\u2019t match the live, instant numbers in your miner\u2019s UI, which fluctuate constantly. Settings (freq, voltage) are the values to enter in your miner. Outcomes (hashrate, J/TH, temp) are measured results. Power is as the miner reports it (chip + board), not wall draw \u2014 a plug meter reads higher.')} <span style={{ color:'var(--text-1)' }}>{tt('This shares only your hardware model and these performance numbers \u2014 frequency, voltage, hashrate, J/TH, temp, and reject rate. Not your wallet address, IP, hostname, or worker names. You appear only as a random handle unless you set an alias.')}</span></p>
+      </div>
+
+      {/* inline risk one-liner (permanent) */}
+      <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--amber)', textAlign:'center', margin:'12px 0 6px', opacity:0.85, lineHeight:1.4 }}>
+        {tt('⚠ Settings are crowdsourced & unverified — applied at your own risk')}
+      </div>
+      <button onClick={() => onCopyClick(champ)} style={{
+        width:'100%', padding:9, borderRadius:7, cursor:'pointer',
+        border:'1px solid ' + (copied ? 'var(--green)' : 'var(--border-hot)'),
+        background:'transparent', color: copied ? 'var(--green)' : 'var(--amber)',
+        fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase' }}>
+        {copied ? tt('✓ Copied to clipboard') : tt('⬇ Copy champion\u2019s settings')}
+      </button>
+
+      {/* alias control */}
+      <div style={{ marginTop:10, fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-3)', textAlign:'center' }}>
+        {editAlias ? (
+          <span style={{ display:'inline-flex', gap:6, alignItems:'center' }}>
+            <input autoFocus defaultValue={alias} placeholder={tt('your alias')} maxLength={24}
+              onKeyDown={e => { if (e.key === 'Enter') saveAlias(e.target.value); }}
+              style={{ background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.55rem', padding:'3px 6px', width:120 }} />
+            <button onClick={e => saveAlias(e.target.previousSibling.value)} style={{ background:'none', border:'1px solid var(--border)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', padding:'3px 8px', cursor:'pointer' }}>{tt('Save')}</button>
+          </span>
+        ) : (
+          <button onClick={() => setEditAlias(true)} style={{ background:'none', border:'none', color:'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
+            {alias ? tt('Your alias') + ': ' + alias : tt('Set a leaderboard alias (optional)')}
+          </button>
+        )}
+      </div>
+
+      {/* disclaimer gate (one-time) */}
+      {showDisc && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(3,4,5,0.86)', backdropFilter:'blur(3px)', display:'flex', alignItems:'center', justifyContent:'center', padding:18, zIndex:300 }} onClick={e => e.target === e.currentTarget && setShowDisc(false)}>
+          <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border-hot)', borderRadius:14, padding:'17px 16px', maxWidth:380, boxShadow:'0 20px 50px rgba(0,0,0,0.8)' }}>
+            <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.82rem', color:'var(--amber)', marginBottom:11 }}>{'Tuning settings — use at your own risk'}</div>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('These settings are crowdsourced from other miners\u2019 hardware and shown for informational purposes only. Every chip, board, power supply, and cooling setup is different — settings that are stable on someone else\u2019s device may overheat, damage, destabilize, or shorten the life of yours.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('Overclocking and voltage changes carry inherent risk, including hardware failure, fire, property damage, or data loss. You are solely responsible for any changes you make to your equipment and for operating it safely.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('SoloStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
+            <div onClick={() => setDiscChecked(v => !v)} style={{ display:'flex', gap:9, alignItems:'flex-start', margin:'13px 0', cursor:'pointer' }}>
+              <div style={{ width:18, height:18, borderRadius:4, border:'1.5px solid ' + (discChecked ? 'var(--green)' : 'var(--border-hot)'), flexShrink:0, display:'grid', placeItems:'center', color:'var(--green)', fontSize:'0.7rem', background:'var(--bg-deep)' }}>{discChecked ? '✓' : ''}</div>
+              <span style={{ fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--text-1)' }}>{'I understand and accept these risks.'}</span>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setShowDisc(false)} style={{ flex:1, padding:9, borderRadius:7, fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.58rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer', border:'1px solid var(--border)', background:'transparent', color:'var(--text-2)' }}>{'Cancel'}</button>
+              <button onClick={acceptDisclaimer} disabled={!discChecked} style={{ flex:1, padding:9, borderRadius:7, fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.58rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor: discChecked ? 'pointer' : 'default', border:'none', background: discChecked ? 'var(--amber)' : 'var(--text-3)', color:'#000', opacity: discChecked ? 1 : 0.5 }}>{'Accept & Copy'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   const [showFiltered, setShowFiltered] = useState(false);
 
@@ -11886,6 +12269,40 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   // When totalStrikes increments (any peer found a block), show a
   // celebration banner that animates in for ~6 seconds, then fades.
   const [strikeBannerShown, setStrikeBannerShown] = useState(false);
+  const [pulseTab, setPulseTab] = useState('network'); // v2.x: NETWORK | BENCHMARKS
+  // v1.11.66: per-visit disclaimer on the Top Strikers (benchmarks) tab. The
+  // disclaimer pops on EACH fresh tap of the tab; acknowledging it reveals the
+  // benchmarks for the rest of that visit (content is NOT withheld until the
+  // 3rd time). It re-arms and pops again on the next visit until it has been
+  // acknowledged 3 separate times, after which it's remembered for good and
+  // never shown again (short of a reinstall, which clears localStorage).
+  // NOTE: this uses its OWN dedicated key (ss_topstrikers_seen_v1), separate
+  // from the copy-gate's ss_bench_disclaimer_v1. They were sharing a key, and
+  // the copy-gate writes a Date.now() timestamp — which parseInt's to a huge
+  // number (>=3) and made this gate read as already-learned, so it never fired
+  // for anyone who'd accepted the copy disclaimer. Dedicated key = clean count,
+  // starts at 0, fires correctly for everyone.
+  const BENCH_ACCEPTS_REQUIRED = 3;
+  const [benchCount, setBenchCount] = useState(() => {
+    try { return parseInt(localStorage.getItem('ss_topstrikers_seen_v1') || '0', 10) || 0; } catch { return 0; }
+  });
+  const [benchChecked, setBenchChecked] = useState(false);
+  const [benchAckedView, setBenchAckedView] = useState(false); // acknowledged during THIS tab visit
+  const benchLearned = benchCount >= BENCH_ACCEPTS_REQUIRED;    // remembered for good
+  const benchAccepted = benchLearned || benchAckedView;         // => benchmarks content is visible
+  const acceptBenchGate = () => {
+    if (!benchChecked) return;
+    const next = benchCount + 1;
+    setBenchCount(next);
+    setBenchAckedView(true);   // reveal the benchmarks for the rest of this visit
+    setBenchChecked(false);
+    try { localStorage.setItem('ss_topstrikers_seen_v1', String(next)); } catch {}
+  };
+  // Re-arm the gate when the user leaves the benchmarks tab, so the next fresh
+  // tap pops the disclaimer again — until it's been seen 3 times (learned).
+  useEffect(() => {
+    if (pulseTab !== 'benchmarks') { setBenchAckedView(false); setBenchChecked(false); }
+  }, [pulseTab]);
   const prevStrikesRef = useRef(totalStrikes);
   useEffect(() => {
     if (totalStrikes > prevStrikesRef.current) {
@@ -12243,7 +12660,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
               {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
             </span>
             {geo && (
-              <span style={{fontSize:'0.85rem', lineHeight:1}} title={geo.label}>{geo.flag}</span>
+              <FlagGlyph geo={geo} size={14} emojiStyle={{fontSize:'0.85rem', lineHeight:1}} />
             )}
             {ranked.length >= 2 && (
               <span style={{
@@ -12308,7 +12725,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
         <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
           <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
             <span style={{fontSize:16,color:'var(--amber)'}}>📡</span>
-            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('Pulse Strikers')}</span>
+            <span style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{tt('Pulse')}</span>
             {/* v1.11.2: help icon → opens onboarding */}
             <button
               onClick={() => setShowOnboard(true)}
@@ -12345,6 +12762,43 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
         </div>
 
         <div style={{padding:'1rem 1.25rem 4.5rem 1.25rem'}}>
+
+          {/* v2.x: tab bar — NETWORK | BENCHMARKS */}
+          <div style={{display:'flex', gap:4, marginBottom:'1rem', borderBottom:'1px solid var(--border)'}}>
+            {[['network','Strikers'],['benchmarks','Top Strikers']].map(([id,label])=>(
+              <button key={id} onClick={()=>setPulseTab(id)} style={{
+                flex:1, padding:'9px 8px', background:'transparent', border:'none',
+                borderBottom: pulseTab===id ? '2px solid var(--amber)' : '2px solid transparent',
+                color: pulseTab===id ? 'var(--amber)' : 'var(--text-2)',
+                fontFamily:'var(--fd)', fontSize:'0.62rem', fontWeight:700, letterSpacing:'0.12em',
+                textTransform:'uppercase', cursor:'pointer',
+              }}>{tt(label)}</button>
+            ))}
+          </div>
+
+          {pulseTab==='benchmarks' && (benchAccepted
+            ? <BenchmarkSection tt={tt} networkStats={networkStats} />
+            : (
+              /* v1.11.65: hard gate — replaces the entire benchmarks view until
+                 accepted. Tab bar above stays tappable (switch back to Strikers
+                 to leave); there is intentionally no Cancel / backdrop-dismiss. */
+              <div style={{ padding:'8px 2px 4px' }}>
+                <div style={{ background:'var(--bg-raised)', border:'1px solid var(--border-hot)', borderRadius:14, padding:'17px 16px', boxShadow:'0 10px 30px rgba(0,0,0,0.5)' }}>
+                  <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.82rem', color:'var(--amber)', marginBottom:11 }}>{'Tuning settings — use at your own risk'}</div>
+                  <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('These settings are crowdsourced from other miners\u2019 hardware and shown for informational purposes only. Every chip, board, power supply, and cooling setup is different — settings that are stable on someone else\u2019s device may overheat, damage, destabilize, or shorten the life of yours.')}</p>
+                  <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('Overclocking and voltage changes carry inherent risk, including hardware failure, fire, property damage, or data loss. You are solely responsible for any changes you make to your equipment and for operating it safely.')}</p>
+                  <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('SoloStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
+                  <div onClick={() => setBenchChecked(v => !v)} style={{ display:'flex', gap:9, alignItems:'flex-start', margin:'13px 0', cursor:'pointer' }}>
+                    <div style={{ width:18, height:18, borderRadius:4, border:'1.5px solid ' + (benchChecked ? 'var(--green)' : 'var(--border-hot)'), flexShrink:0, display:'grid', placeItems:'center', color:'var(--green)', fontSize:'0.7rem', background:'var(--bg-deep)' }}>{benchChecked ? '✓' : ''}</div>
+                    <span style={{ fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--text-1)' }}>{'I understand and accept these risks.'}</span>
+                  </div>
+                  <button onClick={acceptBenchGate} disabled={!benchChecked} style={{ width:'100%', padding:10, borderRadius:7, fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.6rem', letterSpacing:'0.08em', textTransform:'uppercase', cursor: benchChecked ? 'pointer' : 'default', border:'none', background: benchChecked ? 'var(--amber)' : 'var(--text-3)', color:'#000', opacity: benchChecked ? 1 : 0.5 }}>{`Accept & View Benchmarks · ${Math.min(benchCount + 1, BENCH_ACCEPTS_REQUIRED)} of ${BENCH_ACCEPTS_REQUIRED}`}</button>
+                  <div style={{ marginTop:8, textAlign:'right', fontFamily:'var(--fm)', fontSize:'0.5rem', letterSpacing:'0.04em', lineHeight:1.4, color:'var(--text-3)' }}>{benchCount >= BENCH_ACCEPTS_REQUIRED - 1 ? 'Last time message appears' : 'Appears 3 separate times, then not again'}</div>
+                </div>
+              </div>
+            ))}
+
+          <div style={{display: pulseTab==='network' ? 'block' : 'none'}}>
 
           {/* v1.11.6: strike celebration banner — fires when totalStrikes
               increments (any peer found a block). Shows for ~6s then fades. */}
@@ -12593,6 +13047,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
             </div>
           </div>
 
+          </div>{/* /network tab pane */}
         </div>
       </div>
 
@@ -12676,7 +13131,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
                   }}>
                     {isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`}
                   </span>
-                  {geo && <span style={{fontSize:'1.1rem'}}>{geo.flag}</span>}
+                  {geo && <FlagGlyph geo={geo} size={18} emojiStyle={{fontSize:'1.1rem'}} />}
                   <span style={{
                     color:'rgba(var(--amber-rgb),0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
                     background:'rgba(var(--amber-rgb),0.1)', border:'1px solid rgba(var(--amber-rgb),0.2)',
@@ -13831,13 +14286,22 @@ function PoolAlignmentBlock({ worker }) {
   );
 }
 
-function LiveStatsBlock({ worker }) {
+function LiveStatsBlock({ tt = (x) => x, worker }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showChips, setShowChips] = useState(false);
   const live = worker.live;
   if (!live) return null;
   // Hide if there's truly nothing to show (all fields null)
   const hasAny = (live.tempC != null) || (live.fanRpm != null) || (live.fanPct != null)
               || (live.hashrateReported != null) || (live.hwErrors != null)
               || (live.uptimeSec != null) || (live.firmwareVersion != null)
+              || (live.frequencyMhz != null) || (live.coreVoltageMv != null)
+              || (live.inputVoltageV != null) || (live.powerW != null) || (live.efficiencyJTH != null)
+              || (live.rejectPct != null) || (live.bestDiff != null) || (live.expectedHashrate != null)
+              || (live.tempTargetC != null) || (live.inputCurrentA != null) || (live.overclockEnabled != null)
+              || (live.hr1h != null) || (live.hr1d != null) || (live.stratumConnected != null)
+              || (live.advanced && Object.keys(live.advanced).length > 0)
+              || (Array.isArray(live.chipTemps) && live.chipTemps.length > 0) || (live.outletTempC != null)
               || (Array.isArray(live.tempDetails) && live.tempDetails.length > 0);
   if (!hasAny) return null;
 
@@ -13869,11 +14333,11 @@ function LiveStatsBlock({ worker }) {
 
   return (
     <div style={section}>
-      <div style={secTitle}>▸ Live telemetry</div>
+      <div style={secTitle}>{tt('▸ Live telemetry')}</div>
 
       {t != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Temperature</span>
+          <span style={kvLabel}>{tt('Temperature')}</span>
           <span style={{...kvVal, color: tColor, fontWeight:600}}>{Math.round(t)}°C</span>
         </div>
       )}
@@ -13884,19 +14348,75 @@ function LiveStatsBlock({ worker }) {
       )}
       {fanLine && (
         <div style={kvRow}>
-          <span style={kvLabel}>Fan</span>
+          <span style={kvLabel}>{tt('Fan')}</span>
           <span style={kvVal}>{fanLine}</span>
         </div>
       )}
       {hrLine && (
         <div style={kvRow}>
-          <span style={kvLabel}>Reported Hashrate</span>
+          <span style={kvLabel}>{tt('Reported Hashrate')}</span>
           <span style={{...kvVal, color: 'var(--cyan)'}}>{hrLine}</span>
+        </div>
+      )}
+      {live.frequencyMhz != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Frequency')}</span>
+          <span style={kvVal}>{Math.round(live.frequencyMhz)} MHz</span>
+        </div>
+      )}
+      {live.coreVoltageMv != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Core Voltage')}</span>
+          <span style={kvVal}>
+            {live.coreVoltageSetMv != null && Math.round(live.coreVoltageSetMv) !== Math.round(live.coreVoltageMv)
+              ? `${Math.round(live.coreVoltageSetMv)} → ${Math.round(live.coreVoltageMv)} mV`
+              : `${Math.round(live.coreVoltageMv)} mV`}
+          </span>
+        </div>
+      )}
+      {live.inputVoltageV != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Input Voltage')}</span>
+          <span style={kvVal}>{live.inputVoltageV.toFixed(1)} V</span>
+        </div>
+      )}
+      {live.powerW != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Power')}</span>
+          <span style={kvVal}>{live.powerW.toFixed(1)} W</span>
+        </div>
+      )}
+      {live.efficiencyJTH != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Efficiency')}</span>
+          <span style={{...kvVal, color: 'var(--amber)'}}>{live.efficiencyJTH.toFixed(1)} J/TH</span>
+        </div>
+      )}
+      {live.expectedHashrate != null && live.hashrateReported != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Actual vs Expected')}</span>
+          <span style={{...kvVal, color: live.hashrateReported >= live.expectedHashrate ? 'var(--green)' : 'var(--amber)'}}>
+            {Math.round((live.hashrateReported / live.expectedHashrate) * 100)}%
+          </span>
+        </div>
+      )}
+      {live.rejectPct != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Reject %')}</span>
+          <span style={{...kvVal, color: live.rejectPct > 2 ? 'var(--red)' : live.rejectPct > 0.5 ? 'var(--amber)' : 'var(--green)'}}>
+            {live.rejectPct.toFixed(2)}%
+          </span>
+        </div>
+      )}
+      {live.bestDiff != null && live.bestDiff > 0 && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Best Share')}</span>
+          <span style={{...kvVal, color: 'var(--cyan)'}}>{fmtDiff(live.bestDiff)}</span>
         </div>
       )}
       {live.hwErrors != null && (
         <div style={kvRow}>
-          <span style={kvLabel}>Hardware Errors</span>
+          <span style={kvLabel}>{tt('Hardware Errors')}</span>
           <span style={{...kvVal, color: live.hwErrors > 0 ? 'var(--amber)' : 'var(--text-2)'}}>
             {fmtNum(live.hwErrors)}
           </span>
@@ -13904,21 +14424,115 @@ function LiveStatsBlock({ worker }) {
       )}
       {uptimeLine && (
         <div style={kvRow}>
-          <span style={kvLabel}>Miner Uptime</span>
+          <span style={kvLabel}>{tt('Miner Uptime')}</span>
           <span style={kvVal}>{uptimeLine}</span>
         </div>
       )}
       {live.firmwareVersion && (
         <div style={kvRow}>
-          <span style={kvLabel}>Firmware</span>
+          <span style={kvLabel}>{tt('Firmware')}</span>
           <span style={{...kvVal, fontFamily:'var(--fm)', fontSize:'0.65rem'}}>{live.firmwareVersion}</span>
         </div>
+      )}
+      {/* ── Tier 2 operator telemetry ── */}
+      {live.tempTargetC != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Fan Target')}</span><span style={kvVal}>{Math.round(live.tempTargetC)}°C</span></div>
+      )}
+      {live.inputCurrentA != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Input Current')}</span><span style={kvVal}>{live.inputCurrentA.toFixed(2)} A</span></div>
+      )}
+      {live.overclockEnabled != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Overclock')}</span><span style={{...kvVal, color: live.overclockEnabled ? 'var(--amber)' : 'var(--text-2)'}}>{live.overclockEnabled ? tt('On') : tt('Off')}</span></div>
+      )}
+      {live.overheatMode === true && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Overheat Mode')}</span><span style={{...kvVal, color:'var(--red)'}}>{tt('On')}</span></div>
+      )}
+      {(live.hr1h != null || live.hr1d != null) && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Avg 1h / 24h')}</span>
+          <span style={{...kvVal, fontSize:'0.62rem'}}>{live.hr1h != null ? fmtHr(live.hr1h) : '—'} / {live.hr1d != null ? fmtHr(live.hr1d) : '—'}</span>
+        </div>
+      )}
+      {live.stratumConnected != null && (
+        <div style={kvRow}>
+          <span style={kvLabel}>{tt('Pool Link')}</span>
+          <span style={{...kvVal, color: live.stratumConnected ? 'var(--green)' : 'var(--red)'}}>
+            {live.stratumConnected ? tt('connected') : tt('disconnected')}{live.pingRttMs != null ? ` · ${live.pingRttMs}ms` : ''}
+          </span>
+        </div>
+      )}
+      {/* ── Avalon per-chip telemetry ── */}
+      {live.outletTempC != null && (
+        <div style={kvRow}><span style={kvLabel}>{tt('Outlet Temp')}</span><span style={kvVal}>{Math.round(live.outletTempC)}°C</span></div>
+      )}
+      {Array.isArray(live.chipTemps) && live.chipTemps.length > 0 && (
+        <>
+          <div
+            onClick={() => setShowChips(v => !v)}
+            style={{ ...kvRow, cursor:'pointer' }}
+          >
+            <span style={kvLabel}>{showChips ? '▾' : '▸'} {tt('Chip Details')}</span>
+            <span style={{...kvVal, fontSize:'0.62rem', color:'var(--text-2)'}}>
+              {tt('avg')} {live.chipTempAvg != null ? Math.round(live.chipTempAvg) : '–'}°C / {tt('max')} {live.chipTempMax != null ? live.chipTempMax : '–'}°C{live.chipVoltAvg != null ? ` · ${live.chipVoltAvg} mV` : ''}
+            </span>
+          </div>
+          {showChips && (
+            <div style={{ padding:'0.3rem 0 0.5rem' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.15rem 0.5rem', fontFamily:'var(--fm)', fontSize:'0.58rem' }}>
+                <span style={{ color:'var(--text-3)', letterSpacing:'0.06em' }}>{tt('Chip')}</span>
+                <span style={{ color:'var(--text-3)', letterSpacing:'0.06em', textAlign:'right' }}>{tt('Temp')}</span>
+                <span style={{ color:'var(--text-3)', letterSpacing:'0.06em', textAlign:'right' }}>{tt('Voltage')}</span>
+                {live.chipTemps.map((t, i) => {
+                  const mv = Array.isArray(live.chipVolts) ? live.chipVolts[i] : null;
+                  const tColor = t >= TEMP_RED_C ? 'var(--red)' : t >= TEMP_AMBER_C ? 'var(--amber)' : 'var(--green)';
+                  return (
+                    <React.Fragment key={i}>
+                      <span style={{ color:'var(--text-2)' }}>{i + 1}</span>
+                      <span style={{ color: tColor, textAlign:'right' }}>{Math.round(t)}°C</span>
+                      <span style={{ color:'var(--text-2)', textAlign:'right' }}>{mv != null ? `${mv} mV` : '—'}</span>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      {/* ── Tier 3: Advanced / System (operator-only, collapsed) ── */}
+      {live.advanced && Object.keys(live.advanced).length > 0 && (
+        <>
+          <div
+            onClick={() => setShowAdvanced(v => !v)}
+            style={{ ...kvRow, cursor:'pointer', marginTop:'0.5rem', borderTop:'1px solid var(--border)', paddingTop:'0.5rem' }}
+          >
+            <span style={{...kvLabel, color:'var(--text-2)'}}>{showAdvanced ? '▾' : '▸'} {tt('Advanced / System')}</span>
+            <span style={{...kvVal, color:'var(--text-3)', fontSize:'0.6rem'}}>{showAdvanced ? tt('hide') : tt('show')}</span>
+          </div>
+          {showAdvanced && Object.entries(live.advanced).map(([k, v]) => (
+            <div key={k} style={kvRow}>
+              <span style={{...kvLabel, textTransform:'none', letterSpacing:'0.02em', color:'var(--text-3)'}}>{tt(ADV_LABELS[k] || k)}</span>
+              <span style={{...kvVal, fontFamily:'var(--fm)', fontSize:'0.6rem', color:'var(--text-2)', wordBreak:'break-all', textAlign:'right', maxWidth:'60%'}}>{String(v)}</span>
+            </div>
+          ))}
+        </>
       )}
     </div>
   );
 }
 
-function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
+// Tier 3 advanced-field label map (operator-only panel). Keys are the raw
+// live.advanced field names; values are human labels routed through tt().
+const ADV_LABELS = {
+  hostname:'Hostname', ssid:'Wi-Fi SSID', wifiRSSI:'Wi-Fi Signal', networkMode:'Network Mode',
+  macAddr:'MAC Address', ethIPv4:'IP Address', freeHeap:'Free Memory', lastResetReason:'Last Reset',
+  runningPartition:'Partition', idfVersion:'ESP-IDF', axeOSVersion:'AxeOS Version', stratumUser:'Stratum User',
+  stratumURL:'Stratum URL', pid:'Fan PID', jobInterval:'Job Interval', smallCoreCount:'Small Cores',
+  asicCount:'ASIC Count', defaultTheme:'Device Theme', display:'Display', freeHeapInt:'Free Heap (int)',
+  proxyDifficulty:'Proxy Difficulty', army:'Army Mode',
+  perChainFreq:'Per-chain Freq', siliconBin:'Silicon Bin', workMode:'Work Mode',
+};
+
+function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
   const [noteVal, setNoteVal] = useState(notes[worker.name] || '');
@@ -13953,12 +14567,12 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
     return 'var(--red)';
   };
   const sharesPerMin = w.hashrate > 0 ? (w.hashrate / 4294967296 * 60).toFixed(1) : '0';
-  const healthMap = { green:'🟢 GREEN · fresh shares', amber:'🟡 AMBER · stale or rejects', red:'🔴 RED · offline or failing' };
+  const healthMap = { green:'🟢 '+tt('GREEN · fresh shares'), amber:'🟡 '+tt('AMBER · stale or rejects'), red:'🔴 '+tt('RED · offline or failing') };
   const freshness = (() => {
     const age = Date.now() - (w.lastSeen || 0);
-    if (age < 2*60*1000) return 'fresh (<2m)';
-    if (age < 10*60*1000) return `stale (${Math.floor(age/60000)}m)`;
-    return `offline (${Math.floor(age/60000)}m)`;
+    if (age < 2*60*1000) return tt('fresh (<2m)');
+    if (age < 10*60*1000) return `${tt('stale')} (${Math.floor(age/60000)}m)`;
+    return `${tt('offline')} (${Math.floor(age/60000)}m)`;
   })();
 
   const host = loadStratumHost() || 'umbrel.local';
@@ -14034,7 +14648,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
               <span style={{fontFamily:'var(--fd)',fontSize:'1.1rem',fontWeight:700,color:'var(--amber)',letterSpacing:'0.05em'}}>{displayName(w.name, aliases)}</span>
             </div>
             <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:6}}>
-              {w.minerType || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
+              {minerLabel(w) || 'Unknown miner'}{w.minerVendor && ` · ${w.minerVendor}`}
             </div>
             <div style={{display:'inline-flex',alignItems:'center',gap:5,fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase'}}>
               <span style={{width:6,height:6,borderRadius:'50%',background:on?'var(--green)':'var(--red)',boxShadow:`0 0 6px ${on?'var(--green)':'var(--red)'}`,animation:on?'pulse 2s ease-in-out infinite':'none',willChange:on?'opacity':'auto'}}/>
@@ -14047,16 +14661,16 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
 
         <div style={{padding:'1rem 1.25rem'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
-            <div style={heroBox}><div style={heroLbl}>Hashrate</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Best Diff</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Work Done</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
-            <div style={heroBox}><div style={heroLbl}>Last Share</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Hashrate')}</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Best Diff')}</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Work Done')}</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
+            <div style={heroBox}><div style={heroLbl}>{tt('Last Share')}</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
 
           {/* v1.9.0: Pool alignment — verify miner is pointed at SoloStrike via TCP 4028 */}
           <PoolAlignmentBlock worker={w}/>
           {/* v1.9.0: Live telemetry — temps, fans, hardware errors from the miner's local API */}
-          <LiveStatsBlock worker={w}/>
+          <LiveStatsBlock tt={tt} worker={w}/>
 
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
@@ -14070,7 +14684,7 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
               }}>
                 <span style={{fontSize:22, flexShrink:0}}>🌐</span>
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>OPEN MINER WEB UI</div>
+                  <div style={{fontFamily:'var(--fd)', fontSize:'0.55rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'var(--cyan)', marginBottom:2}}>{tt('OPEN MINER WEB UI')}</div>
                   <div style={{fontFamily:'var(--fm)', fontSize:'0.82rem', color:'var(--text-1)', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{minerUrl}</div>
                 </div>
                 <span style={{color:'var(--cyan)', fontSize:16, fontFamily:'var(--fm)', flexShrink:0}}>↗</span>
@@ -14079,31 +14693,31 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
           )}
 
           <div style={section}>
-            <div style={secTitle}>▸ Shares</div>
-            <div style={kvRow}><span style={kvLabel}>Work Accepted</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
+            <div style={secTitle}>{tt('▸ Shares')}</div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Work Accepted')}</span><span style={{...kvVal,color:'var(--green)'}}>{fmtDiff(work)}</span></div>
             {workRej > 0 && (
               <>
-                <div style={kvRow}><span style={kvLabel}>Work Rejected</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Accept Rate</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Work Rejected')}</span><span style={{...kvVal,color:'var(--red)'}}>{fmtDiff(workRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Accept Rate')}</span><span style={{...kvVal,color:parseFloat(acceptRate)>99.9?'var(--green)':'var(--amber)'}}>{acceptRate}%</span></div>
               </>
             )}
             {se && seTot > 0 && (
               <>
-                <div style={kvRow}><span style={kvLabel}>Accepted (session)</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Rejected (session)</span><span style={{...kvVal,color:seRej > 0 ? 'var(--red)' : 'var(--text-2)'}}>{fmtNum(seRej)}</span></div>
-                <div style={kvRow}><span style={kvLabel}>Stale (session)</span><span style={{...kvVal,color:seStale > 0 ? 'var(--amber)' : 'var(--text-2)'}}>{fmtNum(seStale)}</span></div>
-                {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>Accept Rate (session)</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
-                {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>Best Share (session)</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
+                <div style={kvRow}><span style={kvLabel}>{tt('Accepted (session)')}</span><span style={{...kvVal,color:'var(--green)'}}>{fmtNum(seAcc)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Rejected (session)')}</span><span style={{...kvVal,color:seRej > 0 ? 'var(--red)' : 'var(--text-2)'}}>{fmtNum(seRej)}</span></div>
+                <div style={kvRow}><span style={kvLabel}>{tt('Stale (session)')}</span><span style={{...kvVal,color:seStale > 0 ? 'var(--amber)' : 'var(--text-2)'}}>{fmtNum(seStale)}</span></div>
+                {seAcceptRate != null && <div style={kvRow}><span style={kvLabel}>{tt('Accept Rate (session)')}</span><span style={{...kvVal,color:parseFloat(seAcceptRate)>=99.9?'var(--green)':parseFloat(seAcceptRate)>=99?'var(--amber)':'var(--red)'}}>{seAcceptRate}%</span></div>}
+                {se.bestSdiff > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Best Share (session)')}</span><span style={{...kvVal,color:'var(--amber)'}}>{fmtDiff(se.bestSdiff)}</span></div>}
               </>
             )}
-            {raw > 0 && <div style={kvRow}><span style={kvLabel}>Raw Shares</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
-            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>Raw Rejected</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
-            <div style={kvRow}><span style={kvLabel}>Shares/min (est)</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
+            {raw > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Raw Shares')}</span><span style={kvVal}>{fmtNum(raw)}</span></div>}
+            {rawRej > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Raw Rejected')}</span><span style={kvVal}>{fmtNum(rawRej)}</span></div>}
+            <div style={kvRow}><span style={kvLabel}>{tt('Shares/min (est)')}</span><span style={{...kvVal,color:'var(--cyan)'}}>{sharesPerMin}</span></div>
           </div>
 
           {seReasonRows.length > 0 && (
             <div style={section}>
-              <div style={secTitle}>▸ Reject Reasons</div>
+              <div style={secTitle}>{tt('▸ Reject Reasons')}</div>
               {seReasonRows.map(([reason, count]) => (
                 <div key={reason} style={kvRow}>
                   <span style={{...kvLabel,textTransform:'none',letterSpacing:'0.02em',color:classifySeReason(reason)}}>{reason}</span>
@@ -14112,18 +14726,18 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
               ))}
               {se && se.lastRejectAt && (
                 <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:'0.4rem'}}>
-                  Last reject: {fmtAgoShort(se.lastRejectAt)}
+                  {tt('Last reject')}: {fmtAgoShort(se.lastRejectAt)}
                 </div>
               )}
             </div>
           )}
 
           <div style={section}>
-            <div style={secTitle}>▸ Connection</div>
-            <div style={kvRow}><span style={kvLabel}>ASIC Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
-            <div style={kvRow}><span style={kvLabel}>Hobby Port</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
+            <div style={secTitle}>{tt('▸ Connection')}</div>
+            <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
             <div style={kvRow}>
-              <span style={kvLabel}>Miner IP</span>
+              <span style={kvLabel}>{tt('Miner IP')}</span>
               {w.ip ? (
                 <a href={`http://${w.ip}`} target="_blank" rel="noopener noreferrer" style={{...kvVal, color:'var(--cyan)', textDecoration:'underline', cursor:'pointer', fontWeight:600}}>
                   {w.ip} ↗
@@ -14132,39 +14746,39 @@ function WorkerDetailModal({ worker, onClose, aliases, onAliasesChange, notes, o
                 <span style={{...kvVal, color:'var(--text-3)'}}>— <span style={{fontSize:'0.6rem'}}>(waiting for auth)</span></span>
               )}
             </div>
-            <div style={kvRow}><span style={kvLabel}>Worker User</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Worker User')}</span><span style={{...kvVal,fontSize:'0.62rem'}} title={w.name}>{w.name.length>32?w.name.slice(0,12)+'…'+w.name.slice(-16):w.name}</span></div>
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Health</div>
-            <div style={kvRow}><span style={kvLabel}>Status</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
-            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>Reject Ratio</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
-            <div style={kvRow}><span style={kvLabel}>Share Freshness</span><span style={kvVal}>{freshness}</span></div>
+            <div style={secTitle}>{tt('▸ Health')}</div>
+            <div style={kvRow}><span style={kvLabel}>{tt('Status')}</span><span style={kvVal}>{healthMap[w.health] || '—'}</span></div>
+            {workRej > 0 && <div style={kvRow}><span style={kvLabel}>{tt('Reject Ratio')}</span><span style={{...kvVal,color:parseFloat(rejectRatio)<1?'var(--green)':'var(--amber)'}}>{rejectRatio}%</span></div>}
+            <div style={kvRow}><span style={kvLabel}>{tt('Share Freshness')}</span><span style={kvVal}>{freshness}</span></div>
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Options</div>
+            <div style={secTitle}>{tt('▸ Options')}</div>
             <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Display Name</div>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>{tt('Display Name')}</div>
               <input type="text" value={aliasVal} placeholder={stripAddr(w.name)} maxLength={32} onChange={e=>{setAliasVal(e.target.value);setDirty(true);}} style={inputStyle}/>
             </div>
             <div style={{marginBottom:'0.6rem'}}>
-              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>Notes (private)</div>
-              <textarea rows={2} value={noteVal} placeholder="e.g. living room, next to router" maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
+              <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:4}}>{tt('Notes (private)')}</div>
+              <textarea rows={2} value={noteVal} placeholder={tt("e.g. living room, next to router")} maxLength={200} onChange={e=>{setNoteVal(e.target.value);setDirty(true);}} style={{...inputStyle,resize:'vertical',minHeight:50}}/>
             </div>
             {dirty && (
-              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>Save Changes</button>
+              <button onClick={save} style={{width:'100%',padding:'0.6rem',background:'var(--amber)',color:'#000',border:'none',fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>{tt('Save Changes')}</button>
             )}
           </div>
 
           <div style={section}>
-            <div style={secTitle}>▸ Actions</div>
+            <div style={secTitle}>{tt('▸ Actions')}</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?'✓ Copied':'Copy ASIC URL'}</button>
-              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?'✓ Copied':'Copy Hobby URL'}</button>
-              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?'✓ Copied':'Copy Miner IP'}</button>}
-              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?'✓ Copied':'Copy Workername'}</button>
-              <button onClick={exportCsv} style={btn}>⬇ Export CSV</button>
+              <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?tt('✓ Copied'):tt('Copy ASIC URL')}</button>
+              <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?tt('✓ Copied'):tt('Copy Hobby URL')}</button>
+              {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?tt('✓ Copied'):tt('Copy Miner IP')}</button>}
+              <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?tt('✓ Copied'):tt('Copy Workername')}</button>
+              <button onClick={exportCsv} style={btn}>⬇ {tt('Export CSV')}</button>
             </div>
           </div>
         </div>
@@ -14460,6 +15074,13 @@ export default function App() {
     savePulseAnim(v);
     setPulseAnim(v);
   }, []);
+  // v2.0.x: "rebuild pulse" remount key. Bumping this changes the PulsePanel's
+  // React key, which destroys + recreates the whole instance — the exact same
+  // fresh-mount the desktop pop-out relies on to build the globe, but triggered
+  // in place so it works on mobile AND desktop. A new instance gets fresh refs
+  // and re-runs every renderer-creation effect from scratch.
+  const [pulseRebuildKey, setPulseRebuildKey] = useState(0);
+  const onPulseRebuild = useCallback(() => setPulseRebuildKey(k => k + 1), []);
   const [huntAnim, setHuntAnim] = useState(() => loadHuntAnim());
   const onHuntAnimChange = useCallback((v) => {
     saveHuntAnim(v);
@@ -15040,12 +15661,14 @@ export default function App() {
       hashrate={poolState?.hashrate?.current||0}
     />,
     pulse: <PulsePanel
+      key={'pulse-'+pulseRebuildKey}
       networkStats={poolState?.networkStats}
       onOpenSettings={()=>setShowSettings(true)}
       onOpenStrikers={()=>setShowStrikers(true)}
       pulseAnim={pulseAnim}
       performanceMode={performanceMode}
       onPulseAnimChange={onPulseAnimChange}
+      onRebuild={onPulseRebuild}
       poolPin={poolPin}
       onPoolPinChange={onPoolPinChange}
       lastShareAt={poolState?.shares?.lastShareAt}
@@ -15073,15 +15696,15 @@ export default function App() {
     recent: <RecentBlocksPanel tt={tt} netBlocks={poolState?.netBlocks}/>,
     health: <HealthStatusCard tt={tt} onOpen={(snap) => setHealthDetailSnapshot(snap)}/>,
     // ── v1.12.0 analytics cards ───────────────────────────────────────────
-    hashwindows: <PoolHashrateWindows pool={poolState?.pool} themeKey={themeId} />,
-    spswindows:  <SpsWindows pool={poolState?.pool} />,
-    connstates:  <ConnectionStates pool={poolState?.pool} />,
-    besttrend:   <BestShareTrend snapshots={poolState?.snapshots} bestHistory={poolState?.shares?.bestHistory} themeKey={themeId} />,
-    effort:      <BlockEffortPanel snapshots={poolState?.snapshots} sharesThisRound={Math.max(0,(poolState?.shares?.accepted||0)-(poolState?._sharesAtLastBlock||0))} networkDifficulty={poolState?.network?.difficulty} />,
-    stability:   <HashrateStability hashrate={poolState?.hashrate} themeKey={themeId} />,
-    rejects:     <RejectTrend shares={poolState?.shares} />,
-    fleeteff:    <FleetEfficiency workers={workers} />,
-    reliability: <PoolReliability pool={poolState?.pool} workers={workers} />,
+    hashwindows: <PoolHashrateWindows tt={tt} pool={poolState?.pool} themeKey={themeId} />,
+    spswindows:  <SpsWindows tt={tt} pool={poolState?.pool} />,
+    connstates:  <ConnectionStates tt={tt} pool={poolState?.pool} workers={workers} />,
+    besttrend:   <BestShareTrend tt={tt} snapshots={poolState?.snapshots} bestHistory={poolState?.shares?.bestHistory} themeKey={themeId} />,
+    effort:      <BlockEffortPanel tt={tt} snapshots={poolState?.snapshots} sharesThisRound={Math.max(0,(poolState?.shares?.accepted||0)-(poolState?._sharesAtLastBlock||0))} networkDifficulty={poolState?.network?.difficulty} />,
+    stability:   <HashrateStability tt={tt} hashrate={poolState?.hashrate} themeKey={themeId} />,
+    rejects:     <RejectTrend tt={tt} shares={poolState?.shares} />,
+    fleeteff:    <FleetEfficiency tt={tt} workers={workers} />,
+    reliability: <PoolReliability tt={tt} pool={poolState?.pool} workers={workers} />,
   };
 
   const visibleSet = new Set(minimalMode ? MINIMAL_PRESET : visibleCards);
@@ -15211,7 +15834,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v2.0.2 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v2.0.3 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -15225,7 +15848,7 @@ export default function App() {
       <OfflineToasts workers={workers} aliases={aliases}/>
       <HotMinerBanner workers={workers} aliases={aliases}/>
       {selectedWorker && (
-        <WorkerDetailModal worker={selectedWorker} onClose={()=>setSelectedWorker(null)}
+        <WorkerDetailModal tt={tt} worker={selectedWorker} onClose={()=>setSelectedWorker(null)}
           aliases={aliases} onAliasesChange={onAliasesChange}
           notes={notes} onNotesChange={onNotesChange}/>
       )}
