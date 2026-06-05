@@ -4,6 +4,9 @@
 
 const UA_PATTERNS = [
   // ── OSS / Hobby (most distinctive UAs, put these first) ──────────────────
+  // GekkoScience GekkoAxe runs stock AxeOS but brands itself "gekko" — match it
+  // before the generic bitaxe/axe patterns so it isn't swallowed as a Bitaxe.
+  { match: /gekko[\s_.-]*axe|gekkoscience|\bgekko\b/i,                                     type: 'GekkoAxe',           icon: '❖', vendor: 'GekkoScience' },
   { match: /bitaxe.*gamma|gamma[\s_.-]*60[12]|bitaxe[\s_.-]*60[12]/i,                      type: 'BitAxe Gamma',       icon: '◆', vendor: 'OSS' },
   { match: /bitaxe.*supra/i,                      type: 'BitAxe Supra',       icon: '◆', vendor: 'OSS' },
   { match: /bitaxe.*ultra/i,                      type: 'BitAxe Ultra',       icon: '◆', vendor: 'OSS' },

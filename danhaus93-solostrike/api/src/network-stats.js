@@ -85,6 +85,132 @@ const RECONNECT_DELAY_MS  = 30 * 1000;              // 30s between reconnect att
 const EVENT_KIND          = 30078;                  // parameterized replaceable
 const TAG_NAME            = 'solostrike-stats';
 
+// ── v2.x: Benchmark broadcast whitelist (FAIL-CLOSED) ────────────────────────
+// The crowdsourced tuning benchmark will broadcast per-model aggregates. This
+// is the SINGLE chokepoint every benchmark payload MUST pass through before it
+// can leave this node. It is a WHITELIST, not a blocklist: only the fields
+// named here can ever be emitted. Anything not on this list — identity (BTC
+// address, hostname, MAC, ssid), IPs, the entire `live.advanced` blob, and any
+// field added by future firmware — is dropped by default. This fails closed:
+// forgetting to exclude a sensitive field cannot leak it, because nothing is
+// included unless explicitly allowed here.
+const BENCHMARK_BROADCAST_ALLOWED_FIELDS = Object.freeze([
+  'model',         // e.g. "BitAxe Gamma" — hardware class, not identity
+  'asic',          // e.g. "BM1370" — ASIC chip model, hardware class
+  'boardVersion',  // e.g. "601" — hardware variant for bucketing
+  'freq',          // MHz
+  'coreVoltage',   // mV (set/target)
+  'ths',           // reported hashrate, TH/s
+  'jth',           // efficiency, J/TH
+  'tempC',         // chip temp °C — an OUTCOME (measured), part of tuning picture
+  'rejectPct',     // share reject %
+  'fanRpm',        // fan speed RPM — measured cooling reading (non-identifying)
+  'fanPct',        // fan duty % — measured cooling reading (non-identifying)
+]);
+// Sanitize a candidate benchmark payload down to only allowed numeric/string
+// fields. Any object/array/identity value or unknown key is discarded.
+function sanitizeBenchmarkPayload(candidate) {
+  const out = {};
+  if (!candidate || typeof candidate !== 'object') return out;
+  for (const k of BENCHMARK_BROADCAST_ALLOWED_FIELDS) {
+    const v = candidate[k];
+    if (v == null) continue;
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    else if (typeof v === 'string') out[k] = v.slice(0, 40); // bounded, no nested objects
+  }
+  return out;
+}
+
+// v2.x: build this node's per-model benchmark summaries from local telemetry.
+// One summary per BUCKET (model + ASIC chip + board revision), NOT per worker —
+// a striker with 4 Nanos contributes one Nano summary, protecting fleet size
+// and keeping the payload tiny. Only STABLE rigs are eligible: warmed up
+// (uptime past the warm-up window), a real efficiency reading, and a low reject
+// rate — because hashrate and power fluctuate, a fresh or unstable rig would
+// post a misleading number. Each summary is routed through
+// sanitizeBenchmarkPayload() so only whitelisted fields can ever leave.
+const BENCH_MIN_UPTIME_SEC = 3600;   // 1h warmed up
+const BENCH_MAX_REJECT_PCT = 2;      // exclude unstable rigs
+function buildBenchmarkSummaries(liveMap) {
+  if (!liveMap || typeof liveMap !== 'object') return [];
+  const buckets = new Map();
+  for (const w of Object.values(liveMap)) {
+    if (!w) continue;
+    if (w.efficiencyJTH == null || !(w.efficiencyJTH > 0)) continue;
+    if (w.uptimeSec == null || w.uptimeSec < BENCH_MIN_UPTIME_SEC) continue;
+    if (w.rejectPct != null && w.rejectPct > BENCH_MAX_REJECT_PCT) continue;
+    if (w.frequencyMhz == null) continue; // voltage optional: LuxOS/Whatsminer don't expose it
+    const model = (w.model || w.asicModel || 'unknown');
+    const board = (w.boardVersion != null ? String(w.boardVersion) : '');
+    const asic = (w.asicModel || '');
+    const key = `${model}|${asic}|${board}`;
+    if (!buckets.has(key)) buckets.set(key, { model, asic, board, rows: [] });
+    const ths = (w.hashrateSustained != null ? w.hashrateSustained
+                 : w.hr1d != null ? w.hr1d
+                 : w.hashrateReported);
+    // v2.x: derive efficiency from the SAME sustained hashrate we report as ths,
+    // AND from smoothed power (powerSustained) — instantaneous power bounces, so
+    // using it against a smoothed hashrate made J/TH swing (26→22 poll-to-poll).
+    // Both sides now averaged → stable, believable efficiency.
+    const thsVal = ths != null ? ths / 1e12 : null;
+    const pw = (w.powerSustained != null ? w.powerSustained : w.powerW);
+    const jth = (pw > 0 && thsVal > 0)
+      ? +(pw / thsVal).toFixed(2)
+      : (w.efficiencyJTH != null ? +w.efficiencyJTH.toFixed(2) : null);
+    if (jth == null) continue; // can't benchmark without an efficiency figure
+    // v2.x: SETTINGS half of the benchmark = the values a user would TYPE into
+    // their miner. Core voltage must be the SET/target (coreVoltageSetMv), not the
+    // measured/sagged reading (coreVoltageMv) — otherwise "copy the champion's
+    // settings" hands people the wrong number. Avalon has no settable per-domain
+    // voltage, so it falls back to its per-chip measured avg (frontend labels it
+    // "not directly settable"). Temp/reject are OUTCOMES (measured), kept as-is.
+    const setV = (w.coreVoltageSetMv != null ? w.coreVoltageSetMv : w.coreVoltageMv);
+    const temp = (w.tempC != null ? w.tempC
+                  : w.chipTempAvg != null ? w.chipTempAvg
+                  : null);
+    buckets.get(key).rows.push({
+      freq: w.frequencyMhz,
+      coreVoltage: setV,
+      ths: thsVal != null ? +thsVal.toFixed(3) : null,
+      jth,
+      tempC: temp != null ? +Number(temp).toFixed(1) : null,
+      // v2.x: do NOT coerce unknown reject to 0 — that fabricates a "0%" reading
+      // for miners we don't capture reject data from (e.g. Avalon/cgminer). Keep
+      // null so the UI shows "—" (unknown) instead of an invented clean rate.
+      rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : null,
+      // Fan is a MEASURED cooling reading (usually auto, not a set knob). Ride it
+      // along like temp/reject; null stays null so fanless/passive rigs show "—".
+      fanRpm: w.fanRpm != null ? Math.round(w.fanRpm) : null,
+      fanPct: w.fanPct != null ? Math.round(w.fanPct) : null,
+    });
+  }
+  const med = (arr) => {
+    const a = arr.filter(x => x != null && Number.isFinite(x)).sort((x, y) => x - y);
+    if (!a.length) return null;
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  };
+  const out = [];
+  for (const b of buckets.values()) {
+    const summary = sanitizeBenchmarkPayload({
+      model: b.model,
+      asic: b.asic || undefined,
+      boardVersion: b.board || undefined,
+      freq: Math.round(med(b.rows.map(r => r.freq))),
+      coreVoltage: (() => { const m = med(b.rows.map(r => r.coreVoltage)); return m != null ? Math.round(m) : undefined; })(),
+      ths: +(med(b.rows.map(r => r.ths)) || 0).toFixed(3),
+      jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
+      tempC: +(med(b.rows.map(r => r.tempC)) || 0).toFixed(1) || undefined,
+      rejectPct: (() => { const m = med(b.rows.map(r => r.rejectPct)); return m != null ? +m.toFixed(3) : undefined; })(),
+      fanRpm: (() => { const m = med(b.rows.map(r => r.fanRpm)); return m != null ? Math.round(m) : undefined; })(),
+      fanPct: (() => { const m = med(b.rows.map(r => r.fanPct)); return m != null ? Math.round(m) : undefined; })(),
+    });
+    if (summary.freq > 0 && summary.jth > 0) out.push(summary);
+  }
+  return out.slice(0, 12);
+}
+
+
 // Outbound throttle: we never broadcast our own pool more than once every 4 min,
 // regardless of how many times we get poked
 const MIN_OWN_BROADCAST_INTERVAL_MS = 4 * 60 * 1000;
@@ -317,6 +443,38 @@ function validateAndExtractEvent(ev, ourPubkey) {
     }
   }
 
+  // v2.x: optional benchmarks — peer's per-bucket tuning summaries. Each entry
+  // is independently shape-validated and range-clamped; anything malformed is
+  // dropped. Hard sanity ceilings defend against forged "champion" numbers (the
+  // consumer also applies MAD + per-model floor).
+  let benchmarks = null;
+  if (Array.isArray(data.benchmarks)) {
+    const clean = [];
+    for (const b of data.benchmarks.slice(0, 12)) {
+      if (!b || typeof b !== 'object') continue;
+      const model = typeof b.model === 'string' ? b.model.slice(0, 40) : null;
+      if (!model) continue;
+      const freq = Number(b.freq), cv = Number(b.coreVoltage);
+      const ths = Number(b.ths), jth = Number(b.jth), rej = Number(b.rejectPct);
+      const tmp = Number(b.tempC);
+      if (!Number.isFinite(freq) || freq <= 0 || freq > 2000) continue;
+      if (!Number.isFinite(jth) || jth <= 0 || jth > 500) continue;
+      if (!Number.isFinite(ths) || ths < 0 || ths > 2000) continue;
+      clean.push({
+        model,
+        asic: typeof b.asic === 'string' ? b.asic.slice(0, 24) : '',
+        boardVersion: typeof b.boardVersion === 'string' ? b.boardVersion.slice(0, 16) : '',
+        freq: Math.round(freq),
+        coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 20000) ? Math.round(cv) : null,
+        ths: +ths.toFixed(3),
+        jth: +jth.toFixed(2),
+        tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
+        rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : null,
+      });
+    }
+    if (clean.length) benchmarks = clean;
+  }
+
   // Signature — verify last (most expensive). Skip our own (we trust local).
   if (ev.pubkey === ourPubkey) {
     // Echo of our own broadcast — fine, accept
@@ -330,12 +488,12 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks },
   };
 }
 
 // ── Main controller factory ─────────────────────────────────────────────────
-function startNetworkStats({ state, cfg, savePersist }) {
+function startNetworkStats({ state, cfg, savePersist, getLive }) {
   // ── Identity bootstrap ─────────────────────────────────────────────────
   // First boot: generate and encrypt. Existing install: decrypt. Plaintext
   // legacy keys get re-encrypted on first save.
@@ -422,6 +580,7 @@ function startNetworkStats({ state, cfg, savePersist }) {
     // pubkey is the only stable handle and is never exposed to the UI here.
     // Includes BOTH filtered and outlier entries; the UI decides what to show.
     peers: [],
+    benchmarks: [],  // v2.x: per-bucket crowdsourced tuning aggregates
     ownPubkey: '',  // populated below once pubkey closure var exists
     // v1.11.6: network historical stats — restored from persist.json if present
     peakHashrate: cfg.networkStatsPeakHashrate || 0,
@@ -651,9 +810,79 @@ function startNetworkStats({ state, cfg, savePersist }) {
       firstSeen: peerFirstSeen,
       // v1.12.x: most recent block this peer claims to have found
       lastStrike: result.payload.lastStrike || (existing && existing.lastStrike) || null,
+      benchmarks: result.payload.benchmarks || (existing && existing.benchmarks) || null,
     });
     state.networkStats.security.eventsAccepted++;
     recomputeAggregates();
+  }
+
+  // v2.x: aggregate per-bucket benchmark data across all peers (+ ourself).
+  // Bucket key = model|asic|boardVersion (strict). Per bucket: apply a per-model
+  // J/TH sanity floor, MAD outlier rejection on efficiency (reuses the census
+  // anti-gaming approach), then compute champion (best efficiency), median, and
+  // a ranked leaderboard. Sample count is returned raw so the UI confidence
+  // slider can label/threshold client-side. Our own rigs are injected from fresh
+  // local telemetry so we always appear even before a peer echoes us back.
+  const BENCH_JTH_FLOOR = 10;
+  function aggregateBenchmarks(entries, ownPk) {
+    const buckets = new Map();
+    let ownRows = [];
+    if (typeof getLive === 'function') {
+      try { ownRows = buildBenchmarkSummaries(getLive()) || []; } catch { ownRows = []; }
+    }
+    for (const b of ownRows) {
+      const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
+      if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
+      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true });
+    }
+    for (const [pk, e] of entries) {
+      if (pk === ownPk) continue;
+      if (!Array.isArray(e.benchmarks)) continue;
+      for (const b of e.benchmarks) {
+        if (!b || b.jth == null || b.jth < BENCH_JTH_FLOOR) continue;
+        // v2.x: drop stale pre-label entries — older nodes (or our own pre-patch
+        // broadcasts echoed back by relays) sent model="unknown" or the raw chip
+        // name ("BM1370") with no friendly model. These pollute the view until
+        // they TTL out of seenEvents, so skip any entry without a real model.
+        const m = (b.model || '').trim();
+        if (!m || m.toLowerCase() === 'unknown' || /^BM\d{3,4}$/i.test(m)) continue;
+        const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
+        if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
+        buckets.get(key).rows.push({ ...b, pk, isOwn: false });
+      }
+    }
+    const out = [];
+    for (const bk of buckets.values()) {
+      let rows = bk.rows;
+      if (rows.length >= OUTLIER_MIN_SAMPLES) {
+        const jths = rows.map(r => r.jth);
+        const { median: m, mad } = medianAbsoluteDeviation(jths);
+        if (mad > 0) rows = rows.filter(r => !isOutlier(r.jth, m, mad));
+      }
+      if (!rows.length) continue;
+      const sorted = [...rows].sort((a, b) => a.jth - b.jth);
+      const champ = sorted[0];
+      const { median: medJth } = medianAbsoluteDeviation(rows.map(r => r.jth));
+      out.push({
+        model: bk.model, asic: bk.asic, boardVersion: bk.boardVersion,
+        sampleCount: rows.length,
+        medianJth: +Number(medJth).toFixed(2),
+        bestJth: champ.jth,
+        champion: {
+          jth: champ.jth, ths: champ.ths, freq: champ.freq,
+          coreVoltage: champ.coreVoltage, tempC: champ.tempC, rejectPct: champ.rejectPct,
+          fanRpm: champ.fanRpm, fanPct: champ.fanPct,
+          isOwn: champ.isOwn,
+          handle: 'striker-' + String(champ.pk || '').slice(0, 4),
+        },
+        leaderboard: sorted.slice(0, 25).map(r => ({
+          jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
+          tempC: r.tempC, rejectPct: r.rejectPct, fanRpm: r.fanRpm, fanPct: r.fanPct,
+          isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
+        })),
+      });
+    }
+    return out.sort((a, b) => b.sampleCount - a.sampleCount);
   }
 
   function recomputeAggregates() {
@@ -721,6 +950,15 @@ function startNetworkStats({ state, cfg, savePersist }) {
     state.networkStats.blocks = blocks;
     state.networkStats.versions = versions;
     state.networkStats.peers = peers;
+    // v2.x: benchmark aggregation is a display feature — it must NEVER be able
+    // to crash the api (which feeds the whole pool dashboard). Isolate it: on
+    // any error, log once and keep the last good value rather than throwing.
+    try {
+      state.networkStats.benchmarks = aggregateBenchmarks(activeEntries, pubkey);
+    } catch (e) {
+      console.warn('[network-stats] benchmark aggregation skipped:', e && e.message);
+      if (!Array.isArray(state.networkStats.benchmarks)) state.networkStats.benchmarks = [];
+    }
     state.networkStats.lastUpdate = Date.now();
     state.networkStats.security.outliersFiltered += outliersFilteredThisRound;
 
@@ -824,6 +1062,15 @@ function startNetworkStats({ state, cfg, savePersist }) {
       // show our "Joined Nd ago" badge in their UI.
       ...(Number.isFinite(cfg.pulseFirstSeen) && cfg.pulseFirstSeen > 0
         ? { firstSeen: cfg.pulseFirstSeen }
+        : {}),
+      // v2.x: crowdsourced tuning benchmarks — ALWAYS shared (no opt-in toggle).
+      // Per-bucket summaries only, each already passed through
+      // sanitizeBenchmarkPayload() (fail-closed whitelist). Only Tier-3 operator
+      // data (address, hostname, MAC, the live.advanced blob) is ever withheld.
+      ...(typeof getLive === 'function'
+        ? (() => { try { const b = buildBenchmarkSummaries(getLive());
+            return (Array.isArray(b) && b.length) ? { benchmarks: b } : {}; }
+          catch { return {}; } })()
         : {}),
     });
 

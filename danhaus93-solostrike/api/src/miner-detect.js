@@ -23,6 +23,7 @@ const WORKERNAME_PATTERNS = [
   { match: /\.bitaxe[\s_.-]*gamma|\.gamma[\s_.-]*60[12]|\.bitaxe[\s_.-]*60[12]|\.60[12](?:$|[\s_.-])/i,                           type: 'BitAxe Gamma',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*supra/i,                           type: 'BitAxe Supra',         icon: '◆',  vendor: 'OSS' },
   { match: /\.bitaxe[\s_.-]*ultra/i,                           type: 'BitAxe Ultra',         icon: '◆',  vendor: 'OSS' },
+  { match: /\.gekko[\s_.-]*axe|\.gekko/i,                       type: 'GekkoAxe',             icon: '❖',  vendor: 'GekkoScience' },
   { match: /\.bitaxe/i,                                        type: 'BitAxe',               icon: '◆',  vendor: 'OSS' },
   { match: /\.braiins|\.hashpower|\.rental/i,                  type: 'Braiins Rental',       icon: '⚡', vendor: 'Rented' },
   { match: /\.whatsminer|\.m3[0-9]|\.m5[0-9]|\.m6[0-9]/i,      type: 'Whatsminer',           icon: '⛏',  vendor: 'MicroBT' },
@@ -50,34 +51,86 @@ function detectFromWorkername(workername) {
 //   BM1366 → Ultra
 //   BM1397 → original Bitaxe Max / early single-chip boards
 // asicCount disambiguates single-chip Bitaxe from multi-chip NerdQaxe.
-const ASIC_MODEL_MAP = {
-  BM1370: { type: 'BitAxe Gamma', icon: '◆', vendor: 'OSS' },
-  BM1368: { type: 'BitAxe Supra', icon: '◆', vendor: 'OSS' },
-  BM1366: { type: 'BitAxe Ultra', icon: '◆', vendor: 'OSS' },
-  BM1397: { type: 'BitAxe Max',   icon: '◆', vendor: 'OSS' },
-};
+// ── Bitaxe / NerdQAxe / Gekko family resolution ──────────────────────────────
+// AxeOS reports the raw Bitmain chip in ASICModel; chip-count (asicCount) and the
+// short deviceModel come from /api/system/asic, and boardVersion from
+// /api/system/info. The chip alone is ambiguous for multi-chip boards, so resolve
+// by chip + count, with boardVersion as the authoritative tiebreaker:
+//   BM1370  ×1 → Gamma (bv 601) · ×2 → GT/Gamma Turbo (801) or Gamma Duo (650) · ×4 → NerdQAxe++
+//   BM1368  ×1 → Supra           · ×4 → NerdQAxe+
+//   BM1366  ×1 → Ultra           · ×4 → Hex
+//   BM1397     → Max
+// (Verified against osmu.wiki Bitaxe model + API pages and the ESP-Miner schema.)
+const BITAXE = (type) => ({ type, icon: '◆', vendor: 'OSS' });
+const NERD   = (type) => ({ type, icon: '◈', vendor: 'Shufps' });
+const GEKKO  = { type: 'GekkoAxe', icon: '❖', vendor: 'GekkoScience' };
+const GEKKO_RE = /gekko/i;
 
-function detectFromAsicModel(asicModel, asicCount) {
-  if (!asicModel || typeof asicModel !== 'string') {
-    return { type: null, icon: null, vendor: null };
-  }
-  // normalize: strip non-alphanumerics, uppercase (handles "bm1370", "BM-1370")
-  const key = asicModel.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const base = ASIC_MODEL_MAP[key];
-  if (!base) return { type: null, icon: null, vendor: null };
-  // multi-chip BM1370/BM1368 boards are NerdQaxe variants, not single Bitaxe
+// boardVersion → friendly model string. On stock AxeOS, boardVersion is the only
+// model signal present in /api/system/info, so it's the reliable discriminator.
+function boardModelString(bv) {
+  if (bv == null) return null;
+  const s = String(bv).trim();
+  if (!s) return null;
+  const exact = {
+    '100': 'BitAxe Max',  '200': 'BitAxe Ultra', '300': 'BitAxe Hex', '400': 'BitAxe Supra',
+    '600': 'BitAxe Gamma', '601': 'BitAxe Gamma', '602': 'BitAxe Gamma', '604': 'BitAxe Gamma',
+    '650': 'BitAxe Gamma Duo', '651': 'BitAxe Gamma Duo',
+    '800': 'BitAxe GT', '801': 'BitAxe GT',
+  };
+  if (exact[s]) return exact[s];
+  const n = parseInt(s, 10);
+  if (!Number.isFinite(n)) return null;
+  if (n >= 650 && n < 700) return 'BitAxe Gamma Duo';
+  if (n >= 800 && n < 900) return 'BitAxe GT';
+  if (n >= 600 && n < 650) return 'BitAxe Gamma';
+  if (n >= 400 && n < 500) return 'BitAxe Supra';
+  if (n >= 300 && n < 400) return 'BitAxe Hex';
+  if (n >= 200 && n < 300) return 'BitAxe Ultra';
+  if (n >= 100 && n < 200) return 'BitAxe Max';
+  return null;
+}
+
+function labelToDet(label) {
+  if (!label) return { type: null, icon: null, vendor: null };
+  if (/^Nerd/i.test(label))  return NERD(label);
+  if (/^Gekko/i.test(label)) return GEKKO;
+  return BITAXE(label);
+}
+
+function detectFromAsicModel(asicModel, asicCount, deviceHint, boardVersion) {
+  const key = (asicModel && typeof asicModel === 'string')
+    ? asicModel.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+  // A "gekko" token (deviceModel/hostname/workername/UA) on a real AxeOS chip wins
+  // over the chip guess — otherwise a 2× BM1370 GekkoAxe reads as a GT/NerdQaxe.
+  if (key && deviceHint && GEKKO_RE.test(deviceHint)) return GEKKO;
   const n = Number(asicCount) || 0;
-  if (n >= 2) {
-    return { type: 'NerdQaxe++', icon: '◈', vendor: 'Shufps' };
+  if (key === 'BM1370') {
+    if (n >= 4) return NERD('NerdQaxe++');
+    if (n === 2) { const bv = boardModelString(boardVersion); return labelToDet(bv && /Duo/.test(bv) ? bv : 'BitAxe GT'); }
+    const bv = boardModelString(boardVersion); if (bv) return labelToDet(bv);
+    return BITAXE('BitAxe Gamma');
   }
-  return { ...base };
+  if (key === 'BM1368') return n >= 4 ? NERD('NerdQaxe+')    : BITAXE('BitAxe Supra');
+  if (key === 'BM1366') return n >= 4 ? BITAXE('BitAxe Hex') : BITAXE('BitAxe Ultra');
+  if (key === 'BM1397') return BITAXE('BitAxe Max');
+  // Unrecognized/empty chip → boardVersion alone (defensive). A cgminer/LuxOS
+  // device (e.g. the S21 XP) has NEITHER a BM ASICModel NOR a boardVersion, so it
+  // returns null here and keeps its UA/workername label untouched.
+  const bv = boardModelString(boardVersion);
+  if (bv) return labelToDet(bv);
+  return { type: null, icon: null, vendor: null };
 }
 
 // Best-effort detection combining user-agent (preferred) and workername fallback.
 // Returns { type, icon, vendor, source } — `source` tells you which method won.
-function detectMinerBest(workername, userAgent, asicModel, asicCount) {
+function detectMinerBest(workername, userAgent, asicModel, asicCount, deviceHint, boardVersion) {
   // v1.12.x: the physical chip ID is the most authoritative signal — use it first.
-  const asic = detectFromAsicModel(asicModel, asicCount);
+  // But a "gekko" token can ride in on the workername/UA/deviceModel; fold them all
+  // into the hint so a GekkoAxe (2× BM1370) isn't mislabeled NerdQaxe++ before the
+  // workername/UA tiers are ever consulted.
+  const asicHint = [deviceHint, workername, userAgent].filter(Boolean).join(' ');
+  const asic = detectFromAsicModel(asicModel, asicCount, asicHint, boardVersion);
   if (asic.type) return { ...asic, source: 'asic-model' };
 
   const ua = detectFromUserAgent(userAgent);
@@ -117,5 +170,6 @@ module.exports = {
   detectFromWorkername,
   detectFromUserAgent,
   detectFromAsicModel,
+  boardModelString,       // boardVersion → friendly model (shared with miner-poller)
   workerHealth,
 };

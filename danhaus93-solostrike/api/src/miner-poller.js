@@ -41,6 +41,7 @@ const net  = require('net');
 const http = require('http');
 const fs   = require('fs-extra');
 const path = require('path');
+const { boardModelString } = require('./miner-detect');
 
 const POLL_INTERVAL_MS  = 60_000;
 const POLL_TIMEOUT_MS   = 5_000;
@@ -131,9 +132,107 @@ function getLiveForWorker(workerName) {
 function getAllLive() {
   const out = {};
   for (const [name, r] of records) {
-    if (r && r.live) out[name] = { ...r.live, lastCheckedAt: r.lastCheckedAt };
+    if (r && r.live) {
+      const live = { ...r.live, lastCheckedAt: r.lastCheckedAt };
+      // v2.x: sustained hashrate for benchmarking (hashrate fluctuates, so a
+      // single instant reading is noise). Priority: device-reported average
+      // (Avalon GHSavg → hashrateAvg; NerdQAxe 24h → hr1d) → our own server-side
+      // rolling average over recent polls → instantaneous (last resort).
+      const roll = rollingAvgHr(r.hrSamples, 30 * 60 * 1000);
+      live.hashrateSustained =
+        (live.hashrateAvg != null ? live.hashrateAvg
+         : live.hr1d != null ? live.hr1d
+         : roll != null ? roll
+         : live.hashrateReported);
+      // v2.x: smoothed power (10-min window) so J/TH doesn't bounce with the
+      // instantaneous power reading. Prefer a device-reported average if the
+      // firmware exposes one (live.powerAvg); none currently do, so in practice
+      // this uses our own rolling average, falling back to instant.
+      const rollPw = rollingAvgPw(r.hrSamples, 10 * 60 * 1000);
+      live.powerSustained =
+        (live.powerAvg != null ? live.powerAvg
+         : rollPw != null ? rollPw
+         : live.powerW);
+      out[name] = live;
+    }
   }
   return out;
+}
+
+// v2.x: average of recent hashrateReported samples within a time window (H/s),
+// or null if no samples. Used as the fallback sustained hashrate for devices
+// that don't report their own average (e.g. BitAxe AxeOS has no rolling field).
+function rollingAvgHr(samples, windowMs) {
+  if (!Array.isArray(samples) || !samples.length) return null;
+  const cutoff = Date.now() - windowMs;
+  const recent = samples.filter(s => s && s.ts >= cutoff && Number.isFinite(s.hr) && s.hr > 0);
+  if (!recent.length) return null;
+  return recent.reduce((a, s) => a + s.hr, 0) / recent.length;
+}
+
+// v2.x: rolling average of recent power samples (W) within a window, or null.
+function rollingAvgPw(samples, windowMs) {
+  if (!Array.isArray(samples) || !samples.length) return null;
+  const cutoff = Date.now() - windowMs;
+  const recent = samples.filter(s => s && s.ts >= cutoff && Number.isFinite(s.pw) && s.pw > 0);
+  if (!recent.length) return null;
+  return recent.reduce((a, s) => a + s.pw, 0) / recent.length;
+}
+
+// v2.x: friendly model name for benchmark bucketing/labels. NerdQAxe reports
+// deviceModel directly; BitAxe (AxeOS) doesn't, so derive its family from the
+// ASIC chip. Falls back to the chip name, never blank.
+function friendlyEspModel(d) {
+  // GekkoScience GekkoAxe runs stock AxeOS on Bitmain chips (V2.0 GT = 2× BM1370),
+  // so the only thing that distinguishes it from a Bitaxe/NerdQaxe is a "gekko"
+  // token in deviceModel or hostname. Check that before anything else.
+  const gekkoHint = [d && d.deviceModel, d && d.hostname].filter(Boolean).join(' ');
+  if (/gekko/i.test(gekkoHint)) return 'GekkoAxe';
+  // /api/system/asic gives a short deviceModel ("Gamma", "GT", "Hex"…). Normalize
+  // the Bitaxe ones to the friendly family label; trust anything else (e.g.
+  // "NerdQAxe++") verbatim.
+  const dm = (d && typeof d.deviceModel === 'string') ? d.deviceModel.trim() : '';
+  if (dm) {
+    const DM = {
+      'gamma': 'BitAxe Gamma', 'gammaduo': 'BitAxe Gamma Duo', 'gamma duo': 'BitAxe Gamma Duo',
+      'gt': 'BitAxe GT', 'gammaturbo': 'BitAxe GT', 'gamma turbo': 'BitAxe GT',
+      'hex': 'BitAxe Hex', 'supra': 'BitAxe Supra', 'ultra': 'BitAxe Ultra', 'max': 'BitAxe Max',
+    };
+    return DM[dm.toLowerCase()] || dm;
+  }
+  // No deviceModel (older stock AxeOS, /info only): boardVersion is authoritative.
+  const bv = boardModelString(d && d.boardVersion);
+  if (bv) return bv;
+  // Last resort: chip + count.
+  const asic = (d && typeof d.ASICModel === 'string') ? d.ASICModel.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+  const n = (d && typeof d.asicCount === 'number') ? d.asicCount : 0;
+  if (asic === 'BM1370') return n >= 4 ? 'NerdQAxe++' : (n === 2 ? 'BitAxe GT' : 'BitAxe Gamma');
+  if (asic === 'BM1368') return n >= 4 ? 'NerdQAxe+'  : 'BitAxe Supra';
+  if (asic === 'BM1366') return n >= 4 ? 'BitAxe Hex' : 'BitAxe Ultra';
+  if (asic === 'BM1397') return 'BitAxe Max';
+  return asic ? 'BitAxe (' + asic + ')' : 'BitAxe';
+}
+
+// v2.x: derive a friendly label for a GENERIC cgminer-family device from its
+// firmware Description string (used only when we couldn't get a real model name
+// from DEVS and it isn't an Avalon). These devices are for MONITORING; they
+// usually don't expose core voltage, so they stay benchmark-ineligible.
+function cgminerFamilyLabel(desc) {
+  const s = (desc || '').toLowerCase();
+  if (s.includes('luxminer') || s.includes('luxos'))                 return 'ASIC (LuxOS)';
+  if (s.includes('boser') || s.includes('bosminer') || s.includes('braiins')) return 'ASIC (Braiins OS)';
+  if (s.includes('btminer') || s.includes('whatsminer'))             return 'Whatsminer';
+  if (s.includes('vnish'))                                           return 'ASIC (Vnish)';
+  if (s.includes('bmminer'))                                         return 'Antminer';
+  if (s.includes('cgminer'))                                         return 'ASIC (cgminer)';
+  return 'ASIC';
+}
+
+// pick first non-null value among candidate keys (firmwares vary on casing/naming)
+function pickField(o, keys) {
+  if (!o || typeof o !== 'object') return undefined;
+  for (const k of keys) { if (o[k] != null) return o[k]; }
+  return undefined;
 }
 
 async function pollOne(workerName) {
@@ -163,14 +262,39 @@ function isEspMinerVendor(workerName, vendor) {
   return null;
 }
 
+// v2.x: tracks consecutive failed poll cycles per worker, for backoff.
+const pollFailStreak = new Map();
+let pollCycleCount = 0;
+
 async function pollAll() {
   if (!getMetaFn) return;
   const allMeta = getMetaFn() || [];
-  await Promise.allSettled(
-    allMeta
-      .filter(m => m && m.name && m.ip)
-      .map(m => pollMiner(m.name, m.ip))
-  );
+  pollCycleCount++;
+  // v2.x reliability fix: re-resolve each miner's IP from the LATEST ckpool
+  // metadata every cycle (getMetaFn already returns fresh data), and no longer
+  // permanently skip miners that previously failed or had no IP. Previously a
+  // miner whose IP wasn't yet harvested — or that was briefly unreachable —
+  // would stay blank until a manual reboot forced a fresh stratum reconnect.
+  // Now telemetry self-heals as soon as the IP/endpoint becomes reachable.
+  //
+  // Gentle backoff: a miner that keeps failing is retried less often (every
+  // 2^streak cycles, capped at every 10) so long-dead rigs don't generate a
+  // timeout attempt every single 60s cycle — keeps CPU/sockets quiet.
+  const targets = allMeta.filter(m => {
+    if (!m || !m.name || !m.ip) return false;
+    const streak = pollFailStreak.get(m.name) || 0;
+    if (streak === 0) return true;                 // healthy → always poll
+    const everyN = Math.min(10, Math.pow(2, Math.min(streak, 4))); // 2,4,8,10,10…
+    return (pollCycleCount % everyN) === 0;        // backed-off retry
+  });
+  await Promise.allSettled(targets.map(m => pollMiner(m.name, m.ip)));
+}
+
+// v2.x: record poll outcome for backoff. ok=true resets the streak so a
+// recovered miner immediately returns to every-cycle polling.
+function notePollOutcome(workerName, ok) {
+  if (ok) pollFailStreak.delete(workerName);
+  else pollFailStreak.set(workerName, (pollFailStreak.get(workerName) || 0) + 1);
 }
 
 async function pollMiner(workerName, ip) {
@@ -198,14 +322,21 @@ async function pollMiner(workerName, ip) {
       if (fallback.ok) result = fallback;
     }
   } else {
-    result = await tryCgminer(ip);
+    // v2.x: unknown vendor — probe the HTTP/AxeOS endpoint FIRST. AxeOS-style
+    // firmwares that don't get a vendor classification (e.g. TNA-OS on big
+    // Antminers) serve a rich /api/system/info with model/freq/coreVoltage;
+    // their cgminer 4028 reply is a thin, sometimes non-standard envelope.
+    // cgminer-only devices simply 404/refuse port 80, so we fall back cleanly.
+    // HTTP is strictly richer for any device that answers both.
+    result = await tryEspMiner(ip);
     if (!result.ok) {
-      const fallback = await tryEspMiner(ip);
+      const fallback = await tryCgminer(ip);
       if (fallback.ok) result = fallback;
     }
   }
 
   if (!result.ok) {
+    notePollOutcome(workerName, false);
     saveRecord(workerName, {
       alignment: { status: result.alignmentStatus || 'unreachable', error: result.error },
       live: null,
@@ -214,6 +345,7 @@ async function pollMiner(workerName, ip) {
     });
     return;
   }
+  notePollOutcome(workerName, true);
 
   const payoutAddress = (getPayoutAddressFn && getPayoutAddressFn()) || null;
   const alignment = result.adapter === 'cgminer'
@@ -238,21 +370,70 @@ async function pollMiner(workerName, ip) {
 // parallel TCP connections and merge the results. Slightly more network
 // chatter, but trivial at fleet scale and dramatically more compatible.
 
+// LuxOS board voltage WITHOUT the unsafe `voltageget` hardware read (that live
+// bus poll crashes/restarts the miner). Instead read the CONFIGURED voltage from
+// the active tuning profile: `config` names the active profile, `profiles` lists
+// each profile's Voltage. Both are config-FILE reads over HTTP :8080 — verified
+// safe to poll. Returns mV or null.
+function luxosHttp(ip, command) {
+  return new Promise((resolve) => {
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const body = JSON.stringify({ command });
+      const req = http.request({
+        host: ip, port: 8080, path: '/api', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        timeout: 3000,
+      }, (res) => {
+        let d = '';
+        res.on('data', (c) => { d += c; if (d.length > 65536) req.destroy(); });
+        res.on('end', () => { try { fin(JSON.parse(d)); } catch (e) { fin(null); } });
+      });
+      req.on('error', () => fin(null));
+      req.on('timeout', () => { req.destroy(); fin(null); });
+      req.write(body); req.end();
+    } catch (e) { fin(null); }
+  });
+}
+async function luxosProfileVoltageMv(ip, freqHint) {
+  const [cfg, profs] = await Promise.all([luxosHttp(ip, 'config'), luxosHttp(ip, 'profiles')]);
+  const list = profs && Array.isArray(profs.PROFILES) ? profs.PROFILES : null;
+  if (!list || !list.length) return null;
+  const c = cfg && Array.isArray(cfg.CONFIG) ? cfg.CONFIG[0] : null;
+  const name = c && c.Profile != null ? String(c.Profile) : null;
+  const step = c && c.ProfileStep != null ? String(c.ProfileStep) : null;
+  let p = null;
+  if (name) p = list.find(x => String(x['Profile Name']) === name);
+  if (!p && step != null) p = list.find(x => String(x.Step) === step);
+  if (!p && freqHint != null) {
+    let best = null, bd = Infinity;
+    for (const x of list) { const d = Math.abs(Number(x.Frequency) - Number(freqHint)); if (Number.isFinite(d) && d < bd) { bd = d; best = x; } }
+    if (bd <= 13) p = best; // within half a 25 MHz step
+  }
+  if (!p) return null;
+  const v = Number(p.Voltage);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return v < 100 ? Math.round(v * 1000) : Math.round(v); // volts -> mV
+}
+
 function tryCgminer(ip) {
   return new Promise(async (resolve) => {
-    const [poolsRes, summaryRes, statsRes] = await Promise.all([
+    const [poolsRes, summaryRes, statsRes, devsRes, powerRes] = await Promise.all([
       cgminerCommand(ip, 'pools'),
       cgminerCommand(ip, 'summary'),
       cgminerCommand(ip, 'stats'),
+      cgminerCommand(ip, 'devs'),
+      cgminerCommand(ip, 'power'),
     ]);
 
-    // If ALL three failed, treat as unreachable/disabled. We surface the
+    // If ALL failed, treat as unreachable/disabled. We surface the
     // most informative error (prefer ECONNREFUSED → 'disabled', else
     // 'unreachable').
-    if (!poolsRes.ok && !summaryRes.ok && !statsRes.ok) {
-      const allRefused = [poolsRes, summaryRes, statsRes].every(r => r.error === 'ECONNREFUSED');
+    if (!poolsRes.ok && !summaryRes.ok && !statsRes.ok && !devsRes.ok) {
+      const allRefused = [poolsRes, summaryRes, statsRes, devsRes].every(r => r.error === 'ECONNREFUSED');
       const status = allRefused ? 'disabled' : 'unreachable';
-      const err    = poolsRes.error || summaryRes.error || statsRes.error || 'unknown';
+      const err    = poolsRes.error || summaryRes.error || statsRes.error || devsRes.error || 'unknown';
       resolve({ ok: false, alignmentStatus: status, error: err });
       return;
     }
@@ -262,7 +443,26 @@ function tryCgminer(ip) {
     const pools   = poolsRes.ok   ? (poolsRes.data.POOLS   || poolsRes.data.pools   || []) : [];
     const summary = summaryRes.ok ? (summaryRes.data.SUMMARY || summaryRes.data.summary || []) : [];
     const stats   = statsRes.ok   ? (statsRes.data.STATS   || statsRes.data.stats   || []) : [];
-    const live    = extractCgminerLive(summary, stats);
+    // v2.x: devs carries per-board Temperature/Frequency/Fan on GENERIC cgminer
+    // firmwares (Antminer/LuxOS/Braiins/Whatsminer/Vnish); Avalon doesn't need it.
+    const devs    = devsRes.ok    ? (devsRes.data.DEVS     || devsRes.data.devs     || []) : [];
+    // firmware id from any STATUS block → labels generic devices
+    const fwDesc  = [summaryRes, statsRes, devsRes, poolsRes]
+      .map(r => r && r.ok && r.data && Array.isArray(r.data.STATUS) && r.data.STATUS[0] && r.data.STATUS[0].Description)
+      .find(d => typeof d === 'string' && d.trim()) || '';
+    const power   = powerRes.ok ? (powerRes.data.POWER || powerRes.data.power || []) : [];
+    const live    = extractCgminerLive(summary, stats, devs, fwDesc, power);
+
+    // LuxOS: take board voltage from the active tuning profile (config + profiles,
+    // safe file reads). NEVER `voltageget` — its live hardware read crashes the
+    // miner. Silent on failure; voltage just stays null (gate is voltage-optional).
+    if (live.coreVoltageMv == null && /lux(miner|os)/i.test(fwDesc || '')) {
+      const vmv = await luxosProfileVoltageMv(ip, live.frequencyMhz);
+      if (vmv != null && vmv > 0 && vmv < 20000) {
+        live.coreVoltageMv = vmv;
+        if (live.coreVoltageSetMv == null) live.coreVoltageSetMv = vmv;
+      }
+    }
 
     resolve({ ok: true, adapter: 'cgminer', pools, live });
   });
@@ -321,7 +521,7 @@ function cgminerCommand(ip, command) {
   });
 }
 
-function extractCgminerLive(summary, stats) {
+function extractCgminerLive(summary, stats, devs, fwDesc, power = []) {
   const live = {
     tempC: null,
     tempDetails: [],
@@ -331,11 +531,46 @@ function extractCgminerLive(summary, stats) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    model: null,
+    hashrateAvg: null,
+    hashrateSustained: null,
+    powerAvg: null,
+    powerSustained: null,
     // v1.12.0: power draw (watts) + computed efficiency (J/TH) for Fleet
     // Efficiency. ckpool has no concept of power; this comes from the rig's
     // own API. Not all firmwares report it — null when unavailable.
     powerW: null,
     efficiencyJTH: null,
+    frequencyMhz: null,
+    coreVoltageMv: null,
+    inputVoltageV: null,
+    coreVoltageSetMv: null,
+    sharesAccepted: null,
+    sharesRejected: null,
+    rejectPct: null,
+    bestDiff: null,
+    bestSessionDiff: null,
+    expectedHashrate: null,
+    defaultFrequencyMhz: null,
+    defaultCoreVoltageMv: null,
+    inputVoltageV: null,
+    inputCurrentA: null,
+    tempTargetC: null,
+    overclockEnabled: null,
+    overheatMode: null,
+    boardVersion: null,
+    hr1m: null, hr10m: null, hr1h: null, hr1d: null,
+    vrTempC: null,
+    stratumConnected: null,
+    pingRttMs: null,
+    pingLossPct: null,
+    advanced: {},
+    chipTemps: null,
+    chipVolts: null,
+    chipTempAvg: null,
+    chipTempMax: null,
+    chipVoltAvg: null,
+    outletTempC: null,
   };
 
   const sm = Array.isArray(summary) ? summary[0] : summary;
@@ -343,6 +578,17 @@ function extractCgminerLive(summary, stats) {
     if (typeof sm.Elapsed === 'number')          live.uptimeSec = sm.Elapsed;
     if (typeof sm['Hardware Errors'] === 'number') live.hwErrors = sm['Hardware Errors'];
     if (typeof sm.HardwareErrors === 'number')   live.hwErrors = sm.HardwareErrors;
+    // v2.x: Avalon/cgminer reject rate. Prefer cgminer's own computed
+    // "Device Rejected%" (e.g. 0.2099); else derive from Accepted/Rejected
+    // counts. Previously unparsed → benchmark showed a fabricated 0%.
+    {
+      const devRej = numOr(sm['Device Rejected%']);
+      const acc = numOr(sm.Accepted), rej = numOr(sm.Rejected);
+      if (acc !== null) live.sharesAccepted = acc;
+      if (rej !== null) live.sharesRejected = rej;
+      if (devRej !== null && devRej >= 0) live.rejectPct = devRej;
+      else if (acc !== null && rej !== null && (acc + rej) > 0) live.rejectPct = (rej / (acc + rej)) * 100;
+    }
 
     const ghsAv = numOr(sm['GHS av']);
     const ghs5s = numOr(sm['GHS 5s']);
@@ -445,6 +691,68 @@ function extractCgminerLive(summary, stats) {
         const mmVer  = /Ver\[([^\]]+)\]/.exec(v);
         const mmElapsed = parseAvalonMmField(v, 'ELAPSED', 'Elapsed');
         const mmPower = parseAvalonMmField(v, 'MPO', 'Power', 'Pmax', 'PWR');
+        // v2.x: tuning knobs from the MM blob — Avalon reports an average
+        // frequency (Freq/Frequency/Fac) and core voltage (Vol/MV). Field names
+        // vary by firmware, so try several. Used by the benchmark layer.
+        // v2.x: Avalon reports average frequency as Freq[438.56] (MHz). It does
+        // NOT expose a per-ASIC core voltage in mV like ESP-Miner — the closest
+        // is the PS[] power-supply array, index 2 = INPUT voltage in centivolts
+        // (27493 → 274.93 V). Different metric from BitAxe core mV, so stored
+        // separately as inputVoltageV and labelled accordingly.
+        const mmFreq = parseAvalonMmField(v, 'Freq', 'Frequency', 'Fac', 'FreqAvg');
+
+        if (mmFreq !== null && mmFreq > 0 && mmFreq < 2000) {
+          if (live.frequencyMhz == null || mmFreq > live.frequencyMhz) live.frequencyMhz = mmFreq;
+        }
+        const psMatch = /\bPS\[([0-9 .\-]+)\]/.exec(v);
+        if (psMatch) {
+          const ps = psMatch[1].trim().split(/\s+/).map(Number);
+          if (ps.length > 2 && Number.isFinite(ps[2]) && ps[2] > 5000 && ps[2] < 30000) {
+            if (live.inputVoltageV == null) live.inputVoltageV = ps[2] / 100;
+          }
+        }
+
+        // v2.x: Avalon per-chip telemetry, confirmed real via HashWatcher. The
+        // MM blob carries per-chip temps (PVT_T0[...]), per-chip core voltages
+        // (PVT_V0[...], mV — a REAL tunable signal, just per-chip scale ~306mV
+        // vs BitAxe's single ~1170mV domain), outlet/exhaust temp (OTemp), and
+        // per-chain frequency (SF0). parseAvalonMmArray pulls a bracketed,
+        // space-separated numeric array (handles leading/irregular spaces).
+        // v2.x: device-reported AVERAGE hashrate (GHSavg, GH/s → H/s) — a smoothed
+        // sustained figure, far better for benchmarking than the bouncing instant
+        // reading. The Avalon has no hr1d field, so this is its sustained source.
+        const ghsAvg = parseAvalonMmField(v, 'GHSavg');
+        if (ghsAvg != null && ghsAvg > 0) live.hashrateAvg = ghsAvg * 1e9;
+        // v2.x: friendly model name. The Ver[...] string carries the model
+        // (e.g. "Nano3s-25061101_..."). Without this the bucket reads "unknown".
+        const verStr = (mmVer && mmVer[1]) || live.firmwareVersion || '';
+        if (/nano\s*3s/i.test(verStr)) live.model = 'Avalon Nano 3S';
+        else if (/nano/i.test(verStr)) live.model = 'Avalon Nano';
+        else if (!live.model) live.model = 'Avalon';
+        const chipTemps = parseAvalonMmArray(v, 'PVT_T0');
+        const chipVolts = parseAvalonMmArray(v, 'PVT_V0');
+        if (chipTemps && chipTemps.length) {
+          live.chipTemps = chipTemps;
+          live.chipTempAvg = +(chipTemps.reduce((a, b) => a + b, 0) / chipTemps.length).toFixed(1);
+          live.chipTempMax = Math.max(...chipTemps);
+        }
+        if (chipVolts && chipVolts.length) {
+          live.chipVolts = chipVolts;
+          const avgMv = chipVolts.reduce((a, b) => a + b, 0) / chipVolts.length;
+          live.chipVoltAvg = Math.round(avgMv);
+          // Surface as core voltage so it shows in the standard row AND feeds the
+          // benchmark (model-bucketed, so it only ever compares Nano-to-Nano).
+          if (live.coreVoltageMv == null && avgMv > 0 && avgMv < 3000) live.coreVoltageMv = Math.round(avgMv);
+        }
+        const otemp = parseAvalonMmField(v, 'OTemp');
+        if (otemp !== null && otemp > 0 && otemp < 200) live.outletTempC = otemp;
+        const sf0 = parseAvalonMmArray(v, 'SF0');
+        if (sf0 && sf0.length) live.advanced.perChainFreq = sf0.join(' / ') + ' MHz';
+        const bin = parseAvalonMmField(v, 'BIN');
+        if (bin !== null) live.advanced.siliconBin = String(bin);
+        const wm = parseAvalonMmField(v, 'WORKMODE');
+        const wl = parseAvalonMmField(v, 'WORKLEVEL');
+        if (wm !== null) live.advanced.workMode = wl !== null ? `mode ${wm} · level ${wl}` : `mode ${wm}`;
 
         if (mmPower !== null && mmPower > 0 && mmPower < 20000) {
           if (live.powerW === null || mmPower > live.powerW) live.powerW = mmPower;
@@ -478,12 +786,117 @@ function extractCgminerLive(summary, stats) {
 
   // v1.12.0: efficiency = watts per terahash. Needs both a power reading and
   // a reported hashrate; null if either is missing.
-  live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
+  // v2.x: right after a reboot Avalon reports a depressed hashrate (averaging
+  // window not yet filled) while power is already at full draw — that yields an
+  // absurd J/TH spike (e.g. 507 instead of 34). Suppress efficiency during the
+  // warm-up window so the artifact doesn't show or feed the benchmark layer.
+  // v2.x: LuxOS / generic cgminer expose total power via the `power` command
+  // (POWER[].Watts — absent from summary/stats) and aggregate frequency in
+  // `stats` (frequency / total_freqavg). Fill BOTH before efficiency so J/TH
+  // computes and the rig clears the Top Strikers gate.
+  if (live.powerW == null && Array.isArray(power)) {
+    for (const p of power) {
+      if (!p || typeof p !== 'object') continue;
+      const w = numOr(pickField(p, ['Watts', 'watts', 'Power', 'power', 'Watt']));
+      if (w != null && w > 0 && w < 20000) { live.powerW = w; break; }
+    }
+  }
+  if (live.frequencyMhz == null && Array.isArray(stats)) {
+    for (const st of stats) {
+      if (!st || typeof st !== 'object') continue;
+      const f = numOr(pickField(st, ['frequency', 'total_freqavg', 'freqavg', 'FreqAvg', 'freq_avg', 'Frequency']));
+      if (f != null && f > 0 && f < 5000) { live.frequencyMhz = f; break; }
+    }
+  }
+  const cgWarmup = live.uptimeSec != null && live.uptimeSec < 180;
+  live.efficiencyJTH = cgWarmup ? null : computeEfficiency(live.powerW, live.hashrateReported);
+
+  // ── v2.x: GENERIC cgminer-family fallbacks ────────────────────────────────
+  // Everything above is tuned for Avalon (MM-string). Stock Antminer, LuxOS,
+  // Braiins OS+ (socket), Whatsminer and Vnish instead expose per-board values
+  // in DEVS and a firmware id in STATUS.Description. We fill ONLY fields still
+  // null, so Avalon's richer parse is never overridden. Result: universal
+  // monitoring (hashrate/temp/reject/uptime/fan) for any cgminer device. Core
+  // voltage stays null on firmwares that don't expose it, which correctly keeps
+  // those devices benchmark-ineligible (the gate requires freq + coreVoltage).
+  const devList = Array.isArray(devs) ? devs.filter(x => x && typeof x === 'object') : [];
+  if (devList.length) {
+    if (live.tempC == null) {
+      let t = null;
+      for (const d of devList) {
+        const v = numOr(pickField(d, ['Temperature', 'Temp', 'temp']));
+        if (v != null && v > 0 && v < 200 && (t == null || v > t)) t = v;
+      }
+      if (t != null) { live.tempC = t; live.tempDetails.push({ id: 'devs', tempC: t }); }
+    }
+    if (live.frequencyMhz == null) {
+      let f = null;
+      for (const d of devList) {
+        const v = numOr(pickField(d, ['Frequency', 'frequency', 'Freq']));
+        if (v != null && v > 0 && v < 5000 && (f == null || v > f)) f = v;
+      }
+      if (f != null) live.frequencyMhz = f;
+    }
+    if (live.fanRpm == null) {
+      let fr = null;
+      for (const d of devList) {
+        const v = numOr(pickField(d, ['Fan Speed', 'FanSpeed', 'Fan Speed In', 'fan']));
+        if (v != null && v > 0 && (fr == null || v > fr)) fr = v;
+      }
+      if (fr != null) live.fanRpm = fr;
+    }
+    // per-device share totals if summary didn't carry them
+    if (live.sharesAccepted == null || live.sharesRejected == null) {
+      let acc = 0, rej = 0, seen = false;
+      for (const d of devList) {
+        const a = numOr(d.Accepted), r = numOr(d.Rejected);
+        if (a != null || r != null) { seen = true; acc += (a || 0); rej += (r || 0); }
+      }
+      if (seen) {
+        if (live.sharesAccepted == null) live.sharesAccepted = acc;
+        if (live.sharesRejected == null) live.sharesRejected = rej;
+        if (live.rejectPct == null && (acc + rej) > 0) live.rejectPct = (rej / (acc + rej)) * 100;
+      }
+    }
+  }
+  // model label only if the Avalon parse didn't already set one
+  if (!live.model) {
+    const d0 = devList[0] || {};
+    const fromDev = pickField(d0, ['Model', 'Name', 'Board', 'Type']);
+    let devName = (typeof fromDev === 'string' && fromDev.trim()) ? fromDev.trim() : '';
+    // LuxOS/cgminer often leave DEVS.Name blank but carry the real model in
+    // STATS[0].Type (e.g. "Antminer S21 XP"); prefer that over the family label.
+    if (!devName && Array.isArray(stats)) {
+      for (const st of stats) {
+        const t = st && (st.Type || st.type);
+        if (typeof t === 'string' && t.trim()) { devName = t.trim(); break; }
+      }
+    }
+    live.model = devName || cgminerFamilyLabel(fwDesc);
+  }
+  if (!live.firmwareVersion && fwDesc) live.firmwareVersion = String(fwDesc).slice(0, 60);
 
   return live;
 }
 
 // v1.12.0: J/TH = watts / (hashrate in TH/s). hashrate is stored in H/s.
+// v2.x: best-share difficulty arrives in two firmware formats — a raw number
+// (NerdQAxe/TNA, e.g. 23715853416) or a pre-formatted string with a unit
+// suffix (BitAxe AxeOS, e.g. "86.75 G"). Normalize both to a plain number of
+// difficulty units so the UI formats them consistently.
+function normalizeDiff(v) {
+  if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+  if (typeof v === 'string') {
+    const m = /^\s*([0-9]*\.?[0-9]+)\s*([kKmMgGtTpPeE]?)/.exec(v);
+    if (!m) return null;
+    const n = parseFloat(m[1]);
+    if (!Number.isFinite(n)) return null;
+    const mult = { '': 1, k: 1e3, m: 1e6, g: 1e9, t: 1e12, p: 1e15, e: 1e18 };
+    return n * (mult[m[2].toLowerCase()] || 1);
+  }
+  return null;
+}
+
 function computeEfficiency(powerW, hashrateHs) {
   if (!powerW || powerW <= 0) return null;
   if (!hashrateHs || hashrateHs <= 0) return null;
@@ -507,53 +920,69 @@ function parseAvalonMmField(str, ...keys) {
   return null;
 }
 
+// v2.x: parse a bracketed, space-separated numeric array from an MM string,
+// e.g. PVT_T0[ 54  62  65 ...] or SF0[396 414 435 456]. Handles leading and
+// irregular internal spaces. Returns an array of finite numbers, or null.
+function parseAvalonMmArray(str, key) {
+  const re = new RegExp(`\\b${key}\\[([0-9.\\-\\s]+)\\]`, 'i');
+  const m = re.exec(str);
+  if (!m) return null;
+  const arr = m[1].trim().split(/\s+/).map(Number).filter(Number.isFinite);
+  return arr.length ? arr : null;
+}
+
 // ── ESP-Miner adapter ────────────────────────────────────────────────────────
 
-function tryEspMiner(ip) {
+// Single AxeOS HTTP GET → JSON. Resolves { ok:true, data } | { ok:false, status|error }.
+// Pure read; harmless against any device (a non-AxeOS box just 404s or times out).
+function fetchEspJson(ip, reqPath) {
   return new Promise((resolve) => {
-    let resolved = false;
-    const finish = (out) => {
-      if (resolved) return;
-      resolved = true;
-      resolve(out);
-    };
-
+    let done = false;
+    const finish = (out) => { if (!done) { done = true; resolve(out); } };
     const req = http.get({
       host: ip,
       port: HTTP_PORT,
-      path: '/api/system/info',
+      path: reqPath,
       timeout: POLL_TIMEOUT_MS,
       headers: { 'Accept': 'application/json' },
     }, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        finish({ ok: false, alignmentStatus: 'disabled', error: `http_${res.statusCode}` });
-        return;
-      }
+      if (res.statusCode !== 200) { res.resume(); finish({ ok: false, status: res.statusCode }); return; }
       let data = '';
       res.setEncoding('utf8');
       res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          const live = extractEspMinerLive(parsed);
-          finish({ ok: true, adapter: 'esp-miner', pools: [], live });
-        } catch (e) {
-          finish({ ok: false, alignmentStatus: 'disabled', error: 'invalid_json' });
-        }
+        try { finish({ ok: true, data: JSON.parse(data) }); }
+        catch { finish({ ok: false, error: 'invalid_json' }); }
       });
     });
-
-    req.on('error', (err) => {
-      const code = err.code || '';
-      const status = code === 'ECONNREFUSED' ? 'disabled' : 'unreachable';
-      finish({ ok: false, alignmentStatus: status, error: code || 'unknown' });
-    });
-    req.on('timeout', () => {
-      try { req.destroy(); } catch {}
-      finish({ ok: false, alignmentStatus: 'unreachable', error: 'timeout' });
-    });
+    req.on('error', (err) => finish({ ok: false, error: err.code || 'unknown' }));
+    req.on('timeout', () => { try { req.destroy(); } catch {} finish({ ok: false, error: 'timeout' }); });
   });
+}
+
+async function tryEspMiner(ip) {
+  // Tier 1: /api/system/info. If this isn't a clean 200 + JSON, the device is NOT
+  // AxeOS (e.g. a LuxOS S21 XP, which 404s / returns HTML here) — bail out now.
+  // This is the gate that guarantees the /api/system/asic call below can only ever
+  // reach a confirmed AxeOS device.
+  const info = await fetchEspJson(ip, '/api/system/info');
+  if (!info.ok) {
+    let alignmentStatus = 'unreachable', error = info.error || 'unknown';
+    if (info.status)                        { alignmentStatus = 'disabled'; error = `http_${info.status}`; }
+    else if (info.error === 'invalid_json') { alignmentStatus = 'disabled'; error = 'invalid_json'; }
+    else if (info.error === 'ECONNREFUSED') { alignmentStatus = 'disabled'; }
+    return { ok: false, alignmentStatus, error };
+  }
+  // Tier 2: confirmed AxeOS — enrich with /api/system/asic (deviceModel, asicCount,
+  // swarmColor). Failure-tolerant: forks / older firmware may lack the endpoint, and
+  // a missing or bad /asic must never sink the /info result.
+  let merged = info.data;
+  const asic = await fetchEspJson(ip, '/api/system/asic');
+  if (asic.ok && asic.data && typeof asic.data === 'object') {
+    merged = Object.assign({}, info.data, asic.data);
+  }
+  const live = extractEspMinerLive(merged);
+  return { ok: true, adapter: 'esp-miner', pools: [], live };
 }
 
 function extractEspMinerLive(d) {
@@ -567,15 +996,67 @@ function extractEspMinerLive(d) {
     hwErrors: null,
     uptimeSec: null,
     firmwareVersion: null,
+    model: null,
+    hashrateAvg: null,
+    hashrateSustained: null,
+    powerAvg: null,
+    powerSustained: null,
     asicModel: null,
+    frequencyMhz: null,
+    coreVoltageMv: null,
+    coreVoltageSetMv: null,
+    sharesAccepted: null,
+    sharesRejected: null,
+    rejectPct: null,
+    bestDiff: null,
+    bestSessionDiff: null,
+    expectedHashrate: null,
+    defaultFrequencyMhz: null,
+    defaultCoreVoltageMv: null,
+    inputVoltageV: null,
+    inputCurrentA: null,
+    tempTargetC: null,
+    overclockEnabled: null,
+    overheatMode: null,
+    boardVersion: null,
+    hr1m: null, hr10m: null, hr1h: null, hr1d: null,
+    vrTempC: null,
+    stratumConnected: null,
+    pingRttMs: null,
+    pingLossPct: null,
+    advanced: {},
   };
   if (typeof d.temp === 'number' && d.temp > 0)       live.tempC = d.temp;
-  if (typeof d.fanrpm === 'number' && d.fanrpm >= 0)  live.fanRpm = d.fanrpm;
-  if (typeof d.fanspeed === 'number' && d.fanspeed >= 0 && d.fanspeed <= 100)
-    live.fanPct = d.fanspeed;
-  if (typeof d.hashRate === 'number' && d.hashRate >= 0)
-    live.hashrateReported = d.hashRate * 1e9;
+  // fan rpm: AxeOS sends fanrpm (number); TNA-OS sends fanRpm (per-fan array)
+  {
+    let fr = (typeof d.fanrpm === 'number') ? d.fanrpm : null;
+    if (fr == null && d.fanRpm != null) {
+      if (Array.isArray(d.fanRpm)) {
+        const nums = d.fanRpm.filter(x => typeof x === 'number' && x >= 0);
+        if (nums.length) fr = Math.max(...nums);
+      } else if (typeof d.fanRpm === 'number') {
+        fr = d.fanRpm;
+      }
+    }
+    if (typeof fr === 'number' && fr >= 0) live.fanRpm = fr;
+  }
+  {
+    const fp = (typeof d.fanspeed === 'number') ? d.fanspeed
+             : (typeof d.fanSpeed === 'number') ? d.fanSpeed : null;
+    if (fp != null && fp >= 0 && fp <= 100) live.fanPct = fp;
+  }
   if (typeof d.uptimeSeconds === 'number')            live.uptimeSec = d.uptimeSeconds;
+  // v2.x: ESP/TNA firmware reports hashRate:0 for the first ~minutes after boot
+  // while its averaging window fills. Showing a stark "0 H/s" next to a healthy
+  // pool-side hashrate is misleading, and it also poisons the efficiency calc
+  // (power ÷ ~0 = absurd J/TH). Treat 0 during the warm-up window as "not yet
+  // reported" (null → UI hides the row) rather than a real zero. A genuine 0 on
+  // an established miner (uptime past the window) is a real fault, so keep it.
+  const WARMUP_SEC = 180;
+  if (typeof d.hashRate === 'number' && d.hashRate >= 0) {
+    const warmingUp = d.hashRate === 0 && live.uptimeSec != null && live.uptimeSec < WARMUP_SEC;
+    live.hashrateReported = warmingUp ? null : d.hashRate * 1e9;
+  }
   if (typeof d.version === 'string')                  live.firmwareVersion = d.version;
   // v1.12.x: ESP-Miner reports the actual mining chip in ASICModel
   // (e.g. "BM1370", "BM1366"). This is the authoritative model signal —
@@ -583,11 +1064,98 @@ function extractEspMinerLive(d) {
   // and consumed by miner-detect's detectFromAsicModel().
   if (typeof d.ASICModel === 'string' && d.ASICModel.trim()) live.asicModel = d.ASICModel.trim();
   else if (typeof d.asicModel === 'string' && d.asicModel.trim()) live.asicModel = d.asicModel.trim();
+  // v2.x: friendly model name (NerdQAxe++ / BitAxe Gamma / …) for benchmark
+  // bucketing & labels — without this, buckets read the raw chip ("BM1370").
+  live.model = friendlyEspModel(d);
   if (typeof d.asicCount === 'number' && d.asicCount > 0) live.asicCount = d.asicCount;
   if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
   // v1.12.0: ESP-Miner reports instantaneous power draw in watts.
   if (typeof d.power === 'number' && d.power > 0 && d.power < 20000) live.powerW = d.power;
+  // v2.x: tuning knobs from the SAME /api/system/info payload — frequency (MHz)
+  // and core voltage (mV). coreVoltageActual is the measured value (preferred);
+  // coreVoltage is the configured target. These feed the crowdsourced benchmark
+  // layer and the per-worker tuning detail. Bounds guard against bad firmware.
+  if (typeof d.frequency === 'number' && d.frequency > 0 && d.frequency < 2000) live.frequencyMhz = d.frequency;
+  if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 20000) live.coreVoltageMv = d.coreVoltageActual;
+  else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageMv = d.coreVoltage;
+  // v2.x Tier-1: the CONFIGURED core voltage (target). Shown alongside the
+  // measured value as "set → actual" so VR sag is visible at a glance.
+  if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageSetMv = d.coreVoltage;
+  // v2.x Tier-1: share counters → reject %. Present on both BitAxe & NerdQAxe.
+  if (typeof d.sharesAccepted === 'number' && d.sharesAccepted >= 0) live.sharesAccepted = d.sharesAccepted;
+  if (typeof d.sharesRejected === 'number' && d.sharesRejected >= 0) live.sharesRejected = d.sharesRejected;
+  if (live.sharesAccepted != null && live.sharesRejected != null) {
+    const tot = live.sharesAccepted + live.sharesRejected;
+    live.rejectPct = tot > 0 ? (live.sharesRejected / tot) * 100 : 0;
+  }
+  // v2.x Tier-1: best share. BitAxe sends a pre-formatted STRING ("86.75 G");
+  // NerdQAxe/TNA sends a raw integer (23715853416). Normalize both to a number
+  // of difficulty units so the UI can format consistently.
+  live.bestDiff = normalizeDiff(d.bestDiff);
+  live.bestSessionDiff = normalizeDiff(d.bestSessionDiff);
+  // v2.x Tier-1: expected hashrate (BitAxe) — actual-vs-expected health signal.
+  if (typeof d.expectedHashrate === 'number' && d.expectedHashrate > 0) live.expectedHashrate = d.expectedHashrate * 1e9;
+  // v2.x Tier-1: stock baselines — the OC reference point for the benchmark layer.
+  if (typeof d.defaultFrequency === 'number' && d.defaultFrequency > 0 && d.defaultFrequency < 2000) live.defaultFrequencyMhz = d.defaultFrequency;
+  if (typeof d.defaultCoreVoltage === 'number' && d.defaultCoreVoltage > 0 && d.defaultCoreVoltage < 20000) live.defaultCoreVoltageMv = d.defaultCoreVoltage;
   live.efficiencyJTH = computeEfficiency(live.powerW, live.hashrateReported);
+
+  // ── Tier 2: operator telemetry (some benchmark-eligible) ──────────────────
+  // Input rail (BitAxe `voltage` mV → V, `current` mA → A; NerdQAxe similar).
+  if (typeof d.voltage === 'number' && d.voltage > 0) live.inputVoltageV = d.voltage / 1000;
+  if (typeof d.current === 'number' && d.current > 0) live.inputCurrentA = d.current / 1000;
+  // Fan PID setpoint (BitAxe `temptarget`, NerdQAxe `pidTargetTemp`).
+  if (typeof d.temptarget === 'number' && d.temptarget > 0) live.tempTargetC = d.temptarget;
+  else if (typeof d.pidTargetTemp === 'number' && d.pidTargetTemp > 0) live.tempTargetC = d.pidTargetTemp;
+  if (typeof d.overclockEnabled !== 'undefined') live.overclockEnabled = !!d.overclockEnabled;
+  if (typeof d.overheat_mode !== 'undefined') live.overheatMode = !!d.overheat_mode;
+  if (typeof d.boardVersion === 'string' && d.boardVersion.trim()) live.boardVersion = d.boardVersion.trim();
+  else if (typeof d.boardVersion === 'number') live.boardVersion = String(d.boardVersion);
+  // Rolling hashrate windows (NerdQAxe exposes these directly; H/s).
+  if (typeof d.hashRate_1m === 'number')  live.hr1m  = d.hashRate_1m  * 1e9;
+  if (typeof d.hashRate_10m === 'number') live.hr10m = d.hashRate_10m * 1e9;
+  if (typeof d.hashRate_1h === 'number')  live.hr1h  = d.hashRate_1h  * 1e9;
+  if (typeof d.hashRate_1d === 'number')  live.hr1d  = d.hashRate_1d  * 1e9;
+  if (typeof d.vrTemp === 'number' && d.vrTemp > 0) live.vrTempC = d.vrTemp;
+  // Connection health.
+  if (typeof d.isStratumConnected !== 'undefined') live.stratumConnected = !!d.isStratumConnected;
+  if (typeof d.lastpingrtt === 'number' && d.lastpingrtt >= 0) live.pingRttMs = d.lastpingrtt;
+  if (typeof d.recentpingloss === 'number' && d.recentpingloss >= 0) live.pingLossPct = d.recentpingloss;
+
+  // ── Tier 3: OPERATOR-ONLY system/identity/noise → live.advanced ───────────
+  // Captured for the operator's Advanced panel. NEVER broadcast — the benchmark
+  // whitelist only reads a fixed top-level field set and cannot reach in here.
+  const adv = live.advanced;
+  const setAdv = (k, v) => { if (v !== undefined && v !== null && v !== '') adv[k] = v; };
+  setAdv('hostname', d.hostname);
+  setAdv('ssid', d.ssid);
+  setAdv('wifiRSSI', (typeof d.wifiRSSI === 'number' && d.wifiRSSI !== 0 && d.wifiRSSI !== -128) ? d.wifiRSSI : null);
+  setAdv('networkMode', d.networkMode);
+  setAdv('macAddr', (d.macAddr && d.macAddr.trim()) ? d.macAddr.trim() : (d.ethMac || null));
+  setAdv('ethIPv4', d.ethIPv4 || d.ipv4 || d.hostip);
+  setAdv('freeHeap', d.freeHeap);
+  setAdv('lastResetReason', d.lastResetReason);
+  setAdv('runningPartition', d.runningPartition);
+  setAdv('idfVersion', d.idfVersion);
+  setAdv('axeOSVersion', d.axeOSVersion);
+  setAdv('stratumUser', d.stratumUser);            // contains payout address — operator-only
+  setAdv('stratumURL', (d.stratumURL != null && d.stratumPort != null) ? `${d.stratumURL}:${d.stratumPort}` : null);
+  if (typeof d.pidP === 'number' || typeof d.pidI === 'number' || typeof d.pidD === 'number') {
+    setAdv('pid', `P${d.pidP ?? '–'} I${d.pidI ?? '–'} D${d.pidD ?? '–'}`);
+  }
+  setAdv('jobInterval', d.jobInterval);
+  setAdv('smallCoreCount', d.smallCoreCount);
+  setAdv('asicCount', d.asicCount);
+  setAdv('deviceModel', d.deviceModel);   // from /api/system/asic — "Gamma"/"GT"/"Hex"/…
+  setAdv('swarmColor', d.swarmColor);     // from /api/system/asic — per-board accent
+  setAdv('defaultTheme', d.defaultTheme);
+  setAdv('display', d.display);
+  setAdv('freeHeapInt', d.freeHeapInt);
+  setAdv('proxyDifficulty', d.proxyDifficulty);
+  setAdv('jobInterval', d.jobInterval);
+  if (typeof d.armyEnabled !== 'undefined') {
+    setAdv('army', d.armyEnabled ? `enabled (${d.armyConnected ? 'connected' : 'disconnected'})` : 'disabled');
+  }
 
   if (live.tempC !== null) {
     live.tempDetails.push({ id: 'asic', tempC: live.tempC });
@@ -778,7 +1346,20 @@ function numOr(v) {
 }
 
 function saveRecord(workerName, partial) {
-  records.set(workerName, { ...partial, lastCheckedAt: Date.now() });
+  // v2.x: maintain a small ring buffer of recent hashrate samples per worker so
+  // we can compute a server-side rolling average for the benchmark (fallback for
+  // devices that don't report their own average). Carries across poll cycles
+  // (saveRecord replaces the record, so we must preserve it explicitly).
+  const prev = records.get(workerName);
+  let hrSamples = (prev && Array.isArray(prev.hrSamples)) ? prev.hrSamples : [];
+  const hr = partial && partial.live && partial.live.hashrateReported;
+  const pw = partial && partial.live && partial.live.powerW;
+  if (Number.isFinite(hr) && hr > 0) {
+    hrSamples = hrSamples.concat([{ ts: Date.now(), hr, pw: (Number.isFinite(pw) && pw > 0 ? pw : null) }]);
+    const cutoff = Date.now() - 60 * 60 * 1000; // keep ~1h
+    hrSamples = hrSamples.filter(s => s.ts >= cutoff).slice(-120); // cap 120 samples
+  }
+  records.set(workerName, { ...partial, hrSamples, lastCheckedAt: Date.now() });
   scheduleSave();
 }
 
@@ -833,3 +1414,9 @@ module.exports = {
   getAllLive,
   pollOne,
 };
+
+// ── test-only exports ───────────────────────────────────────────────────────
+// Exposed for gekko-test.js / fixture harnesses. Harmless in production: these
+// are pure functions with no side effects and the running server never calls them.
+module.exports.extractEspMinerLive = extractEspMinerLive;
+module.exports.friendlyEspModel = friendlyEspModel;
