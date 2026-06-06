@@ -32,6 +32,7 @@ const { startMinerPoller, setEnabled: setMinerPollerEnabled,
         getAllRecords, pollOne: pollOneMiner } = require('./miner-poller');
 const { transformState }                = require('./state-transform');
 const { isValidBtcAddress }             = require('./validators');
+const minerControl                      = require('./miner-control');
 const {
   loadSnapshots,
   saveSnapshots,
@@ -114,7 +115,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '2.0.3',
+  version: '1.11.63',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1113,6 +1114,33 @@ app.post('/api/miners/poll/:workerName', async (req, res) => {
   } catch (e) {
     console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// v2.x: WRITE settings to a miner. Session-gated (NOT in PROXY_AUTH_WHITELIST).
+// Resolves the LAN IP from ckpool-harvested worker metadata — never from the
+// client — and the adapter (esp-miner | cgminer) from the latest poll record.
+// All values are clamped server-side in miner-control.dispatch().
+app.post('/api/miners/control/:workerName', async (req, res) => {
+  try {
+    const name = req.params.workerName;
+    const w = state.workers && state.workers[name];
+    const ip = w && w.ip;
+    if (!ip) return res.status(404).json({ ok: false, error: 'no_ip', message: 'No LAN IP harvested for this worker yet — reconnect it on a plain (3333) port so ckpool logs its address.' });
+    const recs = (typeof getAllRecords === 'function') ? getAllRecords() : {};
+    const rec = recs[name] || null;
+    const adapter = rec && rec.adapter ? rec.adapter : null; // 'esp-miner' | 'cgminer' | null
+    const body = req.body || {};
+    const action = String(body.action || '');
+    if (!['tuning', 'pool', 'restart', 'avalon'].includes(action)) {
+      return res.status(400).json({ ok: false, error: 'bad_action' });
+    }
+    const result = await minerControl.dispatch(ip, adapter, action, body);
+    if (!result.ok) return res.status(502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ ok: false, error: 'Internal server error' });
   }
 });
 
