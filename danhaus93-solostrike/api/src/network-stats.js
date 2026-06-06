@@ -470,6 +470,10 @@ function validateAndExtractEvent(ev, ourPubkey) {
         jth: +jth.toFixed(2),
         tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
         rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : null,
+        // v2.x: carry the peer's cooling reading so runner-up leaderboard rows
+        // show fan too (was previously stripped here → only champion had fan).
+        fanRpm: (() => { const n = Number(b.fanRpm); return (Number.isFinite(n) && n >= 0 && n < 30000) ? Math.round(n) : null; })(),
+        fanPct: (() => { const n = Number(b.fanPct); return (Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null; })(),
       });
     }
     if (clean.length) benchmarks = clean;
