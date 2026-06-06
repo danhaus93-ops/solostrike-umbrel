@@ -115,7 +115,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.62',
+  version: '1.11.63',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1132,7 +1132,7 @@ app.post('/api/miners/control/:workerName', async (req, res) => {
     const adapter = rec && rec.adapter ? rec.adapter : null; // 'esp-miner' | 'cgminer' | null
     const body = req.body || {};
     const action = String(body.action || '');
-    if (!['tuning', 'pool', 'restart', 'avalon-level'].includes(action)) {
+    if (!['tuning', 'pool', 'restart', 'avalon'].includes(action)) {
       return res.status(400).json({ ok: false, error: 'bad_action' });
     }
     const result = await minerControl.dispatch(ip, adapter, action, body);

@@ -154,35 +154,48 @@ async function dispatch(ip, adapter, action, body) {
       return { ok: true, applied: { url, port, user }, restart: false, note: 'pool written — restart the miner for it to take effect' };
     }
     if (isCg) {
-      const add = await cgminerCmd(ip, { command: 'addpool', parameter: `${url}:${port},${user},${pass}` });
-      const addS = cgStatusOk(add);
-      if (!addS.ok) return { ok: false, error: 'cg_addpool_failed', message: addS.msg || 'addpool failed' };
-      const pools = await cgminerCmd(ip, { command: 'pools' });
-      let newId = null;
-      try {
-        const list = pools.data && pools.data.POOLS ? pools.data.POOLS : [];
-        const match = list.filter(p => String(p.URL || '').includes(url));
-        if (match.length) newId = match[match.length - 1].POOL;
-      } catch {}
-      if (newId != null) await cgminerCmd(ip, { command: 'switchpool', parameter: String(newId) });
-      return { ok: true, applied: { url, port, user }, restart: false, note: 'pool added/switched on Avalon (verify on the miner)' };
+      // Avalon: ascset setpool <login_user>,<login_pass>,<pooladdr>,<worker>,<workerpass>.
+      // Login creds default to root/root (standard Avalon). Takes effect on reboot.
+      const scheme = body.tls ? 'stratum+ssl' : 'stratum+tcp';
+      const r = await cgminerCmd(ip, { command: 'ascset', parameter: `0,setpool,root,root,${scheme}://${url}:${port},${user},${pass}` });
+      const s = cgStatusOk(r);
+      if (!s.ok) return { ok: false, error: 'cg_setpool_failed', message: s.msg || 'setpool failed (is the Avalon login root/root?)' };
+      if (body.restart) { const rr = await cgminerCmd(ip, { command: 'ascset', parameter: '0,reboot,0' }); return { ok: true, applied: { url, port, user }, restart: true, restartOk: cgStatusOk(rr).ok }; }
+      return { ok: true, applied: { url, port, user }, restart: false, note: 'pool written — reboot the Avalon for it to take effect' };
     }
     return { ok: false, error: 'unsupported', message: 'unknown miner adapter for this worker' };
   }
 
   if (action === 'restart') {
     if (isEsp) { const r = await espRestart(ip); return r.ok ? { ok: true, restart: true } : { ok: false, error: r.error || ('http_' + r.status), message: 'restart failed or miner unreachable' }; }
-    if (isCg)  { const r = await cgminerCmd(ip, { command: 'restart' }); const s = cgStatusOk(r); return s.ok ? { ok: true, restart: true } : { ok: false, error: 'cg_restart_failed', message: s.msg || 'restart failed' }; }
+    if (isCg)  { const r = await cgminerCmd(ip, { command: 'ascset', parameter: '0,reboot,0' }); const s = cgStatusOk(r); return s.ok ? { ok: true, restart: true } : { ok: false, error: 'cg_reboot_failed', message: s.msg || 'reboot failed' }; }
     return { ok: false, error: 'unsupported', message: 'restart not supported for this miner' };
   }
 
-  if (action === 'avalon-level') {
-    if (!isCg) return { ok: false, error: 'unsupported', message: 'power-mode is only available on Avalon miners' };
-    const lvl = clampInt(body.level, { min: 0, max: 2 });
-    if (lvl == null) return { ok: false, error: 'out_of_range', message: 'level must be 0, 1, or 2' };
-    const r = await cgminerCmd(ip, { command: 'ascset', parameter: `0,worklevel,${lvl}` });
-    const s = cgStatusOk(r);
-    return s.ok ? { ok: true, applied: { level: lvl } } : { ok: false, error: 'cg_ascset_failed', message: s.msg || 'power-mode set failed' };
+  if (action === 'avalon') {
+    if (!isCg) return { ok: false, error: 'unsupported', message: 'power-mode/fan is only available on Avalon miners' };
+    const applied = {}; const fails = [];
+    if (body.level != null) {
+      const lvl = clampInt(body.level, { min: 0, max: 2 });
+      if (lvl == null) return { ok: false, error: 'out_of_range', message: 'level must be 0, 1, or 2' };
+      const r = await cgminerCmd(ip, { command: 'ascset', parameter: `0,workmode,set,${lvl}` });
+      const s = cgStatusOk(r);
+      if (s.ok) applied.level = lvl; else fails.push('workmode: ' + (s.msg || 'failed'));
+    }
+    if (body.fanAuto) {
+      const r = await cgminerCmd(ip, { command: 'ascset', parameter: '0,fan-spd,-1' });
+      const s = cgStatusOk(r);
+      if (s.ok) applied.fan = 'auto'; else fails.push('fan: ' + (s.msg || 'failed'));
+    } else if (body.fanspeed != null) {
+      const fan = clampInt(body.fanspeed, { min: 15, max: 100 });
+      if (fan == null) return { ok: false, error: 'out_of_range', message: 'Avalon fan must be 15–100 % (or AUTO)' };
+      const r = await cgminerCmd(ip, { command: 'ascset', parameter: `0,fan-spd,${fan}` });
+      const s = cgStatusOk(r);
+      if (s.ok) applied.fan = fan; else fails.push('fan: ' + (s.msg || 'failed'));
+    }
+    if (fails.length) return { ok: false, error: 'cg_ascset_failed', message: fails.join('; '), applied };
+    if (Object.keys(applied).length === 0) return { ok: false, error: 'empty', message: 'nothing to apply' };
+    return { ok: true, applied };
   }
 
   return { ok: false, error: 'bad_action', message: 'unknown action' };
