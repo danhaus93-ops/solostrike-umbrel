@@ -14625,13 +14625,15 @@ function TuningControls({ tt = (x) => x, worker }) {
     if (!auto) payload.fanspeed = fan;
     post(payload, '✓ Applied');
   }
-  function applyAvalonLevel() {
+  function applyAvalon() {
     if (!allChecked || busy) return;
-    post({ action: 'avalon-level', level }, '✓ Power mode set');
+    const payload = { action: 'avalon', level };
+    if (auto) payload.fanAuto = true; else payload.fanspeed = fan;
+    post(payload, '✓ Applied');
   }
   function doApplyPool() {
     setConfirmPool(false);
-    post({ action: 'pool', url: pool.url, port: parseInt(pool.port, 10), user: pool.user, password: pool.pass, restart: true }, '✓ Pool written');
+    post({ action: 'pool', url: pool.url, port: parseInt(pool.port, 10), user: pool.user, password: pool.pass, tls: pool.tls, restart: true }, '✓ Pool written');
   }
 
   // ── styling (matches app tokens) ───────────────────────────────────────────
@@ -14718,7 +14720,20 @@ function TuningControls({ tt = (x) => x, worker }) {
                       <button key={m} onClick={() => setLevel(i)} style={{ flex: 1, padding: '11px 8px', borderRadius: 10, border: `1px solid ${level === i ? 'rgba(var(--amber-rgb),0.4)' : 'var(--border)'}`, background: level === i ? 'rgba(var(--amber-rgb),0.1)' : 'var(--bg-raised)', color: level === i ? 'var(--amber)' : 'var(--text-2)', fontFamily: 'var(--fd)', fontSize: '0.62rem', cursor: 'pointer' }}>{tt(m)}</button>
                     ))}
                   </div>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-3)', fontStyle: 'italic', marginTop: 10, lineHeight: 1.5 }}>{tt('Avalon exposes a power-mode preset and pool config only — frequency and per-domain voltage aren\u2019t directly settable over its API.')}</p>
+                  <div style={{ padding: '13px 0 0', marginTop: 11, borderTop: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={cname}>{tt('Fan')}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <button onClick={() => setAuto(a => !a)} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '6px 11px', borderRadius: 8, border: `1px solid ${auto ? 'var(--cyan)' : 'var(--border)'}`, background: auto ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: auto ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{auto ? tt('AUTO') : tt('manual')}</button>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: auto ? 0.4 : 1, pointerEvents: auto ? 'none' : 'auto' }}>
+                          <input style={boxS} value={fan} inputMode="numeric" onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) setFan(clamp(n, 15, 100)); }} />
+                          <span style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', color: 'var(--text-2)' }}>%</span>
+                        </span>
+                      </span>
+                    </div>
+                    {!auto && <input type="range" min={15} max={100} value={fan} onChange={e => setFan(+e.target.value)} style={{ width: '100%', accentColor: 'var(--amber)' }} />}
+                  </div>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-3)', fontStyle: 'italic', marginTop: 10, lineHeight: 1.5 }}>{tt('Avalon exposes power mode and fan — frequency and per-domain voltage aren\u2019t settable over its API. Fan range 15–100%; AUTO returns control to the firmware.')}</p>
                 </div>
               ) : (
                 <p style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontStyle: 'italic', padding: '8px 0', lineHeight: 1.5 }}>{tt('This miner answers cgminer but not AxeOS — frequency/voltage tuning isn\u2019t available. Use the Pool tab to repoint it.')}</p>
@@ -14787,7 +14802,7 @@ function TuningControls({ tt = (x) => x, worker }) {
               {tab === 'pool' ? (
                 <button style={{ ...btnPrimary(allChecked && !busy), width: 'auto', padding: '12px 18px', background: allChecked ? 'var(--red,#ff5a5a)' : 'var(--bg-raised)', color: allChecked ? '#fff' : 'var(--text-3)' }} disabled={!allChecked || busy} onClick={() => allChecked && setConfirmPool(true)}>{tt('Apply + Restart')}</button>
               ) : (
-                <button style={{ ...btnPrimary(allChecked && !busy), width: 'auto', padding: '12px 18px' }} disabled={!allChecked || busy} onClick={(isAvalon ? applyAvalonLevel : applyTuning)}>{busy ? tt('Sending…') : tt('Apply')}</button>
+                <button style={{ ...btnPrimary(allChecked && !busy), width: 'auto', padding: '12px 18px' }} disabled={!allChecked || busy} onClick={(isAvalon ? applyAvalon : applyTuning)}>{busy ? tt('Sending…') : tt('Apply')}</button>
               )}
             </div>
           )}
