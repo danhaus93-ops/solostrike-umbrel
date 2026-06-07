@@ -11966,6 +11966,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
     try { return localStorage.getItem(LS_BENCH_ALIAS) || ''; } catch { return ''; }
   });
   const [editAlias, setEditAlias] = useState(false);
+  const [claimMsg, setClaimMsg] = useState(null);
 
   if (!shown.length) {
     return (
@@ -11982,7 +11983,9 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const champ = bucket.champion || {};
   const conf = benchConfidence(bucket.sampleCount || 0, minSample);
   const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
-  const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
+  const champHandle = (champ.isOwn
+    ? (alias || champ.handle)
+    : (champ.aliasState === 'impostor' ? champ.handle : (champ.alias || champ.handle))) || 'striker-????';
   // v2.x: Avalon core voltage is a per-chip measured average, not a settable
   // per-domain knob like the BitAxe — label it so nobody tries to type it in.
   const isAvalon = /avalon/i.test(bucket.model || '');
@@ -12007,9 +12010,18 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
     if (pendingCopy) { doCopy(pendingCopy); setPendingCopy(null); }
   };
   const saveAlias = (v) => {
-    const clean = (v || '').slice(0, 24).replace(/[^\w \-.]/g, '');
+    const clean = (v || '').slice(0, 24).replace(/[^\w \-.']/g, '').trim().replace(/\s+/g, ' ');
     setAlias(clean); setEditAlias(false);
     try { clean ? localStorage.setItem(LS_BENCH_ALIAS, clean) : localStorage.removeItem(LS_BENCH_ALIAS); } catch {}
+    if (!clean) { setClaimMsg(null); return; }
+    setClaimMsg({ ok: null, text: 'Claiming\u2026' });
+    fetch('/api/alias/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: clean }) })
+      .then(r => r.json()).then(j => {
+        if (j && j.ok) setClaimMsg({ ok: true, text: '\u2713 Claimed \u2014 verified network-wide' });
+        else if (j && j.error === 'taken') setClaimMsg({ ok: false, text: 'Name already claimed by another key' });
+        else if (j && j.error === 'registry_not_configured') setClaimMsg({ ok: false, text: 'Registry not set up yet (local only)' });
+        else setClaimMsg({ ok: false, text: (j && (j.message || j.error)) || 'Claim failed' });
+      }).catch(() => setClaimMsg({ ok: false, text: 'Could not reach the registry' }));
   };
 
   const lbl = { fontFamily:'var(--fd)', fontSize:'0.4rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase' };
@@ -12045,7 +12057,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
       <div style={{ background:'linear-gradient(135deg,rgba(57,255,106,0.10),rgba(0,255,209,0.03))', border:'1px solid rgba(57,255,106,0.32)', borderRadius:11, padding:'12px 13px', marginBottom:12, position:'relative' }}>
         <div style={{ fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.15em', color:'var(--green)', textTransform:'uppercase', marginBottom:6 }}>{tt('⚡ Most efficient · sustained')}</div>
         <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champ.isOwn ? 'var(--cyan)' : 'var(--green)', marginBottom:2 }}>
-          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
+          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}{champ.aliasState === 'verified' && !champ.isOwn ? <span style={{ color:'var(--green)', marginLeft:4 }} title={tt('verified owner')}>\u2713</span> : null}{champ.aliasState === 'impostor' ? <span style={{ color:'var(--red,#ff5a5a)', marginLeft:4 }} title={tt('unverified \u2014 not the registered owner')}>\u26a0</span> : null}
         </div>
         <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-2)', marginBottom:8 }}>
           {bucket.model}{bucket.asic ? ' · ' + bucket.asic : ''}{bucket.boardVersion ? ' · ' + tt('rev') + ' ' + bucket.boardVersion : ''} · {bucket.sampleCount} {tt('miners ranked')}
@@ -12107,7 +12119,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
-            {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
+            {r.isOwn ? (alias || r.handle) : (r.aliasState === 'impostor' ? r.handle : (r.alias || r.handle))}{r.isOwn ? ' (' + tt('you') + ')' : ''}{r.aliasState === 'verified' && !r.isOwn ? <span style={{ color:'var(--green)', marginLeft:3 }}>\u2713</span> : null}{r.aliasState === 'impostor' ? <span style={{ color:'var(--red,#ff5a5a)', marginLeft:3 }} title={r.alias ? tt('claims') + ' \u201c' + r.alias + '\u201d \u2014 ' + tt('unverified') : ''}>\u26a0</span> : null}
             <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}{r.fanPct != null ? ' · ' + r.fanPct + '% ' + tt('fan') : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
@@ -12147,10 +12159,11 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           </span>
         ) : (
           <button onClick={() => setEditAlias(true)} style={{ background:'none', border:'none', color:'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
-            {alias ? tt('Your alias') + ': ' + alias : tt('Set a leaderboard alias (optional)')}
+            {alias ? tt('Your name') + ': ' + alias : tt('Claim your striker name (optional)')}
           </button>
         )}
       </div>
+      {claimMsg && <div style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', textAlign:'center', marginTop:3, color: claimMsg.ok === true ? 'var(--green)' : claimMsg.ok === false ? 'var(--red,#ff5a5a)' : 'var(--text-3)' }}>{claimMsg.text}</div>}
 
       {/* disclaimer gate (one-time) */}
       {showDisc && (
