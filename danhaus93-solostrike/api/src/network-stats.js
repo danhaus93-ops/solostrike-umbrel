@@ -34,7 +34,7 @@ const net = require('net');
 const { URL } = require('url');
 
 // ── nostr-tools (CommonJS imports for older bundles) ────────────────────────
-let finalizeEvent, generateSecretKey, getPublicKey, verifyEvent;
+let finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, getEventHash;
 try {
   // Newer API path
   const pure = require('nostr-tools/pure');
@@ -42,6 +42,7 @@ try {
   generateSecretKey = pure.generateSecretKey;
   getPublicKey      = pure.getPublicKey;
   verifyEvent       = pure.verifyEvent;
+  getEventHash      = pure.getEventHash;
 } catch (_) {
   // Fallback for older builds
   ({
@@ -49,6 +50,7 @@ try {
     generateSecretKey,
     getPublicKey,
     verifyEvent,
+    getEventHash,
   } = require('nostr-tools'));
 }
 const aliasReg = require('./alias-registry');
@@ -1154,14 +1156,24 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         return { ok: false, error: 'invalid_name', message: '1\u201324 chars; letters, digits, space . _ - \' only.' };
       }
       if (!aliasReg.isConfigured()) return { ok: false, error: 'registry_not_configured' };
+      // NIP-13 proof-of-work: mine a nonce so the claim event id has >= POW_BITS
+      // leading zero bits. The registry Worker requires this so mass-claiming
+      // names (Sybil spam) costs real CPU instead of being free.
+      const POW_BITS = 18;
+      const lz = (idHex) => { let b = 0; for (let i = 0; i < idHex.length; i++) { const n = parseInt(idHex[i], 16); if (n === 0) { b += 4; continue; } b += Math.clz32(n) - 28; break; } return b; };
       let evt;
       try {
-        evt = finalizeEvent({
-          kind: 30080,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [['t', 'solostrike-alias-claim']],
-          content: JSON.stringify({ name: display, ts: Math.floor(Date.now() / 1000) }),
-        }, privkeyBytes);
+        const pubkeyHex = getPublicKey(privkeyBytes);
+        const content = JSON.stringify({ name: display, ts: Math.floor(Date.now() / 1000) });
+        const created_at = Math.floor(Date.now() / 1000);
+        let nonce = 0, base;
+        for (;;) {
+          base = { pubkey: pubkeyHex, kind: 30080, created_at, tags: [['t', 'solostrike-alias-claim'], ['nonce', String(nonce), String(POW_BITS)]], content };
+          if (lz(getEventHash(base)) >= POW_BITS) break;
+          nonce++;
+          if (nonce > 8000000) return { ok: false, error: 'pow_timeout', message: 'proof-of-work took too long \u2014 try again' };
+        }
+        evt = finalizeEvent(base, privkeyBytes);
       } catch (e) { return { ok: false, error: 'sign_failed', message: e.message }; }
       const res = await aliasReg.postClaim(evt);
       if (res && res.ok) {
