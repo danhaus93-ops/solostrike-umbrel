@@ -115,7 +115,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.63',
+  version: '1.11.64',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1153,6 +1153,30 @@ app.post('/api/network-stats/enable', (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
   networkStatsController.enable();
   res.json({ ok: true, enabled: true });
+});
+
+// v2.x: alias registry. Session-gated (NOT in PROXY_AUTH_WHITELIST). The claim is
+// signed server-side with the node's Nostr key, where the key already lives.
+app.get('/api/alias/status', (req, res) => {
+  if (!networkStatsController || typeof networkStatsController.getAliasStatus !== 'function') {
+    return res.status(503).json({ error: 'network-stats not initialized yet' });
+  }
+  res.json(networkStatsController.getAliasStatus());
+});
+
+app.post('/api/alias/claim', async (req, res) => {
+  try {
+    if (!networkStatsController || typeof networkStatsController.submitAliasClaim !== 'function') {
+      return res.status(503).json({ ok: false, error: 'network-stats not initialized yet' });
+    }
+    const name = req.body && req.body.name;
+    if (!name || typeof name !== 'string') return res.status(400).json({ ok: false, error: 'missing_name' });
+    const result = await networkStatsController.submitAliasClaim(name);
+    res.status(result && result.ok ? 200 : 409).json(result);
+  } catch (e) {
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
 });
 
 app.post('/api/network-stats/disable', (req, res) => {

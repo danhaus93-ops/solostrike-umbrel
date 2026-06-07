@@ -51,6 +51,7 @@ try {
     verifyEvent,
   } = require('nostr-tools'));
 }
+const aliasReg = require('./alias-registry');
 
 // ── Optional Tor support via socks-proxy-agent ──────────────────────────────
 // We require it inside a try so installs without socks-proxy-agent in their
@@ -492,7 +493,8 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks,
+      alias: (typeof data.alias === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(data.alias.trim().replace(/\s+/g,' ')) ? data.alias.trim().replace(/\s+/g,' ') : null) },
   };
 }
 
@@ -837,7 +839,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     for (const b of ownRows) {
       const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
       if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
-      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true });
+      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true, alias: cfg.pulseAlias || null });
     }
     for (const [pk, e] of entries) {
       if (pk === ownPk) continue;
@@ -852,9 +854,18 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         if (!m || m.toLowerCase() === 'unknown' || /^BM\d{3,4}$/i.test(m)) continue;
         const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
         if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
-        buckets.get(key).rows.push({ ...b, pk, isOwn: false });
+        buckets.get(key).rows.push({ ...b, pk, isOwn: false, alias: (e && typeof e.alias === 'string') ? e.alias : null });
       }
     }
+    // v2.x: resolve a row's broadcast alias against the signed registry.
+    const aliasInfo = (r) => {
+      const a = r && r.alias ? r.alias : null;
+      if (!a) return { alias: null, aliasState: null };
+      const owner = aliasReg.resolve(a);
+      if (owner && owner.pubkey === r.pk) return { alias: owner.display || a, aliasState: 'verified' };
+      if (owner) return { alias: a, aliasState: 'impostor' };
+      return { alias: a, aliasState: 'unverified' };
+    };
     const out = [];
     for (const bk of buckets.values()) {
       let rows = bk.rows;
@@ -878,11 +889,13 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
           fanRpm: champ.fanRpm, fanPct: champ.fanPct,
           isOwn: champ.isOwn,
           handle: 'striker-' + String(champ.pk || '').slice(0, 4),
+          ...aliasInfo(champ),
         },
         leaderboard: sorted.slice(0, 25).map(r => ({
           jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
           tempC: r.tempC, rejectPct: r.rejectPct, fanRpm: r.fanRpm, fanPct: r.fanPct,
           isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
+          ...aliasInfo(r),
         })),
       });
     }
@@ -1076,6 +1089,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
             return (Array.isArray(b) && b.length) ? { benchmarks: b } : {}; }
           catch { return {}; } })()
         : {}),
+      ...(cfg.pulseAlias ? { alias: cfg.pulseAlias } : {}),
     });
 
     const template = {
@@ -1112,6 +1126,19 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     }, delay);
   }
 
+  // ── v2.x: alias registry — seed last-known-good, then refresh periodically ─
+  try { if (cfg.pulseRegistryCache) aliasReg.seedFromEvent(cfg.pulseRegistryCache); } catch {}
+  if (aliasReg.isConfigured()) {
+    const refreshRegistry = async () => {
+      try {
+        const r = await aliasReg.fetchRegistry();
+        if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} }
+      } catch {}
+    };
+    refreshRegistry();
+    setInterval(refreshRegistry, 30 * 60 * 1000);
+  }
+
   // ── Public controller API ───────────────────────────────────────────────
   const controller = {
     enable() {
@@ -1120,6 +1147,36 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       lastOwnBroadcastAt = 0;
       publishOurStats();
       saveIdentity();
+    },
+    async submitAliasClaim(name) {
+      const display = String(name || '').trim().replace(/\s+/g, ' ');
+      if (!/^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(display)) {
+        return { ok: false, error: 'invalid_name', message: '1\u201324 chars; letters, digits, space . _ - \' only.' };
+      }
+      if (!aliasReg.isConfigured()) return { ok: false, error: 'registry_not_configured' };
+      let evt;
+      try {
+        evt = finalizeEvent({
+          kind: 30080,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [['t', 'solostrike-alias-claim']],
+          content: JSON.stringify({ name: display, ts: Math.floor(Date.now() / 1000) }),
+        }, privkeyBytes);
+      } catch (e) { return { ok: false, error: 'sign_failed', message: e.message }; }
+      const res = await aliasReg.postClaim(evt);
+      if (res && res.ok) {
+        cfg.pulseAlias = display;
+        try { saveIdentity(); } catch {}
+        lastOwnBroadcastAt = 0;            // re-broadcast so peers see the new alias
+        aliasReg.fetchRegistry().then(r => { if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} } }).catch(() => {});
+      }
+      return res;
+    },
+    getAliasStatus() {
+      const a = cfg.pulseAlias || null;
+      let state2 = null;
+      if (a) { const o = aliasReg.resolve(a); state2 = o ? (o.pubkey === pubkey ? 'verified' : 'impostor') : 'unverified'; }
+      return { alias: a, pubkey, handle: 'striker-' + pubkey.slice(0, 4), state: state2, configured: aliasReg.isConfigured(), registry: aliasReg.current() };
     },
     setPoolLocation(loc) {
       // loc: null to clear, or [lat, lon] in decimal degrees (will be snapped to 5°)
