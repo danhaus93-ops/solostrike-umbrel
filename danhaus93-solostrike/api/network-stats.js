@@ -34,7 +34,7 @@ const net = require('net');
 const { URL } = require('url');
 
 // ── nostr-tools (CommonJS imports for older bundles) ────────────────────────
-let finalizeEvent, generateSecretKey, getPublicKey, verifyEvent;
+let finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, getEventHash;
 try {
   // Newer API path
   const pure = require('nostr-tools/pure');
@@ -42,6 +42,7 @@ try {
   generateSecretKey = pure.generateSecretKey;
   getPublicKey      = pure.getPublicKey;
   verifyEvent       = pure.verifyEvent;
+  getEventHash      = pure.getEventHash;
 } catch (_) {
   // Fallback for older builds
   ({
@@ -49,8 +50,10 @@ try {
     generateSecretKey,
     getPublicKey,
     verifyEvent,
+    getEventHash,
   } = require('nostr-tools'));
 }
+const aliasReg = require('./alias-registry');
 
 // ── Optional Tor support via socks-proxy-agent ──────────────────────────────
 // We require it inside a try so installs without socks-proxy-agent in their
@@ -102,7 +105,10 @@ const BENCHMARK_BROADCAST_ALLOWED_FIELDS = Object.freeze([
   'coreVoltage',   // mV (set/target)
   'ths',           // reported hashrate, TH/s
   'jth',           // efficiency, J/TH
+  'tempC',         // chip temp °C — an OUTCOME (measured), part of tuning picture
   'rejectPct',     // share reject %
+  'fanRpm',        // fan speed RPM — measured cooling reading (non-identifying)
+  'fanPct',        // fan duty % — measured cooling reading (non-identifying)
 ]);
 // Sanitize a candidate benchmark payload down to only allowed numeric/string
 // fields. Any object/array/identity value or unknown key is discarded.
@@ -136,7 +142,7 @@ function buildBenchmarkSummaries(liveMap) {
     if (w.efficiencyJTH == null || !(w.efficiencyJTH > 0)) continue;
     if (w.uptimeSec == null || w.uptimeSec < BENCH_MIN_UPTIME_SEC) continue;
     if (w.rejectPct != null && w.rejectPct > BENCH_MAX_REJECT_PCT) continue;
-    if (w.frequencyMhz == null || w.coreVoltageMv == null) continue;
+    if (w.frequencyMhz == null) continue; // voltage optional: LuxOS/Whatsminer don't expose it
     const model = (w.model || w.asicModel || 'unknown');
     const board = (w.boardVersion != null ? String(w.boardVersion) : '');
     const asic = (w.asicModel || '');
@@ -146,21 +152,39 @@ function buildBenchmarkSummaries(liveMap) {
                  : w.hr1d != null ? w.hr1d
                  : w.hashrateReported);
     // v2.x: derive efficiency from the SAME sustained hashrate we report as ths,
-    // so jth and ths are always internally consistent. Using the poller's
-    // efficiencyJTH (computed from the bouncing INSTANT hashrate) against a
-    // sustained ths produced impossible figures (e.g. a Nano at 7.86 J/TH). If
-    // power is unavailable, fall back to the poller's value.
+    // AND from smoothed power (powerSustained) — instantaneous power bounces, so
+    // using it against a smoothed hashrate made J/TH swing (26→22 poll-to-poll).
+    // Both sides now averaged → stable, believable efficiency.
     const thsVal = ths != null ? ths / 1e12 : null;
-    const jth = (w.powerW > 0 && thsVal > 0)
-      ? +(w.powerW / thsVal).toFixed(2)
+    const pw = (w.powerSustained != null ? w.powerSustained : w.powerW);
+    const jth = (pw > 0 && thsVal > 0)
+      ? +(pw / thsVal).toFixed(2)
       : (w.efficiencyJTH != null ? +w.efficiencyJTH.toFixed(2) : null);
     if (jth == null) continue; // can't benchmark without an efficiency figure
+    // v2.x: SETTINGS half of the benchmark = the values a user would TYPE into
+    // their miner. Core voltage must be the SET/target (coreVoltageSetMv), not the
+    // measured/sagged reading (coreVoltageMv) — otherwise "copy the champion's
+    // settings" hands people the wrong number. Avalon has no settable per-domain
+    // voltage, so it falls back to its per-chip measured avg (frontend labels it
+    // "not directly settable"). Temp/reject are OUTCOMES (measured), kept as-is.
+    const setV = (w.coreVoltageSetMv != null ? w.coreVoltageSetMv : w.coreVoltageMv);
+    const temp = (w.tempC != null ? w.tempC
+                  : w.chipTempAvg != null ? w.chipTempAvg
+                  : null);
     buckets.get(key).rows.push({
       freq: w.frequencyMhz,
-      coreVoltage: w.coreVoltageMv,
+      coreVoltage: setV,
       ths: thsVal != null ? +thsVal.toFixed(3) : null,
       jth,
-      rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : 0,
+      tempC: temp != null ? +Number(temp).toFixed(1) : null,
+      // v2.x: do NOT coerce unknown reject to 0 — that fabricates a "0%" reading
+      // for miners we don't capture reject data from (e.g. Avalon/cgminer). Keep
+      // null so the UI shows "—" (unknown) instead of an invented clean rate.
+      rejectPct: w.rejectPct != null ? +w.rejectPct.toFixed(3) : null,
+      // Fan is a MEASURED cooling reading (usually auto, not a set knob). Ride it
+      // along like temp/reject; null stays null so fanless/passive rigs show "—".
+      fanRpm: w.fanRpm != null ? Math.round(w.fanRpm) : null,
+      fanPct: w.fanPct != null ? Math.round(w.fanPct) : null,
     });
   }
   const med = (arr) => {
@@ -176,10 +200,13 @@ function buildBenchmarkSummaries(liveMap) {
       asic: b.asic || undefined,
       boardVersion: b.board || undefined,
       freq: Math.round(med(b.rows.map(r => r.freq))),
-      coreVoltage: Math.round(med(b.rows.map(r => r.coreVoltage))),
+      coreVoltage: (() => { const m = med(b.rows.map(r => r.coreVoltage)); return m != null ? Math.round(m) : undefined; })(),
       ths: +(med(b.rows.map(r => r.ths)) || 0).toFixed(3),
       jth: +(med(b.rows.map(r => r.jth)) || 0).toFixed(2),
-      rejectPct: +(med(b.rows.map(r => r.rejectPct)) || 0).toFixed(3),
+      tempC: +(med(b.rows.map(r => r.tempC)) || 0).toFixed(1) || undefined,
+      rejectPct: (() => { const m = med(b.rows.map(r => r.rejectPct)); return m != null ? +m.toFixed(3) : undefined; })(),
+      fanRpm: (() => { const m = med(b.rows.map(r => r.fanRpm)); return m != null ? Math.round(m) : undefined; })(),
+      fanPct: (() => { const m = med(b.rows.map(r => r.fanPct)); return m != null ? Math.round(m) : undefined; })(),
     });
     if (summary.freq > 0 && summary.jth > 0) out.push(summary);
   }
@@ -432,6 +459,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
       if (!model) continue;
       const freq = Number(b.freq), cv = Number(b.coreVoltage);
       const ths = Number(b.ths), jth = Number(b.jth), rej = Number(b.rejectPct);
+      const tmp = Number(b.tempC);
       if (!Number.isFinite(freq) || freq <= 0 || freq > 2000) continue;
       if (!Number.isFinite(jth) || jth <= 0 || jth > 500) continue;
       if (!Number.isFinite(ths) || ths < 0 || ths > 2000) continue;
@@ -440,10 +468,15 @@ function validateAndExtractEvent(ev, ourPubkey) {
         asic: typeof b.asic === 'string' ? b.asic.slice(0, 24) : '',
         boardVersion: typeof b.boardVersion === 'string' ? b.boardVersion.slice(0, 16) : '',
         freq: Math.round(freq),
-        coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 3000) ? Math.round(cv) : null,
+        coreVoltage: (Number.isFinite(cv) && cv > 0 && cv < 20000) ? Math.round(cv) : null,
         ths: +ths.toFixed(3),
         jth: +jth.toFixed(2),
-        rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : 0,
+        tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
+        rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : null,
+        // v2.x: carry the peer's cooling reading so runner-up leaderboard rows
+        // show fan too (was previously stripped here → only champion had fan).
+        fanRpm: (() => { const n = Number(b.fanRpm); return (Number.isFinite(n) && n >= 0 && n < 30000) ? Math.round(n) : null; })(),
+        fanPct: (() => { const n = Number(b.fanPct); return (Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null; })(),
       });
     }
     if (clean.length) benchmarks = clean;
@@ -462,7 +495,8 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks,
+      alias: (typeof data.alias === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(data.alias.trim().replace(/\s+/g,' ')) ? data.alias.trim().replace(/\s+/g,' ') : null) },
   };
 }
 
@@ -807,7 +841,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     for (const b of ownRows) {
       const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
       if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
-      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true });
+      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true, alias: cfg.pulseAlias || null });
     }
     for (const [pk, e] of entries) {
       if (pk === ownPk) continue;
@@ -822,9 +856,18 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         if (!m || m.toLowerCase() === 'unknown' || /^BM\d{3,4}$/i.test(m)) continue;
         const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
         if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
-        buckets.get(key).rows.push({ ...b, pk, isOwn: false });
+        buckets.get(key).rows.push({ ...b, pk, isOwn: false, alias: (e && typeof e.alias === 'string') ? e.alias : null });
       }
     }
+    // v2.x: resolve a row's broadcast alias against the signed registry.
+    const aliasInfo = (r) => {
+      const a = r && r.alias ? r.alias : null;
+      if (!a) return { alias: null, aliasState: null };
+      const owner = aliasReg.resolve(a);
+      if (owner && owner.pubkey === r.pk) return { alias: owner.display || a, aliasState: 'verified' };
+      if (owner) return { alias: a, aliasState: 'impostor' };
+      return { alias: a, aliasState: 'unverified' };
+    };
     const out = [];
     for (const bk of buckets.values()) {
       let rows = bk.rows;
@@ -844,13 +887,17 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         bestJth: champ.jth,
         champion: {
           jth: champ.jth, ths: champ.ths, freq: champ.freq,
-          coreVoltage: champ.coreVoltage, rejectPct: champ.rejectPct,
+          coreVoltage: champ.coreVoltage, tempC: champ.tempC, rejectPct: champ.rejectPct,
+          fanRpm: champ.fanRpm, fanPct: champ.fanPct,
           isOwn: champ.isOwn,
           handle: 'striker-' + String(champ.pk || '').slice(0, 4),
+          ...aliasInfo(champ),
         },
         leaderboard: sorted.slice(0, 25).map(r => ({
           jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
+          tempC: r.tempC, rejectPct: r.rejectPct, fanRpm: r.fanRpm, fanPct: r.fanPct,
           isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
+          ...aliasInfo(r),
         })),
       });
     }
@@ -1044,6 +1091,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
             return (Array.isArray(b) && b.length) ? { benchmarks: b } : {}; }
           catch { return {}; } })()
         : {}),
+      ...(cfg.pulseAlias ? { alias: cfg.pulseAlias } : {}),
     });
 
     const template = {
@@ -1080,6 +1128,19 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     }, delay);
   }
 
+  // ── v2.x: alias registry — seed last-known-good, then refresh periodically ─
+  try { if (cfg.pulseRegistryCache) aliasReg.seedFromEvent(cfg.pulseRegistryCache); } catch {}
+  if (aliasReg.isConfigured()) {
+    const refreshRegistry = async () => {
+      try {
+        const r = await aliasReg.fetchRegistry();
+        if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} }
+      } catch {}
+    };
+    refreshRegistry();
+    setInterval(refreshRegistry, 30 * 60 * 1000);
+  }
+
   // ── Public controller API ───────────────────────────────────────────────
   const controller = {
     enable() {
@@ -1088,6 +1149,46 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       lastOwnBroadcastAt = 0;
       publishOurStats();
       saveIdentity();
+    },
+    async submitAliasClaim(name) {
+      const display = String(name || '').trim().replace(/\s+/g, ' ');
+      if (!/^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(display)) {
+        return { ok: false, error: 'invalid_name', message: '1\u201324 chars; letters, digits, space . _ - \' only.' };
+      }
+      if (!aliasReg.isConfigured()) return { ok: false, error: 'registry_not_configured' };
+      // NIP-13 proof-of-work: mine a nonce so the claim event id has >= POW_BITS
+      // leading zero bits. The registry Worker requires this so mass-claiming
+      // names (Sybil spam) costs real CPU instead of being free.
+      const POW_BITS = 18;
+      const lz = (idHex) => { let b = 0; for (let i = 0; i < idHex.length; i++) { const n = parseInt(idHex[i], 16); if (n === 0) { b += 4; continue; } b += Math.clz32(n) - 28; break; } return b; };
+      let evt;
+      try {
+        const pubkeyHex = getPublicKey(privkeyBytes);
+        const content = JSON.stringify({ name: display, ts: Math.floor(Date.now() / 1000) });
+        const created_at = Math.floor(Date.now() / 1000);
+        let nonce = 0, base;
+        for (;;) {
+          base = { pubkey: pubkeyHex, kind: 30080, created_at, tags: [['t', 'solostrike-alias-claim'], ['nonce', String(nonce), String(POW_BITS)]], content };
+          if (lz(getEventHash(base)) >= POW_BITS) break;
+          nonce++;
+          if (nonce > 8000000) return { ok: false, error: 'pow_timeout', message: 'proof-of-work took too long \u2014 try again' };
+        }
+        evt = finalizeEvent(base, privkeyBytes);
+      } catch (e) { return { ok: false, error: 'sign_failed', message: e.message }; }
+      const res = await aliasReg.postClaim(evt);
+      if (res && res.ok) {
+        cfg.pulseAlias = display;
+        try { saveIdentity(); } catch {}
+        lastOwnBroadcastAt = 0;            // re-broadcast so peers see the new alias
+        aliasReg.fetchRegistry().then(r => { if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} } }).catch(() => {});
+      }
+      return res;
+    },
+    getAliasStatus() {
+      const a = cfg.pulseAlias || null;
+      let state2 = null;
+      if (a) { const o = aliasReg.resolve(a); state2 = o ? (o.pubkey === pubkey ? 'verified' : 'impostor') : 'unverified'; }
+      return { alias: a, pubkey, handle: 'striker-' + pubkey.slice(0, 4), state: state2, configured: aliasReg.isConfigured(), registry: aliasReg.current() };
     },
     setPoolLocation(loc) {
       // loc: null to clear, or [lat, lon] in decimal degrees (will be snapped to 5°)
