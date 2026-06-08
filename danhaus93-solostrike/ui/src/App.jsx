@@ -11966,7 +11966,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
     try { return localStorage.getItem(LS_BENCH_ALIAS) || ''; } catch { return ''; }
   });
   const [editAlias, setEditAlias] = useState(false);
-  const [claimMsg, setClaimMsg] = useState(null);
+  const [showInfo, setShowInfo] = useState(false);
 
   if (!shown.length) {
     return (
@@ -11983,9 +11983,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const champ = bucket.champion || {};
   const conf = benchConfidence(bucket.sampleCount || 0, minSample);
   const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
-  const champHandle = (champ.isOwn
-    ? (alias || champ.handle)
-    : (champ.aliasState === 'impostor' ? champ.handle : (champ.alias || champ.handle))) || 'striker-????';
+  const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
   // v2.x: Avalon core voltage is a per-chip measured average, not a settable
   // per-domain knob like the BitAxe — label it so nobody tries to type it in.
   const isAvalon = /avalon/i.test(bucket.model || '');
@@ -12010,18 +12008,9 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
     if (pendingCopy) { doCopy(pendingCopy); setPendingCopy(null); }
   };
   const saveAlias = (v) => {
-    const clean = (v || '').slice(0, 24).replace(/[^\w \-.']/g, '').trim().replace(/\s+/g, ' ');
+    const clean = (v || '').slice(0, 24).replace(/[^\w \-.]/g, '');
     setAlias(clean); setEditAlias(false);
     try { clean ? localStorage.setItem(LS_BENCH_ALIAS, clean) : localStorage.removeItem(LS_BENCH_ALIAS); } catch {}
-    if (!clean) { setClaimMsg(null); return; }
-    setClaimMsg({ ok: null, text: 'Claiming\u2026' });
-    fetch('/api/alias/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: clean }) })
-      .then(r => r.json()).then(j => {
-        if (j && j.ok) setClaimMsg({ ok: true, text: '\u2713 Claimed \u2014 verified network-wide' });
-        else if (j && j.error === 'taken') setClaimMsg({ ok: false, text: 'Name already claimed by another key' });
-        else if (j && j.error === 'registry_not_configured') setClaimMsg({ ok: false, text: 'Registry not set up yet (local only)' });
-        else setClaimMsg({ ok: false, text: (j && (j.message || j.error)) || 'Claim failed' });
-      }).catch(() => setClaimMsg({ ok: false, text: 'Could not reach the registry' }));
   };
 
   const lbl = { fontFamily:'var(--fd)', fontSize:'0.4rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase' };
@@ -12057,7 +12046,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
       <div style={{ background:'linear-gradient(135deg,rgba(57,255,106,0.10),rgba(0,255,209,0.03))', border:'1px solid rgba(57,255,106,0.32)', borderRadius:11, padding:'12px 13px', marginBottom:12, position:'relative' }}>
         <div style={{ fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.15em', color:'var(--green)', textTransform:'uppercase', marginBottom:6 }}>{tt('⚡ Most efficient · sustained')}</div>
         <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champ.isOwn ? 'var(--cyan)' : 'var(--green)', marginBottom:2 }}>
-          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}{champ.aliasState === 'verified' && !champ.isOwn ? <span style={{ color:'var(--green)', marginLeft:4 }} title={tt('verified owner')}>\u2713</span> : null}{champ.aliasState === 'impostor' ? <span style={{ color:'var(--red,#ff5a5a)', marginLeft:4 }} title={tt('unverified \u2014 not the registered owner')}>\u26a0</span> : null}
+          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
         </div>
         <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-2)', marginBottom:8 }}>
           {bucket.model}{bucket.asic ? ' · ' + bucket.asic : ''}{bucket.boardVersion ? ' · ' + tt('rev') + ' ' + bucket.boardVersion : ''} · {bucket.sampleCount} {tt('miners ranked')}
@@ -12067,23 +12056,19 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', color:'var(--text-3)' }}>J/TH</span>
           <span style={{ marginLeft:'auto', fontFamily:'var(--fm)', fontSize:'0.5rem', color: conf.color }}>{tt(conf.label)}</span>
         </div>
-        <div style={{ fontFamily:'var(--fm)', fontSize:'0.46rem', color:'var(--text-3)', marginBottom:10 }}>{tt('sustained ~10-min avg · stable rigs only')}</div>
-
-        {/* SETTINGS to copy — the knobs (set/target values) */}
-        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5 }}>
-          <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Settings to copy')}</span>
-          <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(245,166,35,0.16)', color:'var(--amber)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('SET / TARGET')}</span>
+        {/* set-vs-measured legend (replaces SET/TARGET + MEASURED labels & per-tile captions) */}
+        <div style={{ display:'flex', gap:14, margin:'2px 0 10px', fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-3)' }}>
+          <span><span style={{ display:'inline-block', width:7, height:7, borderRadius:2, background:'var(--amber)', marginRight:4, verticalAlign:'middle' }} />{tt('amber = enter in your miner')}</span>
+          <span><span style={{ display:'inline-block', width:7, height:7, borderRadius:2, background:'var(--cyan)', marginRight:4, verticalAlign:'middle' }} />{tt('cyan = measured result')}</span>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:11 }}>
           <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
             <div style={lbl}>{tt('Frequency')}</div>
             <div style={{ ...val, color:'var(--amber)' }}>{champ.freq} MHz</div>
-            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{tt('enter in miner')}</div>
           </div>
           <div style={{ background:'rgba(245,166,35,0.06)', border:'1px solid var(--border-hot)', borderRadius:7, padding:'6px 8px' }}>
             <div style={lbl}>{tt('Core Voltage')}</div>
             <div style={{ ...val, color:'var(--amber)' }}>{isAvalon && champ.coreVoltage != null ? '~' + champ.coreVoltage + ' mV' : (champ.coreVoltage != null ? champ.coreVoltage + ' mV' : '—')}</div>
-            <div style={{ fontFamily:'var(--fm)', fontSize:'0.4rem', color:'var(--text-3)', marginTop:1 }}>{isAvalon ? tt('per-chip avg · not directly settable') : tt('set / target')}</div>
           </div>
           {/* Fan — a MEASURED reading (usually auto), not a set knob: cyan value
               (the app's measured color) distinguishes it from the amber set-values.
@@ -12095,11 +12080,6 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           </div>
         </div>
 
-        {/* OUTCOMES — measured results */}
-        <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5 }}>
-          <span style={{ fontFamily:'var(--fd)', fontSize:'0.42rem', letterSpacing:'0.13em', textTransform:'uppercase', color:'var(--text-3)' }}>{tt('Achieved outcomes')}</span>
-          <span style={{ fontSize:'0.38rem', padding:'1px 5px', borderRadius:6, background:'rgba(0,255,209,0.12)', color:'var(--cyan)', fontFamily:'var(--fd)', letterSpacing:'0.05em' }}>{tt('MEASURED · AVG')}</span>
-        </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
           <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('Hashrate')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.ths}</div></div>
           <div style={{ background:'rgba(0,0,0,0.25)', borderRadius:6, padding:'5px 4px', textAlign:'center' }}><div style={lbl}>{tt('J/TH')}</div><div style={{ ...val, color:'var(--cyan)', fontSize:'0.7rem' }}>{champ.jth}</div></div>
@@ -12119,8 +12099,8 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
-            {r.isOwn ? (alias || r.handle) : (r.aliasState === 'impostor' ? r.handle : (r.alias || r.handle))}{r.isOwn ? ' (' + tt('you') + ')' : ''}{r.aliasState === 'verified' && !r.isOwn ? <span style={{ color:'var(--green)', marginLeft:3 }}>\u2713</span> : null}{r.aliasState === 'impostor' ? <span style={{ color:'var(--red,#ff5a5a)', marginLeft:3 }} title={r.alias ? tt('claims') + ' \u201c' + r.alias + '\u201d \u2014 ' + tt('unverified') : ''}>\u26a0</span> : null}
-            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}{r.fanPct != null ? ' · ' + r.fanPct + '% ' + tt('fan') : ''}</span>
+            {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
+            <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}>{r.freq} MHz · {r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}{(r.fanPct != null || r.fanRpm != null) ? <span style={{ whiteSpace:'nowrap' }}>{' · '}{r.fanPct != null ? r.fanPct + '% ' + tt('fan') : ''}{r.fanRpm != null ? (r.fanPct != null ? ' (' + fmtNum(r.fanRpm) + ' rpm)' : fmtNum(r.fanRpm) + ' rpm') : ''}</span> : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.68rem', color:'var(--amber)', minWidth:54, textAlign:'right' }}>{r.jth}</span>
@@ -12129,23 +12109,26 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
       </>
       )}
 
-      {/* v2.x: accuracy caption — explains the averaging method so the numbers
-          aren't read as "wrong" when they differ from the miner's live UI. */}
-      <div style={{ marginTop:14, padding:'9px 11px', background:'rgba(245,166,35,0.05)', border:'1px solid var(--border)', borderRadius:8, display:'flex', gap:8 }}>
-        <span style={{ color:'var(--amber)', fontSize:'0.7rem', flexShrink:0 }}>ⓘ</span>
-        <p style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', lineHeight:1.6, color:'var(--text-2)' }}>{tt('These are sustained ~10-min averages from each miner\u2019s reported telemetry \u2014 they won\u2019t match the live, instant numbers in your miner\u2019s UI, which fluctuate constantly. Settings (freq, voltage) are the values to enter in your miner. Outcomes (hashrate, J/TH, temp) are measured results. Power is as the miner reports it (chip + board), not wall draw \u2014 a plug meter reads higher.')} <span style={{ color:'var(--text-1)' }}>{tt('This shares only your hardware model and these performance numbers \u2014 frequency, voltage, hashrate, J/TH, temp, and reject rate. Not your wallet address, IP, hostname, or worker names. You appear only as a random handle unless you set an alias.')}</span></p>
+      {/* collapsible: averaging method + privacy + risk detail (tap to expand) */}
+      <div style={{ marginTop:14, background:'rgba(245,166,35,0.05)', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+        <div onClick={() => setShowInfo(v => !v)} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:8, padding:'9px 11px', fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)' }}>
+          <span style={{ color:'var(--amber)' }}>ⓘ</span>{tt('How these numbers work and what gets shared')}<span style={{ marginLeft:'auto', color:'var(--text-3)', transform: showInfo ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}>›</span>
+        </div>
+        {showInfo && (
+          <div style={{ padding:'0 11px 11px' }}>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.6, color:'var(--text-2)', marginTop:8 }}>{tt('These are sustained ~10-min averages from each miner\u2019s reported telemetry \u2014 they won\u2019t match the live, instant numbers in your miner\u2019s UI, which fluctuate constantly. Settings (freq, voltage) are the values to enter in your miner. Outcomes (hashrate, J/TH, temp) are measured results. Power is as the miner reports it (chip + board), not wall draw \u2014 a plug meter reads higher.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.6, color:'var(--text-1)', marginTop:8 }}>{tt('This shares only your hardware model and these performance numbers \u2014 frequency, voltage, hashrate, J/TH, temp, and reject rate. Not your wallet address, IP, hostname, or worker names. You appear only as a random handle unless you set an alias.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.6, color:'var(--amber)', marginTop:8 }}>{tt('⚠ Settings are crowdsourced & unverified — applied at your own risk')}</p>
+          </div>
+        )}
       </div>
 
-      {/* inline risk one-liner (permanent) */}
-      <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--amber)', textAlign:'center', margin:'12px 0 6px', opacity:0.85, lineHeight:1.4 }}>
-        {tt('⚠ Settings are crowdsourced & unverified — applied at your own risk')}
-      </div>
       <button onClick={() => onCopyClick(champ)} style={{
         width:'100%', padding:9, borderRadius:7, cursor:'pointer',
         border:'1px solid ' + (copied ? 'var(--green)' : 'var(--border-hot)'),
-        background:'transparent', color: copied ? 'var(--green)' : 'var(--amber)',
-        fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase' }}>
-        {copied ? tt('✓ Copied to clipboard') : tt('⬇ Copy champion\u2019s settings')}
+        background:'transparent', display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+        <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', color: copied ? 'var(--green)' : 'var(--amber)' }}>{copied ? tt('✓ Copied to clipboard') : tt('⬇ Copy champion\u2019s settings')}</span>
+        <span style={{ fontFamily:'var(--fm)', fontSize:'0.45rem', color:'var(--amber)', opacity:0.7 }}>{tt('⚠ apply at your own risk')}</span>
       </button>
 
       {/* alias control */}
@@ -12159,11 +12142,10 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
           </span>
         ) : (
           <button onClick={() => setEditAlias(true)} style={{ background:'none', border:'none', color:'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
-            {alias ? tt('Your name') + ': ' + alias : tt('Claim your striker name (optional)')}
+            {alias ? tt('Your alias') + ': ' + alias : tt('Set a leaderboard alias (optional)')}
           </button>
         )}
       </div>
-      {claimMsg && <div style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', textAlign:'center', marginTop:3, color: claimMsg.ok === true ? 'var(--green)' : claimMsg.ok === false ? 'var(--red,#ff5a5a)' : 'var(--text-3)' }}>{claimMsg.text}</div>}
 
       {/* disclaimer gate (one-time) */}
       {showDisc && (
@@ -14545,287 +14527,6 @@ const ADV_LABELS = {
   perChainFreq:'Per-chain Freq', siliconBin:'Silicon Bin', workMode:'Work Mode',
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// v2.x TuningControls — write freq/voltage/fan/pool to a miner from its modal.
-// Gate: per-visit ×3 disclaimer (ss_tuning_seen_v1), same model as Top Strikers.
-// Apply is latched behind three always-present confirm checkboxes. Pool changes
-// require a restart confirm. AxeOS gets sliders; Avalon gets a power-mode preset;
-// anything else falls back to pool-only. POSTs /api/miners/control/:worker.
-// ─────────────────────────────────────────────────────────────────────────────
-const TUNING_SEEN_KEY = 'ss_tuning_seen_v1';
-const TUNE_RANGE = {
-  freq: { full: [400, 700], safe: [450, 600], step: 5 },
-  volt: { full: [1000, 1300], safe: [1100, 1200], step: 5 },
-};
-const TUNE_CHECKS = [
-  'I understand this is overclocking/undervolting and can damage my hardware or void my warranty.',
-  "I've confirmed my cooling is adequate and I'll monitor temperatures.",
-  'I understand crowdsourced settings are unverified and I apply everything at my own risk.',
-];
-
-function TuningControls({ tt = (x) => x, worker }) {
-  const name = worker && worker.name;
-  const label = (minerLabel(worker) || worker.minerType || '').toString();
-  const isAvalon = /avalon/i.test(label) || /avalon/i.test(worker.minerType || '');
-
-  const [seen, setSeen] = useState(() => { try { return parseInt(localStorage.getItem(TUNING_SEEN_KEY) || '0', 10) || 0; } catch { return 0; } });
-  const [acked, setAcked] = useState(false);
-  const [adapter, setAdapter] = useState(null);     // 'esp-miner' | 'cgminer' | null
-  const [tab, setTab] = useState('tune');
-  const [mode, setMode] = useState('safe');
-  const [freq, setFreq] = useState(550);
-  const [volt, setVolt] = useState(1150);
-  const [fan, setFan] = useState(70);
-  const [auto, setAuto] = useState(true);
-  const [level, setLevel] = useState(1);            // avalon power mode 0/1/2
-  const [pool, setPool] = useState({ url: 'umbrel.local', port: '3333', user: name || '', pass: 'x', tls: false });
-  const [checks, setChecks] = useState([false, false, false]);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const [confirmPool, setConfirmPool] = useState(false);
-
-  // Seed current settings + adapter from the latest poll record.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch('/api/miners/records');
-        const j = await r.json();
-        const rec = j && j.records ? j.records[name] : null;
-        if (!alive || !rec) return;
-        if (rec.adapter) setAdapter(rec.adapter);
-        const L = rec.live || {};
-        if (typeof L.frequencyMhz === 'number') setFreq(Math.round(L.frequencyMhz));
-        const v = (L.coreVoltageSetMv != null ? L.coreVoltageSetMv : L.coreVoltageMv);
-        if (typeof v === 'number' && v > 600) setVolt(Math.round(v));
-        if (typeof L.fanPct === 'number') setFan(Math.round(L.fanPct));
-        // open in Advanced if the live freq/volt already sit outside the safe band
-        const f = Math.round(L.frequencyMhz || 0);
-        if ((f && f > TUNE_RANGE.freq.safe[1]) || (typeof v === 'number' && v > TUNE_RANGE.volt.safe[1])) setMode('adv');
-      } catch {}
-    })();
-    return () => { alive = false; };
-  }, [name]);
-
-  const showGate = seen < 3 && !acked;
-  const allChecked = checks.every(Boolean);
-
-  function acknowledge() {
-    const n = Math.min(seen + 1, 3);
-    try { localStorage.setItem(TUNING_SEEN_KEY, String(n)); } catch {}
-    setSeen(n); setAcked(true);
-  }
-  function toggleCheck(i) { setChecks(c => c.map((v, j) => j === i ? !v : v)); }
-  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-  function snap(v, step) { return Math.round(v / step) * step; }
-
-  async function post(payload, okText) {
-    setBusy(true); setMsg(null);
-    try {
-      const r = await fetch(`/api/miners/control/${encodeURIComponent(name)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      });
-      const j = await r.json();
-      if (j && j.ok) setMsg({ ok: true, text: (okText || '✓ Sent') + (j.note ? ' — ' + j.note : (j.restart ? ' — miner restarting' : '')) });
-      else setMsg({ ok: false, text: (j && (j.message || j.error)) || 'request failed' });
-    } catch { setMsg({ ok: false, text: 'request failed — miner unreachable?' }); }
-    finally { setBusy(false); }
-  }
-
-  function applyTuning() {
-    if (!allChecked || busy) return;
-    const payload = { action: 'tuning', frequency: freq, coreVoltage: volt, autofanspeed: auto };
-    if (!auto) payload.fanspeed = fan;
-    post(payload, '✓ Applied');
-  }
-  function applyAvalon() {
-    if (!allChecked || busy) return;
-    const payload = { action: 'avalon', level };
-    if (auto) payload.fanAuto = true; else payload.fanspeed = fan;
-    post(payload, '✓ Applied');
-  }
-  function doApplyPool() {
-    setConfirmPool(false);
-    post({ action: 'pool', url: pool.url, port: parseInt(pool.port, 10), user: pool.user, password: pool.pass, tls: pool.tls, restart: true }, '✓ Pool written');
-  }
-
-  // ── styling (matches app tokens) ───────────────────────────────────────────
-  const sec = { marginTop: '1.25rem' };
-  const divider = { display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 0.75rem' };
-  const dlbl = { fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: 6 };
-  const tagS = { fontSize: '0.5rem', background: 'var(--amber)', color: '#1a1206', borderRadius: 4, padding: '2px 5px', fontWeight: 700, letterSpacing: '0.05em' };
-  const ln = { flex: 1, height: 1, background: 'rgba(var(--amber-rgb),0.18)' };
-  const gate = { border: '1px solid rgba(var(--amber-rgb),0.18)', borderRadius: 12, background: 'rgba(var(--amber-rgb),0.04)', padding: 15 };
-  const warnStrip = { display: 'flex', gap: 8, alignItems: 'flex-start', background: 'rgba(255,90,90,0.07)', border: '1px solid rgba(255,90,90,0.25)', borderRadius: 9, padding: '10px 11px', margin: '0 0 11px' };
-  const btnPrimary = (on) => ({ width: '100%', padding: 13, borderRadius: 10, border: 0, fontFamily: 'var(--fd)', fontWeight: 700, fontSize: '0.62rem', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: on ? 'pointer' : 'not-allowed', background: on ? 'var(--amber)' : 'var(--bg-raised)', color: on ? '#1a1206' : 'var(--text-3)', opacity: on ? 1 : 0.55 });
-  const tabBtn = (on) => ({ flex: 1, background: on ? 'rgba(var(--amber-rgb),0.12)' : 'transparent', border: 0, color: on ? 'var(--amber)' : 'var(--text-2)', fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.06em', textTransform: 'uppercase', padding: 9, borderRadius: 8, cursor: 'pointer' });
-  const modeBtn = (on, adv) => ({ background: on ? (adv ? 'rgba(255,90,90,0.16)' : 'rgba(var(--amber-rgb),0.14)') : 'transparent', border: 0, color: on ? (adv ? 'var(--red,#ff5a5a)' : 'var(--amber)') : 'var(--text-2)', fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '6px 11px', cursor: 'pointer', letterSpacing: '0.06em', textTransform: 'uppercase' });
-  const cname = { fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-2)' };
-  const boxS = { width: 78, height: 34, textAlign: 'right', background: 'var(--bg-deep)', border: '1px solid rgba(var(--amber-rgb),0.2)', borderRadius: 8, color: 'var(--amber)', fontFamily: 'var(--fm)', fontSize: '0.85rem', fontWeight: 700, padding: '0 9px' };
-  const stepS = { width: 30, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-raised)', color: 'var(--amber)', fontFamily: 'var(--fm)', fontSize: '1rem', cursor: 'pointer' };
-  const pinS = { flex: 1, height: 36, background: 'var(--bg-deep)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-1)', fontFamily: 'var(--fm)', fontSize: '0.78rem', padding: '0 10px' };
-  const pflS = { fontFamily: 'var(--fd)', fontSize: '0.52rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-2)', width: 116, flexShrink: 0 };
-  const chkRow = (on) => ({ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 8, borderRadius: 8, cursor: 'pointer', background: on ? 'rgba(0,255,209,0.05)' : 'transparent' });
-  const chkBox = (on) => ({ width: 19, height: 19, borderRadius: 6, border: `1.5px solid ${on ? 'var(--cyan)' : 'var(--text-3)'}`, background: on ? 'var(--cyan)' : 'transparent', color: '#06281f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, marginTop: 1 });
-
-  function Knob({ label, unit, value, set, range, step }) {
-    const [lo, hi] = range;
-    const pct = ((clamp(value, lo, hi) - lo) / (hi - lo) * 100).toFixed(1);
-    return (
-      <div style={{ padding: '11px 0', borderTop: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={cname}>{label}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button style={stepS} onClick={() => set(clamp(snap(value - step, step), lo, hi))}>−</button>
-            <input style={boxS} value={value} inputMode="numeric"
-              onChange={e => { const n = parseFloat(e.target.value); if (!isNaN(n)) set(n); }}
-              onBlur={e => { const n = parseFloat(e.target.value); set(isNaN(n) ? value : clamp(snap(n, step), lo, hi)); }} />
-            <span style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', color: 'var(--text-2)', width: 30 }}>{unit}</span>
-            <button style={stepS} onClick={() => set(clamp(snap(value + step, step), lo, hi))}>+</button>
-          </span>
-        </div>
-        <input type="range" min={lo} max={hi} step={step} value={clamp(value, lo, hi)}
-          onChange={e => set(clamp(snap(+e.target.value, step), lo, hi))}
-          style={{ width: '100%', accentColor: 'var(--amber)' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--fd)', fontSize: '0.5rem', color: 'var(--text-3)' }}>
-          <span>{lo}</span><span style={{ color: 'var(--cyan)' }}>safe {(mode === 'safe' ? range : TUNE_RANGE[unit === 'MHz' ? 'freq' : 'volt'].safe).join('–')}</span><span>{hi}</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={sec}>
-      <div style={divider}><span style={dlbl}>▾ {tt('Controls')} <span style={tagS}>NEW</span></span><span style={ln} /></div>
-
-      {showGate ? (
-        <div style={gate}>
-          <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-3)', textAlign: 'right', marginBottom: 6 }}>{tt('acknowledged')} {seen} / 3</div>
-          <h3 style={{ margin: '0 0 11px', fontFamily: 'var(--fd)', fontSize: '0.82rem', color: 'var(--amber)' }}>⚠ {tt('Before you tune — read this')}</h3>
-          <p style={{ margin: '0 0 11px', fontSize: '0.78rem', color: 'var(--text-1)', lineHeight: 1.5 }}>{tt('These controls write frequency, voltage, fan, and pool settings directly to your miner. SoloStrike only relays the values — it can\u2019t verify they\u2019re safe for your hardware.')}</p>
-          <div style={warnStrip}><span style={{ color: 'var(--red,#ff5a5a)' }}>⚡</span><span style={{ fontSize: '0.74rem', color: '#ffd9d3', lineHeight: 1.5 }}>{tt('This is overclocking / undervolting. It can crash the miner, corrupt shares, shorten chip lifespan, and may void your warranty. Custom firmware and some hardware respond differently — not every setting applies.')}</span></div>
-          <p style={{ margin: '0 0 11px', fontSize: '0.78rem', color: 'var(--text-1)', lineHeight: 1.5, borderLeft: '2px solid var(--cyan)', paddingLeft: 11 }}><b style={{ color: 'var(--cyan)' }}>{tt('Cooling is on you.')}</b> {tt('More frequency/voltage means more heat. Make sure your cooling can handle it and watch your temps — sustained overtemperature can permanently damage a chip. Never apply settings you can\u2019t cool.')}</p>
-          <p style={{ margin: '0 0 13px', fontSize: '0.74rem', color: 'var(--text-2)', lineHeight: 1.5 }}><b style={{ color: 'var(--cyan)' }}>{tt('Champion settings are unverified')}</b> — {tt('other people\u2019s rigs, different silicon/cooling/PSU. A hint, not a guarantee. Pool changes restart the miner.')}</p>
-          <button style={btnPrimary(true)} onClick={acknowledge}>{tt('I understand — show controls')}</button>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <div style={{ display: 'flex', gap: 6, flex: 1, background: 'var(--bg-deep)', border: '1px solid var(--border)', borderRadius: 10, padding: 4 }}>
-              <button style={tabBtn(tab === 'tune')} onClick={() => setTab('tune')}>{tt('Tuning')}</button>
-              <button style={tabBtn(tab === 'pool')} onClick={() => setTab('pool')}>{tt('Pool')}</button>
-            </div>
-            {tab === 'tune' && !isAvalon && adapter !== 'cgminer' && (
-              <div style={{ display: 'flex', background: 'var(--bg-deep)', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
-                <button style={modeBtn(mode === 'safe', false)} onClick={() => setMode('safe')}>{tt('Safe')}</button>
-                <button style={modeBtn(mode === 'adv', true)} onClick={() => setMode('adv')}>{tt('Advanced')}</button>
-              </div>
-            )}
-          </div>
-
-          {tab === 'tune' ? (
-            (isAvalon || adapter === 'cgminer') ? (
-              isAvalon ? (
-                <div style={{ padding: '4px 0' }}>
-                  <div style={{ ...cname, marginBottom: 9 }}>{tt('Power mode')}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {['Low', 'Mid', 'High'].map((m, i) => (
-                      <button key={m} onClick={() => setLevel(i)} style={{ flex: 1, padding: '11px 8px', borderRadius: 10, border: `1px solid ${level === i ? 'rgba(var(--amber-rgb),0.4)' : 'var(--border)'}`, background: level === i ? 'rgba(var(--amber-rgb),0.1)' : 'var(--bg-raised)', color: level === i ? 'var(--amber)' : 'var(--text-2)', fontFamily: 'var(--fd)', fontSize: '0.62rem', cursor: 'pointer' }}>{tt(m)}</button>
-                    ))}
-                  </div>
-                  <div style={{ padding: '13px 0 0', marginTop: 11, borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <span style={cname}>{tt('Fan')}</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <button onClick={() => setAuto(a => !a)} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '6px 11px', borderRadius: 8, border: `1px solid ${auto ? 'var(--cyan)' : 'var(--border)'}`, background: auto ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: auto ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{auto ? tt('AUTO') : tt('manual')}</button>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: auto ? 0.4 : 1, pointerEvents: auto ? 'none' : 'auto' }}>
-                          <input style={boxS} value={fan} inputMode="numeric" onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) setFan(clamp(n, 15, 100)); }} />
-                          <span style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', color: 'var(--text-2)' }}>%</span>
-                        </span>
-                      </span>
-                    </div>
-                    {!auto && <input type="range" min={15} max={100} value={fan} onChange={e => setFan(+e.target.value)} style={{ width: '100%', accentColor: 'var(--amber)' }} />}
-                  </div>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-3)', fontStyle: 'italic', marginTop: 10, lineHeight: 1.5 }}>{tt('Avalon exposes power mode and fan — frequency and per-domain voltage aren\u2019t settable over its API. Fan range 15–100%; AUTO returns control to the firmware.')}</p>
-                </div>
-              ) : (
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-3)', fontStyle: 'italic', padding: '8px 0', lineHeight: 1.5 }}>{tt('This miner answers cgminer but not AxeOS — frequency/voltage tuning isn\u2019t available. Use the Pool tab to repoint it.')}</p>
-              )
-            ) : (
-              <>
-                <Knob label={tt('Frequency')} unit="MHz" value={freq} set={setFreq} range={mode === 'safe' ? TUNE_RANGE.freq.safe : TUNE_RANGE.freq.full} step={TUNE_RANGE.freq.step} />
-                <Knob label={tt('Core voltage')} unit="mV" value={volt} set={setVolt} range={mode === 'safe' ? TUNE_RANGE.volt.safe : TUNE_RANGE.volt.full} step={TUNE_RANGE.volt.step} />
-                <div style={{ padding: '11px 0', borderTop: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={cname}>{tt('Fan')}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button onClick={() => setAuto(a => !a)} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '6px 11px', borderRadius: 8, border: `1px solid ${auto ? 'var(--cyan)' : 'var(--border)'}`, background: auto ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: auto ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{auto ? tt('AUTO') : tt('manual')}</button>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: auto ? 0.4 : 1, pointerEvents: auto ? 'none' : 'auto' }}>
-                        <input style={boxS} value={fan} inputMode="numeric" onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) setFan(clamp(n, 0, 100)); }} />
-                        <span style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', color: 'var(--text-2)' }}>%</span>
-                      </span>
-                    </span>
-                  </div>
-                  {!auto && <input type="range" min={0} max={100} value={fan} onChange={e => setFan(+e.target.value)} style={{ width: '100%', accentColor: 'var(--amber)' }} />}
-                </div>
-              </>
-            )
-          ) : (
-            <div style={{ padding: '4px 0' }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button onClick={() => setPool(p => ({ ...p, url: 'umbrel.local', port: p.tls ? '4333' : '3333', pass: 'x' }))} style={{ flex: 1, fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(var(--amber-rgb),0.3)', background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>⚡ {tt('Point at SoloStrike')}</button>
-                <button onClick={() => setPool(p => ({ ...p, tls: !p.tls, port: !p.tls ? '4333' : '3333' }))} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 11px', borderRadius: 8, border: `1px solid ${pool.tls ? 'var(--cyan)' : 'var(--border)'}`, background: pool.tls ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: pool.tls ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{pool.tls ? 'TLS · 4333' : tt('TLS off')}</button>
-              </div>
-              {[['url', 'Stratum URL', 'text'], ['port', 'Port', 'numeric'], ['user', 'Worker · addr.name', 'text'], ['pass', 'Password', 'text']].map(([k, lbl, im]) => (
-                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '9px 0' }}>
-                  <span style={pflS}>{tt(lbl)}</span>
-                  <input style={pinS} inputMode={im} value={pool[k]} onChange={e => setPool(p => ({ ...p, [k]: e.target.value }))} />
-                </div>
-              ))}
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-3)', fontStyle: 'italic', marginTop: 8, lineHeight: 1.5 }}>{tt('Writing pool config restarts the miner — stratum drops and reconnects.')}</p>
-            </div>
-          )}
-
-          {/* always-present confirm latch */}
-          <div style={{ border: '1px solid var(--border)', borderRadius: 11, padding: 12, marginTop: 14, background: 'var(--bg-deep)' }}>
-            <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--amber)', marginBottom: 9 }}>{tt('Confirm before applying')}</div>
-            {TUNE_CHECKS.map((t, i) => (
-              <div key={i} style={chkRow(checks[i])} onClick={() => toggleCheck(i)}>
-                <span style={chkBox(checks[i])}>{checks[i] ? '✓' : ''}</span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-1)', lineHeight: 1.4 }}>{tt(t)}</span>
-              </div>
-            ))}
-          </div>
-
-          {msg && <div style={{ marginTop: 10, fontSize: '0.72rem', color: msg.ok ? 'var(--green)' : 'var(--red,#ff5a5a)' }}>{msg.text}</div>}
-
-          {confirmPool ? (
-            <div style={{ border: '1px solid rgba(255,90,90,0.4)', background: 'rgba(255,90,90,0.08)', borderRadius: 11, padding: 13, marginTop: 12 }}>
-              <p style={{ margin: '0 0 11px', fontSize: '0.74rem', color: '#ffd9d3' }}>{tt('Restart this miner to apply the new pool? Stratum will drop and reconnect.')}</p>
-              <div style={{ display: 'flex', gap: 9 }}>
-                <button style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontFamily: 'var(--fd)', fontSize: '0.6rem', cursor: 'pointer' }} onClick={() => setConfirmPool(false)}>{tt('Cancel')}</button>
-                <button style={{ flex: 1, padding: 12, borderRadius: 10, border: 0, background: 'var(--red,#ff5a5a)', color: '#fff', fontFamily: 'var(--fd)', fontSize: '0.6rem', fontWeight: 700, cursor: 'pointer' }} onClick={doApplyPool}>{tt('Restart & apply')}</button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ flex: 1, fontFamily: 'var(--fd)', fontSize: '0.55rem', color: allChecked ? 'var(--cyan)' : 'var(--text-3)' }}>
-                {allChecked ? tt('ready') : `${tt('tick all 3 to enable')} · ${checks.filter(Boolean).length}/3`}
-              </span>
-              {tab === 'pool' ? (
-                <button style={{ ...btnPrimary(allChecked && !busy), width: 'auto', padding: '12px 18px', background: allChecked ? 'var(--red,#ff5a5a)' : 'var(--bg-raised)', color: allChecked ? '#fff' : 'var(--text-3)' }} disabled={!allChecked || busy} onClick={() => allChecked && setConfirmPool(true)}>{tt('Apply + Restart')}</button>
-              ) : (
-                <button style={{ ...btnPrimary(allChecked && !busy), width: 'auto', padding: '12px 18px' }} disabled={!allChecked || busy} onClick={(isAvalon ? applyAvalon : applyTuning)}>{busy ? tt('Sending…') : tt('Apply')}</button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-
 function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
@@ -14965,7 +14666,6 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
           <PoolAlignmentBlock worker={w}/>
           {/* v1.9.0: Live telemetry — temps, fans, hardware errors from the miner's local API */}
           <LiveStatsBlock tt={tt} worker={w}/>
-          <TuningControls tt={tt} worker={w}/>
 
           {minerUrl && (
             <div style={{...section, marginBottom:'1.25rem'}}>
@@ -16129,7 +15829,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v1.11.66 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v2.0.3 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
