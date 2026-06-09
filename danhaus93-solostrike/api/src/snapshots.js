@@ -107,7 +107,10 @@ function updateClosestCalls(snapshots, state) {
   let changed = false;
 
   for (const w of workers) {
-    const diff = w.bestshare || 0;
+    // Use SoloStrike's best-since-reset (share-watcher), not ckpool's cumulative
+    // bestshare — so a best-diff reset clears Near Strikes consistently and it
+    // doesn't refill from ckpool's lifetime value on the next tick.
+    const diff = (state.shareCounters && state.shareCounters[w.name] && state.shareCounters[w.name].bestSinceReset) || 0;
     if (diff <= 0) continue;
 
     // find if this worker already has an entry with equal or higher diff
@@ -161,11 +164,21 @@ function syncBlockEffort(snapshots, state) {
   return changed;
 }
 
+// Pool-wide best share diff since the last best-diff reset = max over workers
+// of share-watcher's bestSinceReset. Used so the trend + pool best reflect the
+// resettable value rather than ckpool's cumulative lifetime best.
+function poolBestSinceReset(state) {
+  let m = 0;
+  const sc = state.shareCounters || {};
+  for (const k in sc) { const v = (sc[k] && sc[k].bestSinceReset) || 0; if (v > m) m = v; }
+  return m;
+}
+
 // v1.12.0: sample the current pool bestshare into the persisted best-share
 // trend once per tick (scheduler runs every 60s). Monotonic per round.
 function sampleBestTrend(snapshots, state) {
   if (!Array.isArray(snapshots.bestTrend)) snapshots.bestTrend = [];
-  const best = state.bestshare || 0;
+  const best = poolBestSinceReset(state);
   if (best <= 0) return false;
   const now = Date.now();
   const last = snapshots.bestTrend[snapshots.bestTrend.length - 1];

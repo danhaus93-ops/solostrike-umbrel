@@ -34,7 +34,7 @@ const net = require('net');
 const { URL } = require('url');
 
 // ── nostr-tools (CommonJS imports for older bundles) ────────────────────────
-let finalizeEvent, generateSecretKey, getPublicKey, verifyEvent;
+let finalizeEvent, generateSecretKey, getPublicKey, verifyEvent, getEventHash;
 try {
   // Newer API path
   const pure = require('nostr-tools/pure');
@@ -42,6 +42,7 @@ try {
   generateSecretKey = pure.generateSecretKey;
   getPublicKey      = pure.getPublicKey;
   verifyEvent       = pure.verifyEvent;
+  getEventHash      = pure.getEventHash;
 } catch (_) {
   // Fallback for older builds
   ({
@@ -49,8 +50,10 @@ try {
     generateSecretKey,
     getPublicKey,
     verifyEvent,
+    getEventHash,
   } = require('nostr-tools'));
 }
+const aliasReg = require('./alias-registry');
 
 // ── Optional Tor support via socks-proxy-agent ──────────────────────────────
 // We require it inside a try so installs without socks-proxy-agent in their
@@ -413,6 +416,15 @@ function validateAndExtractEvent(ev, ourPubkey) {
     }
   }
 
+  // vX: optional self-declared roster flag — a region code the peer chose to
+  // show on the roster/globe instead of the geo-guess. Country ("US") or
+  // subdivision ("US-TX"). No coordinates — just a short region code. Strict
+  // format whitelist; the UI re-validates against known codes before render.
+  let rf = null;
+  if (typeof data.rf === 'string' && /^[A-Z]{2}(-[A-Z]{2,3})?$/.test(data.rf)) {
+    rf = data.rf;
+  }
+
   // v1.12.x: optional lastStrike — most recent block this peer claims found.
   // Validated for shape + sanity ranges. Block height bounded to current
   // chain tip + 1000 (defense against forged future blocks).
@@ -470,6 +482,10 @@ function validateAndExtractEvent(ev, ourPubkey) {
         jth: +jth.toFixed(2),
         tempC: (Number.isFinite(tmp) && tmp > 0 && tmp < 200) ? +tmp.toFixed(1) : null,
         rejectPct: (Number.isFinite(rej) && rej >= 0 && rej <= 100) ? +rej.toFixed(3) : null,
+        // v2.x: carry the peer's cooling reading so runner-up leaderboard rows
+        // show fan too (was previously stripped here → only champion had fan).
+        fanRpm: (() => { const n = Number(b.fanRpm); return (Number.isFinite(n) && n >= 0 && n < 30000) ? Math.round(n) : null; })(),
+        fanPct: (() => { const n = Number(b.fanPct); return (Number.isFinite(n) && n >= 0 && n <= 100) ? Math.round(n) : null; })(),
       });
     }
     if (clean.length) benchmarks = clean;
@@ -488,7 +504,8 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks },
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, rf, lastStrike, firstSeen, benchmarks,
+      alias: (typeof data.alias === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(data.alias.trim().replace(/\s+/g,' ')) ? data.alias.trim().replace(/\s+/g,' ') : null) },
   };
 }
 
@@ -806,6 +823,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       blocks: result.payload.blocks,
       version: result.payload.version,
       loc: result.payload.loc,  // null if not broadcast by peer
+      rf: result.payload.rf,    // self-declared region code, or null
       receivedAt: result.created_at,
       firstSeen: peerFirstSeen,
       // v1.12.x: most recent block this peer claims to have found
@@ -833,7 +851,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     for (const b of ownRows) {
       const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
       if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
-      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true });
+      buckets.get(key).rows.push({ ...b, pk: ownPk, isOwn: true, alias: cfg.pulseAlias || null });
     }
     for (const [pk, e] of entries) {
       if (pk === ownPk) continue;
@@ -848,9 +866,18 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         if (!m || m.toLowerCase() === 'unknown' || /^BM\d{3,4}$/i.test(m)) continue;
         const key = `${b.model}|${b.asic || ''}|${b.boardVersion || ''}`;
         if (!buckets.has(key)) buckets.set(key, { model: b.model, asic: b.asic || '', boardVersion: b.boardVersion || '', rows: [] });
-        buckets.get(key).rows.push({ ...b, pk, isOwn: false });
+        buckets.get(key).rows.push({ ...b, pk, isOwn: false, alias: (e && typeof e.alias === 'string') ? e.alias : null });
       }
     }
+    // v2.x: resolve a row's broadcast alias against the signed registry.
+    const aliasInfo = (r) => {
+      const a = r && r.alias ? r.alias : null;
+      if (!a) return { alias: null, aliasState: null };
+      const owner = aliasReg.resolve(a);
+      if (owner && owner.pubkey === r.pk) return { alias: owner.display || a, aliasState: 'verified' };
+      if (owner) return { alias: a, aliasState: 'impostor' };
+      return { alias: a, aliasState: 'unverified' };
+    };
     const out = [];
     for (const bk of buckets.values()) {
       let rows = bk.rows;
@@ -874,11 +901,13 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
           fanRpm: champ.fanRpm, fanPct: champ.fanPct,
           isOwn: champ.isOwn,
           handle: 'striker-' + String(champ.pk || '').slice(0, 4),
+          ...aliasInfo(champ),
         },
         leaderboard: sorted.slice(0, 25).map(r => ({
           jth: r.jth, ths: r.ths, freq: r.freq, coreVoltage: r.coreVoltage,
           tempC: r.tempC, rejectPct: r.rejectPct, fanRpm: r.fanRpm, fanPct: r.fanPct,
           isOwn: r.isOwn, handle: 'striker-' + String(r.pk || '').slice(0, 4),
+          ...aliasInfo(r),
         })),
       });
     }
@@ -936,6 +965,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       blocks: e.blocks,
       version: e.version,
       loc: e.loc || null,  // [lat, lon] on 5° grid, or null
+      rf: e.rf || null,    // self-declared region code ("US"/"US-TX"), or null
       lastSeenAgoSec: Math.max(0, Math.floor(Date.now() / 1000 - e.receivedAt)),
       filtered: !filteredPubkeys.has(pk),
       isOwn: pk === pubkey,
@@ -1048,6 +1078,11 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
           && Number.isFinite(cfg.poolLocation[0]) && Number.isFinite(cfg.poolLocation[1])
         ? { loc: snapToLocGrid(cfg.poolLocation[0], cfg.poolLocation[1]) }
         : {}),
+      // vX: optional self-declared roster flag — broadcast the region code so
+      // peers render our chosen flag instead of guessing from the pin.
+      ...(typeof cfg.rosterFlag === 'string' && /^[A-Z]{2}(-[A-Z]{2,3})?$/.test(cfg.rosterFlag)
+        ? { rf: cfg.rosterFlag }
+        : {}),
       // v1.12.x: broadcast our most recent found block so peers can show
       // "Recent Strikes" in their Pulse modal. state.blocks[0] is the latest.
       ...(Array.isArray(state.blocks) && state.blocks.length > 0
@@ -1072,6 +1107,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
             return (Array.isArray(b) && b.length) ? { benchmarks: b } : {}; }
           catch { return {}; } })()
         : {}),
+      ...(cfg.pulseAlias ? { alias: cfg.pulseAlias } : {}),
     });
 
     const template = {
@@ -1108,6 +1144,19 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     }, delay);
   }
 
+  // ── v2.x: alias registry — seed last-known-good, then refresh periodically ─
+  try { if (cfg.pulseRegistryCache) aliasReg.seedFromEvent(cfg.pulseRegistryCache); } catch {}
+  if (aliasReg.isConfigured()) {
+    const refreshRegistry = async () => {
+      try {
+        const r = await aliasReg.fetchRegistry();
+        if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} }
+      } catch {}
+    };
+    refreshRegistry();
+    setInterval(refreshRegistry, 30 * 60 * 1000);
+  }
+
   // ── Public controller API ───────────────────────────────────────────────
   const controller = {
     enable() {
@@ -1116,6 +1165,60 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       lastOwnBroadcastAt = 0;
       publishOurStats();
       saveIdentity();
+    },
+    async submitAliasClaim(name) {
+      const display = String(name || '').trim().replace(/\s+/g, ' ');
+      if (!/^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(display)) {
+        return { ok: false, error: 'invalid_name', message: '1\u201324 chars; letters, digits, space . _ - \' only.' };
+      }
+      if (!aliasReg.isConfigured()) return { ok: false, error: 'registry_not_configured' };
+      // NIP-13 proof-of-work: mine a nonce so the claim event id has >= POW_BITS
+      // leading zero bits. The registry Worker requires this so mass-claiming
+      // names (Sybil spam) costs real CPU instead of being free.
+      const POW_BITS = 18;
+      const lz = (idHex) => { let b = 0; for (let i = 0; i < idHex.length; i++) { const n = parseInt(idHex[i], 16); if (n === 0) { b += 4; continue; } b += Math.clz32(n) - 28; break; } return b; };
+      let evt;
+      try {
+        const pubkeyHex = getPublicKey(privkeyBytes);
+        const content = JSON.stringify({ name: display, ts: Math.floor(Date.now() / 1000) });
+        const created_at = Math.floor(Date.now() / 1000);
+        let nonce = 0, base;
+        for (;;) {
+          base = { pubkey: pubkeyHex, kind: 30080, created_at, tags: [['t', 'solostrike-alias-claim'], ['nonce', String(nonce), String(POW_BITS)]], content };
+          if (lz(getEventHash(base)) >= POW_BITS) break;
+          nonce++;
+          if (nonce > 8000000) return { ok: false, error: 'pow_timeout', message: 'proof-of-work took too long \u2014 try again' };
+        }
+        evt = finalizeEvent(base, privkeyBytes);
+      } catch (e) { return { ok: false, error: 'sign_failed', message: e.message }; }
+      const res = await aliasReg.postClaim(evt);
+      if (res && res.ok) {
+        cfg.pulseAlias = display;
+        try { saveIdentity(); } catch {}
+        lastOwnBroadcastAt = 0;            // re-broadcast so peers see the new alias
+        aliasReg.fetchRegistry().then(r => { if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} } }).catch(() => {});
+      }
+      return res;
+    },
+    getAliasStatus() {
+      const a = cfg.pulseAlias || null;
+      let state2 = null;
+      if (a) { const o = aliasReg.resolve(a); state2 = o ? (o.pubkey === pubkey ? 'verified' : 'impostor') : 'unverified'; }
+      return { alias: a, pubkey, handle: 'striker-' + pubkey.slice(0, 4), state: state2, configured: aliasReg.isConfigured(), registry: aliasReg.current() };
+    },
+    setRosterFlag(code) {
+      // code: null/'' to clear, or a region code ("US" / "US-TX"). Strict
+      // format check; the UI further validates against the known-code table.
+      if (code === null || code === '' || code === 'auto') {
+        cfg.rosterFlag = null;
+      } else if (typeof code === 'string' && /^[A-Z]{2}(-[A-Z]{2,3})?$/.test(code)) {
+        cfg.rosterFlag = code;
+      } else {
+        return false;
+      }
+      // Force re-broadcast on next cycle so the new flag propagates fast
+      lastOwnBroadcastAt = 0;
+      return true;
     },
     setPoolLocation(loc) {
       // loc: null to clear, or [lat, lon] in decimal degrees (will be snapped to 5°)

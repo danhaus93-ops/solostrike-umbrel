@@ -115,12 +115,12 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.63',
+  version: '2.0.4',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
   // open Umbrel for the update.
-  composeVersion: '1.8.5',
+  composeVersion: '2.0.4',
   // Update urgency — drives banner styling. 'normal' (amber), 'recommended' (cyan),
   // 'critical' (red). Set per release.
   urgency: 'normal',
@@ -511,7 +511,7 @@ async function pollBitcoind() {
 
       state.retarget = {
         progressPercent: (blocksDoneInEpoch / 2016) * 100,
-        difficultyChange: -change,
+        difficultyChange: change,
         remainingBlocks,
         remainingTime,
         prevDifficultyChange,
@@ -947,8 +947,46 @@ app.get('/api/export/workers.csv', (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="solostrike-workers.csv"');
   const wl = Object.values(state.workers || {});
   const rows = [['name','status','hashrate','accepted','rejected','best','last_seen','miner_type']];
-  wl.forEach(w => rows.push([w.name, w.status, w.hashrate || 0, w.shares || 0, w.rejected || 0, w.bestshare || 0, w.lastSeen || 0, w.minerType || '']));
+  wl.forEach(w => rows.push([w.name, w.status, w.hashrate || 0, w.shares || 0, w.rejected || 0, ((state.shareCounters && state.shareCounters[w.name] && state.shareCounters[w.name].bestSinceReset) || 0), w.lastSeen || 0, w.minerType || '']));
   res.send(rowsToCsv(rows));
+});
+
+// Reset best difficulty. Body: { worker } resets one miner; omit/null resets
+// all. Zeros SoloStrike's best-since-reset (which every best-diff display reads)
+// and clears the derived stores (Near Strikes, Best Share Trend) so nothing
+// refills from ckpool. ckpool's cumulative lifetime best is left untouched and
+// stays available as the per-worker/pool lifetime readout.
+app.post('/api/reset-best-diff', (req, res) => {
+  try {
+    const worker = (req.body && typeof req.body.worker === 'string' && req.body.worker.trim())
+      ? req.body.worker.trim() : null;
+    if (worker) {
+      if (state.shareCounters && state.shareCounters[worker]) {
+        state.shareCounters[worker].bestSinceReset = 0;
+      }
+      // drop this worker from the Near Strikes leaderboard
+      if (state.snapshots && Array.isArray(state.snapshots.closestCalls)) {
+        state.snapshots.closestCalls = state.snapshots.closestCalls.filter(c => c.workerName !== worker);
+      }
+    } else {
+      if (state.shareCounters) {
+        for (const n of Object.keys(state.shareCounters)) state.shareCounters[n].bestSinceReset = 0;
+      }
+      // clear pool-wide derived stores so the trend + Near Strikes restart clean
+      if (state.snapshots) { state.snapshots.closestCalls = []; state.snapshots.bestTrend = []; }
+      if (state.shares && Array.isArray(state.shares.bestHistory)) state.shares.bestHistory = [];
+      if (Array.isArray(state.closestCalls)) state.closestCalls = [];
+    }
+    savePersist({
+      shareCounters: state.shareCounters,
+      snapshots: state.snapshots,
+      closestCalls: state.closestCalls,
+    });
+    res.json({ ok: true, scope: worker || 'all' });
+  } catch (e) {
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.post('/api/reset-share-stats', (req, res) => {
@@ -1155,6 +1193,30 @@ app.post('/api/network-stats/enable', (req, res) => {
   res.json({ ok: true, enabled: true });
 });
 
+// v2.x: alias registry. Session-gated (NOT in PROXY_AUTH_WHITELIST). The claim is
+// signed server-side with the node's Nostr key, where the key already lives.
+app.get('/api/alias/status', (req, res) => {
+  if (!networkStatsController || typeof networkStatsController.getAliasStatus !== 'function') {
+    return res.status(503).json({ error: 'network-stats not initialized yet' });
+  }
+  res.json(networkStatsController.getAliasStatus());
+});
+
+app.post('/api/alias/claim', async (req, res) => {
+  try {
+    if (!networkStatsController || typeof networkStatsController.submitAliasClaim !== 'function') {
+      return res.status(503).json({ ok: false, error: 'network-stats not initialized yet' });
+    }
+    const name = req.body && req.body.name;
+    if (!name || typeof name !== 'string') return res.status(400).json({ ok: false, error: 'missing_name' });
+    const result = await networkStatsController.submitAliasClaim(name);
+    res.status(result && result.ok ? 200 : 409).json(result);
+  } catch (e) {
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
+});
+
 app.post('/api/network-stats/disable', (req, res) => {
   if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
   networkStatsController.disable();
@@ -1189,6 +1251,21 @@ app.post('/api/network-stats/location', async (req, res) => {
   if (!ok) return res.status(400).json({ error: 'Coordinates out of range (lat: -90..90, lon: -180..180)' });
   await saveConfig();
   res.json({ ok: true, location: cfg.poolLocation });
+});
+
+// Self-declared roster flag. Body: { code } — a region code ("US" / "US-TX")
+// or null/'' to clear (fall back to the geo-guess from the pin). No
+// coordinates involved; just the region code the user chose to display.
+app.post('/api/network-stats/roster-flag', async (req, res) => {
+  if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
+  if (typeof networkStatsController.setRosterFlag !== 'function') {
+    return res.status(501).json({ error: 'setRosterFlag not supported in this API version' });
+  }
+  const { code } = req.body || {};
+  const ok = networkStatsController.setRosterFlag(code == null ? null : code);
+  if (!ok) return res.status(400).json({ error: 'Invalid region code (expected "US" or "US-TX" form, or null to clear)' });
+  await saveConfig();
+  res.json({ ok: true, rosterFlag: cfg.rosterFlag });
 });
 
 // v1.7.1 — Backup the encrypted identity to plaintext on user demand (localhost-only).
