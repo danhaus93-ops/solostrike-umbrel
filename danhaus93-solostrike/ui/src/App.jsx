@@ -6878,7 +6878,7 @@ function ShareStatsModal({ tt = (x) => x, shares, workers, aliases, onClose, onW
 }
 
 // ── Share Stats card ──────────────────────────────────────────────────────────
-function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
+function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, bestshareLifetime, onOpen }) {
   const s = shares || {};
   const workAccepted = s.accepted || 0;
   const workRejected = s.rejected || 0;
@@ -6935,7 +6935,10 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
         )}
         <div style={{background:'transparent',border:'1px solid transparent',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Best Difficulty')}</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('all-time')}</span></div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('since reset')}</span></div>
+          {bestshareLifetime > (bestshare||0) && (
+            <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:3}}>{tt('lifetime')}: {fmtDiff(bestshareLifetime)}</div>
+          )}
         </div>
         <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-2)',marginTop:'0.2rem'}}>
           <span>{spsLabel}</span><span style={{color:'var(--cyan)'}}>{sharesPerMin}</span>
@@ -6951,12 +6954,32 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, onOpen }) {
   );
 }
 
+// Reset best difficulty. worker=null resets every miner. Clears SoloStrike's
+// best-since-reset (every best-diff display reads it) + the derived stores;
+// ckpool lifetime and the miner's own device value are untouched. Live state
+// push refreshes the cards within a second or two.
+function resetBestDiff(worker) {
+  const who = worker ? `"${worker}"` : 'ALL miners';
+  const scope = worker ? 'for this miner' : 'for every miner';
+  if (!window.confirm(`Reset best difficulty for ${who}?\n\nThis clears the best-share records shown on the dashboard ${scope} — leaderboard, Near Strikes, and Best Share Trend.\n\nThe miner's own device-reported value and ckpool's lifetime best are NOT affected. Historical sharelogs on disk are untouched.`)) return;
+  fetch('/api/reset-best-diff', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(worker ? { worker } : {}) })
+    .then(r=>r.json())
+    .then(d=>{ if(d.error) throw new Error(d.error); })
+    .catch(e=>window.alert('Reset failed: '+e.message));
+}
+
 // ── Top Miners (best share leaderboard) ──────────────────────────────────────
 function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
   const sorted = [...(workers || [])].filter(w => (w.bestshare||0) > 0).sort((a, b) => (b.bestshare || 0) - (a.bestshare || 0)).slice(0, 5);
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0}}>{tt('▸ Top Miners — Best Difficulties')}</div>
+      <div style={{...cardTitle, color:'var(--amber)', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8}}>
+        <span>{tt('▸ Top Miners — Best Difficulties')}</span>
+        {sorted.length > 0 && (
+          <button onClick={()=>resetBestDiff(null)} title="Reset every miner's best difficulty"
+            style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',fontFamily:'var(--fd)',fontSize:'0.52rem',letterSpacing:'0.08em',padding:'3px 7px',borderRadius:3,cursor:'pointer',textTransform:'uppercase',flexShrink:0}}>{tt('⟲ Reset All')}</button>
+        )}
+      </div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.72rem',fontFamily:'var(--fd)'}}>{tt('No shares submitted yet')}<br/><span style={{color:'var(--amber)',fontSize:'0.65rem',display:'inline-flex',alignItems:'center',gap:4}}>{tt('Keep mining')} <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:'0.85rem',height:'0.85rem',objectFit:'contain',verticalAlign:'middle'}}/></span></div>
       ) : (
@@ -6970,6 +6993,8 @@ function BestShareLeaderboard({ tt = (x) => x, workers, poolBest, aliases }) {
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.78rem',fontWeight:700,color:i===0?'var(--amber)':'var(--text-2)',minWidth:22, flexShrink:0}}>#{i+1}</span>
                   <div style={{flex:1,minWidth:0,fontFamily:'var(--fm)',fontSize:'0.85rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={w.name}>{displayName(w.name, aliases)}</div>
                   <span style={{fontFamily:'var(--fd)',fontSize:'0.92rem',fontWeight:700,color:i===0?'var(--amber)':'var(--cyan)', flexShrink:0}}>{fmtDiff(w.bestshare || 0)}</span>
+                  <button onClick={(e)=>{ e.stopPropagation(); resetBestDiff(w.name); }} title="Reset this miner's best difficulty"
+                    style={{background:'none',border:'1px solid var(--border-hot)',color:'var(--text-3)',fontSize:'0.72rem',lineHeight:1,padding:'2px 6px',borderRadius:3,cursor:'pointer',flexShrink:0,marginLeft:2}}>⟲</button>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:'0.5rem',paddingLeft:27,fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)'}}>
                   <div title={w.health||'unknown'} style={{width:6,height:6,borderRadius:'50%',background:on?healthC:'var(--text-3)',boxShadow:on?`0 0 4px ${healthC}`:'none',flexShrink:0}}/>
@@ -14497,7 +14522,7 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
       )}
       {live.bestDiff != null && live.bestDiff > 0 && (
         <div style={kvRow}>
-          <span style={kvLabel}>{tt('Best Share')}</span>
+          <span style={kvLabel}>{tt('Best Share')} <span style={{fontSize:'0.5rem',color:'var(--text-3)',textTransform:'uppercase',letterSpacing:'0.06em',opacity:0.8}}>{tt('device-reported')}</span></span>
           <span style={{...kvVal, color: 'var(--cyan)'}}>{fmtDiff(live.bestDiff)}</span>
         </div>
       )}
@@ -15029,7 +15054,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
         <div style={{padding:'1rem 1.25rem'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
             <div style={heroBox}><div style={heroLbl}>{tt('Hashrate')}</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-            <div style={heroBox}><div style={heroLbl}>{tt('Best Diff')}</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div></div>
+            <div style={{...heroBox, position:'relative'}}><div style={heroLbl}>{tt('Best Diff')}</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div><button onClick={()=>resetBestDiff(w.name)} title="Reset best difficulty" style={{position:'absolute',top:5,right:5,background:'none',border:'1px solid var(--border-hot)',color:'var(--text-3)',fontSize:'0.62rem',lineHeight:1,padding:'2px 5px',borderRadius:3,cursor:'pointer'}}>⟲</button></div>
             <div style={heroBox}><div style={heroLbl}>{tt('Work Done')}</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
             <div style={heroBox}><div style={heroLbl}>{tt('Last Share')}</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
@@ -16062,7 +16087,7 @@ export default function App() {
     hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
-    shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} onOpen={()=>setShowShareStats(true)}/>,
+    shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} bestshareLifetime={poolState?.bestshareLifetime} onOpen={()=>setShowShareStats(true)}/>,
     best: <BestShareLeaderboard tt={tt} workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
     closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
     jumpers: <JumpersPanel tt={tt}
