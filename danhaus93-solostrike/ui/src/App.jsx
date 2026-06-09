@@ -13,6 +13,8 @@ import { createNonceFieldWebGL } from './nonce-field-webgl.js';
 import { THEMES, THEME_IDS, getThemeById, loadTheme, saveTheme, applyThemeCSS, applyThemeColorMeta } from './themes.js';
 import DesktopPages from './components/DesktopPages.jsx';
 import { SUPPORTED, LANG_META, resolveLang, makeTT, dirFor } from './i18n.js';
+import RosterFlagPicker, { FlagNode } from './RosterFlagPicker.jsx';
+import { normalizeCode as normalizeRosterCode } from './rosterFlags.js';
 import {
   PoolHashrateWindows, SpsWindows, ConnectionStates, BlockEffortPanel,
   HashrateStability, RejectTrend, BestShareTrend, FleetEfficiency, PoolReliability,
@@ -5172,6 +5174,7 @@ function savePulseAnim(v) { try { localStorage.setItem(LS_PULSE_ANIM, String(v))
 // our marker on the globe — but resolution is deliberately coarse so it
 // reveals only country/region, never city or address.
 const LS_POOL_PIN = 'ss_pool_pin_v1';
+const LS_ROSTER_FLAG = 'ss_roster_flag_v1';
 const POOL_PIN_GRID_DEG = 5;
 function snapPinTo5Deg(lat, lon) {
   return {
@@ -5209,6 +5212,33 @@ async function publishPoolPinToApi(pin) {
     });
   } catch (e) {
     console.warn('Pool pin sync to API failed:', e);
+  }
+}
+
+// Self-declared roster flag — region code ("US"/"US-TX") or 'auto'. localStorage
+// is the UI source of truth; changes also POST to the API so the next nostr
+// broadcast carries the chosen flag. Mirrors the pool-pin pattern.
+function loadRosterFlag() {
+  try {
+    const raw = localStorage.getItem(LS_ROSTER_FLAG);
+    return raw ? normalizeRosterCode(raw) : 'auto';
+  } catch { return 'auto'; }
+}
+function saveRosterFlag(code) {
+  try {
+    if (code && code !== 'auto') localStorage.setItem(LS_ROSTER_FLAG, code);
+    else localStorage.removeItem(LS_ROSTER_FLAG);
+  } catch {}
+}
+async function publishRosterFlagToApi(code) {
+  try {
+    await fetch('/api/network-stats/roster-flag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code && code !== 'auto' ? code : null }),
+    });
+  } catch (e) {
+    console.warn('Roster flag sync to API failed:', e);
   }
 }
 
@@ -7522,7 +7552,7 @@ function HealthDetailModal({ tt = (x) => x, initialHealth, onClose }) {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, lang = 'en', onLangChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
+function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrencyChange, onResetLayout, workers, aliases, onAliasesChange, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, lang = 'en', onLangChange, visibleCards, onVisibleCardsChange, networkStats, onNetworkStatsRefresh, carouselEnabled, onCarouselChange, pulseAnim, onPulseAnimChange, huntAnim, onHuntAnimChange, onPreviewCelebration, poolPin, onPoolPinChange, rosterFlag, onRosterFlagChange, debugSettings, onDebugSettingsChange, themeId, onThemeChange }) {
   const [tab, setTab] = useState('main');
   const tt = useMemo(() => makeTT(lang), [lang]);
   const [addr, setAddr] = useState(currentConfig?.payoutAddress || '');
@@ -7599,7 +7629,8 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         {tab==='pulse' && (
           <PulseTab tt={tt} networkStats={networkStats} onRefresh={onNetworkStatsRefresh}
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
-            poolPin={poolPin} onPoolPinChange={onPoolPinChange}/>
+            poolPin={poolPin} onPoolPinChange={onPoolPinChange}
+            rosterFlag={rosterFlag} onRosterFlagChange={onRosterFlagChange}/>
         )}
         {tab==='hunt' && (
           <HuntTab tt={tt} huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange} onPreviewCelebration={onPreviewCelebration}/>
@@ -8144,7 +8175,7 @@ function PrivacyTab({tt=(x)=>x,privateMode,setPrivateMode,submit,saved,loading})
 }
 
 // ── Pulse tab ─────────────────────────────────────────────────────────────────
-function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolPin, onPoolPinChange }) {
+function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimChange, poolPin, onPoolPinChange, rosterFlag='auto', onRosterFlagChange }) {
   const [err, setErr] = useState('');
   const [optimistic, setOptimistic] = useState(null); // null = use server, bool = override
   const ns = networkStats || { enabled: false, pools: 0, hashrate: 0, workers: 0, blocks: 0, versions: {}, relayStatus: {} };
@@ -8485,6 +8516,27 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
               }}
             >{tt('Remove Pin')}</button>
           )}
+        </div>
+      )}
+      {onRosterFlagChange && (
+        <div style={{
+          marginTop: 18, padding: '0.8rem',
+          border: '1px solid var(--border)', borderRadius: 4,
+          background: 'rgba(var(--amber-rgb),0.04)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--fd)', fontSize: '0.72rem', letterSpacing: '0.08em',
+            color: 'var(--amber)', textTransform: 'uppercase', marginBottom: 8,
+          }}>
+            {tt('Roster flag')}
+          </div>
+          <div style={{
+            fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
+            lineHeight: 1.5, marginBottom: 2,
+          }}>
+            {tt('Choose how your pool appears on the roster and globe — overrides the auto-guess from your pin.')}
+          </div>
+          <RosterFlagPicker value={rosterFlag} onChange={onRosterFlagChange} tt={tt} />
         </div>
       )}
     </>
@@ -12688,9 +12740,11 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
             }}>
               {isOwn ? 'YOU' : `STRIKER ${String(idx + 1).padStart(2, '0')}`}
             </span>
-            {geo && (
-              <FlagGlyph geo={geo} size={14} emojiStyle={{fontSize:'0.85rem', lineHeight:1}} />
-            )}
+            {(() => {
+              const rf = p.rf ? normalizeRosterCode(p.rf) : null;
+              if (rf && rf !== 'auto') return <FlagNode code={rf} size={14} />;
+              return geo && <FlagGlyph geo={geo} size={14} emojiStyle={{fontSize:'0.85rem', lineHeight:1}} />;
+            })()}
             {ranked.length >= 2 && (
               <span style={{
                 fontFamily:'var(--fd)', fontSize:'0.55rem', color:'rgba(var(--amber-rgb),0.65)',
@@ -13160,7 +13214,11 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
                   }}>
                     {isOwn ? 'YOU' : `STRIKER ${String(rank + 1).padStart(2, '0')}`}
                   </span>
-                  {geo && <FlagGlyph geo={geo} size={18} emojiStyle={{fontSize:'1.1rem'}} />}
+                  {(() => {
+                    const rf = p.rf ? normalizeRosterCode(p.rf) : null;
+                    if (rf && rf !== 'auto') return <FlagNode code={rf} size={18} />;
+                    return geo && <FlagGlyph geo={geo} size={18} emojiStyle={{fontSize:'1.1rem'}} />;
+                  })()}
                   <span style={{
                     color:'rgba(var(--amber-rgb),0.65)', fontSize:'0.6rem', fontFamily:'var(--fd)',
                     background:'rgba(var(--amber-rgb),0.1)', border:'1px solid rgba(var(--amber-rgb),0.2)',
@@ -15448,6 +15506,15 @@ export default function App() {
     publishPoolPinToApi(snapped);
   }, []);
 
+  // Self-declared roster flag — overrides the geo-guess on roster + globe.
+  const [rosterFlag, setRosterFlag] = useState(() => loadRosterFlag());
+  const onRosterFlagChange = useCallback((code) => {
+    const clean = normalizeRosterCode(code);
+    saveRosterFlag(clean);
+    setRosterFlag(clean);
+    publishRosterFlagToApi(clean);
+  }, []);
+
   // ─── BLOCK FOUND modal state + trigger ─────────────────────────────────────
   // Opens BlockFoundModal when poolState.blocks.length grows by 1+.
   // Uses a null sentinel for lastBlockHeightRef so the first arrival of
@@ -15936,6 +16003,7 @@ export default function App() {
             pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
             huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
+            rosterFlag={rosterFlag} onRosterFlagChange={onRosterFlagChange}
             debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
             themeId={themeId} onThemeChange={onThemeChange}
           />
@@ -16206,6 +16274,7 @@ export default function App() {
           pulseAnim={pulseAnim} onPulseAnimChange={onPulseAnimChange}
           huntAnim={huntAnim} onHuntAnimChange={onHuntAnimChange}
             poolPin={poolPin} onPoolPinChange={onPoolPinChange}
+          rosterFlag={rosterFlag} onRosterFlagChange={onRosterFlagChange}
           onPreviewCelebration={onPreviewCelebration}
           debugSettings={debugSettings} onDebugSettingsChange={onDebugSettingsChange}
             themeId={themeId} onThemeChange={onThemeChange}
