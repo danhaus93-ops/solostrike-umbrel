@@ -99,8 +99,8 @@ export const METRICS = [
       const hr = s.hashrate?.current || 0;
       return { prefix: 'SHARES/M', value: hr>0 ? (hr/4294967296*60).toFixed(1) : '0' };
     } },
-  { id: 'best_share_today', label: 'Best Today', category: 'Performance', color: 'var(--amber)',
-    render: (s) => ({ prefix: 'BEST (ALL)', value: fmtDiff(s.bestshare || 0) }) },
+  { id: 'best_share_today', label: 'Best Diff', category: 'Performance', color: 'var(--amber)',
+    render: (s) => ({ prefix: 'BEST', value: fmtDiff(s.bestshare || 0) }) },
 
   // ── WORKERS ──
   { id: 'worker_health', label: 'Worker Health', category: 'Workers', color: 'var(--text-1)',
