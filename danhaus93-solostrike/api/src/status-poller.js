@@ -273,7 +273,12 @@ function startStatusPoller(state, broadcast, logDir) {
             (() => {
               if (!Array.isArray(state.shares.bestHistory)) state.shares.bestHistory = [];
               if (now - lastBestPush < BEST_INTERVAL_MS) return;
-              const best = shares.bestshare || 0;
+              // Sample SoloStrike's best-since-reset (max over share counters),
+              // not ckpool's cumulative bestshare, so the Best Share Trend
+              // resets cleanly and matches the rest of the best-diff displays.
+              let best = 0;
+              const _sc = state.shareCounters || {};
+              for (const _k in _sc) { const _v = (_sc[_k] && _sc[_k].bestSinceReset) || 0; if (_v > best) best = _v; }
               state.shares.bestHistory.push({ ts: now, best });
               if (state.shares.bestHistory.length > 1440) {
                 state.shares.bestHistory.splice(0, state.shares.bestHistory.length - 1440);

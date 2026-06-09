@@ -182,8 +182,23 @@ function transformState(state, opts) {
       isSolo: /solostrike/i.test(lb.miner || ''),
     }];
   }
+  // ── best-diff display source ───────────────────────────────────────────────
+  // All best-diff displays (leaderboard, Best Difficulty card, Pool Best, worker
+  // hero, ★ chips) read `bestshare`. We override it with SoloStrike's
+  // best-since-reset (share-watcher) so a best-diff reset clears them all
+  // consistently and they don't refill from ckpool. ckpool's cumulative best is
+  // preserved as `bestshareLifetime` for the small lifetime readout.
+  const _wBestReset = (n) => (((shareCounters || {})[n] || {}).bestSinceReset) || 0;
+  let _poolBestReset = 0;
+  for (const _k in (shareCounters || {})) {
+    const _v = _wBestReset(_k); if (_v > _poolBestReset) _poolBestReset = _v;
+  }
+
   return {
     ...rest,
+    // best-diff: show resettable since-reset value; keep ckpool lifetime aside
+    bestshare: _poolBestReset,
+    bestshareLifetime: rest.bestshare || 0,
     pool: statePool ? (compact ? (() => {
       const { workersHistory, ...rest_p } = statePool;
       return { ...rest_p, workersHistoryTail: Array.isArray(workersHistory) ? workersHistory.slice(-10) : [] };
@@ -209,6 +224,8 @@ function transformState(state, opts) {
         const live = getLiveForWorker(w.name);
         return applyAsicModelUpgrade({
           ...wRest,
+          bestshare:     _wBestReset(w.name),
+          bestshareLifetime: w.bestshare || 0,
           shareEvents:   (shareCounters || {})[w.name] || null,
           poolAlignment: alignment,
           live,
@@ -218,6 +235,8 @@ function transformState(state, opts) {
       const live = getLiveForWorker(w.name);
       return applyAsicModelUpgrade({
         ...w,
+        bestshare:     _wBestReset(w.name),
+        bestshareLifetime: w.bestshare || 0,
         shareEvents:   (shareCounters || {})[w.name] || null,
         poolAlignment: alignment,
         live,

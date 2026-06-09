@@ -266,6 +266,11 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
     if (!state.shareCounters[name]) {
       state.shareCounters[name] = {
         accepted: 0, rejected: 0, stale: 0, bestSdiff: 0,
+        // best share diff since the last *best-diff* reset (independent of the
+        // session-stats reset that zeros bestSdiff). Drives all best-diff
+        // displays so a reset clears them consistently. ckpool's cumulative
+        // best stays available separately as the worker's lifetime value.
+        bestSinceReset: 0,
         rejectReasons: {}, lastRejectReason: null, lastRejectAt: null,
         port: null, firstSeen: Date.now(),
         // v1.11.x MEMORY LEAK FIX: track lastShareAt so we can prune counters
@@ -300,6 +305,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       const sd = typeof obj.sdiff === 'number' ? obj.sdiff : 0;
       const td = typeof obj.diff  === 'number' ? obj.diff  : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
+      if (sd > (c.bestSinceReset || 0)) c.bestSinceReset = sd;
       // v1.8.3-rev24: sum TARGET difficulties (obj.diff), not achieved sdiff.
       // sdiff includes a luck factor (sdiff >= diff for accepted shares;
       // lucky shares can have sdiff orders of magnitude higher than diff).
