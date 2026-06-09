@@ -24,7 +24,7 @@ const cardTitle = {
   fontSize: '0.7rem',
   letterSpacing: '0.2em',
   textTransform: 'uppercase',
-  color: 'var(--text-2)',
+  color: 'var(--amber)',
   marginBottom: '0.7rem',
   paddingBottom: '0.45rem',
   backgroundImage:
@@ -293,7 +293,7 @@ export function BlockEffortPanel({ tt = (x) => x, snapshots, sharesThisRound, ne
   return (
       <Shell>
     <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
-      <div style={cardTitle}>{tt('▸ Block Effort / Luck')} <span style={{ color:'var(--text-3)', fontSize:'0.85em', letterSpacing:0, textTransform:'none' }}>{tt('(shares-to-find vs expected · &lt;100% = lucky)')}</span></div>
+      <div style={cardTitle}>{tt('▸ Block Effort / Luck')} <span style={{ color:'var(--text-3)', fontSize:'0.85em', letterSpacing:0, textTransform:'none' }}>{tt('(shares-to-find vs expected · <100% = lucky)')}</span></div>
       <div style={{ flex:1, display:'flex', alignItems:'flex-end', gap:6, minHeight:90, paddingTop:8 }}>
         {bars.map((b, i) => {
           const h = b.pct == null ? 14 : Math.min(100, (b.pct/250)*100);
