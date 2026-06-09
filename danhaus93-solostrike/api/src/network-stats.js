@@ -416,6 +416,15 @@ function validateAndExtractEvent(ev, ourPubkey) {
     }
   }
 
+  // vX: optional self-declared roster flag — a region code the peer chose to
+  // show on the roster/globe instead of the geo-guess. Country ("US") or
+  // subdivision ("US-TX"). No coordinates — just a short region code. Strict
+  // format whitelist; the UI re-validates against known codes before render.
+  let rf = null;
+  if (typeof data.rf === 'string' && /^[A-Z]{2}(-[A-Z]{2,3})?$/.test(data.rf)) {
+    rf = data.rf;
+  }
+
   // v1.12.x: optional lastStrike — most recent block this peer claims found.
   // Validated for shape + sanity ranges. Block height bounded to current
   // chain tip + 1000 (defense against forged future blocks).
@@ -495,7 +504,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, lastStrike, firstSeen, benchmarks,
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, rf, lastStrike, firstSeen, benchmarks,
       alias: (typeof data.alias === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(data.alias.trim().replace(/\s+/g,' ')) ? data.alias.trim().replace(/\s+/g,' ') : null) },
   };
 }
@@ -814,6 +823,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       blocks: result.payload.blocks,
       version: result.payload.version,
       loc: result.payload.loc,  // null if not broadcast by peer
+      rf: result.payload.rf,    // self-declared region code, or null
       receivedAt: result.created_at,
       firstSeen: peerFirstSeen,
       // v1.12.x: most recent block this peer claims to have found
@@ -955,6 +965,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       blocks: e.blocks,
       version: e.version,
       loc: e.loc || null,  // [lat, lon] on 5° grid, or null
+      rf: e.rf || null,    // self-declared region code ("US"/"US-TX"), or null
       lastSeenAgoSec: Math.max(0, Math.floor(Date.now() / 1000 - e.receivedAt)),
       filtered: !filteredPubkeys.has(pk),
       isOwn: pk === pubkey,
@@ -1066,6 +1077,11 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       ...(Array.isArray(cfg.poolLocation) && cfg.poolLocation.length === 2
           && Number.isFinite(cfg.poolLocation[0]) && Number.isFinite(cfg.poolLocation[1])
         ? { loc: snapToLocGrid(cfg.poolLocation[0], cfg.poolLocation[1]) }
+        : {}),
+      // vX: optional self-declared roster flag — broadcast the region code so
+      // peers render our chosen flag instead of guessing from the pin.
+      ...(typeof cfg.rosterFlag === 'string' && /^[A-Z]{2}(-[A-Z]{2,3})?$/.test(cfg.rosterFlag)
+        ? { rf: cfg.rosterFlag }
         : {}),
       // v1.12.x: broadcast our most recent found block so peers can show
       // "Recent Strikes" in their Pulse modal. state.blocks[0] is the latest.
@@ -1189,6 +1205,20 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       let state2 = null;
       if (a) { const o = aliasReg.resolve(a); state2 = o ? (o.pubkey === pubkey ? 'verified' : 'impostor') : 'unverified'; }
       return { alias: a, pubkey, handle: 'striker-' + pubkey.slice(0, 4), state: state2, configured: aliasReg.isConfigured(), registry: aliasReg.current() };
+    },
+    setRosterFlag(code) {
+      // code: null/'' to clear, or a region code ("US" / "US-TX"). Strict
+      // format check; the UI further validates against the known-code table.
+      if (code === null || code === '' || code === 'auto') {
+        cfg.rosterFlag = null;
+      } else if (typeof code === 'string' && /^[A-Z]{2}(-[A-Z]{2,3})?$/.test(code)) {
+        cfg.rosterFlag = code;
+      } else {
+        return false;
+      }
+      // Force re-broadcast on next cycle so the new flag propagates fast
+      lastOwnBroadcastAt = 0;
+      return true;
     },
     setPoolLocation(loc) {
       // loc: null to clear, or [lat, lon] in decimal degrees (will be snapped to 5°)

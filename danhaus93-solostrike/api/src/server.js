@@ -511,7 +511,7 @@ async function pollBitcoind() {
 
       state.retarget = {
         progressPercent: (blocksDoneInEpoch / 2016) * 100,
-        difficultyChange: -change,
+        difficultyChange: change,
         remainingBlocks,
         remainingTime,
         prevDifficultyChange,
@@ -1213,6 +1213,21 @@ app.post('/api/network-stats/location', async (req, res) => {
   if (!ok) return res.status(400).json({ error: 'Coordinates out of range (lat: -90..90, lon: -180..180)' });
   await saveConfig();
   res.json({ ok: true, location: cfg.poolLocation });
+});
+
+// Self-declared roster flag. Body: { code } — a region code ("US" / "US-TX")
+// or null/'' to clear (fall back to the geo-guess from the pin). No
+// coordinates involved; just the region code the user chose to display.
+app.post('/api/network-stats/roster-flag', async (req, res) => {
+  if (!networkStatsController) return res.status(503).json({ error: 'network-stats not initialized yet' });
+  if (typeof networkStatsController.setRosterFlag !== 'function') {
+    return res.status(501).json({ error: 'setRosterFlag not supported in this API version' });
+  }
+  const { code } = req.body || {};
+  const ok = networkStatsController.setRosterFlag(code == null ? null : code);
+  if (!ok) return res.status(400).json({ error: 'Invalid region code (expected "US" or "US-TX" form, or null to clear)' });
+  await saveConfig();
+  res.json({ ok: true, rosterFlag: cfg.rosterFlag });
 });
 
 // v1.7.1 — Backup the encrypted identity to plaintext on user demand (localhost-only).
