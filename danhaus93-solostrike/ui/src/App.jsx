@@ -12403,19 +12403,26 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   // Coverage is approximate but good enough for "wow, global network" feel.
   // Returns null if loc is missing or invalid.
   const flagFromLoc = (loc) => {
-    if (!Array.isArray(loc) || loc.length !== 2) return null;
+    const UNK = { flag: '🌐', label: 'unknown' };
+    if (!Array.isArray(loc) || loc.length !== 2) return UNK;
     const [lat, lon] = loc;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    // Continental buckets — coarse, since loc grid is 5° (~500km cells).
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return UNK;
+    // Region buckets — coarse; loc is snapped to a 5° grid (~500km), so this is region-level, not precise country.
     if (lat >= 25 && lat <= 50 && lon >= -125 && lon <= -65) return { flag: '🇺🇸', label: 'US' };
     if (lat >= 45 && lat <= 70 && lon >= -140 && lon <= -55) return { flag: '🇨🇦', label: 'CA' };
-    if (lat >= -35 && lat <= 15 && lon >= -85 && lon <= -35)  return { flag: '🇧🇷', label: 'SA' };
-    if (lat >= 35 && lat <= 70 && lon >= -10 && lon <= 30)    return { flag: '🇪🇺', label: 'EU' };
-    if (lat >= 50 && lat <= 60 && lon >= -10 && lon <= 5)     return { flag: '🇬🇧', label: 'UK' };
-    if (lat >= 30 && lat <= 50 && lon >= 125 && lon <= 150)   return { flag: '🇯🇵', label: 'JP' };
-    if (lat >= 15 && lat <= 55 && lon >= 70 && lon <= 135)    return { flag: '🌏', label: 'Asia' };
+    if (lat >= 14 && lat <  25 && lon >= -118 && lon <= -86) return { flag: '🇲🇽', label: 'MX' };
+    if (lat >= -56 && lat <= 14 && lon >= -82 && lon <= -34) return { flag: '🇧🇷', label: 'SA' };
+    if (lat >= 50 && lat <= 60 && lon >= -10 && lon <= 2)    return { flag: '🇬🇧', label: 'UK' };
+    if (lat >= 35 && lat <= 71 && lon >= -10 && lon <= 30)   return { flag: '🇪🇺', label: 'EU' };
+    if (lat >= 6  && lat <= 36 && lon >= 68 && lon <= 90)    return { flag: '🇮🇳', label: 'IN' };
+    if (lat >= 18 && lat <= 45 && lon >= 100 && lon <= 123)  return { flag: '🇨🇳', label: 'CN' };
+    if (lat >= 30 && lat <= 46 && lon >= 128 && lon <= 146)  return { flag: '🇯🇵', label: 'JP' };
+    if (lat >= 41 && lat <= 78 && lon >  30 && lon <= 180)   return { flag: '🇷🇺', label: 'RU' };
+    if (lat >= -11 && lat <= 30 && lon >= 90 && lon <= 142)  return { flag: '🌏', label: 'SEA' };
+    if (lat >= 6  && lat <= 55 && lon >= 60 && lon <= 150)   return { flag: '🌏', label: 'Asia' };
+    if (lat >= -47 && lat <= -33 && lon >= 165 && lon <= 179) return { flag: '🇳🇿', label: 'NZ' };
     if (lat >= -45 && lat <= -10 && lon >= 110 && lon <= 180) return { flag: '🇦🇺', label: 'AU' };
-    if (lat >= -35 && lat <= 35 && lon >= -20 && lon <= 50)   return { flag: '🌍', label: 'AF' };
+    if (lat >= -38 && lat <= 38 && lon >= -20 && lon <= 52)  return { flag: '🌍', label: 'AF' };
     return { flag: '🌐', label: '' };
   };
 
