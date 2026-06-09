@@ -947,8 +947,46 @@ app.get('/api/export/workers.csv', (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="solostrike-workers.csv"');
   const wl = Object.values(state.workers || {});
   const rows = [['name','status','hashrate','accepted','rejected','best','last_seen','miner_type']];
-  wl.forEach(w => rows.push([w.name, w.status, w.hashrate || 0, w.shares || 0, w.rejected || 0, w.bestshare || 0, w.lastSeen || 0, w.minerType || '']));
+  wl.forEach(w => rows.push([w.name, w.status, w.hashrate || 0, w.shares || 0, w.rejected || 0, ((state.shareCounters && state.shareCounters[w.name] && state.shareCounters[w.name].bestSinceReset) || 0), w.lastSeen || 0, w.minerType || '']));
   res.send(rowsToCsv(rows));
+});
+
+// Reset best difficulty. Body: { worker } resets one miner; omit/null resets
+// all. Zeros SoloStrike's best-since-reset (which every best-diff display reads)
+// and clears the derived stores (Near Strikes, Best Share Trend) so nothing
+// refills from ckpool. ckpool's cumulative lifetime best is left untouched and
+// stays available as the per-worker/pool lifetime readout.
+app.post('/api/reset-best-diff', (req, res) => {
+  try {
+    const worker = (req.body && typeof req.body.worker === 'string' && req.body.worker.trim())
+      ? req.body.worker.trim() : null;
+    if (worker) {
+      if (state.shareCounters && state.shareCounters[worker]) {
+        state.shareCounters[worker].bestSinceReset = 0;
+      }
+      // drop this worker from the Near Strikes leaderboard
+      if (state.snapshots && Array.isArray(state.snapshots.closestCalls)) {
+        state.snapshots.closestCalls = state.snapshots.closestCalls.filter(c => c.workerName !== worker);
+      }
+    } else {
+      if (state.shareCounters) {
+        for (const n of Object.keys(state.shareCounters)) state.shareCounters[n].bestSinceReset = 0;
+      }
+      // clear pool-wide derived stores so the trend + Near Strikes restart clean
+      if (state.snapshots) { state.snapshots.closestCalls = []; state.snapshots.bestTrend = []; }
+      if (state.shares && Array.isArray(state.shares.bestHistory)) state.shares.bestHistory = [];
+      if (Array.isArray(state.closestCalls)) state.closestCalls = [];
+    }
+    savePersist({
+      shareCounters: state.shareCounters,
+      snapshots: state.snapshots,
+      closestCalls: state.closestCalls,
+    });
+    res.json({ ok: true, scope: worker || 'all' });
+  } catch (e) {
+    console.error("[api error]", req.method, req.path, e && (e.stack || e.message));
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.post('/api/reset-share-stats', (req, res) => {
