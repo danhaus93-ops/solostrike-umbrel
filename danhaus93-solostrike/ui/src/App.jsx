@@ -2691,7 +2691,7 @@ function fmtPctToBlock(pct) {
   return pct.toFixed(decimals) + '%';
 }
 
-function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
+function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty, tt = (x) => x }) {
   const list = closestCalls || [];
   if (!list.length) {
     return (
@@ -2742,7 +2742,7 @@ function ClosestCallsPanel({ closestCalls, aliases, networkDifficulty }) {
                     </span>
                   )}
                   <span style={{fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.10em', color:tier.color, textTransform:'uppercase', whiteSpace:'nowrap', flexShrink:0, fontWeight:700, textShadow: tier.glow ? `0 0 4px ${tier.color}` : 'none'}}>
-                    · {tier.label}
+                    · {tt(tier.label)}
                   </span>
                 </div>
                 <span style={{fontFamily:'var(--fd)', fontSize:'0.78rem', fontWeight:700, color: tier.color, flexShrink:0, textShadow: tier.glow ? `0 0 8px ${tier.color}` : 'none'}}>
@@ -16089,7 +16089,7 @@ export default function App() {
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
     shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} bestshareLifetime={poolState?.bestshareLifetime} onOpen={()=>setShowShareStats(true)}/>,
     best: <BestShareLeaderboard tt={tt} workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
-    closestcalls: <ClosestCallsPanel closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
+    closestcalls: <ClosestCallsPanel tt={tt} closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
     jumpers: <JumpersPanel tt={tt}
       topFinders={poolState?.topFinders}
       netBlocks={poolState?.netBlocks}
