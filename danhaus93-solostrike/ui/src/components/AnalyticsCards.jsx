@@ -24,7 +24,7 @@ const cardTitle = {
   fontSize: '0.7rem',
   letterSpacing: '0.2em',
   textTransform: 'uppercase',
-  color: 'var(--text-2)',
+  color: 'var(--amber)',
   marginBottom: '0.7rem',
   paddingBottom: '0.45rem',
   backgroundImage:
