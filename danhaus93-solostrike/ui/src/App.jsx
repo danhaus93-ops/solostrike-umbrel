@@ -12041,6 +12041,31 @@ function benchConfidence(sampleCount, threshold) {
   return { key: 'low', label: 'low sample — treat as a hint', color: 'var(--text-3)' };
 }
 
+// v2.x: registry-resolved label for a Top Strikers row.
+//   verified → reserved name + ✓ ; impostor → bare striker handle + ⚠ ;
+//   unverified-with-alias → "name · handle" decorative ; otherwise → handle.
+function strikerLabel(row, tt) {
+  row = row || {};
+  const handle = row.handle || 'striker-????';
+  if (row.aliasState === 'verified' && row.alias) return { text: row.alias, badge: '\u2713', color: row.isOwn ? 'var(--cyan)' : 'var(--green)' };
+  if (row.aliasState === 'impostor') return { text: handle, badge: '\u26a0', color: 'var(--red)' };
+  if (row.alias) return { text: row.alias + ' \u00b7 ' + handle, badge: null, color: row.isOwn ? 'var(--cyan)' : 'var(--text-2)' };
+  return { text: handle, badge: null, color: row.isOwn ? 'var(--cyan)' : 'var(--text-2)' };
+}
+
+function benchClaimError(j, tt) {
+  if (j && j.message) return j.message;
+  switch ((j && j.error) || '') {
+    case 'invalid_name': return tt('1\u201324 chars: letters, digits, space . _ - \' only.');
+    case 'registry_not_configured': return tt('Name registry isn\u2019t configured.');
+    case 'pow_timeout': return tt('Proof-of-work took too long \u2014 try again.');
+    case 'sign_failed': return tt('Could not sign the claim.');
+    case 'unreachable': case 'bad_response': return tt('Could not reach the registry.');
+    case 'taken': case 'conflict': case 'name_taken': case 'owned': case 'exists': return tt('That name is already reserved by another striker.');
+    default: return tt('Claim failed \u2014 try again.');
+  }
+}
+
 function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const buckets = Array.isArray(networkStats && networkStats.benchmarks) ? networkStats.benchmarks : [];
   // own buckets = those where any leaderboard row is ours
@@ -12055,11 +12080,15 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const [discChecked, setDiscChecked] = useState(false);
   const [pendingCopy, setPendingCopy] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [alias, setAlias] = useState(() => {
-    try { return localStorage.getItem(LS_BENCH_ALIAS) || ''; } catch { return ''; }
-  });
+  const [aliasStatus, setAliasStatus] = useState(null); // { alias, pubkey, handle, state, configured, registry }
   const [editAlias, setEditAlias] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimMsg, setClaimMsg] = useState(null);       // { ok, text }
   const [showInfo, setShowInfo] = useState(false);
+  const refreshAliasStatus = useCallback(() => {
+    fetch('/api/alias/status').then(r => r.json()).then(j => { if (j && typeof j === 'object') setAliasStatus(j); }).catch(() => {});
+  }, []);
+  useEffect(() => { refreshAliasStatus(); }, [refreshAliasStatus]);
 
   if (!shown.length) {
     return (
@@ -12076,7 +12105,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const champ = bucket.champion || {};
   const conf = benchConfidence(bucket.sampleCount || 0, minSample);
   const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
-  const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
+  const champL = strikerLabel(champ, tt);
   // v2.x: Avalon core voltage is a per-chip measured average, not a settable
   // per-domain knob like the BitAxe — label it so nobody tries to type it in.
   const isAvalon = /avalon/i.test(bucket.model || '');
@@ -12100,10 +12129,17 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
     setAccepted(true); setShowDisc(false);
     if (pendingCopy) { doCopy(pendingCopy); setPendingCopy(null); }
   };
-  const saveAlias = (v) => {
-    const clean = (v || '').slice(0, 24).replace(/[^\w \-.]/g, '');
-    setAlias(clean); setEditAlias(false);
-    try { clean ? localStorage.setItem(LS_BENCH_ALIAS, clean) : localStorage.removeItem(LS_BENCH_ALIAS); } catch {}
+  const submitClaim = async (v) => {
+    const name = (v || '').trim().replace(/\s+/g, ' ');
+    if (!name) { setEditAlias(false); return; }
+    setClaiming(true); setClaimMsg(null);
+    try {
+      const res = await fetch('/api/alias/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+      const j = await res.json().catch(() => ({}));
+      if (j && j.ok) { setClaimMsg({ ok: true, text: tt('Reserved \u2713') }); setEditAlias(false); refreshAliasStatus(); }
+      else { setClaimMsg({ ok: false, text: benchClaimError(j, tt) }); }
+    } catch { setClaimMsg({ ok: false, text: tt('Could not reach the registry.') }); }
+    setClaiming(false);
   };
 
   const lbl = { fontFamily:'var(--fd)', fontSize:'0.4rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase' };
@@ -12138,8 +12174,8 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
       {/* champion banner (A) */}
       <div style={{ background:'linear-gradient(135deg,rgba(57,255,106,0.10),rgba(0,255,209,0.03))', border:'1px solid rgba(57,255,106,0.32)', borderRadius:11, padding:'12px 13px', marginBottom:12, position:'relative' }}>
         <div style={{ fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.15em', color:'var(--green)', textTransform:'uppercase', marginBottom:6 }}>{tt('⚡ Most efficient · sustained')}</div>
-        <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champ.isOwn ? 'var(--cyan)' : 'var(--green)', marginBottom:2 }}>
-          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
+        <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champL.color, marginBottom:2 }}>
+          {champL.text}{champL.badge ? ' ' + champL.badge : ''}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
         </div>
         <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-2)', marginBottom:8 }}>
           {bucket.model}{bucket.asic ? ' · ' + bucket.asic : ''}{bucket.boardVersion ? ' · ' + tt('rev') + ' ' + bucket.boardVersion : ''} · {bucket.sampleCount} {tt('miners ranked')}
@@ -12192,7 +12228,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
-            {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
+            {(() => { const L = strikerLabel(r, tt); return (<>{L.text}{L.badge ? <span style={{ color: L.badge === '\u26a0' ? 'var(--red)' : 'var(--green)' }}>{' ' + L.badge}</span> : null}{r.isOwn ? ' (' + tt('you') + ')' : ''}</>); })()}
             <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}><span style={{ whiteSpace:'nowrap' }}>{r.freq} MHz</span>{' · '}<span style={{ whiteSpace:'nowrap' }}>{r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}</span>{(r.fanPct != null || r.fanRpm != null) ? <span style={{ whiteSpace:'nowrap' }}>{' · '}{r.fanPct != null ? r.fanPct + '% ' + tt('fan') : ''}{r.fanRpm != null ? (r.fanPct != null ? ' (' + fmtNum(r.fanRpm) + ' rpm)' : fmtNum(r.fanRpm) + ' rpm') : ''}</span> : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
@@ -12224,20 +12260,28 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <span style={{ fontFamily:'var(--fm)', fontSize:'0.45rem', color:'var(--amber)', opacity:0.7 }}>{tt('⚠ apply at your own risk')}</span>
       </button>
 
-      {/* alias control */}
+      {/* registry-backed name claim control (Option 2: reserved uniqueness) */}
       <div style={{ marginTop:10, fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-3)', textAlign:'center' }}>
-        {editAlias ? (
+        {aliasStatus && aliasStatus.configured === false ? (
+          <span>{tt('Name registry is unavailable right now.')}</span>
+        ) : editAlias ? (
           <span style={{ display:'inline-flex', gap:6, alignItems:'center' }}>
-            <input autoFocus defaultValue={alias} placeholder={tt('your alias')} maxLength={24}
-              onKeyDown={e => { if (e.key === 'Enter') saveAlias(e.target.value); }}
+            <input autoFocus defaultValue={aliasStatus && aliasStatus.alias ? aliasStatus.alias : ''} placeholder={tt('your name')} maxLength={24} disabled={claiming}
+              onKeyDown={e => { if (e.key === 'Enter') submitClaim(e.target.value); }}
               style={{ background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.55rem', padding:'3px 6px', width:120 }} />
-            <button onClick={e => saveAlias(e.target.previousSibling.value)} style={{ background:'none', border:'1px solid var(--border)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', padding:'3px 8px', cursor:'pointer' }}>{tt('Save')}</button>
+            <button disabled={claiming} onClick={e => submitClaim(e.target.previousSibling.value)} style={{ background:'none', border:'1px solid var(--border)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', padding:'3px 8px', cursor: claiming ? 'default' : 'pointer', opacity: claiming ? 0.6 : 1 }}>{claiming ? tt('Reserving\u2026') : tt('Reserve')}</button>
           </span>
         ) : (
-          <button onClick={() => setEditAlias(true)} style={{ background:'none', border:'none', color:'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
-            {alias ? tt('Your alias') + ': ' + alias : tt('Set a leaderboard alias (optional)')}
+          <button onClick={() => { setClaimMsg(null); setEditAlias(true); }} style={{ background:'none', border:'none', color: (aliasStatus && aliasStatus.state === 'verified') ? 'var(--green)' : 'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
+            {aliasStatus && aliasStatus.state === 'verified' && aliasStatus.alias
+              ? '\u2713 ' + tt('Your reserved name') + ': ' + aliasStatus.alias
+              : aliasStatus && aliasStatus.state === 'impostor'
+              ? '\u26a0 ' + tt('That name belongs to someone else \u2014 reserve a different one')
+              : tt('Reserve a unique leaderboard name')}
           </button>
         )}
+        {claiming && <div style={{ marginTop:4, color:'var(--text-3)', fontSize:'0.46rem' }}>{tt('Mining proof-of-work to reserve the name \u2014 a few seconds\u2026')}</div>}
+        {claimMsg && <div style={{ marginTop:4, color: claimMsg.ok ? 'var(--green)' : 'var(--amber)', fontSize:'0.48rem' }}>{claimMsg.text}</div>}
       </div>
 
       {/* disclaimer gate (one-time) */}
@@ -16237,7 +16281,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v2.0.3 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v2.0.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
