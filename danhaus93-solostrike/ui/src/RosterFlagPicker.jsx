@@ -1,7 +1,7 @@
 // RosterFlagPicker.jsx — self-declared country/subdivision flag for the Pulse
 // roster. Overrides flagFromLoc; broadcasts only a region code ("US"/"US-TX"),
 // never coordinates. Emoji on Apple, bundled image on Windows/everything else.
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, memo } from "react";
 import {
   COUNTRIES, SUBDIVISIONS, SUB_KINDS, hasSubs, labelFor,
   supportsFlagEmoji, emojiForCode, imgPathForCode,
@@ -9,16 +9,24 @@ import {
 
 // Shared flag node: emoji on Apple, bundled image elsewhere. Exported so the
 // Pulse roster can render self-declared flags the same way.
-export function FlagNode({ code, size = 19 }) {
+export const FlagNode = memo(function FlagNode({ code, size = 19 }) {
   const emoji = emojiForCode(code);
   if (emoji && (code === "auto" || supportsFlagEmoji()))
     return <span style={{ fontSize: size + 2, lineHeight: 1, width: 26, textAlign: "center", flex: "none" }}>{emoji}</span>;
   const src = imgPathForCode(code);
-  if (src)
-    return <img alt="" loading="lazy" src={src}
-      style={{ width: Math.round(size * 4 / 3), height: size, borderRadius: 2, objectFit: "cover", flex: "none", boxShadow: "0 0 0 .5px rgba(255,255,255,.22)" }} />;
+  if (src) {
+    const w = Math.round(size * 4 / 3);
+    // No loading="lazy": these are inline data URIs (already in memory), and
+    // lazy-loading them inside the animated Pulse/WebGL subtree makes iOS
+    // Safari repeatedly re-evaluate visibility and re-decode the bitmap on
+    // every re-render (e.g. the per-second BEAT countdown) — visible as a
+    // flicker, worst on the largest state PNGs like Missouri. Explicit
+    // width/height + decoding="async" stabilise layout and decode.
+    return <img alt="" decoding="async" draggable={false} width={w} height={size} src={src}
+      style={{ width: w, height: size, borderRadius: 2, objectFit: "cover", flex: "none", boxShadow: "0 0 0 .5px rgba(255,255,255,.22)" }} />;
+  }
   return <span style={{ fontSize: size + 2, lineHeight: 1, width: 26, textAlign: "center", flex: "none" }}>{emoji || "🌐"}</span>;
-}
+});
 
 // value: "auto" | "US" | "US-TX"   onChange(code)   tt: translator
 export default function RosterFlagPicker({ value = "auto", onChange, tt = (s) => s }) {

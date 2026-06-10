@@ -12044,9 +12044,16 @@ function benchConfidence(sampleCount, threshold) {
 // v2.x: registry-resolved label for a Top Strikers row.
 //   verified → reserved name + ✓ ; impostor → bare striker handle + ⚠ ;
 //   unverified-with-alias → "name · handle" decorative ; otherwise → handle.
-function strikerLabel(row, tt) {
+function strikerLabel(row, tt, ownStatus) {
   row = row || {};
   const handle = row.handle || 'striker-????';
+  // Own-screen certainty floor: your app knows your own key, so your own
+  // reserved name always shows verified (clean name + check) here, regardless
+  // of how far the signed registry has propagated into the cached network
+  // snapshot that drives row.aliasState. Fixes the lag where a freshly
+  // reserved name renders as "name · handle" until the next snapshot rebuild.
+  if (row.isOwn && ownStatus && ownStatus.state === 'verified' && (ownStatus.alias || row.alias))
+    return { text: ownStatus.alias || row.alias, badge: '\u2713', color: 'var(--cyan)' };
   if (row.aliasState === 'verified' && row.alias) return { text: row.alias, badge: '\u2713', color: row.isOwn ? 'var(--cyan)' : 'var(--green)' };
   if (row.aliasState === 'impostor') return { text: handle, badge: '\u26a0', color: 'var(--red)' };
   if (row.alias) return { text: row.alias + ' \u00b7 ' + handle, badge: null, color: row.isOwn ? 'var(--cyan)' : 'var(--text-2)' };
@@ -12105,7 +12112,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const champ = bucket.champion || {};
   const conf = benchConfidence(bucket.sampleCount || 0, minSample);
   const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
-  const champL = strikerLabel(champ, tt);
+  const champL = strikerLabel(champ, tt, aliasStatus);
   // v2.x: Avalon core voltage is a per-chip measured average, not a settable
   // per-domain knob like the BitAxe — label it so nobody tries to type it in.
   const isAvalon = /avalon/i.test(bucket.model || '');
@@ -12228,7 +12235,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
-            {(() => { const L = strikerLabel(r, tt); return (<>{L.text}{L.badge ? <span style={{ color: L.badge === '\u26a0' ? 'var(--red)' : 'var(--green)' }}>{' ' + L.badge}</span> : null}{r.isOwn ? ' (' + tt('you') + ')' : ''}</>); })()}
+            {(() => { const L = strikerLabel(r, tt, aliasStatus); return (<>{L.text}{L.badge ? <span style={{ color: L.badge === '\u26a0' ? 'var(--red)' : 'var(--green)' }}>{' ' + L.badge}</span> : null}{r.isOwn ? ' (' + tt('you') + ')' : ''}</>); })()}
             <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}><span style={{ whiteSpace:'nowrap' }}>{r.freq} MHz</span>{' · '}<span style={{ whiteSpace:'nowrap' }}>{r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}</span>{(r.fanPct != null || r.fanRpm != null) ? <span style={{ whiteSpace:'nowrap' }}>{' · '}{r.fanPct != null ? r.fanPct + '% ' + tt('fan') : ''}{r.fanRpm != null ? (r.fanPct != null ? ' (' + fmtNum(r.fanRpm) + ' rpm)' : fmtNum(r.fanRpm) + ' rpm') : ''}</span> : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
@@ -12315,26 +12322,16 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   // - showOnboard: first-time "WHAT IS PULSE?" tooltip (localStorage gated)
   // - drillPeer: currently-tapped Striker to expand in bottom sheet (null = no expansion)
   // - hashGoal: user's personal hashrate target in TH/s, localStorage-persisted
-  // - heartbeatSec: countdown to next outbound broadcast; ticks down once/sec
   const [showOnboard, setShowOnboard] = useState(false);
   const [drillPeer, setDrillPeer] = useState(null);
   const [hashGoal, setHashGoal] = useState(() => {
     try { const v = localStorage.getItem('ss_hash_goal_v1'); return v ? parseFloat(v) : 0; } catch { return 0; }
   });
-  const [heartbeatSec, setHeartbeatSec] = useState(150); // ~2.5min broadcast cycle
 
   // Persist hashGoal changes
   useEffect(() => {
     try { localStorage.setItem('ss_hash_goal_v1', String(hashGoal || 0)); } catch {}
   }, [hashGoal]);
-
-  // Heartbeat countdown — fires once/sec, wraps to 150 when it hits 0
-  useEffect(() => {
-    const t = setInterval(() => {
-      setHeartbeatSec(s => s <= 0 ? 150 : s - 1);
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
 
   // First-time onboarding trigger (one-shot, localStorage gated)
   useEffect(() => {
@@ -12893,22 +12890,6 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
             >?</button>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:8}}>
-            {/* v1.11.2: heartbeat indicator — visual proof of broadcasting */}
-            <div style={{
-              display:'inline-flex', alignItems:'center', gap:4,
-              fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
-              padding:'2px 6px', background:'var(--bg-raised)',
-              border:'1px solid var(--border)', borderRadius:2,
-              letterSpacing:'0.08em',
-            }}>
-              <span style={{
-                width:6, height:6, borderRadius:'50%',
-                background: heartbeatSec < 3 ? 'var(--green)' : 'var(--amber)',
-                boxShadow: heartbeatSec < 3 ? '0 0 8px var(--green)' : '0 0 4px var(--amber)',
-                transition:'all 0.3s',
-              }}/>
-              <span>{heartbeatSec < 3 ? 'BROADCASTING' : `BEAT ${heartbeatSec}s`}</span>
-            </div>
             <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
           </div>
         </div>
