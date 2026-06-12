@@ -203,10 +203,11 @@ async function writeCkpoolConf() {
       btcsig:          process.env.POOL_SIGNATURE || 'SoloStrike on Umbrel/',
       blockpoll:       parseInt(process.env.BLOCKPOLL || '50', 10),
       update_interval: parseInt(process.env.UPDATE_INTERVAL || '20', 10),
-      serverurl:       ['0.0.0.0:3333', '0.0.0.0:3334'],
+      serverurl:       ['0.0.0.0:3333', '0.0.0.0:3334', '0.0.0.0:4334'],
       mindiff:         parseInt(process.env.MIN_DIFFICULTY || '1', 10),
       startdiff:       parseInt(process.env.START_DIFFICULTY || '10000', 10),
       maxdiff:         parseInt(process.env.MAX_DIFFICULTY || '0', 10),
+      highdiff:        parseInt(process.env.HIGH_DIFFICULTY || '500000', 10),
       logdir:          '/var/log/ckpool',
       zmqblock:        ZMQ_HASHBLOCK_URL || '',
     };

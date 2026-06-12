@@ -97,11 +97,12 @@ function checkTlsPort(port, host = '127.0.0.1') {
 }
 
 async function runHealthCheck() {
-  // ckpool listens on ckpool:3333 and ckpool:3334
+  // ckpool listens on ckpool:3333, ckpool:3334 and ckpool:4334 (NiceHash high-diff)
   // stunnel listens on stunnel:4333
   const checks = [
     { port: '3333', host: 'ckpool',  tls: false },
     { port: '3334', host: 'ckpool',  tls: false },
+    { port: '4334', host: 'ckpool',  tls: false },
     { port: '4333', host: 'stunnel', tls: true  },
   ];
   const results = await Promise.all(
