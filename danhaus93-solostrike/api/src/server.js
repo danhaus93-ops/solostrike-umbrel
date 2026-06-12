@@ -115,7 +115,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '1.11.64',
+  version: '2.1.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -964,6 +964,9 @@ app.post('/api/reset-best-diff', (req, res) => {
     if (worker) {
       if (state.shareCounters && state.shareCounters[worker]) {
         state.shareCounters[worker].bestSinceReset = 0;
+        // v2.1.0 Strike Force: clear the share-diff ring so the histogram's
+        // best bar can't disagree with the zeroed best-since-reset.
+        state.shareCounters[worker].recentSdiffs = [];
       }
       // drop this worker from the Near Strikes leaderboard
       if (state.snapshots && Array.isArray(state.snapshots.closestCalls)) {
@@ -971,7 +974,10 @@ app.post('/api/reset-best-diff', (req, res) => {
       }
     } else {
       if (state.shareCounters) {
-        for (const n of Object.keys(state.shareCounters)) state.shareCounters[n].bestSinceReset = 0;
+        for (const n of Object.keys(state.shareCounters)) {
+          state.shareCounters[n].bestSinceReset = 0;
+          state.shareCounters[n].recentSdiffs = [];
+        }
       }
       // clear pool-wide derived stores so the trend + Near Strikes restart clean
       if (state.snapshots) { state.snapshots.closestCalls = []; state.snapshots.bestTrend = []; }
@@ -997,6 +1003,7 @@ app.post('/api/reset-share-stats', (req, res) => {
         const c = state.shareCounters[name];
         c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0;
         c.sdiffSum = 0;
+        c.recentSdiffs = [];
         c.rejectReasons = {}; c.lastRejectReason = null; c.lastRejectAt = null;
       }
     }
