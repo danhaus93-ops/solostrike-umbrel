@@ -6,6 +6,7 @@ import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, 
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import StrikeForceCards from './components/StrikeForceCard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
@@ -16068,7 +16069,18 @@ export default function App() {
   const status = poolState?.status || 'loading';
   const ns = poolState?.networkStats || {};
 
+  // v2.1.0 Strike Force: compute rental-active BEFORE the registry so the
+  // entry itself is null when no rented/Braiins worker is hashing. DesktopPages
+  // uses this null as the signal to restore Strike Velocity in its slot.
+  const _csActive = Array.isArray(workers) && workers.some(w => {
+    if (!w || w.status === 'offline') return false;
+    const v = (w.minerVendor || '').toString().toLowerCase();
+    return v === 'rented' || v === 'braiins';
+  });
+
   const cardComponents = {
+    // v2.1.0 Strike Force — rental ascent card (pinned to front when active).
+    strikeforce: _csActive ? <StrikeForceCards workers={workers} network={poolState?.network} blockReward={poolState?.blockReward} t={tt} GLYPH_SRC="/btc-glyph.png" /> : null,
     // ── ERROR BOUNDARY TEST ────────────────────────────────────────────────
     // Always throws when rendered. Only inserted into renderableOrder when
     // the URL contains ?testcrash=1 (see below). To dismiss: remove the
@@ -16146,7 +16158,12 @@ export default function App() {
   // Removes the surprise of Stratum jumping to front on first launch.
   // ── ERROR BOUNDARY TEST: prepend testbomb when URL has ?testcrash=1 ─────
   const _testBombActive = typeof window !== 'undefined' && window.location.search.includes('testcrash=1');
-  const renderableOrder = _testBombActive ? ['testbomb', ...baseOrder] : baseOrder;
+  // v2.1.0 Strike Force: pin the rental card to the FRONT whenever a rented /
+  // Braiins worker is online (mobile carousel / vertical grid / desktop card
+  // grid). _csActive computed above the registry. Not gated by visibleCards.
+  let renderableOrder = baseOrder;
+  if (_csActive) renderableOrder = ['strikeforce', ...renderableOrder];
+  if (_testBombActive) renderableOrder = ['testbomb', ...renderableOrder];
 
   return (
     <>
@@ -16265,7 +16282,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v2.0.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>SoloStrike v2.1.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
