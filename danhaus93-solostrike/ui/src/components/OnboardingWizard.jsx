@@ -234,6 +234,7 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
   const urlAsic  = `stratum+tcp://${host}:3333`;
   const urlHobby = `stratum+tcp://${host}:3334`;
+  const urlNicehash = `stratum+tcp://${host}:4334`;
   const [copied, setCopied] = useState('');
 
   const copy = async (val, lbl) => {
@@ -288,6 +289,15 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
       <div style={{display:'flex', gap:'0.75rem', marginBottom:'1.25rem', flexWrap:'wrap'}}>
         {minerCard(tt('ASIC Port'), urlAsic, 3333, 'asic')}
         {minerCard(tt('Hobby Port'), urlHobby, 3334, 'hobby')}
+        {minerCard(tt('NiceHash Port'), urlNicehash, 4334, 'nicehash')}
+      </div>
+      <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
+        padding:'0.75rem', marginBottom:'1.25rem'}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em',
+          textTransform:'uppercase', color:'var(--amber)', marginBottom:6}}>{tt('Renting hashrate from NiceHash?')}</div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-1)', lineHeight:1.6}}>
+          {tt('Use port 4334 for NiceHash, not 3333/3334. In NiceHash, add a SHA-256 pool with this URL; Username = your BTC payout address (a worker suffix like .nh is optional); Password = x. Port 4334 is a high-difficulty port that starts every connection at 500,000 difficulty — sized for large rented hashrate, so NiceHash will not flood the pool. Your block stays 100% yours.')}
+        </div>
       </div>
       <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
         padding:'0.75rem', marginBottom:'1.25rem'}}>
