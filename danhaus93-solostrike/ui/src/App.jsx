@@ -6442,7 +6442,7 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
           <PortChip port="4333" accent="var(--cyan)" ssl />
         </div>
         <div style={{...helperStyle, marginTop:5, fontSize:'0.6rem'}}>
-          3333 ASIC · 3334 Hobby · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>4333 SSL
+          3333 ASIC · 3334 Hobby · 4334 NiceHash · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>4333 SSL
         </div>
       </div>
 
@@ -14995,6 +14995,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
   const host = loadStratumHost() || 'umbrel.local';
   const stratumUrl      = `stratum+tcp://${host}:3333`;
   const stratumUrlHobby = `stratum+tcp://${host}:3334`;
+  const stratumUrlNicehash = `stratum+tcp://${host}:4334`;
   const minerUrl        = w.ip ? `http://${w.ip}` : null;
 
   const copy = async (val, lbl) => {
@@ -15154,6 +15155,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
             <div style={secTitle}>{tt('▸ Connection')}</div>
             <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('NiceHash Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlNicehash}</span></div>
             <div style={kvRow}>
               <span style={kvLabel}>{tt('Miner IP')}</span>
               {w.ip ? (
@@ -15194,6 +15196,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
               <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?tt('✓ Copied'):tt('Copy ASIC URL')}</button>
               <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?tt('✓ Copied'):tt('Copy Hobby URL')}</button>
+              <button onClick={()=>copy(stratumUrlNicehash,'nicehash')} style={btn}>{copied==='nicehash'?tt('✓ Copied'):tt('Copy NiceHash URL')}</button>
               {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?tt('✓ Copied'):tt('Copy Miner IP')}</button>}
               <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?tt('✓ Copied'):tt('Copy Workername')}</button>
               <button onClick={exportCsv} style={btn}>⬇ {tt('Export CSV')}</button>
