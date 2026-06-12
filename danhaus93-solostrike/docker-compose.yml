@@ -121,11 +121,13 @@ services:
           "update_interval" : 20,
           "serverurl" : [
             "0.0.0.0:3333",
-            "0.0.0.0:3334"
+            "0.0.0.0:3334",
+            "0.0.0.0:4334"
           ],
           "mindiff" : 1,
           "startdiff" : 10000,
           "maxdiff" : 0,
+          "highdiff" : 500000,
           "logdir" : "/var/log/ckpool",
           "zmqblock" : "$${BITCOIN_ZMQ_HASHBLOCK}"
         }
@@ -178,6 +180,7 @@ services:
     ports:
       - "3333:3333"
       - "3334:3334"
+      - "4334:4334"
     volumes:
       - ${APP_DATA_DIR}/data/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/data/ckpool/logs:/var/log/ckpool
@@ -259,6 +262,8 @@ services:
       - UPDATE_INTERVAL=20
       - STRATUM_PORT=3333
       - STRATUM_PORT_HOBBY=3334
+      - STRATUM_PORT_NICEHASH=4334
+      - HIGH_DIFFICULTY=500000
       - STRATUM_PORT_TLS=4333
 
   ui:
