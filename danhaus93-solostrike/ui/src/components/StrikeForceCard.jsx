@@ -249,6 +249,10 @@ export function StrikeForceCards({ workers, network, blockReward, t, GLYPH_SRC }
   const list = Array.isArray(workers) ? workers : [];
   const rented = list.filter((w) => {
     if (!w || w.status === 'offline') return false;
+    // v2.1.1: only workers on the high-diff rental port (>4000, i.e. 4334)
+    // qualify. Owned miners — even on Braiins OS — never trigger the card.
+    const port = w.shareEvents && w.shareEvents.port;
+    if (!port || port <= 4000) return false;
     const v = (w.minerVendor || '').toString().toLowerCase();
     return v === 'rented' || v === 'braiins';
   });
