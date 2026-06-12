@@ -191,6 +191,10 @@ const CSS = `
 .ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent);backdrop-filter:blur(var(--card-blur-desk,7px));-webkit-backdrop-filter:blur(var(--card-blur-desk,7px));border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
+.ssdesk .live-left .cs-slot{min-height:0;overflow-y:auto;border-radius:10px}
+.ssdesk .live-left .cs-slot::-webkit-scrollbar{width:5px}
+.ssdesk .live-left .cs-slot::-webkit-scrollbar-thumb{background:var(--hair);border-radius:3px}
+.ssdesk .live-left .cs-slot .cs-card{margin-bottom:0;min-height:100%}
 .ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
@@ -708,6 +712,13 @@ export default function DesktopPages({
                     <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
                   </div>
                 </div>
+                {/* v2.1.0 Strike Force: during an active rental this card takes
+                    Strike Velocity's slot; when the rental ends the registry
+                    entry goes null and Strike Velocity returns. Firepower and
+                    The Crew are never touched. */}
+                {cardComponents['strikeforce'] ? (
+                  <div className="cs-slot">{cardComponents['strikeforce']}</div>
+                ) : (
                 <div className="panel">
                   <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
                   <div className="sv">
@@ -718,6 +729,7 @@ export default function DesktopPages({
                     <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
                   </div>
                 </div>
+                )}
               </div>
               <div className="panel">
                 <div className="zlabel">{tt('The Crew · live telemetry')} · {liveW}/{totW}</div>
