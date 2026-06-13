@@ -1,29 +1,33 @@
-// StrikeForceCard.jsx — v2.1.0
+// StrikeForceCard.jsx — v2.2.0
 // Auto-populating "Strike Force" card for rented hashrate (NiceHash / Braiins /
-// MiningRigRentals). When a worker whose minerVendor is "Rented" or "Braiins"
-// is online, a card is inserted at the TOP of the card list visualising its
-// climb toward a block — modelled on NiceHash EasyMining.
+// MiningRigRentals). When a worker on the high-diff rental port (>4000) whose
+// minerVendor is "Rented" or "Braiins" is online, a card is inserted at the
+// TOP of the card list visualising its climb toward a block — modelled on
+// NiceHash EasyMining — plus a full rental ledger:
+//   · RENTAL TELEMETRY  — live firepower, share of pool, hourly block odds
+//   · VALUE ACCOUNTING  — session clock, total hashes delivered, delivered-vs-
+//                          live hashrate (catches sellers shorting you),
+//                          wasted work, accumulated session odds, EV in sats
+//   · TOP STRIKES       — session's 3 best shares, log-scaled ladder
 //
-// Data (all already on the worker, no new wiring needed beyond the API ring
-// buffer added to share-watcher.js):
-//   worker.shareEvents.recentSdiffs  → real per-share achieved difficulties
-//                                       (rental high-diff port only, cap 256)
-//   worker.shareEvents.bestSinceReset → best share diff (resettable)
-//   worker.shareEvents.accepted       → accepted share count (monotonic)
-//   worker.shareEvents.firstSeen      → for strike-rate
-//   network.difficulty                → the "network difficulty" line / block
-//   blockReward.totalBtc              → potential block reward
+// Data (all already in the per-worker payload, no API changes):
+//   se.recentSdiffs   → per-share achieved diffs (rental port only, cap 512)
+//   se.bestSinceReset → best share diff (resettable)
+//   se.accepted/rejected/stale → counts
+//   se.sdiffSum       → Σ TARGET diffs of accepted shares (unbiased work sum,
+//                        v1.8.3-rev24) → hashes = sdiffSum × 2^32
+//   se.firstSeen      → session clock / strike-rate / delivered-avg
+//   worker.hashrate   → ckpool live hashrate (H/s)
+//   network.difficulty, blockReward.totalBtc, fiatPrice+currency (props)
 //
-// Histogram model (mirrors NiceHash): bars are log-scaled share difficulty
-// (ln(sdiff)/ln(netDiff)); the dashed network-difficulty line sits at the top
-// (100% = a block); the best share is highlighted "close to reward". Bars are
-// kept (no downsampling) and the strip scrolls horizontally — auto-pinned to
-// the newest, swipe left for history. We also surface the app's native linear
-// "% to block" so it stays consistent with the closest-calls / rarity system.
+// Layout: .cs-main (head/headline/histogram/legend) + .cs-ledger (all chips &
+// sections). Mobile stacks them; the desktop SV-slot lays them out as two
+// columns via CSS in DesktopPages so the whole ledger fits without scrolling.
 
 import React, { useRef, useEffect } from 'react';
 
 const MOON_SRC = '/moon.png';
+const T232 = 4294967296;
 
 const SHUTTLE = (
   <svg viewBox="0 0 44 62" width="42" height="57" aria-hidden="true" style={{ display: 'block', filter: 'drop-shadow(0 0 7px var(--amber))' }}>
@@ -50,20 +54,22 @@ const SHUTTLE = (
 );
 
 const CSS = `
-.cs-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:0.95rem 1.05rem 1.05rem;margin-bottom:0.6rem;}
-.cs-head{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;}
+.cs-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:0.8rem 0.95rem 0.85rem;margin-bottom:0.6rem;}
+.cs-main{min-width:0;}
+.cs-ledger{min-width:0;}
+.cs-head{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.45rem;}
 .cs-glyph{width:22px;height:22px;object-fit:contain;filter:drop-shadow(0 0 5px var(--btc-orange));}
 .cs-title{font-family:var(--fd,inherit);font-size:0.9rem;font-weight:700;letter-spacing:0.03em;color:var(--text-1);}
 .cs-prov{font-family:var(--fd,inherit);font-size:0.45rem;letter-spacing:0.13em;text-transform:uppercase;padding:3px 6px;border-radius:4px;border:1px solid var(--border);color:var(--text-2);display:inline-flex;align-items:center;gap:4px;}
 .cs-prov i{width:5px;height:5px;border-radius:50%;background:var(--cyan);display:inline-block;}
 .cs-sp{flex:1;}
 .cs-badge{font-family:var(--fd,inherit);font-size:0.46rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--bg-deep);background:var(--amber);padding:3px 7px;border-radius:5px;font-weight:700;}
-.cs-hl{display:flex;align-items:baseline;gap:0.5rem;margin-bottom:0.12rem;}
-.cs-big{font-family:var(--fd,inherit);font-size:1.55rem;font-weight:800;color:var(--amber);line-height:1;}
-.cs-cap{font-family:var(--fd,inherit);font-size:0.48rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);}
-.cs-sub{font-family:var(--fd,inherit);font-size:0.5rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-2);margin-bottom:0.65rem;}
+.cs-hl{display:flex;align-items:baseline;gap:0.5rem;margin-bottom:0.1rem;}
+.cs-big{font-family:var(--fd,inherit);font-size:1.5rem;font-weight:800;color:var(--amber);line-height:1;}
+.cs-cap{font-family:var(--fd,inherit);font-size:0.46rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);}
+.cs-sub{font-family:var(--fd,inherit);font-size:0.48rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-2);margin-bottom:0.5rem;}
 .cs-sub b{color:var(--btc-orange);}
-.cs-hist{position:relative;height:142px;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:0.45rem;}
+.cs-hist{position:relative;height:clamp(128px,17vh,142px);background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:0.4rem;}
 .cs-net{position:absolute;left:8px;right:8px;top:10px;border-top:2px dashed var(--text-1);opacity:0.85;}
 .cs-netlbl{position:absolute;right:30px;top:13px;font-family:var(--fd,inherit);font-size:0.42rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-2);}
 .cs-moon{position:absolute;right:3px;top:1px;width:21px;height:21px;z-index:4;filter:drop-shadow(0 0 4px rgba(244,242,235,0.6)) drop-shadow(0 0 8px var(--btc-orange));}
@@ -76,14 +82,34 @@ const CSS = `
 .cs-inner{display:flex;align-items:flex-end;height:100%;width:max-content;min-width:100%;padding-bottom:5px;}
 .cs-bar{width:5px;margin-right:2px;flex:0 0 auto;background:#8b9098;border-radius:1px 1px 0 0;height:0;transition:height 0.45s cubic-bezier(0.2,0.8,0.2,1),background 0.3s;}
 .cs-bar.cs-best{background:var(--amber);box-shadow:0 0 8px var(--amber);}
-.cs-lgnd{display:flex;gap:0.8rem;flex-wrap:wrap;margin-bottom:0.6rem;}
+.cs-lgnd{display:flex;gap:0.8rem;flex-wrap:wrap;margin-bottom:0.5rem;}
 .cs-lg{display:flex;align-items:center;gap:4px;font-family:var(--fd,inherit);font-size:0.42rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);}
 .cs-lg i{width:7px;height:7px;border-radius:1px;display:inline-block;}
 .cs-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.cs-kv{display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.55rem;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;}
-.cs-kv .k{font-family:var(--fd,inherit);font-size:0.46rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);}
-.cs-kv .v{font-family:var(--fm,monospace);font-size:0.74rem;color:var(--text-1);font-weight:600;}
+.cs-kv{display:flex;justify-content:space-between;align-items:center;padding:0.36rem 0.5rem;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;min-width:0;overflow:hidden;}
+.cs-kv .k{font-family:var(--fd,inherit);font-size:0.44rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);}
+.cs-kv .v{font-family:var(--fm,monospace);font-size:0.7rem;color:var(--text-1);font-weight:600;white-space:nowrap;}
 .cs-kv .v.am{color:var(--amber);}
+.cs-kv .v.cy{color:var(--cyan);}
+.cs-kv .v.gr{color:var(--green,#39FF6A);}
+.sf-divider{display:flex;align-items:center;gap:8px;margin:0.5rem 0 0.35rem;}
+.sf-divider span{font-family:var(--fd,inherit);font-size:0.4rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--text-3);white-space:nowrap;}
+.sf-divider i{flex:1;height:1px;background:var(--border);}
+.sf-odds{display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.5rem;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;margin-top:5px;min-width:0;}
+.sf-odds .k{font-family:var(--fd,inherit);font-size:0.44rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-3);}
+.sf-odds .v{font-family:var(--fm,monospace);font-size:0.72rem;font-weight:700;color:var(--cyan);white-space:nowrap;}
+.sf-odds .v small{font-size:0.55em;color:var(--text-3);font-weight:500;}
+.sf-odds .v.ev{color:var(--green,#39FF6A);}
+.sf-top{margin-top:0.45rem;}
+.sf-row{display:flex;align-items:center;gap:7px;padding:3px 0;}
+.sf-rank{font-family:var(--fd,inherit);font-size:0.5rem;color:var(--text-3);width:14px;}
+.sf-row.first .sf-rank{color:var(--amber);}
+.sf-track{flex:1;height:8px;background:var(--bg-deep);border:1px solid var(--border);border-radius:4px;overflow:hidden;position:relative;}
+.sf-track i{position:absolute;left:0;top:0;bottom:0;background:#7b8088;border-radius:3px;transition:width 0.5s cubic-bezier(0.2,0.8,0.2,1);}
+.sf-row.first .sf-track i{background:var(--amber);box-shadow:0 0 7px var(--amber);}
+.sf-val{font-family:var(--fm,monospace);font-size:0.6rem;color:var(--text-2);width:54px;text-align:right;font-weight:600;}
+.sf-row.first .sf-val{color:var(--amber);}
+.sf-pct{font-family:var(--fd,inherit);font-size:0.46rem;color:var(--text-3);width:34px;text-align:right;}
 .cs-flame{transform-origin:22px 48px;animation:cs-flame 0.32s ease-in-out infinite alternate;}
 .cs-flame2{transform-origin:22px 48px;animation:cs-flame2 0.22s ease-in-out infinite alternate;}
 @keyframes cs-launch{0%,100%{transform:translateY(3px) rotate(-1.5deg);}50%{transform:translateY(-10px) rotate(1.5deg);}}
@@ -108,7 +134,50 @@ function fmtPctToBlock(p) {
   return p.toExponential(1) + '%';
 }
 
-export function StrikeForceCard({ worker, network, blockReward, t, GLYPH_SRC }) {
+function fmtHr(hs) {
+  if (!hs || hs <= 0) return '—';
+  if (hs >= 1e15) return (hs / 1e15).toFixed(2) + ' PH/s';
+  if (hs >= 1e12) return (hs / 1e12).toFixed(1) + ' TH/s';
+  if (hs >= 1e9) return (hs / 1e9).toFixed(1) + ' GH/s';
+  return (hs / 1e6).toFixed(0) + ' MH/s';
+}
+
+function fmtHashes(h) {
+  if (!h || h <= 0) return '—';
+  if (h >= 1e21) return (h / 1e21).toFixed(2) + ' ZH';
+  if (h >= 1e18) return (h / 1e18).toFixed(2) + ' EH';
+  if (h >= 1e15) return (h / 1e15).toFixed(1) + ' PH';
+  return (h / 1e12).toFixed(0) + ' TH';
+}
+
+function fmtDur(ms) {
+  if (!ms || ms <= 0) return '—';
+  const m = Math.floor(ms / 60000);
+  const h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d > 0) return d + 'd ' + (h % 24) + 'h';
+  if (h > 0) return h + 'h ' + (m % 60) + 'm';
+  return Math.max(m, 1) + 'm';
+}
+
+function fmtOneIn(p) { // probability → "1 : N" (language-neutral)
+  if (!p || p <= 0) return '—';
+  const n = 1 / p;
+  if (n >= 1e12) return '1 : ' + (n / 1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return '1 : ' + (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return '1 : ' + (n / 1e6).toFixed(1) + 'M';
+  return '1 : ' + Math.round(n).toLocaleString();
+}
+
+function fmtFiatLocal(v, currency) {
+  if (v == null || !(v > 0)) return null;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(v);
+  } catch (e) {
+    return '$' + v.toFixed(2);
+  }
+}
+
+export function StrikeForceCard({ worker, network, blockReward, poolHashrate, fiatPrice, currency, t, GLYPH_SRC }) {
   const tt = typeof t === 'function' ? t : (k) => k;
   const innerRef = useRef(null);
   const vpRef = useRef(null);
@@ -119,8 +188,10 @@ export function StrikeForceCard({ worker, network, blockReward, t, GLYPH_SRC }) 
 
   const se = worker.shareEvents || {};
   const accepted = se.accepted || 0;
+  const rejected = (se.rejected || 0) + (se.stale || 0);
   const best = se.bestSinceReset || se.bestSdiff || 0;
   const netDiff = (network && network.difficulty) || 0;
+  const recent = Array.isArray(se.recentSdiffs) ? se.recentSdiffs : [];
 
   // NiceHash-style log ascent (the dramatic "close to reward" number) …
   const ascentPct = netDiff > 1 && best > 0 ? Math.min((Math.log(best) / Math.log(netDiff)) * 100, 100) : 0;
@@ -131,13 +202,39 @@ export function StrikeForceCard({ worker, network, blockReward, t, GLYPH_SRC }) 
   const rewardBtc = blockReward && typeof blockReward.totalBtc === 'number' ? blockReward.totalBtc : null;
 
   const firstSeen = se.firstSeen || 0;
-  const mins = firstSeen ? Math.max((Date.now() - firstSeen) / 60000, 0.1) : 0;
-  const strikeRate = mins > 0 ? Math.round(accepted / mins) : null;
+  const elapsedMs = firstSeen ? Math.max(Date.now() - firstSeen, 6000) : 0;
+  const mins = elapsedMs / 60000;
+  const strikeRate = mins > 0 ? Math.round(accepted / Math.max(mins, 0.1)) : null;
+
+  // ── RENTAL TELEMETRY ──────────────────────────────────────────────────
+  const rentalHr = worker.hashrate || 0; // H/s, ckpool live
+  const poolPct = poolHashrate > 0 && rentalHr > 0 ? Math.min((rentalHr / poolHashrate) * 100, 100) : null;
+  // Block odds in the next hour at current rate: P = HR·3600 / (D·2^32)
+  const hourP = netDiff > 0 && rentalHr > 0 ? (rentalHr * 3600) / (netDiff * T232) : 0;
+
+  // ── VALUE ACCOUNTING — what your sats bought ─────────────────────────
+  // se.sdiffSum sums TARGET diffs of accepted shares (v1.8.3-rev24), the
+  // unbiased work estimator: hashes = Σtarget × 2^32.
+  const targetSum = se.sdiffSum || 0;
+  const workHashes = targetSum * T232;
+  const deliveredAvg = elapsedMs > 0 ? workHashes / (elapsedMs / 1000) : 0; // H/s
+  const wastedPct = accepted + rejected > 0 ? (rejected / (accepted + rejected)) * 100 : 0;
+  // Accumulated session block probability: every accepted share at target d
+  // was a d/D lottery ticket → ΣP = Σtarget / D.
+  const sessP = netDiff > 0 ? targetSum / netDiff : 0;
+  const evSats = sessP > 0 && rewardBtc ? sessP * rewardBtc * 1e8 : 0;
+  const evFiat = sessP > 0 && rewardBtc && fiatPrice > 0 ? sessP * rewardBtc * fiatPrice : null;
+  const evFiatStr = fmtFiatLocal(evFiat, currency);
+
+  // ── TOP STRIKES — session's best three from the ring ─────────────────
+  const lnNetTop = netDiff > 1 ? Math.log(netDiff) : 0;
+  const topStrikes = lnNetTop > 0
+    ? [...recent].sort((a, b) => b - a).slice(0, 3).map((d) => ({ d, pct: Math.min((Math.log(d) / lnNetTop) * 100, 100) }))
+    : [];
 
   useEffect(() => {
     const inner = innerRef.current, vp = vpRef.current;
     if (!inner) return;
-    const recent = (worker.shareEvents && worker.shareEvents.recentSdiffs) || [];
     const lnNet = netDiff > 1 ? Math.log(netDiff) : 0;
     const hOf = (sd) => (lnNet > 0 && sd > 0 ? Math.min(Math.log(sd) / lnNet, 1) : 0);
 
@@ -194,50 +291,89 @@ export function StrikeForceCard({ worker, network, blockReward, t, GLYPH_SRC }) 
     }
   }, [accepted, netDiff, worker]);
 
+  // v2.2.0 worker-name fix: long bc1q… users blew out the grid column (grid
+  // items default min-width:auto). Middle-truncate so the address head and
+  // .SUFFIX both stay visible; full string on long-press via title.
+  const wFull = (worker.displayName || worker.name || '').toString();
+  const wShort = wFull.length > 22 ? wFull.slice(0, 9) + '…' + wFull.slice(-9) : wFull;
+
   return (
     <div className="cs-card">
-      <div className="cs-head">
-        {GLYPH_SRC ? <img className="cs-glyph" src={GLYPH_SRC} alt="" /> : null}
-        <div className="cs-title">{tt('Strike Force')}</div>
-        <div className="cs-prov"><i />{String(providerLabel).toUpperCase()}</div>
-        <div className="cs-sp" />
-        <div className="cs-badge">{tt('live')}</div>
-      </div>
-
-      <div className="cs-hl">
-        <span className="cs-big">{ascentPct > 0 ? Math.round(ascentPct) + '%' : '—'}</span>
-        <span className="cs-cap">{tt('close to reward')}</span>
-      </div>
-      {rewardBtc != null && (
-        <div className="cs-sub">{tt('potential block reward')} <b>{rewardBtc.toFixed(4)} BTC</b></div>
-      )}
-
-      <div className="cs-hist">
-        <div className="cs-net" />
-        <div className="cs-moon"><img src={MOON_SRC} alt={tt('network difficulty')} /></div>
-        <div className="cs-netlbl">{tt('network difficulty')} {fmtDiff(netDiff)}</div>
-        <div className="cs-trav">{SHUTTLE}</div>
-        <div className="cs-vp" ref={vpRef}><div className="cs-inner" ref={innerRef} /></div>
-      </div>
-
-      <div className="cs-lgnd">
-        <span className="cs-lg"><i style={{ background: '#8b9098' }} />{tt('share difficulty')}</span>
-        <span className="cs-lg"><i style={{ background: 'var(--amber)' }} />{tt('best · close to reward')}</span>
-        <span className="cs-lg"><i style={{ background: 'transparent', borderTop: '2px dashed var(--text-1)', height: 0, width: 9 }} />{tt('network difficulty')}</span>
-      </div>
-
-      <div className="cs-grid">
-        <div className="cs-kv"><span className="k">{tt('Network diff')}</span><span className="v">{fmtDiff(netDiff)}</span></div>
-        <div className="cs-kv"><span className="k">{tt('Best share')}</span><span className="v am">{fmtDiff(best)}</span></div>
-        <div className="cs-kv"><span className="k">{tt('To block')}</span><span className="v">{fmtPctToBlock(pctToBlock)}</span></div>
-        <div className="cs-kv"><span className="k">{tt('Shares accepted')}</span><span className="v">{accepted.toLocaleString()}</span></div>
-      </div>
-      {strikeRate != null && (
-        <div className="cs-grid" style={{ marginTop: 5 }}>
-          <div className="cs-kv"><span className="k">{tt('Strike rate')}</span><span className="v">{strikeRate} /min</span></div>
-          <div className="cs-kv"><span className="k">{tt('Worker')}</span><span className="v" style={{ fontSize: '0.6rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{worker.displayName || worker.name}</span></div>
+      <div className="cs-main">
+        <div className="cs-head">
+          {GLYPH_SRC ? <img className="cs-glyph" src={GLYPH_SRC} alt="" /> : null}
+          <div className="cs-title">{tt('Strike Force')}</div>
+          <div className="cs-prov"><i />{String(providerLabel).toUpperCase()}</div>
+          <div className="cs-sp" />
+          <div className="cs-badge">{tt('live')}</div>
         </div>
-      )}
+
+        <div className="cs-hl">
+          <span className="cs-big">{ascentPct > 0 ? Math.round(ascentPct) + '%' : '—'}</span>
+          <span className="cs-cap">{tt('close to reward')}</span>
+        </div>
+        {rewardBtc != null && (
+          <div className="cs-sub">{tt('potential block reward')} <b>{rewardBtc.toFixed(4)} BTC</b></div>
+        )}
+
+        <div className="cs-hist">
+          <div className="cs-net" />
+          <div className="cs-moon"><img src={MOON_SRC} alt={tt('network difficulty')} /></div>
+          <div className="cs-netlbl">{tt('network difficulty')} {fmtDiff(netDiff)}</div>
+          <div className="cs-trav">{SHUTTLE}</div>
+          <div className="cs-vp" ref={vpRef}><div className="cs-inner" ref={innerRef} /></div>
+        </div>
+
+        <div className="cs-lgnd">
+          <span className="cs-lg"><i style={{ background: '#8b9098' }} />{tt('share difficulty')}</span>
+          <span className="cs-lg"><i style={{ background: 'var(--amber)' }} />{tt('best · close to reward')}</span>
+          <span className="cs-lg"><i style={{ background: 'transparent', borderTop: '2px dashed var(--text-1)', height: 0, width: 9 }} />{tt('network difficulty')}</span>
+        </div>
+      </div>
+
+      <div className="cs-ledger">
+        <div className="cs-grid">
+          <div className="cs-kv"><span className="k">{tt('Network diff')}</span><span className="v">{fmtDiff(netDiff)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Best share')}</span><span className="v am">{fmtDiff(best)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('To block')}</span><span className="v">{fmtPctToBlock(pctToBlock)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Shares accepted')}</span><span className="v">{accepted.toLocaleString()}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Strike rate')}</span><span className="v">{strikeRate != null ? strikeRate + ' /min' : '—'}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Worker')}</span><span className="v" title={wFull} style={{ fontSize: '0.58rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto', minWidth: 0, textAlign: 'right', marginLeft: '0.4rem' }}>{wShort}</span></div>
+        </div>
+
+        <div className="sf-divider"><i /><span>{tt('rental telemetry')}</span><i /></div>
+        <div className="cs-grid">
+          <div className="cs-kv"><span className="k">{tt('Rental firepower')}</span><span className="v">{fmtHr(rentalHr)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Pool share')}</span><span className="v cy">{poolPct != null ? poolPct.toFixed(1) + '%' : '—'}</span></div>
+        </div>
+        <div className="sf-odds"><span className="k">{tt('Block odds · this hour')}</span><span className="v">{fmtOneIn(hourP)} <small>{tt('at current rate')}</small></span></div>
+
+        <div className="sf-divider"><i /><span>{tt('value accounting · what your sats bought')}</span><i /></div>
+        <div className="cs-grid">
+          <div className="cs-kv"><span className="k">{tt('Session')}</span><span className="v">{fmtDur(elapsedMs)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Work delivered')}</span><span className="v">{fmtHashes(workHashes)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Delivered avg')}</span><span className="v gr">{fmtHr(deliveredAvg)}</span></div>
+          <div className="cs-kv"><span className="k">{tt('Wasted (rejects)')}</span><span className="v">{(accepted + rejected) > 0 ? wastedPct.toFixed(1) + '%' : '—'}</span></div>
+        </div>
+        <div className="sf-odds"><span className="k">{tt('Session odds · accumulated')}</span><span className="v">{fmtOneIn(sessP)} <small>{tt('so far')}</small></span></div>
+        <div className="sf-odds"><span className="k">{tt('EV of work delivered')}</span><span className="v ev">{evSats > 0 ? '≈ ' + Math.round(evSats).toLocaleString() + ' sats' : '—'} {evFiatStr ? <small>({evFiatStr})</small> : null}</span></div>
+
+        {topStrikes.length > 0 && (
+          <>
+            <div className="sf-divider"><i /><span>{tt('top strikes · session')}</span><i /></div>
+            <div className="sf-top">
+              {topStrikes.map((s, i) => (
+                <div key={i} className={'sf-row' + (i === 0 ? ' first' : '')}>
+                  <span className="sf-rank">#{i + 1}</span>
+                  <span className="sf-track"><i style={{ width: s.pct.toFixed(1) + '%' }} /></span>
+                  <span className="sf-val">{fmtDiff(s.d)}</span>
+                  <span className="sf-pct">{Math.round(s.pct)}%</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -245,8 +381,10 @@ export function StrikeForceCard({ worker, network, blockReward, t, GLYPH_SRC }) 
 // Wrapper: renders a Strike Force card for every online rented/Braiins worker,
 // newest-best first. Returns null (renders nothing) when none are active, so it
 // naturally disappears from the top of the card list when no rental is hashing.
-export function StrikeForceCards({ workers, network, blockReward, t, GLYPH_SRC }) {
+export function StrikeForceCards({ workers, network, blockReward, fiatPrice, currency, t, GLYPH_SRC }) {
   const list = Array.isArray(workers) ? workers : [];
+  // Σ live hashrate of the whole fleet → denominator for "Pool share".
+  const poolHashrate = list.reduce((s, w) => s + ((w && w.hashrate) || 0), 0);
   const rented = list.filter((w) => {
     if (!w || w.status === 'offline') return false;
     // v2.1.1: only workers on the high-diff rental port (>4000, i.e. 4334)
@@ -262,7 +400,7 @@ export function StrikeForceCards({ workers, network, blockReward, t, GLYPH_SRC }
     <>
       <style>{CSS}</style>
       {rented.map((w) => (
-        <StrikeForceCard key={w.name} worker={w} network={network} blockReward={blockReward} t={t} GLYPH_SRC={GLYPH_SRC} />
+        <StrikeForceCard key={w.name} worker={w} network={network} blockReward={blockReward} poolHashrate={poolHashrate} fiatPrice={fiatPrice} currency={currency} t={t} GLYPH_SRC={GLYPH_SRC} />
       ))}
     </>
   );

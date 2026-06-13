@@ -192,6 +192,21 @@ const CSS = `
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
 .ssdesk .live-left .cs-slot{min-height:0;overflow-y:auto;border-radius:10px}
+.ssdesk .live-left .cs-slot .cs-card{display:grid;grid-template-columns:1.08fr 1fr;gap:12px;min-height:100%;margin-bottom:0;align-content:start}
+.ssdesk .live-left .cs-slot .cs-main{min-width:0;display:flex;flex-direction:column}
+.ssdesk .live-left .cs-slot .cs-hist{flex:1;height:auto;min-height:120px;margin-bottom:0.3rem}
+.ssdesk .live-left .cs-slot .cs-lgnd{display:none}
+.ssdesk .live-left .cs-slot .cs-ledger{min-width:0}
+.ssdesk .live-left .cs-slot .cs-grid{gap:4px}
+.ssdesk .live-left .cs-slot .cs-kv{padding:0.24rem 0.45rem}
+.ssdesk .live-left .cs-slot .cs-kv .v{font-size:0.6rem}
+.ssdesk .live-left .cs-slot .cs-kv .k{font-size:0.4rem}
+.ssdesk .live-left .cs-slot .sf-divider{margin:0.18rem 0 0.12rem}
+.ssdesk .live-left .cs-slot .sf-odds{padding:0.24rem 0.45rem;margin-top:4px}
+.ssdesk .live-left .cs-slot .sf-odds .v{font-size:0.62rem}
+.ssdesk .live-left .cs-slot .sf-top{margin-top:0.2rem}
+.ssdesk .live-left .cs-slot .sf-row{padding:2px 0}
+.ssdesk .live-left .cs-slot .sf-track{height:7px}
 .ssdesk .live-left .cs-slot::-webkit-scrollbar{width:5px}
 .ssdesk .live-left .cs-slot::-webkit-scrollbar-thumb{background:var(--hair);border-radius:3px}
 .ssdesk .live-left .cs-slot .cs-card{margin-bottom:0;min-height:100%}
