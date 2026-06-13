@@ -545,12 +545,14 @@ export function StrikeForceCards({ workers, network, blockReward, fiatPrice, cur
   const poolHashrate = list.reduce((s, w) => s + ((w && w.hashrate) || 0), 0);
   const rented = list.filter((w) => {
     if (!w || w.status === 'offline') return false;
-    // v2.1.1: only workers on the high-diff rental port (>4000, i.e. 4334)
-    // qualify. Owned miners — even on Braiins OS — never trigger the card.
+    // v2.3.1: the high-diff RENTAL port (>4000, i.e. 4334) is the authoritative
+    // "a rental is in" signal — owned miners connect on 3333/3334 and never hit
+    // it. Earlier builds also required minerVendor==='rented'|'braiins', but
+    // NiceHash often sends a generic/empty stratum user-agent so its vendor
+    // stays null, which wrongly excluded it. The port alone qualifies now;
+    // vendor is used only to *label* the card, not to gate it.
     const port = w.shareEvents && w.shareEvents.port;
-    if (!port || port <= 4000) return false;
-    const v = (w.minerVendor || '').toString().toLowerCase();
-    return v === 'rented' || v === 'braiins';
+    return !!port && port > 4000;
   });
   if (!rented.length) return null;
   rented.sort((a, b) => ((b.shareEvents && b.shareEvents.bestSinceReset) || 0) - ((a.shareEvents && a.shareEvents.bestSinceReset) || 0));
