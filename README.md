@@ -18,16 +18,16 @@ https://github.com/user-attachments/assets/45de22af-e71c-4531-86a3-8ed1bc74a48f
 
 -----
 
-## Why SoloStrike
+## Why LoneStrike
 
 In **pooled mining**, thousands of miners split every block and the operator skims a percentage. In **solo mining**, you don’t share. Every block your miners find pays the entire reward — subsidy plus every satoshi of fees — directly to your address.
 
-SoloStrike gives you solo mining on your own Umbrel, with:
+LoneStrike gives you solo mining on your own Umbrel, with:
 
 - **0% pool fees** — forever, no catch. ckpool-solo constructs the coinbase transaction to pay 100% to your address.
 - **Your node, your rules** — connects directly to your Umbrel’s Bitcoin Core via injected RPC credentials. No external dependencies on the mining core path.
 - **Private Mode** — one toggle and the entire app goes airgapped. No mempool.space calls, no price APIs, no outbound traffic. Your mining activity is yours alone.
-- **Solostrike Pulse** — opt-in anonymous network of fellow solo miners over nostr (Tor optional). See aggregate hashrate, peer count, and your global rank without revealing your identity.
+- **Lonestrike Pulse** — opt-in anonymous network of fellow solo miners over nostr (Tor optional). See aggregate hashrate, peer count, and your global rank without revealing your identity.
 - **Fleet-grade observability** — real-time hashrate waveform, share-velocity histogram, per-worker stats, historical leaderboards, block probability odds, Prometheus metrics, webhook notifications, 90-day snapshots.
 - **Home-screen widget** — a native umbrelOS widget showing pool hashrate, workers online, blocks found, and your best difficulty.
 - **Progressive Web App** — “Add to Home Screen” on iOS/Android gives you a real standalone app experience.
@@ -38,7 +38,7 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 
 ## Screenshots
 
-![SoloStrike Dashboard](danhaus93-solostrike/1.png)
+![LoneStrike Dashboard](danhaus93-solostrike/1.png)
 *Real-time Deep Mine dashboard: live pool hashrate, The Hunt nonce field, fleet status, block probability.*
 
 ![Worker Details](danhaus93-solostrike/2.png)
@@ -54,7 +54,7 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 - **Tor routing for Pulse** — broadcasts and subscriptions optionally route through Umbrel’s `tor_proxy`
 - **Anonymous Pulse identity** — ephemeral nostr signing keys, no BTC address or hostname leaked
 - **ZMQ status indicator** — see at a glance whether Bitcoin Core’s block broadcasts are reaching the pool
-- **Coinbase branding** — every block your pool finds is tagged `/SoloStrike on Umbrel/` on-chain forever
+- **Coinbase branding** — every block your pool finds is tagged `/LoneStrike on Umbrel/` on-chain forever
 
 ### 📊 Real-Time Observability
 
@@ -62,7 +62,7 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 - **Hashrate Averages strip** — seven rolling windows (1M / 5M / 15M / 1H / 6H / 24H / 7D) as horizontal bars; each label doubles as a chart-range button
 - **Strike Velocity** — share submission rate as a vertical-bar histogram, color-coded green/amber/red for normal/anomalous/zero output. 1H / 6H / 24H ranges
 - **The Hunt** — bitcoin-native nonce field visualization. A 32×6 grid of dim points represents the 2³² nonce space. Cells flicker amber as your fleet hashes, a vertical scan line sweeps L→R, strike flashes mark “winner” cells
-- **Solostrike Pulse** — opt-in network census with 5 ambient animation styles (Sluice Box, Cave Glimmers, Hash Ticker, Conveyor of Ore, Forge Embers) and optional Bitcoin Symbols (₿) mode
+- **Lonestrike Pulse** — opt-in network census with 5 ambient animation styles (Sluice Box, Cave Glimmers, Hash Ticker, Conveyor of Ore, Forge Embers) and optional Bitcoin Symbols (₿) mode
 - **The Crew** — every worker individually monitored, online/offline status, hashrate per device, persistent offline banners with auto-recovery flash
 - **Bitcoin Node panel** — Core version + subversion string, peer count, relay fee, mempool size
 - **Bitcoin Network** — block reward (subsidy + fees), block weight, tx count, BTC price in 7 currencies, fee tiers
@@ -119,7 +119,7 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 
 ## Differentiators vs. other Umbrel solo pools
 
-|Feature                             |SoloStrike |Public Pool    |Bassin     |
+|Feature                             |LoneStrike |Public Pool    |Bassin     |
 |------------------------------------|:---------:|:-------------:|:---------:|
 |Engine                              |ckpool-solo|NestJS (custom)|ckpool-solo|
 |Pool fee                            |0%         |0%             |0%         |
@@ -139,7 +139,7 @@ Every share is a lottery ticket. Every block, if it comes, is yours entirely.
 |Branded coinbase tag on block       |✅          |✅              |❌          |
 |Progressive Web App                 |✅          |❌              |❌          |
 
-SoloStrike is for people who want the ckpool-solo engine *and* a modern operations layer on top — not just a hashrate counter.
+LoneStrike is for people who want the ckpool-solo engine *and* a modern operations layer on top — not just a hashrate counter.
 
 -----
 
@@ -156,17 +156,17 @@ SoloStrike is for people who want the ckpool-solo engine *and* a modern operatio
    ```
 1. Tap **Add**
 
-### 2. Install SoloStrike
+### 2. Install LoneStrike
 
-1. Open the SoloStrike community store
-1. Tap **SoloStrike → Install**
+1. Open the LoneStrike community store
+1. Tap **LoneStrike → Install**
 1. Umbrel pulls the multi-arch Docker images (amd64 or arm64, ~1-2 min)
 
 ### 3. First-run setup
 
 The onboarding wizard walks you through 5 steps:
 
-1. **Welcome** — what SoloStrike does
+1. **Welcome** — what LoneStrike does
 1. **Payout address** — enter your Bitcoin address (`bc1…`, `1…`, or `3…`)
 1. **Connect miners** — scannable QR codes for both stratum ports
 1. **Verification** — wizard detects your first worker as it connects
@@ -307,15 +307,15 @@ Automatic detection identifies the miner type from share patterns and displays i
 
 ## Security & Privacy
 
-### What SoloStrike does NOT do
+### What LoneStrike does NOT do
 
 - ❌ **Does not phone home.** No telemetry, no analytics, no crash reporting.
-- ❌ **Does not touch your keys.** SoloStrike only stores a Bitcoin *address* (public). There is nowhere to put a private key, and the app does not ask.
+- ❌ **Does not touch your keys.** LoneStrike only stores a Bitcoin *address* (public). There is nowhere to put a private key, and the app does not ask.
 - ❌ **Does not expose the dashboard to the internet** by default. Umbrel’s `app_proxy` gates it behind your Umbrel password.
 
 ### Private Mode
 
-When enabled (Settings → Privacy), SoloStrike blocks ALL outbound API calls:
+When enabled (Settings → Privacy), LoneStrike blocks ALL outbound API calls:
 
 - ❌ mempool.space (block/fee data)
 - ❌ BTC price APIs (all 7 currencies)
@@ -324,7 +324,7 @@ When enabled (Settings → Privacy), SoloStrike blocks ALL outbound API calls:
 
 The dashboard continues to run fully on local data from your own Bitcoin Core. Mempool panel disables, price ticker hides, everything else works. Ideal for users on airgapped, Tor-only, or paranoid networks.
 
-### Solostrike Pulse — privacy by design
+### Lonestrike Pulse — privacy by design
 
 Pulse is **opt-in only.** When enabled:
 
@@ -350,13 +350,13 @@ Data persists across app updates. Updating or restarting does not clear worker a
 
 ### Coinbase Tag
 
-Every block your pool finds is tagged `/SoloStrike on Umbrel/` in the coinbase transaction. This is a cosmetic on-chain signature — it does NOT affect payout (100% goes to your address) and cannot be disabled without rebuilding the Docker image.
+Every block your pool finds is tagged `/LoneStrike on Umbrel/` in the coinbase transaction. This is a cosmetic on-chain signature — it does NOT affect payout (100% goes to your address) and cannot be disabled without rebuilding the Docker image.
 
 -----
 
 ## Bitcoin Core Connection
 
-SoloStrike auto-connects to your Umbrel Bitcoin Core via Umbrel’s injected environment variables — zero manual RPC config:
+LoneStrike auto-connects to your Umbrel Bitcoin Core via Umbrel’s injected environment variables — zero manual RPC config:
 
 - `APP_BITCOIN_NODE_IP` (typically `10.21.21.8`)
 - `APP_BITCOIN_RPC_PORT` (`8332`)
@@ -406,7 +406,7 @@ Sluice Box (flowing water + gold flakes), Cave Glimmers (gold glints flashing on
 
 ### 🩺 Health Diagnostic Script
 
-A standalone bash script that audits your SoloStrike installation end-to-end: container status, port reachability, ckpool process health, share-watcher activity, Bitcoin Core connection, disk usage, recent errors, and more. Useful for first-pass triage before digging into individual logs.
+A standalone bash script that audits your LoneStrike installation end-to-end: container status, port reachability, ckpool process health, share-watcher activity, Bitcoin Core connection, disk usage, recent errors, and more. Useful for first-pass triage before digging into individual logs.
 
 #### Quick check (run anytime)
 
@@ -611,37 +611,37 @@ See `.github/workflows/build.yml` for the exact CI pipeline.
 - **[docker-ckpool-solo](https://github.com/getumbrel/docker-ckpool-solo)** by Umbrel — multi-arch prebuilt image
 - **[mempool.space](https://mempool.space)** — block explorer integration
 - **[Umbrel](https://umbrel.com)** — the home server OS that makes self-hosting this possible
-- **[nostr](https://nostr.com)** — the relay protocol behind Solostrike Pulse
+- **[nostr](https://nostr.com)** — the relay protocol behind Lonestrike Pulse
 
 -----
 
 ## License
 
-**SoloStrike** (v1.11.11 and later) is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+**LoneStrike** (v1.11.11 and later) is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
-The SoloStrike **name**, **pickaxe-and-Bitcoin logo**, and **LAVA visual identity** are trademarks of the SoloStrike project author, governed by a separate [TRADEMARK.md](TRADEMARK.md) policy.
+The LoneStrike **name**, **pickaxe-and-Bitcoin logo**, and **LAVA visual identity** are trademarks of the LoneStrike project author, governed by a separate [TRADEMARK.md](TRADEMARK.md) policy.
 
 ### What this means in plain English
 
-- ✅ **Personal use is free.** Run SoloStrike on your own Umbrel. Mine Bitcoin. Keep 100% of your blocks. No fees, no obligations.
+- ✅ **Personal use is free.** Run LoneStrike on your own Umbrel. Mine Bitcoin. Keep 100% of your blocks. No fees, no obligations.
 - ✅ **You can fork and modify the code.** Make it do whatever you want. Just keep your fork AGPL-3.0 and publish your source.
 - ✅ **You can contribute back.** Pull requests welcome. Your contributions are AGPL-3.0 under the same license.
-- ⚠️ **Hosted services must disclose source.** If you run a modified SoloStrike as a service for OTHER people to use (i.e. a hosted mining pool service), you must make your modified source code available to those users. This is the AGPL Section 13 requirement — it closes the SaaS loophole that GPL leaves open.
-- ❌ **You can't call your fork "SoloStrike".** The code is open under AGPL; the name and brand are not. See [TRADEMARK.md](TRADEMARK.md) for details on what is and isn't permitted brand use.
+- ⚠️ **Hosted services must disclose source.** If you run a modified LoneStrike as a service for OTHER people to use (i.e. a hosted mining pool service), you must make your modified source code available to those users. This is the AGPL Section 13 requirement — it closes the SaaS loophole that GPL leaves open.
+- ❌ **You can't call your fork "LoneStrike".** The code is open under AGPL; the name and brand are not. See [TRADEMARK.md](TRADEMARK.md) for details on what is and isn't permitted brand use.
 - ❌ **You can't take this code and ship it under a proprietary closed-source license.** AGPL is copyleft — derivative works must be AGPL-3.0.
 
 ### License relationships
 
-- **SoloStrike codebase** (this repo’s `danhaus93-solostrike/` directory): **AGPL-3.0** — all code in this directory is original implementation by the SoloStrike project.
+- **LoneStrike codebase** (this repo’s `danhaus93-solostrike/` directory): **AGPL-3.0** — all code in this directory is original implementation by the LoneStrike project.
 - **ckpool-solo**: **GPLv2** — runs as a separate Docker container (`ghcr.io/getumbrel/docker-ckpool-solo`); no ckpool source is bundled, embedded, linked, or modified in this repo. This is "mere aggregation" under GPL terms.
 
 ### Relicensing history
 
-SoloStrike was originally released under the MIT license (v1.0.0 through v1.11.10). Starting with v1.11.11, the project is licensed under AGPL-3.0. This change was made to:
+LoneStrike was originally released under the MIT license (v1.0.0 through v1.11.10). Starting with v1.11.11, the project is licensed under AGPL-3.0. This change was made to:
 
-1. Ensure that any commercial hosted service built on SoloStrike must release its modifications to users (the AGPL Section 13 requirement)
+1. Ensure that any commercial hosted service built on LoneStrike must release its modifications to users (the AGPL Section 13 requirement)
 2. Prevent proprietary closed-source forks
-3. Align SoloStrike with the rest of the solo-mining ecosystem which is GPL-family
+3. Align LoneStrike with the rest of the solo-mining ecosystem which is GPL-family
 
 Code distributed under prior versions (v1.11.10 and earlier) remains available under MIT for those releases. New code from v1.11.10 forward is AGPL-3.0.
 
@@ -653,7 +653,7 @@ If you believe any code in this repo improperly incorporates third-party copyrig
 
 Solo mining is a statistical game. You may mine for months or years without finding a block. You may find one tomorrow. Only mine with equipment and electricity you can afford to run without a guaranteed return.
 
-SoloStrike provides the infrastructure. The lottery ticket is yours.
+LoneStrike provides the infrastructure. The lottery ticket is yours.
 
 -----
 
