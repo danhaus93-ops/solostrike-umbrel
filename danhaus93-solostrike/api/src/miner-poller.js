@@ -1401,6 +1401,18 @@ function computeAlignment(pools, payoutAddress) {
     return { url, user, priority, status, active };
   });
 
+  // v3.0.3: TNA-OS (and some cgminer builds) don't emit a "Stratum Active"
+  // flag — they signal the in-use pool via Status:"Alive" + the POOL index.
+  // If nothing set an explicit active flag above, fall back to cgminer's rule:
+  // the active pool is the lowest-priority (lowest POOL#) pool that is Alive.
+  if (!configuredPools.some(p => p.active)) {
+    const aliveRanked = configuredPools
+      .map((p, i) => ({ p, i, prio: (typeof p.priority === 'number' ? p.priority : i) }))
+      .filter(x => typeof x.p.status === 'string' && x.p.status.toLowerCase() === 'alive')
+      .sort((a, b) => a.prio - b.prio);
+    if (aliveRanked.length) aliveRanked[0].p.active = true;
+  }
+
   // v1.9.2: empty pools array — firmware responded but didn't list any
   // pools. Could mean the miner truly has none, or the firmware doesn't
   // expose pool config via this command. Don't accuse it of being misaligned.
