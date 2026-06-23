@@ -1,4 +1,5 @@
 // ── Miner poller (v1.9.0) ───────────────────────────────────────────────────
+const _mvify = (n) => (typeof n==='number' && n>0 && n<100) ? Math.round(n*1000) : n;
 //
 // Polls each authorised miner over the local network to gather two kinds of
 // data, both READ-ONLY:
@@ -1202,15 +1203,15 @@ function extractEspMinerLive(d) {
   // coreVoltage is the configured target. These feed the crowdsourced benchmark
   // layer and the per-worker tuning detail. Bounds guard against bad firmware.
   if (typeof d.frequency === 'number' && d.frequency > 0 && d.frequency < 2000) live.frequencyMhz = d.frequency;
-  if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 20000) live.coreVoltageMv = d.coreVoltageActual;
-  else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageMv = d.coreVoltage;
+  if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 20000) live.coreVoltageMv = _mvify(d.coreVoltageActual);
+  else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageMv = _mvify(d.coreVoltage);
   // v2.x: device-reported safe voltage bounds (TNA-OS / AxeOS expose these in
   // /api/system/info as minVoltage/maxVoltage, mV). These are the AUTHORITATIVE
   // tuning envelope for this exact hardware — the control layer prefers them
   // over any hardcoded per-class range, so an S19XP's ~12–15 V domain and a
   // Bitaxe's ~0.9–1.4 V domain are each respected without guessing.
-  if (typeof d.minVoltage === 'number' && d.minVoltage > 0 && d.minVoltage < 20000) live.minVoltageMv = d.minVoltage;
-  if (typeof d.maxVoltage === 'number' && d.maxVoltage > 0 && d.maxVoltage < 20000) live.maxVoltageMv = d.maxVoltage;
+  if (typeof d.minVoltage === 'number' && d.minVoltage > 0 && d.minVoltage < 20000) live.minVoltageMv = _mvify(d.minVoltage);
+  if (typeof d.maxVoltage === 'number' && d.maxVoltage > 0 && d.maxVoltage < 20000) live.maxVoltageMv = _mvify(d.maxVoltage);
   // v2.x: this device answered the AxeOS HTTP API, so frequency/voltage tuning
   // via PATCH /api/system is available — even when the adapter label is
   // 'cgminer' (TNA-OS on Antminer/Avalon). The control layer reads this to
