@@ -116,8 +116,8 @@ services:
         fi
 
         if [ ! -f "$$TPL" ]; then
-          echo "[init-permissions] ERROR: missing template $$TPL" >&2
-          exit 1
+          echo "[init-permissions] template missing in /data — writing bundled default" >&2
+          printf '{\n  "btcd" : [\n    {\n      "url" : "__BITCOIN_RPC_HOST__:__BITCOIN_RPC_PORT__",\n      "auth" : "__BITCOIN_RPC_USER__",\n      "pass" : "__BITCOIN_RPC_PASS__"\n    }\n  ],\n  "btcaddress" : "__BTC_ADDR__",\n  "btcsig" : "SoloStrike on Umbrel/",\n  "blockpoll" : 50,\n  "update_interval" : 20,\n  "serverurl" : [\n    "0.0.0.0:3333",\n    "0.0.0.0:3334",\n    "0.0.0.0:4334"\n  ],\n  "mindiff" : 1,\n  "startdiff" : 10000,\n  "maxdiff" : 0,\n  "highdiff" : 500000,\n  "logdir" : "/var/log/ckpool",\n  "zmqblock" : "__BITCOIN_ZMQ_HASHBLOCK__"\n}\n' > "$$TPL"
         fi
 
         # Substitute placeholders with live values using awk index()/substr()

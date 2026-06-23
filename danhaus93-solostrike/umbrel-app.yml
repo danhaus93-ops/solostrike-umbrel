@@ -1,11 +1,11 @@
 manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
-name: SoloStrike
+name: LoneStrike
 version: "3.0.0"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
-  SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
+  LoneStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
   the battle-tested ckpool-solo engine and wrapped in a real-time Deep Mine
   dashboard.
 
