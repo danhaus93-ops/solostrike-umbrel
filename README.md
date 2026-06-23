@@ -3,7 +3,7 @@ https://github.com/user-attachments/assets/45de22af-e71c-4531-86a3-8ed1bc74a48f
 
 <img src="danhaus93-solostrike/ui/public/pickaxe-icon.png" width="72" alt="⛏">
 
-# SoloStrike #
+# LoneStrike #
 
 **Zero-fee solo Bitcoin mining pool for your Umbrel node**
 
