@@ -1,6 +1,6 @@
 {
-  "name": "SoloStrike",
-  "short_name": "SoloStrike",
+  "name": "LoneStrike",
+  "short_name": "LoneStrike",
   "description": "Zero-fee solo Bitcoin mining pool with airgapped Private Mode",
   "start_url": "/",
   "scope": "/",

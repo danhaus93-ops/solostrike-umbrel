@@ -30,12 +30,55 @@ const CGMINER_PORT    = 4028;
 const WRITE_TIMEOUT_MS = 6000;
 
 // Hard safety envelope — refuse anything outside this regardless of UI state.
+// coreVoltage is NOT one-size-fits-all: the safe domain depends on the ASIC
+// family. Bitaxe/NerdQAxe (single BM-series chip) run ~0.9–1.4 V; the Avalon
+// Nano 3s runs ~3.1–3.9 V; big Antminers on TNA-OS run ~12–15 V. Sending a
+// Bitaxe-domain value to a 13 V Antminer (or vice-versa) is meaningless at best
+// and damaging at worst, so we select the domain per device and, when the miner
+// reports its OWN minVoltage/maxVoltage over HTTP, prefer those exact bounds.
 const LIMITS = {
-  frequency:   { min: 100, max: 1200 },   // MHz
-  coreVoltage: { min: 900, max: 1400 },   // mV (BM-series domain)
+  frequency:   { min: 100, max: 1200 },   // MHz (covers Bitaxe..Antminer targets)
   fanspeed:    { min: 0,   max: 100 },     // %
   stratumPort: { min: 1,   max: 65535 },
 };
+
+// Per-class fallback voltage envelopes (mV) — used only when the device does
+// not report its own minVoltage/maxVoltage. Deliberately a bit tighter than the
+// absolute chip max for safety margin.
+const VOLTAGE_DOMAINS = {
+  'bm-series': { min: 900,   max: 1400  },  // Bitaxe / NerdQAxe / GekkoAxe
+  'avalon-nano': { min: 3100, max: 3900 },  // Avalon Nano 3s (TNA-OS Canaan)
+  'antminer-big': { min: 11000, max: 15200 }, // S19/S21-class on TNA-OS
+};
+
+// Pick the safe coreVoltage envelope for THIS device. Precedence:
+//   1. The miner's own reported minVoltage/maxVoltage (most authoritative).
+//   2. Class inferred from model / current voltage magnitude.
+//   3. Conservative BM-series default (smallest domain) so an unknown device
+//      can never be sent a high-voltage value by mistake.
+// `ctx` carries { model, asicModel, coreVoltageMv, minVoltageMv, maxVoltageMv }
+// gathered from the latest poll record's `live`.
+function voltageDomainFor(ctx) {
+  ctx = ctx || {};
+  // 1. device-reported bounds (sanity-checked)
+  const rMin = Number(ctx.minVoltageMv), rMax = Number(ctx.maxVoltageMv);
+  if (Number.isFinite(rMin) && Number.isFinite(rMax) && rMin > 0 && rMax > rMin && rMax < 20000) {
+    return { min: Math.round(rMin), max: Math.round(rMax), source: 'device' };
+  }
+  // 2. infer from current live voltage magnitude (most reliable single signal)
+  const v = Number(ctx.coreVoltageMv);
+  if (Number.isFinite(v) && v > 0) {
+    if (v >= 8000)  return { ...VOLTAGE_DOMAINS['antminer-big'], source: 'magnitude' };
+    if (v >= 2500)  return { ...VOLTAGE_DOMAINS['avalon-nano'],  source: 'magnitude' };
+    return { ...VOLTAGE_DOMAINS['bm-series'], source: 'magnitude' };
+  }
+  // 3. infer from model string
+  const m = String(ctx.model || ctx.asicModel || '').toLowerCase();
+  if (/s19|s21|antminer|t19|t21/.test(m)) return { ...VOLTAGE_DOMAINS['antminer-big'], source: 'model' };
+  if (/avalon|nano|a3197/.test(m))        return { ...VOLTAGE_DOMAINS['avalon-nano'],  source: 'model' };
+  // 4. safest default
+  return { ...VOLTAGE_DOMAINS['bm-series'], source: 'default' };
+}
 
 function clampInt(v, lim) {
   const n = Math.round(Number(v));
@@ -111,13 +154,22 @@ function cgStatusOk(resp) {
 //   'restart' {}                                                       (esp + avalon)
 //   'avalon-level' { level: 0|1|2 }                                    (avalon only)
 //
-async function dispatch(ip, adapter, action, body) {
+async function dispatch(ip, adapter, action, body, ctx) {
   body = body || {};
+  ctx = ctx || {};
   const isEsp = adapter === 'esp-miner';
   const isCg  = adapter === 'cgminer';
+  // TNA-OS runs on Antminer/Avalon hardware so it's classified as the cgminer
+  // adapter, but it ALSO serves the AxeOS HTTP API (PATCH /api/system) — so it
+  // IS tuning-capable. We treat a device as HTTP-tunable when the poll record
+  // shows it exposed AxeOS-style telemetry over HTTP (surfaced as ctx.httpTunable).
+  const httpTunable = isEsp || !!ctx.httpTunable;
 
   if (action === 'tuning') {
-    if (!isEsp) return { ok: false, error: 'unsupported', message: 'Frequency/voltage tuning is only available on AxeOS (Bitaxe/NerdQAxe) miners.' };
+    if (!httpTunable) return { ok: false, error: 'unsupported', message: 'Frequency/voltage tuning is only available on miners that expose the AxeOS HTTP API (Bitaxe/NerdQAxe, or Antminer/Avalon running TNA-OS).' };
+    // Select the per-device coreVoltage envelope. A wrong-domain value (e.g. a
+    // 1200 mV Bitaxe setting sent to a 13 V Antminer) is refused here.
+    const vDomain = voltageDomainFor(ctx);
     const patch = {};
     if (body.frequency != null) {
       const f = clampInt(body.frequency, LIMITS.frequency);
@@ -125,8 +177,8 @@ async function dispatch(ip, adapter, action, body) {
       patch.frequency = f;
     }
     if (body.coreVoltage != null) {
-      const v = clampInt(body.coreVoltage, LIMITS.coreVoltage);
-      if (v == null) return { ok: false, error: 'out_of_range', message: `coreVoltage must be ${LIMITS.coreVoltage.min}–${LIMITS.coreVoltage.max} mV` };
+      const v = clampInt(body.coreVoltage, vDomain);
+      if (v == null) return { ok: false, error: 'out_of_range', message: `coreVoltage must be ${vDomain.min}–${vDomain.max} mV for this device` };
       patch.coreVoltage = v;
     }
     if (body.autofanspeed != null) patch.autofanspeed = !!body.autofanspeed;

@@ -191,6 +191,25 @@ const CSS = `
 .ssdesk .band.b-data,.ssdesk .band.b-cols{position:relative;background:color-mix(in srgb, var(--bg-surface) var(--card-fill, 60%), transparent);backdrop-filter:blur(var(--card-blur-desk,7px));-webkit-backdrop-filter:blur(var(--card-blur-desk,7px));border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
 .ssdesk .b-live{grid-template-columns:1.35fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .live-left{display:grid;grid-template-rows:1fr 1fr;gap:16px;min-height:0}
+.ssdesk .live-left .cs-slot{min-height:0;overflow-y:auto;border-radius:10px}
+.ssdesk .live-left .cs-slot .cs-card{display:grid;grid-template-columns:1.08fr 1fr;gap:12px;min-height:100%;margin-bottom:0;align-content:start}
+.ssdesk .live-left .cs-slot .cs-main{min-width:0;display:flex;flex-direction:column}
+.ssdesk .live-left .cs-slot .cs-hist{flex:1;height:auto;min-height:120px;margin-bottom:0.3rem}
+.ssdesk .live-left .cs-slot .cs-lgnd{display:none}
+.ssdesk .live-left .cs-slot .cs-ledger{min-width:0}
+.ssdesk .live-left .cs-slot .cs-grid{gap:4px}
+.ssdesk .live-left .cs-slot .cs-kv{padding:0.24rem 0.45rem}
+.ssdesk .live-left .cs-slot .cs-kv .v{font-size:0.6rem}
+.ssdesk .live-left .cs-slot .cs-kv .k{font-size:0.4rem}
+.ssdesk .live-left .cs-slot .sf-divider{margin:0.18rem 0 0.12rem}
+.ssdesk .live-left .cs-slot .sf-odds{padding:0.24rem 0.45rem;margin-top:4px}
+.ssdesk .live-left .cs-slot .sf-odds .v{font-size:0.62rem}
+.ssdesk .live-left .cs-slot .sf-top{margin-top:0.2rem}
+.ssdesk .live-left .cs-slot .sf-row{padding:2px 0}
+.ssdesk .live-left .cs-slot .sf-track{height:7px}
+.ssdesk .live-left .cs-slot::-webkit-scrollbar{width:5px}
+.ssdesk .live-left .cs-slot::-webkit-scrollbar-thumb{background:var(--hair);border-radius:3px}
+.ssdesk .live-left .cs-slot .cs-card{margin-bottom:0;min-height:100%}
 .ssdesk .b-field{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-charts{grid-template-columns:1fr 1fr;min-height:0;overflow:hidden}
 .ssdesk .b-feat{grid-template-columns:218px 320px 1fr;min-height:0;overflow:hidden}
@@ -414,7 +433,7 @@ function AppHead({ page, status, zmqOk, strikes, ticker, now, onOpenSettings }){
     <div className="apphead">
       <div className="ah-left">
         <img className="ah-pick" src="/pickaxe-icon.png" alt="⛏" draggable={false}/>
-        <span className="ah-wordmark">{_tt('SoloStrike')}</span><span className="ah-div"/>
+        <span className="ah-wordmark">{_tt('LoneStrike')}</span><span className="ah-div"/>
         <span className="ah-status">{statusTxt}</span>
         <span className="ah-zmq">{zmqTxt}</span>
         <span className="ah-strikes">{page===0?<>{_tt('STRIKES')} <b>{strikes}</b></>:<>{_tt('PAGE')} <b>{page+1} / 5</b></>}</span>
@@ -708,6 +727,13 @@ export default function DesktopPages({
                     <div className="fp-chart"><svg key={`fp-${fpTrend}`} viewBox="0 0 400 70" preserveAspectRatio="none">{fp&&<><defs><linearGradient id="hrG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--amber-hot)" stopOpacity="0.55"/><stop offset="35%" stopColor="var(--amber)" stopOpacity="0.34"/><stop offset="100%" stopColor="var(--amber)" stopOpacity="0.015"/></linearGradient></defs><path d={fp.fill} fill="url(#hrG)" style={{transition:'none'}}/><path d={fp.ln} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeOpacity="0.9" style={{transition:'none'}}/></>}</svg></div>
                   </div>
                 </div>
+                {/* v2.1.0 Strike Force: during an active rental this card takes
+                    Strike Velocity's slot; when the rental ends the registry
+                    entry goes null and Strike Velocity returns. Firepower and
+                    The Crew are never touched. */}
+                {cardComponents['strikeforce'] ? (
+                  <div className="cs-slot">{cardComponents['strikeforce']}</div>
+                ) : (
                 <div className="panel">
                   <div className="zlabel zlabel-row">{tt('Strike Velocity')}{spsHist.length>0&&<span className="sv-samples">{spsHist.length} {_tt('samples')}</span>}</div>
                   <div className="sv">
@@ -718,6 +744,7 @@ export default function DesktopPages({
                     <div className="sv-leg"><span>each bar = {svBarMin} min</span><span><b style={{background:'var(--green)'}}/>{_tt('normal')}</span><span><b style={{background:'var(--amber)'}}/>{_tt('anomaly')}</span><span><b style={{background:'var(--red)'}}/>{_tt('offline')}</span><span className="sv-median">median ≈ {svFmt(svMedian)}</span></div>
                   </div>
                 </div>
+                )}
               </div>
               <div className="panel">
                 <div className="zlabel">{tt('The Crew · live telemetry')} · {liveW}/{totW}</div>
@@ -812,7 +839,7 @@ export default function DesktopPages({
           <div className="viewport p4">
             <AppHead page={4} zmqOk={zmqOk} ticker={page===4?ticker:null} now={now} onOpenSettings={onOpenSettings}/>
             <div className="band" style={{gridTemplateColumns:'1.3fr 1fr 1fr',minHeight:0}}>
-              <div className="panel"><div className="zlabel">{tt('Block Effort / Luck — per strike')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>{tt('(shares-to-find vs expected · <100% = lucky)')}</span></div>
+              <div className="panel"><div className="zlabel">{tt('Block Effort / Luck — per strike')} <span style={{color:'var(--text-3)',fontSize:'.85em'}}>(shares-to-find vs expected · &lt;100% = lucky)</span></div>
                 <div className="effortwrap">{(()=>{
                   // No per-round effort history exists (no blockEffort field). The
                   // only real effort signal is luck.progress = current open round's
@@ -878,7 +905,7 @@ export default function DesktopPages({
       </div>
 
       <footer className="ss-foot">
-        <span className="ff-brand">SoloStrike v1.11.66 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
+        <span className="ff-brand">LoneStrike v1.11.66 — ckpool-solo{poolState?.privateMode?' · 🔒 PRIVATE':''}</span>
         <a className="ff-gh" href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title={_tt("View source on GitHub")}>
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>

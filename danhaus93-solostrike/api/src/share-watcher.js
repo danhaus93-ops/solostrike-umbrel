@@ -212,6 +212,7 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       for (const name of Object.keys(state.shareCounters)) {
         const c = state.shareCounters[name];
         c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0; c.sdiffSum = 0;
+        c.recentSdiffs = [];
         c.rejectReasons = {}; c.lastRejectReason = null; c.lastRejectAt = null;
       }
     }
@@ -271,6 +272,12 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
         // displays so a reset clears them consistently. ckpool's cumulative
         // best stays available separately as the worker's lifetime value.
         bestSinceReset: 0,
+        // v1.12.x Strike Force: bounded ring of recent ACCEPTED share diffs
+        // (achieved sdiff), retained only for rental high-diff ports (>4000)
+        // so the Strike Force card can render a real per-share histogram.
+        // Capped at 512 — owned miners on 3333/3334 never populate this, so
+        // the compact shareEvents payload stays tiny for the whole fleet.
+        recentSdiffs: [],
         rejectReasons: {}, lastRejectReason: null, lastRejectAt: null,
         port: null, firstSeen: Date.now(),
         // v1.11.x MEMORY LEAK FIX: track lastShareAt so we can prune counters
@@ -306,6 +313,14 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       const td = typeof obj.diff  === 'number' ? obj.diff  : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
       if (sd > (c.bestSinceReset || 0)) c.bestSinceReset = sd;
+      // v1.12.x Strike Force: retain per-share achieved diff for the histogram,
+      // but ONLY for rental high-diff ports (NiceHash/MRR connect on >4000,
+      // e.g. 4334). Owned miners on 3333/3334 skip this so payload stays small.
+      if (c.port && c.port > 4000) {
+        if (!Array.isArray(c.recentSdiffs)) c.recentSdiffs = [];
+        c.recentSdiffs.push(sd);
+        if (c.recentSdiffs.length > 512) c.recentSdiffs.shift();
+      }
       // v1.8.3-rev24: sum TARGET difficulties (obj.diff), not achieved sdiff.
       // sdiff includes a luck factor (sdiff >= diff for accepted shares;
       // lucky shares can have sdiff orders of magnitude higher than diff).

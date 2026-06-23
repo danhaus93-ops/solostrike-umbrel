@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: SoloStrike
-version: "2.0.4"
+version: "3.0.0"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   SoloStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -79,7 +79,7 @@ description: >-
 
   • Public read-only API — share your pool stats externally
 
-  • Dual stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++)
+  • Stratum ports — 3333 for ASICs, 3334 for hobby miners (BitAxe, NerdQaxe++), 4334 for NiceHash rented hashrate (500k high-diff)
 
   • ZMQ status indicator — see at a glance whether Bitcoin Core's block broadcasts are reaching the pool
 
@@ -88,34 +88,6 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v2.0.4 — Full localization across all 18 languages, consistent card
-  titles on every theme, and roster flags.
-
-
-  CHANGED (2.0.4)
-
-
-  • Localization — card names, Near-Strike rarity tiers (Legendary/Epic/
-    Rare/Good/Normal), miner tuning controls, and the overclock safety
-    checkboxes are now translated across all 18 supported languages.
-
-
-  • Consistent card titles — every dashboard card header now renders in
-    the same amber accent on all themes. The analytics cards (Hashrate
-    Windows, SPS Windows, Connection States, Best Share Trend, Block
-    Effort, Hashrate Stability, Reject Reasons, Fleet Efficiency,
-    Reliability) previously showed grey titles and now match the rest.
-
-
-  • Roster flags — country flags for your workers and strikers, with an
-    in-app flag picker.
-
-
-  • Fix — the Block Effort / Luck subtitle no longer shows a raw HTML
-    entity; it now reads "<100% = lucky" correctly, and is localized on
-    desktop as well as mobile.
-
-
   v1.11.60 — Paper Light lightning bolts now render uniformly bright.
 
 
@@ -452,7 +424,7 @@ dependencies:
   - bitcoin
 repo: https://github.com/danhaus93-ops/solostrike-umbrel
 support: https://github.com/danhaus93-ops/solostrike-umbrel/issues
-port: 1234
+port: 32221
 gallery:
   - https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/1.png
   - https://raw.githubusercontent.com/danhaus93-ops/solostrike-umbrel/main/danhaus93-solostrike/2.png

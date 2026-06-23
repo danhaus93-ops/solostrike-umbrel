@@ -136,11 +136,11 @@ function StepWelcome({ tt = (x)=>x, onNext, onBack, onSkip }) {
         <div style={{marginBottom:'0.5rem', display:'flex', justifyContent:'center'}}>
           <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{width:56, height:56, objectFit:'contain', filter:'drop-shadow(0 0 14px rgba(245,166,35,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.4))'}}/>
         </div>
-        <div style={heading}>{tt('Welcome to SoloStrike')}</div>
+        <div style={heading}>{tt('Welcome to LoneStrike')}</div>
         <div style={subheading}>{tt('Your zero-fee solo Bitcoin pool')}</div>
       </div>
       <div style={{...body, marginBottom:'1.5rem'}}>
-        {tt('SoloStrike runs a private solo mining pool on your Umbrel, using your own Bitcoin node. When one of your miners solves a block, you keep 100% of the reward — no pool operator, no fees, no middleman.')}
+        {tt('LoneStrike runs a private solo mining pool on your Umbrel, using your own Bitcoin node. When one of your miners solves a block, you keep 100% of the reward — no pool operator, no fees, no middleman.')}
       </div>
       <div style={{display:'flex', flexDirection:'column', gap:'0.75rem', marginBottom:'1.75rem'}}>
         {features.map(([icon, title, desc]) => (
@@ -234,6 +234,7 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
   const urlAsic  = `stratum+tcp://${host}:3333`;
   const urlHobby = `stratum+tcp://${host}:3334`;
+  const urlNicehash = `stratum+tcp://${host}:4334`;
   const [copied, setCopied] = useState('');
 
   const copy = async (val, lbl) => {
@@ -288,6 +289,15 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
       <div style={{display:'flex', gap:'0.75rem', marginBottom:'1.25rem', flexWrap:'wrap'}}>
         {minerCard(tt('ASIC Port'), urlAsic, 3333, 'asic')}
         {minerCard(tt('Hobby Port'), urlHobby, 3334, 'hobby')}
+        {minerCard(tt('NiceHash Port'), urlNicehash, 4334, 'nicehash')}
+      </div>
+      <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
+        padding:'0.75rem', marginBottom:'1.25rem'}}>
+        <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em',
+          textTransform:'uppercase', color:'var(--amber)', marginBottom:6}}>{tt('Renting hashrate from NiceHash?')}</div>
+        <div style={{fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-1)', lineHeight:1.6}}>
+          {tt('Use port 4334 for NiceHash, not 3333/3334. In NiceHash, add a SHA-256 pool with this URL; Username = your BTC payout address (a worker suffix like .nh is optional); Password = x. Port 4334 is a high-difficulty port that starts every connection at 500,000 difficulty — sized for large rented hashrate, so NiceHash will not flood the pool. Your block stays 100% yours.')}
+        </div>
       </div>
       <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
         padding:'0.75rem', marginBottom:'1.25rem'}}>
@@ -297,7 +307,7 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
           <div><span style={{color:'var(--text-3)'}}>{tt('User')}:</span> <span style={{color:'var(--cyan)'}}>anything.worker_name</span></div>
           <div><span style={{color:'var(--text-3)'}}>{tt('Password')}:</span> <span style={{color:'var(--cyan)'}}>x</span></div>
           <div style={{color:'var(--text-3)', fontSize:'0.62rem', marginTop:6, lineHeight:1.5}}>
-            {tt('The "user" field can be anything — SoloStrike doesn\'t check it. The part after the dot is the worker label shown on your dashboard.')}
+            {tt('The "user" field can be anything — LoneStrike doesn\'t check it. The part after the dot is the worker label shown on your dashboard.')}
           </div>
         </div>
       </div>
@@ -477,7 +487,7 @@ export default function OnboardingWizard({ onComplete, onSkip: onSkipProp, tt = 
             letterSpacing:'0.08em', color:'var(--amber)', textTransform:'uppercase',
             display:'inline-flex', alignItems:'center', gap:'0.4rem'}}>
             <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1rem', height:'1rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(245,166,35,0.5))'}}/>
-            SoloStrike
+            LoneStrike
           </span>
         </div>
         <ProgressDots current={step - 1} total={totalSteps}/>

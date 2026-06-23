@@ -223,6 +223,7 @@ function cgminerFamilyLabel(desc) {
   if (s.includes('boser') || s.includes('bosminer') || s.includes('braiins')) return 'ASIC (Braiins OS)';
   if (s.includes('btminer') || s.includes('whatsminer'))             return 'Whatsminer';
   if (s.includes('vnish'))                                           return 'ASIC (Vnish)';
+  if (s.includes('tna-os') || s.includes('tnaos'))                   return 'ASIC (TNA-OS)';
   if (s.includes('bmminer'))                                         return 'Antminer';
   if (s.includes('cgminer'))                                         return 'ASIC (cgminer)';
   return 'ASIC';
@@ -297,6 +298,47 @@ function notePollOutcome(workerName, ok) {
   else pollFailStreak.set(workerName, (pollFailStreak.get(workerName) || 0) + 1);
 }
 
+// Merge two `live` telemetry objects: start from the base (cgminer) and
+// overlay any non-null field from the richer source (AxeOS HTTP). The HTTP
+// payload wins where both have a value (higher-fidelity sensor read), while
+// base-only fields are preserved.
+function mergeLive(base, rich) {
+  if (!rich) return base;
+  if (!base) return rich;
+  const out = Object.assign({}, base);
+  for (const k of Object.keys(rich)) {
+    const v = rich[k];
+    if (v == null) continue;
+    if (Array.isArray(v)) { if (v.length) out[k] = v; continue; }
+    out[k] = v;
+  }
+  return out;
+}
+
+// True if the AxeOS/HTTP live payload carries materially richer telemetry than
+// the cgminer one — i.e. it has fan/power/voltage/frequency that cgminer-thin
+// firmwares (like TNA-OS over 4028) don't expose. Used to prefer the HTTP
+// adapter for cgminer-classified devices that ALSO answer /api/system/info.
+function espIsRicherThanCgminer(esp, cg) {
+  if (!esp) return false;
+  if (!cg) return true;
+  // Count meaningful telemetry signals present on HTTP but absent on cgminer.
+  const espHas = (
+    (esp.fanRpm != null || esp.fanPct != null) ||
+    (esp.powerW != null) ||
+    (esp.coreVoltageMv != null) ||
+    (esp.frequencyMhz != null) ||
+    (esp.coreVoltageSetMv != null)
+  );
+  const cgLacks = (
+    (cg.fanRpm == null && cg.fanPct == null) &&
+    (cg.powerW == null) &&
+    (cg.coreVoltageMv == null) &&
+    (cg.frequencyMhz == null)
+  );
+  return espHas && cgLacks;
+}
+
 async function pollMiner(workerName, ip) {
   const prev = records.get(workerName);
   let preferEsp = null;
@@ -316,10 +358,32 @@ async function pollMiner(workerName, ip) {
       if (fallback.ok) result = fallback;
     }
   } else if (preferEsp === false) {
+    // Vendor-classified cgminer device (e.g. Antminer). Stock Antminer firmware
+    // only speaks cgminer TCP/4028 and refuses port 80. BUT custom firmwares on
+    // the same hardware — notably TNA-OS — serve a rich AxeOS-style
+    // /api/system/info over HTTP with fans, power, per-board temps, voltage and
+    // frequency that the thin cgminer reply lacks. So we try cgminer first (fast,
+    // expected to succeed), then ALSO probe HTTP; if HTTP returns a confirmed
+    // AxeOS payload, we prefer it because it's strictly richer. Stock Antminers
+    // simply 404/refuse port 80, so this is a no-op cost for them.
     result = await tryCgminer(ip);
     if (!result.ok) {
       const fallback = await tryEspMiner(ip);
       if (fallback.ok) result = fallback;
+    } else {
+      const httpRich = await tryEspMiner(ip);
+      if (httpRich.ok && espIsRicherThanCgminer(httpRich.live, result.live)) {
+        // Keep the cgminer adapter label + its pool/alignment data (the HTTP
+        // endpoint has no pools), but merge in the richer AxeOS telemetry
+        // (fans, power, voltage, frequency, per-board) over the thin cgminer
+        // live object. Fields present on cgminer but missing on HTTP are kept.
+        result = {
+          ok: true,
+          adapter: 'cgminer',
+          pools: result.pools,
+          live: mergeLive(result.live, httpRich.live),
+        };
+      }
     }
   } else {
     // v2.x: unknown vendor — probe the HTTP/AxeOS endpoint FIRST. AxeOS-style
@@ -419,12 +483,13 @@ async function luxosProfileVoltageMv(ip, freqHint) {
 
 function tryCgminer(ip) {
   return new Promise(async (resolve) => {
-    const [poolsRes, summaryRes, statsRes, devsRes, powerRes] = await Promise.all([
+    const [poolsRes, summaryRes, statsRes, devsRes, powerRes, versionRes] = await Promise.all([
       cgminerCommand(ip, 'pools'),
       cgminerCommand(ip, 'summary'),
       cgminerCommand(ip, 'stats'),
       cgminerCommand(ip, 'devs'),
       cgminerCommand(ip, 'power'),
+      cgminerCommand(ip, 'version'),
     ]);
 
     // If ALL failed, treat as unreachable/disabled. We surface the
@@ -446,12 +511,23 @@ function tryCgminer(ip) {
     // v2.x: devs carries per-board Temperature/Frequency/Fan on GENERIC cgminer
     // firmwares (Antminer/LuxOS/Braiins/Whatsminer/Vnish); Avalon doesn't need it.
     const devs    = devsRes.ok    ? (devsRes.data.DEVS     || devsRes.data.devs     || []) : [];
-    // firmware id from any STATUS block → labels generic devices
-    const fwDesc  = [summaryRes, statsRes, devsRes, poolsRes]
-      .map(r => r && r.ok && r.data && Array.isArray(r.data.STATUS) && r.data.STATUS[0] && r.data.STATUS[0].Description)
-      .find(d => typeof d === 'string' && d.trim()) || '';
+    // firmware id from any STATUS block → labels generic devices. Standard
+    // cgminer puts it in STATUS[0].Description; TNA-OS puts the firmware name in
+    // STATUS[0].Msg (e.g. "TNA-OS") — but other commands put generic Msgs there
+    // too ("Summary", "stats"), so we must not let those win. Collect all
+    // candidates, then prefer a real firmware identifier over generic command
+    // names.
+    const GENERIC_MSG = /^(summary|stats|pools|devs|version|config|power|ok)$/i;
+    const fwCandidates = [versionRes, summaryRes, statsRes, devsRes, poolsRes]
+      .map(r => r && r.ok && r.data && Array.isArray(r.data.STATUS) && r.data.STATUS[0]
+                && (r.data.STATUS[0].Description || r.data.STATUS[0].Msg))
+      .filter(d => typeof d === 'string' && d.trim());
+    const fwDesc =
+      fwCandidates.find(d => !GENERIC_MSG.test(d.trim())) ||  // prefer a real fw name
+      fwCandidates[0] || '';
     const power   = powerRes.ok ? (powerRes.data.POWER || powerRes.data.power || []) : [];
-    const live    = extractCgminerLive(summary, stats, devs, fwDesc, power);
+    const version = versionRes && versionRes.ok ? (versionRes.data.VERSION || versionRes.data.version || []) : [];
+    const live    = extractCgminerLive(summary, stats, devs, fwDesc, power, version);
 
     // LuxOS: take board voltage from the active tuning profile (config + profiles,
     // safe file reads). NEVER `voltageget` — its live hardware read crashes the
@@ -466,6 +542,33 @@ function tryCgminer(ip) {
 
     resolve({ ok: true, adapter: 'cgminer', pools, live });
   });
+}
+
+// ── TNA-OS envelope normalizer ───────────────────────────────────────────────
+// Standard cgminer-JSON replies put the payload at the TOP level, e.g.
+//   { "STATUS":[...], "SUMMARY":[{...}], "id":1 }
+// TNA-OS (custom Antminer firmware seen on S19 XP, v0.8.1) wraps that whole
+// object inside an extra single-element array keyed by the LOWERCASE command
+// name, e.g.
+//   { "id":1, "summary":[ { "STATUS":[...], "SUMMARY":[{...}], "id":1 } ] }
+// Without unwrapping, every downstream read of data.SUMMARY / data.STATS /
+// data.VERSION is undefined, so hashrate/temp/etc. all come back null even
+// though the miner is reporting them. This detects that extra wrapper and lifts
+// the inner object back to the top level. It is a no-op for standard firmwares
+// (LuxOS, Braiins, Vnish, stock Bitmain, Avalon, ESP-Miner), so it is safe to
+// run on every cgminer response.
+function normalizeCgminerEnvelope(data, command) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const cmd = String(command || '').toLowerCase();
+  const wrapper = data[cmd];
+  if (Array.isArray(wrapper) && wrapper.length && wrapper[0] && typeof wrapper[0] === 'object') {
+    const inner = wrapper[0];
+    const looksLikeCgminerObj =
+      Array.isArray(inner.STATUS) ||
+      inner.SUMMARY || inner.STATS || inner.VERSION || inner.POOLS || inner.DEVS;
+    if (looksLikeCgminerObj) return inner;
+  }
+  return data;
 }
 
 // Single cgminer-JSON command in its own short-lived TCP connection.
@@ -502,7 +605,7 @@ function cgminerCommand(ip, command) {
       const cleaned = buf.replace(/\x00/g, '').trim();
       if (!cleaned) { finish({ ok: false, error: 'empty_response' }); return; }
       try {
-        const parsed = JSON.parse(cleaned);
+        const parsed = normalizeCgminerEnvelope(JSON.parse(cleaned), command);
         finish({ ok: true, data: parsed });
       } catch (e) {
         finish({ ok: false, error: 'invalid_json' });
@@ -521,7 +624,22 @@ function cgminerCommand(ip, command) {
   });
 }
 
-function extractCgminerLive(summary, stats, devs, fwDesc, power = []) {
+function extractCgminerLive(summary, stats, devs, fwDesc, power = [], version = []) {
+  // Firmware version from the VERSION block. Different firmwares key this
+  // differently: TNA-OS uses {"TNA-OS":"0.8.1"}, LuxOS {"LUXminer":...},
+  // Braiins {"BOSminer+":...}, stock Bitmain {"BMMiner":...}. Capture the first
+  // version-like value and a human label.
+  let fwFromVersion = null, fwLabelHint = null;
+  const v0 = Array.isArray(version) && version[0] && typeof version[0] === 'object' ? version[0] : null;
+  if (v0) {
+    for (const key of ['TNA-OS','LUXminer','BOSminer+','BOSminer','VNish','Vnish','BMMiner','CGMiner','Miner']) {
+      if (v0[key] != null && String(v0[key]).trim()) {
+        fwFromVersion = `${key} ${v0[key]}`.trim();
+        fwLabelHint = key;
+        break;
+      }
+    }
+  }
   const live = {
     tempC: null,
     tempDetails: [],
@@ -874,7 +992,12 @@ function extractCgminerLive(summary, stats, devs, fwDesc, power = []) {
     }
     live.model = devName || cgminerFamilyLabel(fwDesc);
   }
+  // Firmware version precedence: explicit VERSION-block value (e.g. TNA-OS
+  // 0.8.1) wins, then any value already discovered from stats, then fwDesc.
+  if (!live.firmwareVersion && fwFromVersion) live.firmwareVersion = fwFromVersion.slice(0, 60);
   if (!live.firmwareVersion && fwDesc) live.firmwareVersion = String(fwDesc).slice(0, 60);
+  // If model is still unknown, the VERSION block's Type is reliable on TNA-OS.
+  if (!live.model && v0 && v0.Type) live.model = String(v0.Type).slice(0, 60);
 
   return live;
 }
@@ -1013,6 +1136,9 @@ function extractEspMinerLive(d) {
     expectedHashrate: null,
     defaultFrequencyMhz: null,
     defaultCoreVoltageMv: null,
+    minVoltageMv: null,
+    maxVoltageMv: null,
+    httpTunable: null,
     inputVoltageV: null,
     inputCurrentA: null,
     tempTargetC: null,
@@ -1078,6 +1204,18 @@ function extractEspMinerLive(d) {
   if (typeof d.frequency === 'number' && d.frequency > 0 && d.frequency < 2000) live.frequencyMhz = d.frequency;
   if (typeof d.coreVoltageActual === 'number' && d.coreVoltageActual > 0 && d.coreVoltageActual < 20000) live.coreVoltageMv = d.coreVoltageActual;
   else if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageMv = d.coreVoltage;
+  // v2.x: device-reported safe voltage bounds (TNA-OS / AxeOS expose these in
+  // /api/system/info as minVoltage/maxVoltage, mV). These are the AUTHORITATIVE
+  // tuning envelope for this exact hardware — the control layer prefers them
+  // over any hardcoded per-class range, so an S19XP's ~12–15 V domain and a
+  // Bitaxe's ~0.9–1.4 V domain are each respected without guessing.
+  if (typeof d.minVoltage === 'number' && d.minVoltage > 0 && d.minVoltage < 20000) live.minVoltageMv = d.minVoltage;
+  if (typeof d.maxVoltage === 'number' && d.maxVoltage > 0 && d.maxVoltage < 20000) live.maxVoltageMv = d.maxVoltage;
+  // v2.x: this device answered the AxeOS HTTP API, so frequency/voltage tuning
+  // via PATCH /api/system is available — even when the adapter label is
+  // 'cgminer' (TNA-OS on Antminer/Avalon). The control layer reads this to
+  // decide whether to show + accept tuning writes.
+  live.httpTunable = true;
   // v2.x Tier-1: the CONFIGURED core voltage (target). Shown alongside the
   // measured value as "set → actual" so VR sag is visible at a glance.
   if (typeof d.coreVoltage === 'number' && d.coreVoltage > 0 && d.coreVoltage < 20000) live.coreVoltageSetMv = d.coreVoltage;

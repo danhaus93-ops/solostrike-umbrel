@@ -88,54 +88,69 @@ services:
         chown -R 65534:65534 /data/stunnel
         echo "[init-permissions] chowned: ckpool+config=1000, stunnel=65534"
 
-        # Step 2: generate ckpool.conf if missing
+        # Step 2: render ckpool.conf FRESH from the committed template every run.
+        # Rationale: the Bitcoin RPC host/port/credentials and ZMQ endpoint are
+        # Umbrel-provided exports that can change across updates or node
+        # reconfiguration. The previous "generate once, preserve forever"
+        # approach left ckpool pinned to stale connection details if those
+        # exports ever changed. We now regenerate the connection fields each
+        # init from the live env, and preserve ONLY btcaddress (install state).
+        #
+        # btcaddress precedence: (1) api's saved config.json payoutAddress, else
+        # (2) the btcaddress already inside an existing ckpool.conf, else
+        # (3) the unspendable genesis placeholder. In --btcsolo mode the real
+        # payout comes from each miner's stratum username, so the placeholder is
+        # never used for real payouts.
         CONF=/data/ckpool/config/ckpool.conf
-        if [ ! -f "$$CONF" ]; then
-          # Try to read payoutAddress from api's saved config (set via the
-          # onboarding wizard in a prior install whose data was preserved).
-          # The api persists it to config.json (NOT persist.json). Fall back
-          # to a known unspendable placeholder — ckpool needs a valid-format
-          # btcaddress to start, but --btcsolo mode takes the real payout
-          # address from each miner's stratum username, so the placeholder is
-          # never used for real payouts.
-          BTC_ADDR=""
-          if [ -f /data/config/config.json ]; then
-            BTC_ADDR=$$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/config.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
-          fi
-          if [ -z "$$BTC_ADDR" ]; then
-            # Genesis block coinbase (Satoshi). Valid P2PKH format, unspendable.
-            BTC_ADDR="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-          fi
-          cat > "$$CONF" <<EOF
-        {
-          "btcd" : [
-            {
-              "url" : "$${BITCOIN_RPC_HOST}:$${BITCOIN_RPC_PORT}",
-              "auth" : "$${BITCOIN_RPC_USER}",
-              "pass" : "$${BITCOIN_RPC_PASS}"
-            }
-          ],
-          "btcaddress" : "$${BTC_ADDR}",
-          "btcsig" : "SoloStrike on Umbrel/",
-          "blockpoll" : 50,
-          "update_interval" : 20,
-          "serverurl" : [
-            "0.0.0.0:3333",
-            "0.0.0.0:3334"
-          ],
-          "mindiff" : 1,
-          "startdiff" : 10000,
-          "maxdiff" : 0,
-          "logdir" : "/var/log/ckpool",
-          "zmqblock" : "$${BITCOIN_ZMQ_HASHBLOCK}"
-        }
-        EOF
-          chown 1000:1000 "$$CONF"
-          chmod 640 "$$CONF"
-          echo "[init-permissions] generated ckpool.conf with btcaddress=$$BTC_ADDR"
-        else
-          echo "[init-permissions] ckpool.conf already exists, preserving"
+        TPL=/data/ckpool/config/ckpool.conf.template
+
+        BTC_ADDR=""
+        if [ -f /data/config/config.json ]; then
+          BTC_ADDR=$$(grep -oE '"payoutAddress"[[:space:]]*:[[:space:]]*"[^"]+"' /data/config/config.json 2>/dev/null | sed -E 's/.*"payoutAddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
         fi
+        if [ -z "$$BTC_ADDR" ] && [ -f "$$CONF" ]; then
+          BTC_ADDR=$$(grep -oE '"btcaddress"[[:space:]]*:[[:space:]]*"[^"]+"' "$$CONF" 2>/dev/null | sed -E 's/.*"btcaddress"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)
+        fi
+        if [ -z "$$BTC_ADDR" ]; then
+          BTC_ADDR="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+        fi
+
+        if [ ! -f "$$TPL" ]; then
+          echo "[init-permissions] ERROR: missing template $$TPL" >&2
+          exit 1
+        fi
+
+        # Substitute placeholders with live values using awk index()/substr()
+        # LITERAL splicing (NOT sed or gsub): the RPC password is Umbrel
+        # auto-generated and may contain | & / \ which corrupt regex-based
+        # replacers. index()/substr() treats the replacement as an opaque
+        # literal. Tmp file + atomic mv so ckpool never reads a half-written conf.
+        TMP=$$(mktemp)
+        awk \
+          -v rpc_host="$${BITCOIN_RPC_HOST}" \
+          -v rpc_port="$${BITCOIN_RPC_PORT}" \
+          -v rpc_user="$${BITCOIN_RPC_USER}" \
+          -v rpc_pass="$${BITCOIN_RPC_PASS}" \
+          -v zmq="$${BITCOIN_ZMQ_HASHBLOCK}" \
+          -v addr="$${BTC_ADDR}" \
+          'function repl(line, ph, val,   p) {
+             p = index(line, ph);
+             if (p == 0) return line;
+             return substr(line, 1, p-1) val substr(line, p+length(ph));
+           }
+           {
+             $$0 = repl($$0, "__BITCOIN_RPC_HOST__", rpc_host);
+             $$0 = repl($$0, "__BITCOIN_RPC_PORT__", rpc_port);
+             $$0 = repl($$0, "__BITCOIN_RPC_USER__", rpc_user);
+             $$0 = repl($$0, "__BITCOIN_RPC_PASS__", rpc_pass);
+             $$0 = repl($$0, "__BITCOIN_ZMQ_HASHBLOCK__", zmq);
+             $$0 = repl($$0, "__BTC_ADDR__", addr);
+             print;
+           }' "$$TPL" > "$$TMP"
+        mv "$$TMP" "$$CONF"
+        chown 1000:1000 "$$CONF"
+        chmod 640 "$$CONF"
+        echo "[init-permissions] rendered ckpool.conf from template (btcaddress=$$BTC_ADDR)"
 
         echo "[init-permissions] complete"
 
@@ -178,6 +193,7 @@ services:
     ports:
       - "3333:3333"
       - "3334:3334"
+      - "4334:4334"
     volumes:
       - ${APP_DATA_DIR}/data/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/data/ckpool/logs:/var/log/ckpool
@@ -205,7 +221,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v2.0.4@sha256:3d8e49a3f3d51b16d8fa4c147c37b4546a61688094192c2c3afc76060916d201
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v3.0.0
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -220,7 +236,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v2.0.4@sha256:be60a812b1352c8d54ec9feb3b47a61f3c54e73a257b26e242218a5f75dbf34d
+    image: ghcr.io/danhaus93-ops/solostrike-api:v3.0.0
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -259,10 +275,12 @@ services:
       - UPDATE_INTERVAL=20
       - STRATUM_PORT=3333
       - STRATUM_PORT_HOBBY=3334
+      - STRATUM_PORT_NICEHASH=4334
+      - HIGH_DIFFICULTY=500000
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v2.0.4@sha256:8a4a130d87301e981cdabd885715a8867fb8afbd5ec83ee4dc9b5e6c3463645d
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v3.0.0
     restart: on-failure
     security_opt:
       - no-new-privileges:true

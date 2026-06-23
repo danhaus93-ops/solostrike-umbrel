@@ -6,6 +6,7 @@ import { fmtHr, fmtDiff, fmtNum, fmtOdds, fmtOddsInverse, timeAgo, fmtAgoShort, 
 import { METRICS, METRIC_MAP, METRIC_CATEGORIES } from './metrics.js';
 import OnboardingWizard, { hasCompletedWizard } from './components/OnboardingWizard.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import StrikeForceCards from './components/StrikeForceCard.jsx';
 import { createGlobeWebGL, bakeWorldMapTexture } from './globe-webgl.js';
 import { createConstellationCube } from './constellation-cube.js';
 import { createLightningWebGL } from './lightning-webgl.js';
@@ -340,9 +341,9 @@ const POOL_ALIGN_META = {
   // v1.9.3: labels explicitly name SoloStrike so the GOOD case reads as a
   // clear "yes this miner is on SoloStrike" message, not just an abstract
   // "OK". shortLabels stay terse for the tiny inline worker-row badges.
-  aligned:     { color:'var(--green)', glyph:'✓',  label:'Aligned with SoloStrike', shortLabel:'OK' },
-  backup:      { color:'var(--amber)', glyph:'⚠',  label:'SoloStrike is backup',    shortLabel:'BACKUP' },
-  misaligned:  { color:'var(--red)',   glyph:'✗',  label:'Not on SoloStrike',       shortLabel:'WRONG' },
+  aligned:     { color:'var(--green)', glyph:'✓',  label:'Aligned with LoneStrike', shortLabel:'OK' },
+  backup:      { color:'var(--amber)', glyph:'⚠',  label:'LoneStrike is backup',    shortLabel:'BACKUP' },
+  misaligned:  { color:'var(--red)',   glyph:'✗',  label:'Not on LoneStrike',       shortLabel:'WRONG' },
   unreachable: { color:'var(--text-3)',glyph:'⊘',  label:'Can\u2019t reach miner',shortLabel:'NO API' },
   disabled:    { color:'var(--text-3)',glyph:'⊘',  label:'Miner API disabled',   shortLabel:'NO API' },
   // v1.9.2: 'unverifiable' = firmware responded but didn't include User
@@ -1301,7 +1302,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
               </div>
               <div style={{ marginBottom: '0.2rem' }}>1. Open Umbrel on any device</div>
               <div style={{ marginBottom: '0.2rem' }}>2. Go to App Store → Community Store</div>
-              <div style={{ marginBottom: '0.2rem' }}>3. Find SoloStrike → tap <span style={{ color:'var(--amber)' }}>Update</span></div>
+              <div style={{ marginBottom: '0.2rem' }}>3. Find LoneStrike → tap <span style={{ color:'var(--amber)' }}>Update</span></div>
               <div>4. Mining keeps hashing through the update</div>
             </div>
           )}
@@ -1381,7 +1382,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
     <header style={{ ...STRIP_FULL_WIDTH, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 0.5rem', minHeight:58, borderBottom:'1px solid var(--border)', gap:'0.4rem' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', minWidth:0, flex:1, flexWrap:'wrap' }}>
         <img src="/pickaxe-icon.png" alt="⛏" draggable={false} style={{ width:18, height:18, objectFit:'contain', filter: (minimalMode||performanceMode)?'none':'drop-shadow(0 0 8px rgba(var(--amber-rgb),0.7))', animation: (minimalMode||performanceMode)?'none':'pulse 3s ease-in-out infinite', willChange: (minimalMode||performanceMode)?'auto':'opacity', flexShrink:0 }}/>
-        <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>SoloStrike</span>
+        <span style={{ fontFamily:'var(--fd)', fontSize:'0.92rem', fontWeight:700, letterSpacing:'0.06em', color:'var(--amber)', textTransform:'uppercase', flexShrink:0 }}>LoneStrike</span>
         {!minimalMode && (
           <>
             <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
@@ -6442,7 +6443,7 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
           <PortChip port="4333" accent="var(--cyan)" ssl />
         </div>
         <div style={{...helperStyle, marginTop:5, fontSize:'0.6rem'}}>
-          3333 ASIC · 3334 Hobby · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>4333 SSL
+          3333 ASIC · 3334 Hobby · 4334 NiceHash · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>4333 SSL
         </div>
       </div>
 
@@ -7166,7 +7167,7 @@ function SetupForm({ tt = (x) => x, saveConfig }) {
       <div style={{maxWidth:500, width:'100%', background:'var(--bg-surface)', border:'1px solid var(--amber)', padding:'1.8rem'}}>
         <h2 style={{fontFamily:'var(--fd)', color:'var(--amber)', letterSpacing:'0.1em', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'0.5rem'}}>
           <img src="/pickaxe-icon.png" alt="" draggable={false} style={{width:'1.2rem', height:'1.2rem', objectFit:'contain', filter:'drop-shadow(0 0 6px rgba(var(--amber-rgb),0.5))', flexShrink:0}}/>
-          SoloStrike Setup
+          LoneStrike Setup
         </h2>
         <p style={{color:'var(--text-2)', fontSize:'0.78rem', marginTop:8, lineHeight:1.5}}>{tt("Set your Bitcoin payout address to begin mining. You're 100% solo — if you find a block, you keep all of it.")}</p>
         <label style={{display:'block', fontFamily:'var(--fd)', fontSize:'0.6rem', letterSpacing:'0.1em', color:'var(--text-2)', marginTop:18, marginBottom:6}}>{tt('Bitcoin Payout Address')}</label>
@@ -8277,7 +8278,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
         <div style={{flex:1}}>
           <label htmlFor="pulse-on" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--amber)',cursor:'pointer',letterSpacing:'0.05em'}}>📡 {tt('Join Pulse')}</label>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
-            {tt("Broadcast your pool's anonymous stats to the SoloStrike Pulse network. See how many other solo pools exist. Opt-in, can be turned off any time.")}
+            {tt("Broadcast your pool's anonymous stats to the LoneStrike Pulse network. See how many other solo pools exist. Opt-in, can be turned off any time.")}
           </div>
         </div>
       </div>
@@ -8490,7 +8491,7 @@ function PulseTab({ tt=(x)=>x, networkStats, onRefresh, pulseAnim, onPulseAnimCh
             fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--text-3)',
             marginTop: 6,
           }}>
-            {tt('Choose how the SoloStrike Pulse network is visualized.')}
+            {tt('Choose how the LoneStrike Pulse network is visualized.')}
           </div>
         </div>
       )}
@@ -12041,6 +12042,38 @@ function benchConfidence(sampleCount, threshold) {
   return { key: 'low', label: 'low sample — treat as a hint', color: 'var(--text-3)' };
 }
 
+// v2.x: registry-resolved label for a Top Strikers row.
+//   verified → reserved name + ✓ ; impostor → bare striker handle + ⚠ ;
+//   unverified-with-alias → "name · handle" decorative ; otherwise → handle.
+function strikerLabel(row, tt, ownStatus) {
+  row = row || {};
+  const handle = row.handle || 'striker-????';
+  // Own-screen certainty floor: your app knows your own key, so your own
+  // reserved name always shows verified (clean name + check) here, regardless
+  // of how far the signed registry has propagated into the cached network
+  // snapshot that drives row.aliasState. Fixes the lag where a freshly
+  // reserved name renders as "name · handle" until the next snapshot rebuild.
+  if (row.isOwn && ownStatus && ownStatus.state === 'verified' && (ownStatus.alias || row.alias))
+    return { text: ownStatus.alias || row.alias, badge: '\u2713', color: 'var(--cyan)' };
+  if (row.aliasState === 'verified' && row.alias) return { text: row.alias, badge: '\u2713', color: row.isOwn ? 'var(--cyan)' : 'var(--green)' };
+  if (row.aliasState === 'impostor') return { text: handle, badge: '\u26a0', color: 'var(--red)' };
+  if (row.alias) return { text: row.alias + ' \u00b7 ' + handle, badge: null, color: row.isOwn ? 'var(--cyan)' : 'var(--text-2)' };
+  return { text: handle, badge: null, color: row.isOwn ? 'var(--cyan)' : 'var(--text-2)' };
+}
+
+function benchClaimError(j, tt) {
+  if (j && j.message) return j.message;
+  switch ((j && j.error) || '') {
+    case 'invalid_name': return tt('1\u201324 chars: letters, digits, space . _ - \' only.');
+    case 'registry_not_configured': return tt('Name registry isn\u2019t configured.');
+    case 'pow_timeout': return tt('Proof-of-work took too long \u2014 try again.');
+    case 'sign_failed': return tt('Could not sign the claim.');
+    case 'unreachable': case 'bad_response': return tt('Could not reach the registry.');
+    case 'taken': case 'conflict': case 'name_taken': case 'owned': case 'exists': return tt('That name is already reserved by another striker.');
+    default: return tt('Claim failed \u2014 try again.');
+  }
+}
+
 function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const buckets = Array.isArray(networkStats && networkStats.benchmarks) ? networkStats.benchmarks : [];
   // own buckets = those where any leaderboard row is ours
@@ -12055,11 +12088,15 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const [discChecked, setDiscChecked] = useState(false);
   const [pendingCopy, setPendingCopy] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [alias, setAlias] = useState(() => {
-    try { return localStorage.getItem(LS_BENCH_ALIAS) || ''; } catch { return ''; }
-  });
+  const [aliasStatus, setAliasStatus] = useState(null); // { alias, pubkey, handle, state, configured, registry }
   const [editAlias, setEditAlias] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimMsg, setClaimMsg] = useState(null);       // { ok, text }
   const [showInfo, setShowInfo] = useState(false);
+  const refreshAliasStatus = useCallback(() => {
+    fetch('/api/alias/status').then(r => r.json()).then(j => { if (j && typeof j === 'object') setAliasStatus(j); }).catch(() => {});
+  }, []);
+  useEffect(() => { refreshAliasStatus(); }, [refreshAliasStatus]);
 
   if (!shown.length) {
     return (
@@ -12076,7 +12113,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
   const champ = bucket.champion || {};
   const conf = benchConfidence(bucket.sampleCount || 0, minSample);
   const bucketLabel = (b) => `${b.model}${b.boardVersion ? ' · ' + tt('rev') + ' ' + b.boardVersion : ''}`;
-  const champHandle = champ.isOwn && alias ? alias : (champ.handle || 'striker-????');
+  const champL = strikerLabel(champ, tt, aliasStatus);
   // v2.x: Avalon core voltage is a per-chip measured average, not a settable
   // per-domain knob like the BitAxe — label it so nobody tries to type it in.
   const isAvalon = /avalon/i.test(bucket.model || '');
@@ -12100,10 +12137,17 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
     setAccepted(true); setShowDisc(false);
     if (pendingCopy) { doCopy(pendingCopy); setPendingCopy(null); }
   };
-  const saveAlias = (v) => {
-    const clean = (v || '').slice(0, 24).replace(/[^\w \-.]/g, '');
-    setAlias(clean); setEditAlias(false);
-    try { clean ? localStorage.setItem(LS_BENCH_ALIAS, clean) : localStorage.removeItem(LS_BENCH_ALIAS); } catch {}
+  const submitClaim = async (v) => {
+    const name = (v || '').trim().replace(/\s+/g, ' ');
+    if (!name) { setEditAlias(false); return; }
+    setClaiming(true); setClaimMsg(null);
+    try {
+      const res = await fetch('/api/alias/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+      const j = await res.json().catch(() => ({}));
+      if (j && j.ok) { setClaimMsg({ ok: true, text: tt('Reserved \u2713') }); setEditAlias(false); refreshAliasStatus(); }
+      else { setClaimMsg({ ok: false, text: benchClaimError(j, tt) }); }
+    } catch { setClaimMsg({ ok: false, text: tt('Could not reach the registry.') }); }
+    setClaiming(false);
   };
 
   const lbl = { fontFamily:'var(--fd)', fontSize:'0.4rem', letterSpacing:'0.1em', color:'var(--text-3)', textTransform:'uppercase' };
@@ -12138,8 +12182,8 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
       {/* champion banner (A) */}
       <div style={{ background:'linear-gradient(135deg,rgba(57,255,106,0.10),rgba(0,255,209,0.03))', border:'1px solid rgba(57,255,106,0.32)', borderRadius:11, padding:'12px 13px', marginBottom:12, position:'relative' }}>
         <div style={{ fontFamily:'var(--fd)', fontSize:'0.46rem', letterSpacing:'0.15em', color:'var(--green)', textTransform:'uppercase', marginBottom:6 }}>{tt('⚡ Most efficient · sustained')}</div>
-        <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champ.isOwn ? 'var(--cyan)' : 'var(--green)', marginBottom:2 }}>
-          {champHandle}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
+        <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.92rem', color: champL.color, marginBottom:2 }}>
+          {champL.text}{champL.badge ? ' ' + champL.badge : ''}{champ.isOwn ? ' (' + tt('you') + ')' : ''}
         </div>
         <div style={{ fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-2)', marginBottom:8 }}>
           {bucket.model}{bucket.asic ? ' · ' + bucket.asic : ''}{bucket.boardVersion ? ' · ' + tt('rev') + ' ' + bucket.boardVersion : ''} · {bucket.sampleCount} {tt('miners ranked')}
@@ -12192,7 +12236,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.64rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-3)', width:24, textAlign:'center' }}>{i + 2}</span>
           <span style={{ flex:1, fontFamily:'var(--fm)', fontSize:'0.56rem', color: r.isOwn ? 'var(--cyan)' : 'var(--text-2)' }}>
-            {r.isOwn && alias ? alias : r.handle}{r.isOwn ? ' (' + tt('you') + ')' : ''}
+            {(() => { const L = strikerLabel(r, tt, aliasStatus); return (<>{L.text}{L.badge ? <span style={{ color: L.badge === '\u26a0' ? 'var(--red)' : 'var(--green)' }}>{' ' + L.badge}</span> : null}{r.isOwn ? ' (' + tt('you') + ')' : ''}</>); })()}
             <span style={{ display:'block', fontSize:'0.44rem', color:'var(--text-3)' }}><span style={{ whiteSpace:'nowrap' }}>{r.freq} MHz</span>{' · '}<span style={{ whiteSpace:'nowrap' }}>{r.coreVoltage != null ? (isAvalon ? '~' : '') + r.coreVoltage + ' mV' : '—'}</span>{(r.fanPct != null || r.fanRpm != null) ? <span style={{ whiteSpace:'nowrap' }}>{' · '}{r.fanPct != null ? r.fanPct + '% ' + tt('fan') : ''}{r.fanRpm != null ? (r.fanPct != null ? ' (' + fmtNum(r.fanRpm) + ' rpm)' : fmtNum(r.fanRpm) + ' rpm') : ''}</span> : ''}</span>
           </span>
           <span style={{ fontFamily:'var(--fm)', fontSize:'0.48rem', color:'var(--text-3)', minWidth:42, textAlign:'right' }}>{r.ths} TH/s</span>
@@ -12224,20 +12268,28 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
         <span style={{ fontFamily:'var(--fm)', fontSize:'0.45rem', color:'var(--amber)', opacity:0.7 }}>{tt('⚠ apply at your own risk')}</span>
       </button>
 
-      {/* alias control */}
+      {/* registry-backed name claim control (Option 2: reserved uniqueness) */}
       <div style={{ marginTop:10, fontFamily:'var(--fm)', fontSize:'0.5rem', color:'var(--text-3)', textAlign:'center' }}>
-        {editAlias ? (
+        {aliasStatus && aliasStatus.configured === false ? (
+          <span>{tt('Name registry is unavailable right now.')}</span>
+        ) : editAlias ? (
           <span style={{ display:'inline-flex', gap:6, alignItems:'center' }}>
-            <input autoFocus defaultValue={alias} placeholder={tt('your alias')} maxLength={24}
-              onKeyDown={e => { if (e.key === 'Enter') saveAlias(e.target.value); }}
+            <input autoFocus defaultValue={aliasStatus && aliasStatus.alias ? aliasStatus.alias : ''} placeholder={tt('your name')} maxLength={24} disabled={claiming}
+              onKeyDown={e => { if (e.key === 'Enter') submitClaim(e.target.value); }}
               style={{ background:'var(--bg-deep)', border:'1px solid var(--border)', color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.55rem', padding:'3px 6px', width:120 }} />
-            <button onClick={e => saveAlias(e.target.previousSibling.value)} style={{ background:'none', border:'1px solid var(--border)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', padding:'3px 8px', cursor:'pointer' }}>{tt('Save')}</button>
+            <button disabled={claiming} onClick={e => submitClaim(e.target.previousSibling.value)} style={{ background:'none', border:'1px solid var(--border)', color:'var(--amber)', fontFamily:'var(--fd)', fontSize:'0.5rem', padding:'3px 8px', cursor: claiming ? 'default' : 'pointer', opacity: claiming ? 0.6 : 1 }}>{claiming ? tt('Reserving\u2026') : tt('Reserve')}</button>
           </span>
         ) : (
-          <button onClick={() => setEditAlias(true)} style={{ background:'none', border:'none', color:'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
-            {alias ? tt('Your alias') + ': ' + alias : tt('Set a leaderboard alias (optional)')}
+          <button onClick={() => { setClaimMsg(null); setEditAlias(true); }} style={{ background:'none', border:'none', color: (aliasStatus && aliasStatus.state === 'verified') ? 'var(--green)' : 'var(--text-3)', fontFamily:'var(--fm)', fontSize:'0.5rem', cursor:'pointer', textDecoration:'underline' }}>
+            {aliasStatus && aliasStatus.state === 'verified' && aliasStatus.alias
+              ? '\u2713 ' + tt('Your reserved name') + ': ' + aliasStatus.alias
+              : aliasStatus && aliasStatus.state === 'impostor'
+              ? '\u26a0 ' + tt('That name belongs to someone else \u2014 reserve a different one')
+              : tt('Reserve a unique leaderboard name')}
           </button>
         )}
+        {claiming && <div style={{ marginTop:4, color:'var(--text-3)', fontSize:'0.46rem' }}>{tt('Mining proof-of-work to reserve the name \u2014 a few seconds\u2026')}</div>}
+        {claimMsg && <div style={{ marginTop:4, color: claimMsg.ok ? 'var(--green)' : 'var(--amber)', fontSize:'0.48rem' }}>{claimMsg.text}</div>}
       </div>
 
       {/* disclaimer gate (one-time) */}
@@ -12247,7 +12299,7 @@ function BenchmarkSection({ tt = (x) => x, networkStats }) {
             <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.82rem', color:'var(--amber)', marginBottom:11 }}>{'Tuning settings — use at your own risk'}</div>
             <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('These settings are crowdsourced from other miners\u2019 hardware and shown for informational purposes only. Every chip, board, power supply, and cooling setup is different — settings that are stable on someone else\u2019s device may overheat, damage, destabilize, or shorten the life of yours.')}</p>
             <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('Overclocking and voltage changes carry inherent risk, including hardware failure, fire, property damage, or data loss. You are solely responsible for any changes you make to your equipment and for operating it safely.')}</p>
-            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('SoloStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
+            <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('LoneStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
             <div onClick={() => setDiscChecked(v => !v)} style={{ display:'flex', gap:9, alignItems:'flex-start', margin:'13px 0', cursor:'pointer' }}>
               <div style={{ width:18, height:18, borderRadius:4, border:'1.5px solid ' + (discChecked ? 'var(--green)' : 'var(--border-hot)'), flexShrink:0, display:'grid', placeItems:'center', color:'var(--green)', fontSize:'0.7rem', background:'var(--bg-deep)' }}>{discChecked ? '✓' : ''}</div>
               <span style={{ fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--text-1)' }}>{'I understand and accept these risks.'}</span>
@@ -12271,26 +12323,16 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
   // - showOnboard: first-time "WHAT IS PULSE?" tooltip (localStorage gated)
   // - drillPeer: currently-tapped Striker to expand in bottom sheet (null = no expansion)
   // - hashGoal: user's personal hashrate target in TH/s, localStorage-persisted
-  // - heartbeatSec: countdown to next outbound broadcast; ticks down once/sec
   const [showOnboard, setShowOnboard] = useState(false);
   const [drillPeer, setDrillPeer] = useState(null);
   const [hashGoal, setHashGoal] = useState(() => {
     try { const v = localStorage.getItem('ss_hash_goal_v1'); return v ? parseFloat(v) : 0; } catch { return 0; }
   });
-  const [heartbeatSec, setHeartbeatSec] = useState(150); // ~2.5min broadcast cycle
 
   // Persist hashGoal changes
   useEffect(() => {
     try { localStorage.setItem('ss_hash_goal_v1', String(hashGoal || 0)); } catch {}
   }, [hashGoal]);
-
-  // Heartbeat countdown — fires once/sec, wraps to 150 when it hits 0
-  useEffect(() => {
-    const t = setInterval(() => {
-      setHeartbeatSec(s => s <= 0 ? 150 : s - 1);
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
 
   // First-time onboarding trigger (one-shot, localStorage gated)
   useEffect(() => {
@@ -12849,22 +12891,6 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
             >?</button>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:8}}>
-            {/* v1.11.2: heartbeat indicator — visual proof of broadcasting */}
-            <div style={{
-              display:'inline-flex', alignItems:'center', gap:4,
-              fontFamily:'var(--fm)', fontSize:'0.55rem', color:'var(--text-2)',
-              padding:'2px 6px', background:'var(--bg-raised)',
-              border:'1px solid var(--border)', borderRadius:2,
-              letterSpacing:'0.08em',
-            }}>
-              <span style={{
-                width:6, height:6, borderRadius:'50%',
-                background: heartbeatSec < 3 ? 'var(--green)' : 'var(--amber)',
-                boxShadow: heartbeatSec < 3 ? '0 0 8px var(--green)' : '0 0 4px var(--amber)',
-                transition:'all 0.3s',
-              }}/>
-              <span>{heartbeatSec < 3 ? 'BROADCASTING' : `BEAT ${heartbeatSec}s`}</span>
-            </div>
             <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-2)',cursor:'pointer',fontSize:22,padding:'0 4px'}}>✕</button>
           </div>
         </div>
@@ -12895,7 +12921,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
                   <div style={{ fontFamily:'var(--fd)', fontWeight:700, fontSize:'0.82rem', color:'var(--amber)', marginBottom:11 }}>{'Tuning settings — use at your own risk'}</div>
                   <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('These settings are crowdsourced from other miners\u2019 hardware and shown for informational purposes only. Every chip, board, power supply, and cooling setup is different — settings that are stable on someone else\u2019s device may overheat, damage, destabilize, or shorten the life of yours.')}</p>
                   <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('Overclocking and voltage changes carry inherent risk, including hardware failure, fire, property damage, or data loss. You are solely responsible for any changes you make to your equipment and for operating it safely.')}</p>
-                  <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('SoloStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
+                  <p style={{ fontFamily:'var(--fm)', fontSize:'0.55rem', lineHeight:1.65, color:'var(--text-2)', marginBottom:9 }}>{tt('LoneStrike and its developer provide this feature \u201Cas is,\u201D with no warranty of any kind, and accept no liability for any damage, loss, injury, or other harm arising from the use of these settings or this software.')}</p>
                   <div onClick={() => setBenchChecked(v => !v)} style={{ display:'flex', gap:9, alignItems:'flex-start', margin:'13px 0', cursor:'pointer' }}>
                     <div style={{ width:18, height:18, borderRadius:4, border:'1.5px solid ' + (benchChecked ? 'var(--green)' : 'var(--border-hot)'), flexShrink:0, display:'grid', placeItems:'center', color:'var(--green)', fontSize:'0.7rem', background:'var(--bg-deep)' }}>{benchChecked ? '✓' : ''}</div>
                     <span style={{ fontFamily:'var(--fd)', fontSize:'0.62rem', color:'var(--text-1)' }}>{'I understand and accept these risks.'}</span>
@@ -13126,7 +13152,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
             }}>
               {tt('Pulse is a census, not a pool.')} <span style={{color:'var(--amber)', fontWeight:600}}>{tt('Your blocks stay 100% yours.')}</span>
               <div style={{marginTop:8, fontSize:'0.68rem', color:'var(--text-2)', lineHeight:1.5}}>
-                {tt('Strikers are anonymous SoloStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.')}
+                {tt('Strikers are anonymous LoneStrike operators broadcasting hashrate via nostr. No names, no IPs, no pool affiliation. Identities rotate periodically.')}
               </div>
             </div>
             {/* v1.12.0-fix2: SOLO stamp pinned to the BOTTOM-RIGHT of the footer
@@ -13184,7 +13210,7 @@ function StrikersModal({ tt = (x) => x, networkStats, onClose }) {
               {tt('WHAT IS PULSE?')}
             </div>
             <p style={{color:'var(--text-1)', fontFamily:'var(--fm)', fontSize:'0.75rem', lineHeight:1.6, margin:'0 0 0.75rem 0'}}>
-              {tt('Pulse is an')} <strong style={{color:'var(--amber)'}}>{tt('anonymous census')}</strong> {tt('of solo Bitcoin miners running SoloStrike. Hashrate is broadcast over')} <strong style={{color:'var(--amber)'}}>{tt('nostr')}</strong> {tt('— no names, no IPs, no pool affiliation.')}
+              {tt('Pulse is an')} <strong style={{color:'var(--amber)'}}>{tt('anonymous census')}</strong> {tt('of solo Bitcoin miners running LoneStrike. Hashrate is broadcast over')} <strong style={{color:'var(--amber)'}}>{tt('nostr')}</strong> {tt('— no names, no IPs, no pool affiliation.')}
             </p>
             <p style={{color:'var(--text-2)', fontFamily:'var(--fm)', fontSize:'0.7rem', lineHeight:1.6, margin:'0 0 1rem 0'}}>
               {tt('You see who else is broadcasting, roughly where they are, and how the network grows.')} <strong style={{color:'var(--text-1)'}}>{tt('Your blocks always stay 100% yours.')}</strong> {tt('Tap any Striker for details.')}
@@ -14103,7 +14129,7 @@ function DebugTab({ tt = (x) => x, settings, onSettingsChange }) {
     try {
       const snap = (typeof window !== 'undefined' && window._ssDebugSnapshot) || {};
       const lines = [
-        `# SoloStrike debug snapshot — ${new Date().toISOString()}`,
+        `# LoneStrike debug snapshot — ${new Date().toISOString()}`,
         `# UA: ${navigator.userAgent}`,
         `# href: ${window.location.href}`,
         '',
@@ -14332,15 +14358,15 @@ function PoolAlignmentBlock({ worker }) {
 
       {pa.status === 'misaligned' && (
         <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--red)',padding:'0.4rem 0',lineHeight:1.5}}>
-          This miner is not configured to point at SoloStrike. Open the
-          miner web UI and add SoloStrike as a pool to bring it home.
+          This miner is not configured to point at LoneStrike. Open the
+          miner web UI and add LoneStrike as a pool to bring it home.
         </div>
       )}
 
       {pa.status === 'backup' && (
         <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--amber)',padding:'0.4rem 0',lineHeight:1.5}}>
-          SoloStrike is configured but a different pool is currently
-          active. The miner will switch to SoloStrike if its primary
+          LoneStrike is configured but a different pool is currently
+          active. The miner will switch to LoneStrike if its primary
           fails \u2014 or you can promote it to primary in the miner UI.
         </div>
       )}
@@ -14349,7 +14375,7 @@ function PoolAlignmentBlock({ worker }) {
         <div style={{fontFamily:'var(--fm)',fontSize:'0.65rem',color:'var(--text-3)',padding:'0.4rem 0',lineHeight:1.5}}>
           This miner&rsquo;s firmware reports its configured pool URLs but
           redacts the username, so we can&rsquo;t prove which one is
-          SoloStrike. If shares are landing in your dashboard, the miner
+          LoneStrike. If shares are landing in your dashboard, the miner
           is fine \u2014 just not auto-verifiable.
         </div>
       )}
@@ -14801,7 +14827,7 @@ function TuningControls({ tt = (x) => x, worker }) {
         <div style={gate}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: '0.5rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-3)', textAlign: 'right', marginBottom: 6 }}>{tt('acknowledged')} {seen} / 3</div>
           <h3 style={{ margin: '0 0 11px', fontFamily: 'var(--fd)', fontSize: '0.82rem', color: 'var(--amber)' }}>⚠ {tt('Before you tune — read this')}</h3>
-          <p style={{ margin: '0 0 11px', fontSize: '0.78rem', color: 'var(--text-1)', lineHeight: 1.5 }}>{tt('These controls write frequency, voltage, fan, and pool settings directly to your miner. SoloStrike only relays the values — it can\u2019t verify they\u2019re safe for your hardware.')}</p>
+          <p style={{ margin: '0 0 11px', fontSize: '0.78rem', color: 'var(--text-1)', lineHeight: 1.5 }}>{tt('These controls write frequency, voltage, fan, and pool settings directly to your miner. LoneStrike only relays the values — it can\u2019t verify they\u2019re safe for your hardware.')}</p>
           <div style={warnStrip}><span style={{ color: 'var(--red,#ff5a5a)' }}>⚡</span><span style={{ fontSize: '0.74rem', color: '#ffd9d3', lineHeight: 1.5 }}>{tt('This is overclocking / undervolting. It can crash the miner, corrupt shares, shorten chip lifespan, and may void your warranty. Custom firmware and some hardware respond differently — not every setting applies.')}</span></div>
           <p style={{ margin: '0 0 11px', fontSize: '0.78rem', color: 'var(--text-1)', lineHeight: 1.5, borderLeft: '2px solid var(--cyan)', paddingLeft: 11 }}><b style={{ color: 'var(--cyan)' }}>{tt('Cooling is on you.')}</b> {tt('More frequency/voltage means more heat. Make sure your cooling can handle it and watch your temps — sustained overtemperature can permanently damage a chip. Never apply settings you can\u2019t cool.')}</p>
           <p style={{ margin: '0 0 13px', fontSize: '0.74rem', color: 'var(--text-2)', lineHeight: 1.5 }}><b style={{ color: 'var(--cyan)' }}>{tt('Champion settings are unverified')}</b> — {tt('other people\u2019s rigs, different silicon/cooling/PSU. A hint, not a guarantee. Pool changes restart the miner.')}</p>
@@ -14872,7 +14898,7 @@ function TuningControls({ tt = (x) => x, worker }) {
           ) : (
             <div style={{ padding: '4px 0' }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button onClick={() => setPool(p => ({ ...p, url: 'umbrel.local', port: p.tls ? '4333' : '3333', pass: 'x' }))} style={{ flex: 1, fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(var(--amber-rgb),0.3)', background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>⚡ {tt('Point at SoloStrike')}</button>
+                <button onClick={() => setPool(p => ({ ...p, url: 'umbrel.local', port: p.tls ? '4333' : '3333', pass: 'x' }))} style={{ flex: 1, fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(var(--amber-rgb),0.3)', background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>⚡ {tt('Point at LoneStrike')}</button>
                 <button onClick={() => setPool(p => ({ ...p, tls: !p.tls, port: !p.tls ? '4333' : '3333' }))} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 11px', borderRadius: 8, border: `1px solid ${pool.tls ? 'var(--cyan)' : 'var(--border)'}`, background: pool.tls ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: pool.tls ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{pool.tls ? 'TLS · 4333' : tt('TLS off')}</button>
               </div>
               {[['url', 'Stratum URL', 'text'], ['port', 'Port', 'numeric'], ['user', 'Worker · addr.name', 'text'], ['pass', 'Password', 'text']].map(([k, lbl, im]) => (
@@ -14970,6 +14996,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
   const host = loadStratumHost() || 'umbrel.local';
   const stratumUrl      = `stratum+tcp://${host}:3333`;
   const stratumUrlHobby = `stratum+tcp://${host}:3334`;
+  const stratumUrlNicehash = `stratum+tcp://${host}:4334`;
   const minerUrl        = w.ip ? `http://${w.ip}` : null;
 
   const copy = async (val, lbl) => {
@@ -15129,6 +15156,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
             <div style={secTitle}>{tt('▸ Connection')}</div>
             <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
+            <div style={kvRow}><span style={kvLabel}>{tt('NiceHash Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlNicehash}</span></div>
             <div style={kvRow}>
               <span style={kvLabel}>{tt('Miner IP')}</span>
               {w.ip ? (
@@ -15169,6 +15197,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
               <button onClick={()=>copy(stratumUrl,'asic')}       style={btn}>{copied==='asic' ?tt('✓ Copied'):tt('Copy ASIC URL')}</button>
               <button onClick={()=>copy(stratumUrlHobby,'hobby')}  style={btn}>{copied==='hobby'?tt('✓ Copied'):tt('Copy Hobby URL')}</button>
+              <button onClick={()=>copy(stratumUrlNicehash,'nicehash')} style={btn}>{copied==='nicehash'?tt('✓ Copied'):tt('Copy NiceHash URL')}</button>
               {w.ip && <button onClick={()=>copy(w.ip,'ip')}       style={btn}>{copied==='ip'   ?tt('✓ Copied'):tt('Copy Miner IP')}</button>}
               <button onClick={()=>copy(w.name,'name')}            style={btn}>{copied==='name' ?tt('✓ Copied'):tt('Copy Workername')}</button>
               <button onClick={exportCsv} style={btn}>⬇ {tt('Export CSV')}</button>
@@ -15974,7 +16003,7 @@ export default function App() {
           letterSpacing:'0.4em',
           textShadow:'0 0 14px rgba(var(--amber-rgb),0.35)',
         }}>
-          SOLOSTRIKE
+          LONESTRIKE
         </div>
         <div style={{
           fontFamily:'var(--fd)',
@@ -16040,7 +16069,24 @@ export default function App() {
   const status = poolState?.status || 'loading';
   const ns = poolState?.networkStats || {};
 
+  // v2.1.0 Strike Force: compute rental-active BEFORE the registry so the
+  // entry itself is null when no rented/Braiins worker is hashing. DesktopPages
+  // uses this null as the signal to restore Strike Velocity in its slot.
+  const _csActive = Array.isArray(workers) && workers.some(w => {
+    if (!w || w.status === 'offline') return false;
+    // v2.3.1: the high-diff RENTAL port (>4000, i.e. 4334) is the one signal
+    // that means "a rental is actually in" — an owned miner on 3333/3334 (even
+    // running Braiins OS) never hits it. We previously also required
+    // minerVendor==='rented'|'braiins', but NiceHash sends a generic/empty
+    // stratum user-agent so its vendor stays null and the card never fired.
+    // Port alone is authoritative; drop the vendor requirement.
+    const port = w.shareEvents && w.shareEvents.port;
+    return !!port && port > 4000;
+  });
+
   const cardComponents = {
+    // v2.1.0 Strike Force — rental ascent card (pinned to front when active).
+    strikeforce: _csActive ? <StrikeForceCards workers={workers} network={poolState?.network} blockReward={poolState?.blockReward} fiatPrice={(poolState?.prices || {})[currency] || (poolState?.prices || {}).USD || 0} currency={currency} t={tt} GLYPH_SRC="/btc-glyph.png" /> : null,
     // ── ERROR BOUNDARY TEST ────────────────────────────────────────────────
     // Always throws when rendered. Only inserted into renderableOrder when
     // the URL contains ?testcrash=1 (see below). To dismiss: remove the
@@ -16118,7 +16164,12 @@ export default function App() {
   // Removes the surprise of Stratum jumping to front on first launch.
   // ── ERROR BOUNDARY TEST: prepend testbomb when URL has ?testcrash=1 ─────
   const _testBombActive = typeof window !== 'undefined' && window.location.search.includes('testcrash=1');
-  const renderableOrder = _testBombActive ? ['testbomb', ...baseOrder] : baseOrder;
+  // v2.1.0 Strike Force: pin the rental card to the FRONT whenever a rented /
+  // Braiins worker is online (mobile carousel / vertical grid / desktop card
+  // grid). _csActive computed above the registry. Not gated by visibleCards.
+  let renderableOrder = baseOrder;
+  if (_csActive) renderableOrder = ['strikeforce', ...renderableOrder];
+  if (_testBombActive) renderableOrder = ['testbomb', ...renderableOrder];
 
   return (
     <>
@@ -16206,7 +16257,12 @@ export default function App() {
           // ErrorBoundary so one failing card can't blank a page. ──────────
           <DesktopPages
             cardComponents={Object.fromEntries(Object.keys(cardComponents).map(id => [id,
-              <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
+              // v2.3.2: only wrap real cards. Wrapping a null value produced a
+              // truthy <ErrorBoundary>{null}</ErrorBoundary>, which made
+              // DesktopPages' `cardComponents['strikeforce'] ? …` always true —
+              // so when a rental ended the empty Strike Force slot stuck around
+              // and Strike Velocity never returned. Keep null as null.
+              cardComponents[id] == null ? null : <ErrorBoundary label={id}>{cardComponents[id]}</ErrorBoundary>
             ]))}
             ticker={<Ticker pillsSource={tickerPillsSource} enabled={tickerSettings.enabled && (tickerSettings.metricIds || []).length > 0} speedSec={tickerSettings.speedSec} lang={lang}/>}
             onOpenSettings={()=>setShowSettings(true)}
@@ -16237,7 +16293,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>SoloStrike v2.0.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.0.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>

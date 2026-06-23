@@ -115,12 +115,12 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '2.0.4',
+  version: '3.0.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
   // open Umbrel for the update.
-  composeVersion: '2.0.4',
+  composeVersion: '1.8.5',
   // Update urgency — drives banner styling. 'normal' (amber), 'recommended' (cyan),
   // 'critical' (red). Set per release.
   urgency: 'normal',
@@ -203,10 +203,11 @@ async function writeCkpoolConf() {
       btcsig:          process.env.POOL_SIGNATURE || 'SoloStrike on Umbrel/',
       blockpoll:       parseInt(process.env.BLOCKPOLL || '50', 10),
       update_interval: parseInt(process.env.UPDATE_INTERVAL || '20', 10),
-      serverurl:       ['0.0.0.0:3333', '0.0.0.0:3334'],
+      serverurl:       ['0.0.0.0:3333', '0.0.0.0:3334', '0.0.0.0:4334'],
       mindiff:         parseInt(process.env.MIN_DIFFICULTY || '1', 10),
       startdiff:       parseInt(process.env.START_DIFFICULTY || '10000', 10),
       maxdiff:         parseInt(process.env.MAX_DIFFICULTY || '0', 10),
+      highdiff:        parseInt(process.env.HIGH_DIFFICULTY || '500000', 10),
       logdir:          '/var/log/ckpool',
       zmqblock:        ZMQ_HASHBLOCK_URL || '',
     };
@@ -963,6 +964,9 @@ app.post('/api/reset-best-diff', (req, res) => {
     if (worker) {
       if (state.shareCounters && state.shareCounters[worker]) {
         state.shareCounters[worker].bestSinceReset = 0;
+        // v2.1.0 Strike Force: clear the share-diff ring so the histogram's
+        // best bar can't disagree with the zeroed best-since-reset.
+        state.shareCounters[worker].recentSdiffs = [];
       }
       // drop this worker from the Near Strikes leaderboard
       if (state.snapshots && Array.isArray(state.snapshots.closestCalls)) {
@@ -970,7 +974,10 @@ app.post('/api/reset-best-diff', (req, res) => {
       }
     } else {
       if (state.shareCounters) {
-        for (const n of Object.keys(state.shareCounters)) state.shareCounters[n].bestSinceReset = 0;
+        for (const n of Object.keys(state.shareCounters)) {
+          state.shareCounters[n].bestSinceReset = 0;
+          state.shareCounters[n].recentSdiffs = [];
+        }
       }
       // clear pool-wide derived stores so the trend + Near Strikes restart clean
       if (state.snapshots) { state.snapshots.closestCalls = []; state.snapshots.bestTrend = []; }
@@ -996,6 +1003,7 @@ app.post('/api/reset-share-stats', (req, res) => {
         const c = state.shareCounters[name];
         c.accepted = 0; c.rejected = 0; c.stale = 0; c.bestSdiff = 0;
         c.sdiffSum = 0;
+        c.recentSdiffs = [];
         c.rejectReasons = {}; c.lastRejectReason = null; c.lastRejectAt = null;
       }
     }
@@ -1168,12 +1176,24 @@ app.post('/api/miners/control/:workerName', async (req, res) => {
     const recs = (typeof getAllRecords === 'function') ? getAllRecords() : {};
     const rec = recs[name] || null;
     const adapter = rec && rec.adapter ? rec.adapter : null; // 'esp-miner' | 'cgminer' | null
+    // Device context for safe tuning: the per-device voltage envelope + whether
+    // the miner exposed the AxeOS HTTP API (TNA-OS on Antminer/Avalon reports as
+    // cgminer but IS HTTP-tunable). All sourced from the latest poll record.
+    const live = (rec && rec.live) || {};
+    const ctx = {
+      model:        live.model || null,
+      asicModel:    live.asicModel || null,
+      coreVoltageMv: live.coreVoltageMv != null ? live.coreVoltageMv : null,
+      minVoltageMv: live.minVoltageMv != null ? live.minVoltageMv : null,
+      maxVoltageMv: live.maxVoltageMv != null ? live.maxVoltageMv : null,
+      httpTunable:  !!live.httpTunable,
+    };
     const body = req.body || {};
     const action = String(body.action || '');
     if (!['tuning', 'pool', 'restart', 'avalon'].includes(action)) {
       return res.status(400).json({ ok: false, error: 'bad_action' });
     }
-    const result = await minerControl.dispatch(ip, adapter, action, body);
+    const result = await minerControl.dispatch(ip, adapter, action, body, ctx);
     if (!result.ok) return res.status(502).json(result);
     res.json(result);
   } catch (e) {
