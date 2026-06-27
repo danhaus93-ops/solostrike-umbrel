@@ -1397,6 +1397,9 @@ function computeAlignment(pools, payoutAddress) {
                   || (p['Stratum_Active'] === true)
                   || (p.stratumActive === true)
                   || (p.is_active === true)
+                  // v3.0.4: AxeOS HTTP /api/system/info stratum.pools[] marks the
+                  // in-use pool with connected:true + effectiveQuota>0 (no Stratum Active).
+                  || (p.connected === true && Number(p.effectiveQuota) > 0)
                   || false;
     return { url, user, priority, status, active };
   });

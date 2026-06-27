@@ -62,7 +62,13 @@ function voltageDomainFor(ctx) {
   ctx = ctx || {};
   // 1. device-reported bounds (sanity-checked)
   const rMin = Number(ctx.minVoltageMv), rMax = Number(ctx.maxVoltageMv);
-  if (Number.isFinite(rMin) && Number.isFinite(rMax) && rMin > 0 && rMax > rMin && rMax < 20000) {
+  const liveV = Number(ctx.coreVoltageMv);
+  // Only trust device-reported bounds when sane AND the live core voltage
+  // falls within them. NerdQAxe++/Bitaxe report PSU *input* volts (11/13)
+  // here, which _mvify upscales to 11000/13000 — bounds that don't contain
+  // the real ~1200mV core. Reject and fall through to magnitude inference.
+  if (Number.isFinite(rMin) && Number.isFinite(rMax) && rMin > 0 && rMax > rMin && rMax < 20000
+      && (!Number.isFinite(liveV) || liveV <= 0 || (liveV >= rMin && liveV <= rMax))) {
     return { min: Math.round(rMin), max: Math.round(rMax), source: 'device' };
   }
   // 2. infer from current live voltage magnitude (most reliable single signal)
