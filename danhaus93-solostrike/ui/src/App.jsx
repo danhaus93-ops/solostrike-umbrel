@@ -14697,6 +14697,9 @@ function TuningControls({ tt = (x) => x, worker }) {
   const [acked, setAcked] = useState(false);
   const [adapter, setAdapter] = useState(null);     // 'esp-miner' | 'cgminer' | null
   const [httpTunable, setHttpTunable] = useState(false); // TNA-OS reports cgminer but exposes AxeOS HTTP API
+  // v3.0.5: per-device voltage slider range (mirrors backend voltageDomainFor).
+  // Default to bm-series; replaced from the live record below.
+  const [voltRange, setVoltRange] = useState({ full: [900, 1400], safe: [1100, 1200] });
   const [tab, setTab] = useState('tune');
   const [mode, setMode] = useState('safe');
   const [freq, setFreq] = useState(550);
@@ -14722,13 +14725,31 @@ function TuningControls({ tt = (x) => x, worker }) {
         if (rec.adapter) setAdapter(rec.adapter);
         setHttpTunable(!!(rec.live && rec.live.httpTunable));
         const L = rec.live || {};
+        // v3.0.5: derive the voltage domain for THIS device so the slider matches
+        // the validator. Trust device-reported bounds only if the live core voltage
+        // falls within them; else infer by magnitude (mirror of backend voltageDomainFor).
+        (() => {
+          const rMin = Number(L.minVoltageMv), rMax = Number(L.maxVoltageMv);
+          const liveV = Number(L.coreVoltageMv);
+          let dom;
+          if (Number.isFinite(rMin) && Number.isFinite(rMax) && rMin > 0 && rMax > rMin && rMax < 20000
+              && (!Number.isFinite(liveV) || liveV <= 0 || (liveV >= rMin && liveV <= rMax))) {
+            dom = [Math.round(rMin), Math.round(rMax)];
+          } else if (Number.isFinite(liveV) && liveV >= 8000) { dom = [11000, 15200]; }
+          else if (Number.isFinite(liveV) && liveV >= 2500) { dom = [3100, 3900]; }
+          else { dom = [900, 1400]; }
+          // safe band = inner 80% of the domain (or the domain itself if narrow)
+          const span = dom[1] - dom[0];
+          const safe = span > 400 ? [Math.round(dom[0] + span*0.1), Math.round(dom[1] - span*0.05)] : dom.slice();
+          setVoltRange({ full: dom, safe });
+        })();
         if (typeof L.frequencyMhz === 'number') setFreq(Math.round(L.frequencyMhz));
         const v = (L.coreVoltageSetMv != null ? L.coreVoltageSetMv : L.coreVoltageMv);
         if (typeof v === 'number' && v > 600) setVolt(Math.round(v));
         if (typeof L.fanPct === 'number') setFan(Math.round(L.fanPct));
         // open in Advanced if the live freq/volt already sit outside the safe band
         const f = Math.round(L.frequencyMhz || 0);
-        if ((f && f > TUNE_RANGE.freq.safe[1]) || (typeof v === 'number' && v > TUNE_RANGE.volt.safe[1])) setMode('adv');
+        if ((f && f > TUNE_RANGE.freq.safe[1]) || (typeof v === 'number' && v > voltRange.safe[1])) setMode('adv');
       } catch {}
     })();
     return () => { alive = false; };
@@ -14881,7 +14902,7 @@ function TuningControls({ tt = (x) => x, worker }) {
             ) : (
               <>
                 <Knob label={tt('Frequency')} unit="MHz" value={freq} set={setFreq} range={mode === 'safe' ? TUNE_RANGE.freq.safe : TUNE_RANGE.freq.full} step={TUNE_RANGE.freq.step} />
-                <Knob label={tt('Core voltage')} unit="mV" value={volt} set={setVolt} range={mode === 'safe' ? TUNE_RANGE.volt.safe : TUNE_RANGE.volt.full} step={TUNE_RANGE.volt.step} />
+                <Knob label={tt('Core voltage')} unit="mV" value={volt} set={setVolt} range={mode === 'safe' ? voltRange.safe : voltRange.full} step={TUNE_RANGE.volt.step} />
                 <div style={{ padding: '11px 0', borderTop: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={cname}>{tt('Fan')}</span>
@@ -16295,7 +16316,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.0.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.0.5 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
