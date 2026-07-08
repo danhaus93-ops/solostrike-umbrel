@@ -69,6 +69,8 @@ const INTERNAL_MEMPOOL = process.env.UMBREL_INTERNAL_MEMPOOL_URL || '';
 const ZMQ_HASHBLOCK_URL = process.env.BITCOIN_ZMQ_HASHBLOCK || null;
 
 // Status output URL (only used when private mode is OFF)
+const { createOracle } = require('./utxoracle'); // v3.1.0: UTXOracle v8 port (private-mode price)
+
 const PUBLIC_FEES_URL    = 'https://mempool.space/api/v1/fees/recommended';
 const PUBLIC_BLOCKS_URL  = 'https://mempool.space/api/v1/blocks';
 const PUBLIC_PRICE_URL   = 'https://mempool.space/api/v1/prices';
@@ -115,7 +117,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.0.5',
+  version: '3.1.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -586,8 +588,29 @@ function formatNetBlock(b) {
   };
 }
 
+// v3.1.0: UTXOracle -- in private mode, estimate BTC/USD from the local
+// node's own chain data (zero outbound calls). Faithful port of Steve
+// Jeffress's UTXOracle.py v8; produces the previous UTC day's consensus
+// price (same integer anyone running UTXOracle.py gets). run() early-exits
+// with ~3 cheap header RPCs when the price day hasn't rolled over, so the
+// 30-minute cadence below only pays the full ~144-block read once per day.
+const utxOracle = createOracle({ rpc, log: console.log });
+
+function maybeRunOracle() {
+  if (!cfg.privateMode) return;
+  if (!utxOracle.isRunning()) utxOracle.run().catch(() => {});
+}
+
 async function pollPrices() {
-  if (cfg.privateMode) { state.prices = {}; return; }
+  if (cfg.privateMode) {
+    const est = utxOracle.last();
+    if (est && (Date.now() - est.at) < 48 * 60 * 60 * 1000) {
+      state.prices = { USD: est.price, _oracle: { source: 'utxoracle-v8', priceDate: est.priceDate, blocks: est.blocks, at: est.at } };
+    } else {
+      state.prices = {};
+    }
+    return;
+  }
   const prices = await tryFetchJson(PUBLIC_PRICE_URL);
   if (prices && typeof prices === 'object') state.prices = prices;
 }
@@ -1492,6 +1515,10 @@ async function main() {
   setInterval(pollMempool,  60000);
   setInterval(pollBlocks,   120000);
   setInterval(pollPrices,   300000);
+  // v3.1.0: oracle cadence -- first attempt 3min after boot (node RPC warm),
+  // then every 30min (cheap no-op via header check until the UTC day rolls).
+  setTimeout(maybeRunOracle, 3 * 60 * 1000);
+  setInterval(maybeRunOracle, 30 * 60 * 1000);
 
   // v1.11.58: fire-and-forget the initial polls instead of awaiting them.
   // These were previously awaited before server.listen(), so a slow or

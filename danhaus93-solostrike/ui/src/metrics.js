@@ -170,7 +170,11 @@ export const METRICS = [
   { id: 'btc_price', label: 'BTC Price', category: 'Network', color: 'var(--cyan)',
     render: (s, aliases, currency) => {
       const price = s.prices?.[currency || 'USD'];
-      if (s.privateMode) return { prefix: 'BTC', value: '🔒 hidden', valClass: 'cyan' };
+      if (s.privateMode) {
+        // v3.1.0: UTXOracle -- locally derived prev-UTC-day price, safe to show
+        if (s.prices?._oracle && price) return { prefix: 'BTC \u26d3', value: fmtFiat(price, currency || 'USD'), valClass: 'cyan' };
+        return { prefix: 'BTC', value: '\ud83d\udd12 hidden', valClass: 'cyan' };
+      }
       return { prefix: 'BTC', value: price ? fmtFiat(price, currency || 'USD') : '—', valClass: 'cyan' };
     } },
   { id: 'mempool_txs', label: 'Mempool TXs', category: 'Network', color: 'var(--text-1)',

@@ -354,10 +354,34 @@ const POOL_ALIGN_META = {
 };
 function poolAlignMeta(status) { return POOL_ALIGN_META[status] || null; }
 
-// ── Temperature thresholds (v1.9.0) ──────────────────────────────────────────
-// Configurable later if anyone asks; hardcoded for v1.
-const TEMP_AMBER_C = 75;
-const TEMP_RED_C   = 80;
+// ── Temperature thresholds (v1.9.0, configurable v3.1.0) ─────────────────────
+// v3.1.0: someone asked (Bitaxe Discord) — now user-set via Settings → Display.
+// Kept as module-level bindings so the ~8 existing read sites need no changes;
+// App re-renders every poll so edits take effect within a broadcast cycle.
+// ALERTING ONLY: these drive badges + the hot-miner banner. The app never
+// throttles hardware — thermal protection stays with AxeOS / miner firmware.
+const LS_TEMP_THRESHOLDS = 'ss_temp_thresholds_v1';
+const TEMP_DEFAULTS = { amber: 75, red: 80 };
+function loadTempThresholds() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_TEMP_THRESHOLDS) || 'null');
+    if (s && Number.isFinite(s.amber) && Number.isFinite(s.red)) return sanitizeTempThresholds(s);
+  } catch (e) { /* ignore */ }
+  return { ...TEMP_DEFAULTS };
+}
+function sanitizeTempThresholds({ amber, red }) {
+  amber = Math.min(115, Math.max(40, Math.round(amber)));
+  red   = Math.min(120, Math.max(amber + 1, Math.round(red)));
+  return { amber, red };
+}
+function saveTempThresholds(t) {
+  const clean = sanitizeTempThresholds(t);
+  TEMP_AMBER_C = clean.amber;
+  TEMP_RED_C   = clean.red;
+  try { localStorage.setItem(LS_TEMP_THRESHOLDS, JSON.stringify(clean)); } catch (e) { /* ignore */ }
+  return clean;
+}
+let { amber: TEMP_AMBER_C, red: TEMP_RED_C } = loadTempThresholds();
 // v1.11.x: tempBadgeMeta() helper deleted (was declared, never invoked).
 // Inline temp-tier styling lives at line ~2221 directly using TEMP_AMBER_C
 // and TEMP_RED_C constants — no helper needed.
@@ -2810,9 +2834,9 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
           </span>
         </div>
       )}
-      {!privateMode && price!=null && (
+      {price!=null && (!privateMode || prices?._oracle) && (
         <div style={statRow}>
-          <span style={label}>BTC Price</span>
+          <span style={label}>BTC Price{privateMode && prices?._oracle ? ' \u26d3' : ''}</span>
           <span style={{fontFamily:'var(--fd)',fontSize:'0.95rem',fontWeight:600,color:'var(--cyan)'}}>{fmtFiat(price, currency)}</span>
         </div>
       )}
@@ -2824,7 +2848,9 @@ function NetworkStats({ network, blockReward, mempool, prices, currency, private
       )}
       {privateMode && (
         <div style={{fontFamily:'var(--fd)',fontSize:'0.55rem',color:'var(--cyan)',marginTop:'0.5rem',textAlign:'center',letterSpacing:'0.1em'}}>
-          🔒 PRICE HIDDEN — PRIVATE MODE
+          {prices?._oracle && price!=null
+            ? '\u26d3 ON-CHAIN PRICE \u2014 UTXORACLE (PREV UTC DAY)'
+            : '\ud83d\udd12 PRICE HIDDEN \u2014 PRIVATE MODE'}
         </div>
       )}
       <div style={{flex:1,minHeight:0}}/>
@@ -7737,6 +7763,37 @@ function LanguageTab({ tt=(x)=>x, lang = 'en', onLangChange }) {
   );
 }
 
+// v3.1.0: user-configurable temp alert thresholds (Settings → Display).
+function TempThresholdSection({ tt = (x) => x }) {
+  const [t, setT] = useState(() => loadTempThresholds());
+  const commit = (next) => setT(saveTempThresholds(next));
+  const numStyle = { width: 72, padding: '6px 8px', background: 'var(--bg-raised)', border: '1px solid var(--border)', color: 'var(--text-1)', fontFamily: 'var(--fd)', fontSize: '0.85rem', textAlign: 'center' };
+  const lbl = { fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-2)' };
+  return (
+    <>
+      <div style={{ fontFamily: 'var(--fd)', fontSize: '0.62rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--amber)', marginBottom: '0.5rem', marginTop: 0 }}>▸ {tt('Temp Alerts')}</div>
+      <div style={{ padding: '0.75rem 0.8rem', background: 'var(--bg-raised)', border: '1px solid var(--border)', marginBottom: '0.9rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ ...lbl, color: 'var(--amber)', marginBottom: 6 }}>{tt('Warn')} °C</div>
+            <input type="number" min="40" max="115" value={t.amber} style={numStyle}
+              onChange={(e) => commit({ ...t, amber: parseInt(e.target.value || TEMP_DEFAULTS.amber, 10) })}/>
+          </div>
+          <div>
+            <div style={{ ...lbl, color: 'var(--red)', marginBottom: 6 }}>{tt('Hot')} °C</div>
+            <input type="number" min="41" max="120" value={t.red} style={numStyle}
+              onChange={(e) => commit({ ...t, red: parseInt(e.target.value || TEMP_DEFAULTS.red, 10) })}/>
+          </div>
+          <button onClick={() => commit({ ...TEMP_DEFAULTS })} style={{ padding: '6px 10px', fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-raised)', color: 'var(--text-2)' }}>{tt('Reset')}</button>
+        </div>
+        <div style={{ fontFamily: 'var(--fm)', fontSize: '0.66rem', color: 'var(--text-2)', lineHeight: 1.5, marginTop: 8 }}>
+          {tt('Sets where worker temp badges turn amber/red and when the hot-miner banner fires. Alerting only — LoneStrike never throttles your hardware; thermal protection stays with the miner firmware.')}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSettings, onTickerSettingsChange, minimalMode, onMinimalModeChange, performanceMode, onPerformanceModeChange, desktopCardMode, onDesktopCardModeChange, isMobileView = false, visibleCards, onVisibleCardsChange, carouselEnabled, onCarouselChange }) {
   // v1.11.66: Card Frost slider state. 0 = solid/opaque cards, 40 = default
   // frosted look. Persists to localStorage and drives applyCardFrost().
@@ -7802,6 +7859,7 @@ function DisplayTab({ tt=(x)=>x, stripSettings, onStripSettingsChange, tickerSet
 
   return (
     <>
+      <TempThresholdSection tt={tt}/>
       <div style={firstSectionTitle}>▸ {tt('Card Frost')}</div>
       <div style={{padding:'0.75rem 0.8rem', background:'var(--bg-raised)', border:'1px solid var(--border)', marginBottom:'0.9rem'}}>
         <div style={{opacity: solidCards ? 0.4 : 1, pointerEvents: solidCards ? 'none' : 'auto', transition:'opacity 0.15s'}}>
@@ -16316,7 +16374,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.0.5 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.1.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
