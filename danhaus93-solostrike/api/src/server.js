@@ -83,6 +83,7 @@ const state = {
   payoutAddress: null,
   poolName: 'SoloStrike',
   privateMode: false,
+  tempOverrides: {}, // v3.1.1: per-miner temp alert thresholds { name: { amber, red } }
   hashrate: { current: 0, history: [], week: [] },
   workers: {},
   network: { height: 0, difficulty: 0, hashrate: 0 },
@@ -117,7 +118,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.1.0',
+  version: '3.1.1',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -256,6 +257,7 @@ function cfgPublic() {
   return {
     poolName: cfg.poolName || 'SoloStrike',
     privateMode: !!cfg.privateMode,
+    tempOverrides: cfg.tempOverrides || {},
     hasAddress: !!cfg.payoutAddress,
   };
 }
@@ -348,12 +350,12 @@ async function fireHooks(eventName, payload) {
 }
 
 // ── RPC + fetch helpers ───────────────────────────────────────────────────
-async function rpc(method, params = []) {
+async function rpc(method, params = [], ms = 8000) { // v3.1.1: per-call timeout (oracle needs >8s for verbosity-2 blocks)
   const url = `http://${RPC_HOST}:${RPC_PORT}/`;
   const body = JSON.stringify({ jsonrpc: '1.0', id: 'solostrike', method, params });
   const auth = 'Basic ' + Buffer.from(`${RPC_USER}:${RPC_PASS}`).toString('base64');
   const c = new AbortController();
-  const t = setTimeout(() => c.abort(), 8000);
+  const t = setTimeout(() => c.abort(), ms);
   let r;
   try {
     r = await fetch(url, {
@@ -933,6 +935,24 @@ app.post('/api/config', async (req, res) => {
       cfg.privateMode = privateMode;
       state.privateMode = privateMode;
     }
+    // v3.1.1: per-miner temp alert overrides. Merge semantics: { name: {amber,
+    // red} } upserts, { name: null } clears. Values sanitized server-side so
+    // every client agrees; capped to keep cfg bounded.
+    const { tempOverrides } = req.body || {};
+    if (tempOverrides && typeof tempOverrides === 'object' && !Array.isArray(tempOverrides)) {
+      cfg.tempOverrides = cfg.tempOverrides || {};
+      for (const [name, v] of Object.entries(tempOverrides)) {
+        const key = String(name).slice(0, 64);
+        if (v == null) { delete cfg.tempOverrides[key]; continue; }
+        let amber = Math.round(Number(v.amber)), red = Math.round(Number(v.red));
+        if (!Number.isFinite(amber) || !Number.isFinite(red)) continue;
+        amber = Math.min(115, Math.max(40, amber));
+        red   = Math.min(120, Math.max(amber + 1, red));
+        if (Object.keys(cfg.tempOverrides).length >= 128 && !(key in cfg.tempOverrides)) continue;
+        cfg.tempOverrides[key] = { amber, red };
+      }
+      state.tempOverrides = cfg.tempOverrides;
+    }
     await saveConfig();
     if (addressChanged) await writeCkpoolConf();
     if (cfg.payoutAddress && (state.status === 'no_address' || state.status === 'starting')) state.status = 'running';
@@ -1496,6 +1516,7 @@ async function main() {
     }
   }
   state.privateMode = !!cfg.privateMode;
+  state.tempOverrides = cfg.tempOverrides || {};
   state.payoutAddress = cfg.payoutAddress || null;
 
   // v1.11.58: sync ckpool.conf to the saved payout address on every boot.

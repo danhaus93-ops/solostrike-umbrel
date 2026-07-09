@@ -206,16 +206,34 @@ function estimateFromCounts(countsIn) {
 // createOracle({ rpc, log }) → { run(), last(), isRunning() }
 // run() estimates the price for the day before the node's latest block's UTC
 // day (v8's "most recent price"), exactly like pressing ENTER in the script.
-function createOracle({ rpc, log = () => {}, blockDelayMs = 150 }) {
+function createOracle({ rpc, log = () => {}, blockDelayMs = 150, retries = 3 }) {
   let lastResult = null; // { price, priceDate, blocks, at }
   let running = false;
 
   const utcDayStr = (d) => d.toISOString().slice(0, 10);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // v3.1.1: retrying rpc wrapper. getblock verbosity 2 is a multi-MB JSON
+  // serialization on bitcoind's side and can exceed the API's default 8s
+  // rpc timeout on modest hardware -- so oracle calls pass explicit long
+  // timeouts (server.js rpc() gained an ms param in v3.1.1) and retry
+  // transient failures with backoff instead of aborting the whole day-read.
+  async function call(method, params, ms) {
+    let lastErr;
+    for (let a = 1; a <= retries; a++) {
+      try { return await rpc(method, params, ms); }
+      catch (e) {
+        lastErr = e;
+        log(`[utxoracle] rpc ${method} attempt ${a}/${retries} failed: ${e.message}`);
+        await sleep(1500 * a);
+      }
+    }
+    throw lastErr;
+  }
+
   async function headerAt(height) {
-    const hash = await rpc('getblockhash', [height]);
-    return rpc('getblockheader', [hash, true]);
+    const hash = await call('getblockhash', [height], 30000);
+    return call('getblockheader', [hash, true], 30000);
   }
 
   async function run() {
@@ -223,7 +241,7 @@ function createOracle({ rpc, log = () => {}, blockDelayMs = 150 }) {
     running = true;
     try {
       // Part 2: latest block → latest UTC midnight → price day = day before
-      const block_count = await rpc('getblockcount');
+      const block_count = await call('getblockcount', [], 30000);
       const latestHeader = await headerAt(block_count);
       const latest = new Date(latestHeader.time * 1000);
       const latest_utc_midnight = Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth(), latest.getUTCDate()) / 1000;
@@ -231,6 +249,7 @@ function createOracle({ rpc, log = () => {}, blockDelayMs = 150 }) {
       const priceDate = utcDayStr(new Date(price_day_seconds * 1000));
 
       if (lastResult && lastResult.priceDate === priceDate) return lastResult; // already have today's answer
+      log(`[utxoracle] starting: estimating ${priceDate} from ~144 blocks -- this takes several minutes, progress every 24 blocks...`);
 
       // Part 4: jump-search for the first block of the price day (v8 logic)
       let seconds_since = latestHeader.time - price_day_seconds;
@@ -254,17 +273,18 @@ function createOracle({ rpc, log = () => {}, blockDelayMs = 150 }) {
       // Part 6: walk the day's blocks through the accumulator
       const acc = createDayAccumulator();
       let height = est;
-      let hash = await rpc('getblockhash', [height]);
-      let block = await rpc('getblock', [hash, 2]);
+      let hash = await call('getblockhash', [height], 30000);
+      let block = await call('getblock', [hash, 2], 90000);
       const target_dom = new Date(block.time * 1000).getUTCDate();
       let blocksRead = 0;
       while (new Date(block.time * 1000).getUTCDate() === target_dom) {
         acc.addBlock(block);
         blocksRead += 1;
+        if (blocksRead % 24 === 0) log(`[utxoracle] progress: ${blocksRead} blocks read (height ${height})...`);
         height += 1;
         await sleep(blockDelayMs); // pace RPC so pollBitcoind never starves
-        hash = await rpc('getblockhash', [height]);
-        block = await rpc('getblock', [hash, 2]);
+        hash = await call('getblockhash', [height], 30000);
+        block = await call('getblock', [hash, 2], 90000);
       }
 
       const est9 = estimateFromCounts(acc.counts);

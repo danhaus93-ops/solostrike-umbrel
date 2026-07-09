@@ -250,6 +250,7 @@ function transformState(state, opts) {
     nodeInfo:             state.nodeInfo  || null,
     sync:                 state.sync      || null,
     privateMode:          state.privateMode || false,
+    tempOverrides:        state.tempOverrides || {}, // v3.1.1: per-miner thresholds
     localMempoolReachable: state.localMempoolReachable || false,
     topFinders:           computeTopFinders(state),
     blockReward:          computeBlockReward(state),

@@ -382,6 +382,17 @@ function saveTempThresholds(t) {
   return clean;
 }
 let { amber: TEMP_AMBER_C, red: TEMP_RED_C } = loadTempThresholds();
+// v3.1.1: per-miner overrides -- server-synced (cfg.tempOverrides, keyed by
+// worker name) so every device agrees. Global above stays the fallback.
+// TEMP_OVERRIDES is refreshed from poolState in the root component render.
+let TEMP_OVERRIDES = {};
+function tempFor(name) {
+  const o = name != null ? TEMP_OVERRIDES[name] : null;
+  return {
+    amber: (o && Number.isFinite(o.amber)) ? o.amber : TEMP_AMBER_C,
+    red:   (o && Number.isFinite(o.red))   ? o.red   : TEMP_RED_C,
+  };
+}
 // v1.11.x: tempBadgeMeta() helper deleted (was declared, never invoked).
 // Inline temp-tier styling lives at line ~2221 directly using TEMP_AMBER_C
 // and TEMP_RED_C constants — no helper needed.
@@ -1790,7 +1801,7 @@ function HotMinerBanner({ workers, aliases }) {
   const hot = (workers || []).filter(w => {
     if (!w || !w.live) return false;
     const t = w.live.tempC;
-    return Number.isFinite(t) && t >= TEMP_RED_C;
+    return Number.isFinite(t) && t >= tempFor(w.name).red; // v3.1.1 per-miner
   });
   const visible = hot.filter(w => !dismissed.has(w.name));
   if (visible.length === 0) return null;
@@ -1829,7 +1840,7 @@ function HotMinerBanner({ workers, aliases }) {
             <div style={{fontFamily:'var(--fd)',fontSize:'0.62rem',letterSpacing:'0.1em',color:'var(--red)',textTransform:'uppercase'}}>
               {visible.length === 1
                 ? `Hot miner: ${displayName(visible[0].name, aliases)} at ${Math.round(visible[0].live.tempC)}°C`
-                : `${visible.length} miners running hot (≥${TEMP_RED_C}°C)`}
+                : `${visible.length} miners running hot: ${visible.map(x => displayName(x.name, aliases)).join(', ')}`}
             </div>
             {visible.length > 1 && (
               <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',marginTop:2,cursor:'pointer'}}
@@ -2674,13 +2685,14 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                     // that aren't reachable (NO API).
                     const t = w.live?.tempC;
                     if (t == null || !Number.isFinite(t) || t <= 0) return null;
-                    const tColor = t >= TEMP_RED_C   ? 'var(--red)'
-                                 : t >= TEMP_AMBER_C ? 'var(--amber)'
-                                 : t >= 70           ? 'var(--cyan)'
-                                                     : 'var(--green)';
+                    const th = tempFor(w.name); // v3.1.1 per-miner thresholds
+                    const tColor = t >= th.red   ? 'var(--red)'
+                                 : t >= th.amber ? 'var(--amber)'
+                                 : t >= 70       ? 'var(--cyan)'
+                                                 : 'var(--green)';
                     return (
                       <span style={{fontFamily:'var(--fm)',fontSize:'0.6rem',fontWeight:600,color:tColor,whiteSpace:'nowrap',lineHeight:1.2,marginTop:1}}>
-                        {t >= TEMP_RED_C ? '🔥 ' : ''}{Math.round(t)}°C
+                        {t >= th.red ? '🔥 ' : ''}{Math.round(t)}°C
                       </span>
                     );
                   })()}
@@ -7787,7 +7799,12 @@ function TempThresholdSection({ tt = (x) => x }) {
           <button onClick={() => commit({ ...TEMP_DEFAULTS })} style={{ padding: '6px 10px', fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-raised)', color: 'var(--text-2)' }}>{tt('Reset')}</button>
         </div>
         <div style={{ fontFamily: 'var(--fm)', fontSize: '0.66rem', color: 'var(--text-2)', lineHeight: 1.5, marginTop: 8 }}>
-          {tt('Sets where worker temp badges turn amber/red and when the hot-miner banner fires. Alerting only — LoneStrike never throttles your hardware; thermal protection stays with the miner firmware.')}
+          {tt('Global defaults. Sets where worker temp badges turn amber/red and when the hot-miner banner fires. Alerting only — LoneStrike never throttles your hardware; thermal protection stays with the miner firmware.')}
+          {Object.keys(TEMP_OVERRIDES).length > 0 && (
+            <div style={{ marginTop: 6, color: 'var(--cyan)' }}>
+              {Object.keys(TEMP_OVERRIDES).length} {tt('miner(s) have their own thresholds — set or clear these in each miner\u2019s detail card')}: {Object.keys(TEMP_OVERRIDES).join(', ')}
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -14487,6 +14504,7 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
   const [showChips, setShowChips] = useState(false);
   const live = worker.live;
   if (!live) return null;
+  const th = tempFor(worker.name); // v3.1.1 per-miner thresholds
   // Hide if there's truly nothing to show (all fields null)
   const hasAny = (live.tempC != null) || (live.fanRpm != null) || (live.fanPct != null)
               || (live.hashrateReported != null) || (live.hwErrors != null)
@@ -14503,8 +14521,8 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
 
   const t   = live.tempC;
   const tColor = t == null ? 'var(--text-2)'
-              : t >= TEMP_RED_C   ? 'var(--red)'
-              : t >= TEMP_AMBER_C ? 'var(--amber)'
+              : t >= th.red   ? 'var(--red)'
+              : t >= th.amber ? 'var(--amber)'
               : 'var(--green)';
   const fanLine = (() => {
     if (live.fanRpm != null && live.fanPct != null) return `${live.fanPct}% · ${fmtNum(live.fanRpm)} rpm`;
@@ -14680,7 +14698,7 @@ function LiveStatsBlock({ tt = (x) => x, worker }) {
                 <span style={{ color:'var(--text-3)', letterSpacing:'0.06em', textAlign:'right' }}>{tt('Voltage')}</span>
                 {live.chipTemps.map((t, i) => {
                   const mv = Array.isArray(live.chipVolts) ? live.chipVolts[i] : null;
-                  const tColor = t >= TEMP_RED_C ? 'var(--red)' : t >= TEMP_AMBER_C ? 'var(--amber)' : 'var(--green)';
+                  const tColor = t >= th.red ? 'var(--red)' : t >= th.amber ? 'var(--amber)' : 'var(--green)';
                   return (
                     <React.Fragment key={i}>
                       <span style={{ color:'var(--text-2)' }}>{i + 1}</span>
@@ -15031,6 +15049,75 @@ function TuningControls({ tt = (x) => x, worker }) {
   );
 }
 
+// v3.1.1: per-miner temp alert editor, lives in the worker detail modal so
+// the threshold is set right where the live temp is being judged. Saves via
+// /api/config tempOverrides merge (server-synced across all devices). Blank
+// state inherits the global Settings -> Display values.
+function WorkerTempAlerts({ tt = (x) => x, worker }) {
+  const name = worker.name;
+  const ov = TEMP_OVERRIDES[name] || null;
+  const [amber, setAmber] = useState(ov ? String(ov.amber) : '');
+  const [red, setRed]     = useState(ov ? String(ov.red) : '');
+  const [busy, setBusy]   = useState(false);
+  const [flash, setFlash] = useState('');
+  useEffect(() => {
+    const o = TEMP_OVERRIDES[name] || null;
+    setAmber(o ? String(o.amber) : '');
+    setRed(o ? String(o.red) : '');
+  }, [name]);
+
+  const post = async (payload, okMsg) => {
+    setBusy(true); setFlash('');
+    try {
+      const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tempOverrides: payload }) });
+      if (!r.ok) throw new Error('save failed');
+      if (payload[name] == null) delete TEMP_OVERRIDES[name];
+      else TEMP_OVERRIDES[name] = payload[name];
+      setFlash(okMsg);
+    } catch (e) { setFlash(tt('Save failed')); }
+    setBusy(false);
+    setTimeout(() => setFlash(''), 2500);
+  };
+
+  const save = () => {
+    let a = parseInt(amber, 10), r = parseInt(red, 10);
+    if (!Number.isFinite(a)) a = TEMP_AMBER_C;
+    if (!Number.isFinite(r)) r = TEMP_RED_C;
+    a = Math.min(115, Math.max(40, a));
+    r = Math.min(120, Math.max(a + 1, r));
+    setAmber(String(a)); setRed(String(r));
+    post({ [name]: { amber: a, red: r } }, tt('Saved'));
+  };
+  const clear = () => { setAmber(''); setRed(''); post({ [name]: null }, tt('Cleared -- using global')); };
+
+  const numStyle = { width: 64, padding: '5px 7px', background: 'var(--bg-raised)', border: '1px solid var(--border)', color: 'var(--text-1)', fontFamily: 'var(--fd)', fontSize: '0.8rem', textAlign: 'center' };
+  const lbl = { fontFamily: 'var(--fd)', fontSize: '0.55rem', letterSpacing: '0.1em', textTransform: 'uppercase' };
+  const btn = { padding: '5px 9px', fontFamily: 'var(--fd)', fontSize: '0.52rem', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-raised)', color: 'var(--text-2)' };
+  return (
+    <div style={{ marginTop: '0.8rem' }}>
+      <div style={{ fontFamily: 'var(--fd)', fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--amber)', marginBottom: '0.4rem' }}>
+        ▸ {tt('Temp Alerts')} {ov ? '' : `· ${tt('inheriting global')}`}
+      </div>
+      <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ ...lbl, color: 'var(--amber)', marginBottom: 4 }}>{tt('Warn')} °C</div>
+          <input type="number" min="40" max="115" placeholder={String(TEMP_AMBER_C)} value={amber} style={numStyle} onChange={(e) => setAmber(e.target.value)}/>
+        </div>
+        <div>
+          <div style={{ ...lbl, color: 'var(--red)', marginBottom: 4 }}>{tt('Hot')} °C</div>
+          <input type="number" min="41" max="120" placeholder={String(TEMP_RED_C)} value={red} style={numStyle} onChange={(e) => setRed(e.target.value)}/>
+        </div>
+        <button onClick={save} disabled={busy} style={btn}>{tt('Save')}</button>
+        {ov && <button onClick={clear} disabled={busy} style={btn}>{tt('Use global')}</button>}
+        {flash && <span style={{ fontFamily: 'var(--fm)', fontSize: '0.62rem', color: 'var(--green)' }}>{flash}</span>}
+      </div>
+      <div style={{ fontFamily: 'var(--fm)', fontSize: '0.6rem', color: 'var(--text-2)', lineHeight: 1.45, marginTop: 6 }}>
+        {tt('Overrides the global thresholds for this miner only (badges + hot banner). Synced to all your devices. Keyed by worker name -- renaming the worker resets it.')}
+      </div>
+    </div>
+  );
+}
+
 function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesChange, notes, onNotesChange }) {
   const [copied, setCopied] = useState('');
   const [aliasVal, setAliasVal] = useState(aliases[worker.name] || '');
@@ -15171,6 +15258,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
           <PoolAlignmentBlock worker={w}/>
           {/* v1.9.0: Live telemetry — temps, fans, hardware errors from the miner's local API */}
           <LiveStatsBlock tt={tt} worker={w}/>
+          <WorkerTempAlerts tt={tt} worker={w}/>
           <TuningControls tt={tt} worker={w}/>
 
           {minerUrl && (
@@ -15325,6 +15413,7 @@ function saveCurrency(c) { try { localStorage.setItem(LS_CURRENCY, c); } catch {
 // ── App root ──────────────────────────────────────────────────────────────────
 export default function App() {
   const { connected, state: poolState, blockAlert, saveConfig, getConfig } = usePool();
+  TEMP_OVERRIDES = poolState?.tempOverrides || TEMP_OVERRIDES; // v3.1.1 per-miner thresholds sync
   const lastBlock = blockAlert; // alias — block alert IS the last block info
   const setBlockAlert = () => {}; // no-op since usePool auto-clears
   const refreshConfig = () => { fetch('/api/state').then(r=>r.json()).catch(()=>{}); };
@@ -16374,7 +16463,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.1.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.1.1 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
