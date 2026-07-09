@@ -118,7 +118,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.1.1',
+  version: '3.1.2',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -482,7 +482,12 @@ async function pollBitcoind() {
     const retargetEpochStart = retargetBlock - 2016;
     try {
       const startBlockHash = await rpc('getblockhash', [retargetEpochStart]);
-      const startBlock = await rpc('getblock', [startBlockHash]);
+      // v3.1.2: getblockheader instead of getblock -- headers are never
+      // pruned, so Retarget keeps working on pruned nodes deep into an
+      // epoch (getblock throws once the epoch-start block ages past the
+      // prune window, which silently killed this card). Header has both
+      // fields we read (.time, .difficulty).
+      const startBlock = await rpc('getblockheader', [startBlockHash, true]);
       const elapsedSec = (Date.now() / 1000) - startBlock.time;
       const blocksDoneInEpoch = blocks - retargetEpochStart;
       const expectedSecPerBlock = 600;
@@ -500,7 +505,7 @@ async function pollBitcoind() {
         try {
           const prevEpochStartHeight = retargetEpochStart - 2016;
           const prevHash = await rpc('getblockhash', [prevEpochStartHeight]);
-          const prevBlk  = await rpc('getblock', [prevHash]);
+          const prevBlk  = await rpc('getblockheader', [prevHash, true]); // v3.1.2: prune-safe
           // Difficulty at epoch boundary applies to the next 2016 blocks.
           // Current epoch's difficulty is on startBlock; previous epoch's
           // difficulty is on prevBlk. Percent change between the two.

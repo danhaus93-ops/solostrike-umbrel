@@ -249,6 +249,23 @@ function createOracle({ rpc, log = () => {}, blockDelayMs = 150, retries = 3 }) 
       const priceDate = utcDayStr(new Date(price_day_seconds * 1000));
 
       if (lastResult && lastResult.priceDate === priceDate) return lastResult; // already have today's answer
+
+      // v3.1.2: prune awareness. The estimate needs full blocks for the whole
+      // previous UTC day (up to ~48h old just after midnight). Pruned nodes
+      // keep only a rolling window of recent blocks; if that window doesn't
+      // reach the price day, say so clearly instead of failing block-by-block.
+      // ~5GB prune target comfortably covers it; the 550MB floor does not.
+      try {
+        const chain = await call('getblockchaininfo', [], 30000);
+        if (chain && chain.pruned) {
+          const approxNeeded = block_count - 350; // day + margin
+          if (Number.isFinite(chain.pruneheight) && chain.pruneheight > approxNeeded) {
+            log(`[utxoracle] node is pruned past the price day (pruneheight ${chain.pruneheight} > ~${approxNeeded} needed). On-chain price needs roughly the last 48h of full blocks -- raise the Bitcoin node's prune target to ~5GB or more to enable it. Skipping until then.`);
+            return lastResult;
+          }
+        }
+      } catch (e) { /* chain info unavailable -- proceed and let the walk report */ }
+
       log(`[utxoracle] starting: estimating ${priceDate} from ~144 blocks -- this takes several minutes, progress every 24 blocks...`);
 
       // Part 4: jump-search for the first block of the price day (v8 logic)
