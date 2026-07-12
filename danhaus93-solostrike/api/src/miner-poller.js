@@ -800,7 +800,9 @@ function extractCgminerLive(summary, stats, devs, fwDesc, power = [], version = 
       // unified live record. Without this, Avalons report ZERO useful
       // telemetry to our parser even though the data is right there.
       for (const key of Object.keys(s)) {
-        if (!/^MM (ID)?\d+$/i.test(key) && key !== 'MM ID' && key !== 'MM') continue;
+        // v3.1.3: Avalon Q emits its blob under 'MM ID0:Summary' (suffix after the
+        // digits) where the Nano uses bare 'MM ID0'. Accept both.
+        if (!/^MM (ID)?\d+(:|$)/i.test(key) && key !== 'MM ID' && key !== 'MM') continue;
         const v = s[key];
         if (typeof v !== 'string') continue;
         const mmTemp = parseAvalonMmField(v, 'Temp', 'TMax', 'TAvg', 'Temperature');
@@ -829,6 +831,12 @@ function extractCgminerLive(summary, stats, devs, fwDesc, power = [], version = 
           if (ps.length > 2 && Number.isFinite(ps[2]) && ps[2] > 5000 && ps[2] < 30000) {
             if (live.inputVoltageV == null) live.inputVoltageV = ps[2] / 100;
           }
+          // v3.1.3: Avalon Q PS[] layout: PS[1]=DC-in centivolts, PS[4]=MEASURED
+          // watts (e.g. 805). Prefer measured power over the MPO[] mode cap so the
+          // efficiency benchmark uses real draw. Guard range excludes bogus values.
+          if (ps.length > 4 && Number.isFinite(ps[4]) && ps[4] > 50 && ps[4] < 20000) {
+            if (live.powerW == null || ps[4] > live.powerW) live.powerW = ps[4];
+          }
         }
 
         // v2.x: Avalon per-chip telemetry, confirmed real via HashWatcher. The
@@ -847,6 +855,7 @@ function extractCgminerLive(summary, stats, devs, fwDesc, power = [], version = 
         const verStr = (mmVer && mmVer[1]) || live.firmwareVersion || '';
         if (/nano\s*3s/i.test(verStr)) live.model = 'Avalon Nano 3S';
         else if (/nano/i.test(verStr)) live.model = 'Avalon Nano';
+        else if (/^Q-/i.test(verStr)) live.model = 'Avalon Q';
         else if (!live.model) live.model = 'Avalon';
         const chipTemps = parseAvalonMmArray(v, 'PVT_T0');
         const chipVolts = parseAvalonMmArray(v, 'PVT_V0');

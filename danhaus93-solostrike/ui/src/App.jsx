@@ -399,6 +399,8 @@ function tempFor(name) {
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LS_CARD_ORDER      = 'ss_card_order_v1';
+const LS_CREW_ORDER      = 'ss_crew_order_v1';  // v3.1.3 crew drag order
+let _dragCrewName = null; // v3.1.3 crew drag state (module-level; single grid)
 const LS_DESKTOP_PAGES   = 'ss_desktop_pages_v1';  // v1.12.0 per-page desktop order
 const LS_CURRENCY        = 'ss_currency_v1';
 const LS_ALIASES         = 'ss_worker_aliases_v1';
@@ -2567,12 +2569,30 @@ function UptimeSparkline({ history }) {
 
 // ── Worker grid ───────────────────────────────────────────────────────────────
 function WorkerGrid({ workers, aliases, onWorkerClick }) {
+  // v3.1.3: drag-to-reorder crew. Order persists per-device (localStorage, same
+  // pattern as dashboard card order). Saved workers pin to their slot; the rest
+  // keep the default online-first/hashrate order below them.
+  const [crewOrder, setCrewOrder] = useState(() => { try { const c = JSON.parse(localStorage.getItem(LS_CREW_ORDER) || 'null'); return Array.isArray(c) ? c : []; } catch (e) { return []; } });
+  const persistCrewOrder = (names) => { setCrewOrder(names); try { localStorage.setItem(LS_CREW_ORDER, JSON.stringify(names)); } catch (e) { /* ignore */ } };
   // iter27c: removed worker filter search bar — for solo mining (~12-15
   // workers) the filter was visual noise. Workers are still sorted: online
   // first, then by descending hashrate.
   const sorted = [...(workers||[])].sort(
     (a,b)=>(a.status==='offline'?1:-1)-(b.status==='offline'?1:-1)||(b.hashrate||0)-(a.hashrate||0)
   );
+  // v3.1.3: apply saved manual order on top of the default sort (stable sort:
+  // unsaved workers keep their relative default order after the pinned ones).
+  const _coIdx = new Map(crewOrder.map((n, i) => [n, i]));
+  const display = [...sorted].sort((a, b) => ((_coIdx.has(a.name) ? _coIdx.get(a.name) : Infinity) - (_coIdx.has(b.name) ? _coIdx.get(b.name) : Infinity)) || 0);
+  const handleCrewDrop = (targetName) => {
+    const src = _dragCrewName; _dragCrewName = null;
+    if (!src || src === targetName) return;
+    const names = display.map(w => w.name);
+    const from = names.indexOf(src), to = names.indexOf(targetName);
+    if (from < 0 || to < 0) return;
+    names.splice(to, 0, names.splice(from, 1)[0]);
+    persistCrewOrder(names);
+  };
   const online = sorted.filter(w=>w.status!=='offline').length;
 
   // v1.11.6: pop-pop animation when online worker count changes.
@@ -2598,7 +2618,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',flex:1,minHeight:0,overflowY:'auto'}}>
-          {sorted.map(w=>{
+          {display.map(w=>{
             const on=w.status!=='offline';
             const workAccepted = w.shares || 0;
             const workRejected = w.rejected || 0;
@@ -2608,7 +2628,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
             const disp = displayName(w.name, aliases);
             const lastShareAgo = w.lastSeen ? fmtAgoShort(w.lastSeen) : '—';
             return(
-              <div key={w.name} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.45rem',padding:'0.4rem 0.6rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s', minWidth:0}}
+              <div key={w.name} onDragOver={e=>{e.preventDefault(); try{e.dataTransfer.dropEffect='move';}catch(_){}}} onDrop={e=>{e.preventDefault(); handleCrewDrop(w.name);}} onClick={()=>onWorkerClick&&onWorkerClick(w)} style={{display:'flex',alignItems:'center',gap:'0.45rem',padding:'0.4rem 0.6rem',background:'var(--bg-raised)',border:`1px solid ${on?'rgba(57,255,106,0.12)':'transparent'}`,opacity:on?1:0.45,cursor:'pointer',transition:'background 0.15s', minWidth:0}}
                 onMouseEnter={e=>e.currentTarget.style.background='var(--bg-elevated, #1a1b1e)'} onMouseLeave={e=>e.currentTarget.style.background='var(--bg-raised)'}>
                 {/* v1.10.0 #5: status dot uses .ss-status-dot for layered breath +
                     ping animation. healthC determines the color tier:
@@ -2616,7 +2636,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                     red/offline → static (true "dead" indicator). Renamed from
                     .ss-dot to avoid collision with the carousel page-indicator
                     dots which also use .ss-dot. */}
-                <span title={w.health||'unknown'}
+                {/* v3.1.3: drag grip — only the handle initiates a drag so the row still scrolls/clicks normally on touch. Mirrors the card-corner handle. */}<span draggable onDragStart={e=>{_dragCrewName=w.name; try{e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', w.name);}catch(_){}}} onClick={e=>e.stopPropagation()} title="Drag to reorder" style={{cursor:'grab',color:'var(--text-3)',fontSize:13,lineHeight:1,flexShrink:0,padding:'2px 4px',userSelect:'none',WebkitUserSelect:'none',touchAction:'none'}}>≡</span><span title={w.health||'unknown'}
                       className={
                         !on ? 'ss-status-dot ss-status-dot-red'
                         : healthC === 'var(--amber)' ? 'ss-status-dot ss-status-dot-amber'
@@ -16463,7 +16483,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.1.2 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.1.3 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>

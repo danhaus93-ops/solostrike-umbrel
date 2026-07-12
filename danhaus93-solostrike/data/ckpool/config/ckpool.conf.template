@@ -7,7 +7,7 @@
     }
   ],
   "btcaddress" : "__BTC_ADDR__",
-  "btcsig" : "SoloStrike on Umbrel/",
+  "btcsig" : "LoneStrike on Umbrel/",
   "blockpoll" : 50,
   "update_interval" : 20,
   "serverurl" : [

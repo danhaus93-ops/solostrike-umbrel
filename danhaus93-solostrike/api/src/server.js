@@ -118,7 +118,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.1.2',
+  version: '3.1.3',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -203,7 +203,7 @@ async function writeCkpoolConf() {
         pass: RPC_PASS,
       }],
       btcaddress:      cfg.payoutAddress,
-      btcsig:          process.env.POOL_SIGNATURE || 'SoloStrike on Umbrel/',
+      btcsig:          process.env.POOL_SIGNATURE || 'LoneStrike on Umbrel/',
       blockpoll:       parseInt(process.env.BLOCKPOLL || '50', 10),
       update_interval: parseInt(process.env.UPDATE_INTERVAL || '20', 10),
       serverurl:       ['0.0.0.0:3333', '0.0.0.0:3334', '0.0.0.0:4334'],
