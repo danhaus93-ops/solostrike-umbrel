@@ -119,7 +119,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.3.0',
+  version: '3.4.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1003,8 +1003,15 @@ app.post('/api/config', async (req, res) => {
       state.payoutAddress = t;
     }
     if (typeof privateMode === 'boolean') {
+      const changed = !!cfg.privateMode !== privateMode;
       cfg.privateMode = privateMode;
       state.privateMode = privateMode;
+      // v3.4.0: apply immediately — tear down (or resume) Pulse relay
+      // connections without waiting for an API restart.
+      if (changed) {
+        try { if (networkStatsController && networkStatsController.applyPrivacy) networkStatsController.applyPrivacy(); }
+        catch (e) { console.warn('[config] applyPrivacy failed:', e.message); }
+      }
     }
     // v3.1.1: per-miner temp alert overrides. Merge semantics: { name: {amber,
     // red} } upserts, { name: null } clears. Values sanitized server-side so

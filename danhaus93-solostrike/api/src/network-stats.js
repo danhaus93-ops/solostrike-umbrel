@@ -687,6 +687,10 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
 
   // ── Relay connection management ─────────────────────────────────────────
   function connectRelay(url) {
+    // v3.4.0: Private Mode is a MASTER kill-switch over all Pulse networking.
+    // Every connect path (startup bootstrap, resubscribe, reconnect timers)
+    // funnels through here, so this one gate blocks them all.
+    if (cfg.privateMode) return;
     if (sockets.has(url)) {
       try { sockets.get(url).close(); } catch {}
     }
@@ -1041,6 +1045,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
   }
 
   function publishOurStats() {
+    if (cfg.privateMode) return;   // v3.4.0: master kill-switch
     if (!cfg.networkStatsEnabled) return;
 
     const now = Date.now();
@@ -1153,12 +1158,31 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
         if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} }
       } catch {}
     };
-    refreshRegistry();
-    setInterval(refreshRegistry, 30 * 60 * 1000);
+    // v3.4.0: registry refresh is an external HTTPS fetch — gated per tick so
+    // toggling Private Mode later stops it without a restart.
+    if (!cfg.privateMode) refreshRegistry();
+    setInterval(() => { if (!cfg.privateMode) refreshRegistry(); }, 30 * 60 * 1000);
   }
 
   // ── Public controller API ───────────────────────────────────────────────
   const controller = {
+    // v3.4.0: called by the /api/config route whenever cfg.privateMode flips.
+    // ON: close every relay socket and cancel every reconnect timer NOW —
+    // previously existing connections survived until the next API restart.
+    // (Close events may schedule reconnects, but connectRelay's gate no-ops
+    // them.) OFF: resume the relay pool immediately.
+    applyPrivacy() {
+      if (cfg.privateMode) {
+        for (const t of reconnectTimers.values()) { try { clearTimeout(t); } catch (e) {} }
+        reconnectTimers.clear();
+        for (const ws of sockets.values()) { try { ws.close(); } catch (e) {} }
+        sockets.clear();
+        console.log('[network-stats] Private Mode ON — all relay connections closed');
+      } else {
+        console.log('[network-stats] Private Mode OFF — resuming relay connections');
+        DEFAULT_RELAYS.forEach(connectRelay);
+      }
+    },
     enable() {
       cfg.networkStatsEnabled = true;
       state.networkStats.enabled = true;
@@ -1167,6 +1191,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       saveIdentity();
     },
     async submitAliasClaim(name) {
+      if (cfg.privateMode) return { ok: false, error: 'private_mode', message: 'Private Mode blocks external connections.' };
       const display = String(name || '').trim().replace(/\s+/g, ' ');
       if (!/^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(display)) {
         return { ok: false, error: 'invalid_name', message: '1\u201324 chars; letters, digits, space . _ - \' only.' };
