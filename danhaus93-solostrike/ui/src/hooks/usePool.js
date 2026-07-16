@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-const WS = `${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/ws`;
+// v3.3.0: the WebSocket carries the API key as a query param (headers aren't
+// settable on the browser WebSocket constructor). Read it fresh at connect
+// time from localStorage so a key pasted after page load still applies on the
+// next reconnect. Kept in sync with App.jsx's LS_API_KEY.
+const wsUrl = () => {
+  let k = ''; try { k = localStorage.getItem('ss_api_key_v1') || ''; } catch (e) {}
+  const base = `${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/ws`;
+  return k ? `${base}?key=${encodeURIComponent(k)}` : base;
+};
 const DEF = {
   config:    { poolName:'SoloStrike', hasAddress:false },
   status:    'loading',
@@ -61,7 +69,7 @@ export function usePool() {
   }, []);
 
   const connect = useCallback(() => {
-    const ws = new WebSocket(WS); wsRef.current = ws;
+    const ws = new WebSocket(wsUrl()); wsRef.current = ws;
     // v1.11.39: instrumentation — count every WS spawn to detect duplicates
     // in production. If wsSpawnCount climbs while only one socket is expected,
     // we have a bug. Visible in window._ssDebug.wsSpawnCount and in the

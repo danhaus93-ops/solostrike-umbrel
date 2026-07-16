@@ -402,6 +402,35 @@ const LS_CARD_ORDER      = 'ss_card_order_v1';
 const LS_CREW_ORDER      = 'ss_crew_order_v1';  // v3.1.3 crew drag order
 let _dragCrewName = null; // v3.1.3 crew drag state (module-level; single grid)
 const LS_DESKTOP_PAGES   = 'ss_desktop_pages_v1';  // v1.12.0 per-page desktop order
+const LS_API_KEY         = 'ss_api_key_v1';        // v3.3.0 server-side auth key
+// ── v3.3.0 auth: attach the API key to every same-origin /api call ──────────
+// One wrapper instead of touching all fetch sites. External fetches (CDN,
+// world-atlas) are untouched. The key arrives via TOFU claim on first visit
+// (see ensureApiKey) or manual paste on additional devices.
+export function getApiKey() { try { return localStorage.getItem(LS_API_KEY) || ''; } catch (e) { return ''; } }
+export function setApiKey(k) { try { localStorage.setItem(LS_API_KEY, k); } catch (e) {} }
+const _origFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  try {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.startsWith('/api/')) {
+      init = init || {};
+      init.headers = { ...(init.headers || {}), 'X-Api-Key': getApiKey() };
+    }
+  } catch (e) { /* never break fetch */ }
+  return _origFetch(input, init);
+};
+// TOFU claim: runs once per page load, before the app renders data. If this
+// browser has no key, try to claim; if already claimed elsewhere, the gate in
+// App() asks for a paste. Await-able so first render carries the key.
+export async function ensureApiKey() {
+  if (getApiKey()) return true;
+  try {
+    const r = await _origFetch('/api/auth/claim');
+    if (r.ok) { const j = await r.json(); if (j && j.key) { setApiKey(j.key); return true; } }
+  } catch (e) { /* offline etc — fall through to gate */ }
+  return false;
+}
 const LS_CURRENCY        = 'ss_currency_v1';
 const LS_ALIASES         = 'ss_worker_aliases_v1';
 const LS_NOTES           = 'ss_worker_notes_v1';
@@ -8274,6 +8303,62 @@ function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }
 }
 
 // ── Privacy tab ───────────────────────────────────────────────────────────────
+// v3.3.0: API-key management UI. First device pairs automatically (TOFU claim
+// in main.jsx); this section lets that device REVEAL the key to pair others,
+// and lets an additional device PASTE it — no SSH required. Reveal calls the
+// authed /api/auth/key endpoint, so it only works on an already-paired device.
+function ApiKeySection({ tt = (x) => x }) {
+  const [revealed, setRevealed] = useState(false);
+  const [keyVal, setKeyVal]     = useState('');
+  const [err, setErr]           = useState('');
+  const [paste, setPaste]       = useState('');
+  const [copied, setCopied]     = useState(false);
+  const reveal = async () => {
+    setErr('');
+    try {
+      const r = await fetch('/api/auth/key');   // wrapper attaches X-Api-Key
+      if (!r.ok) { setErr(tt('This device is not paired — paste a key below.')); return; }
+      const j = await r.json();
+      if (j && j.key) { setKeyVal(j.key); setRevealed(true); }
+    } catch (e) { setErr(tt('Could not reach the API.')); }
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(keyVal); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch (e) { /* clipboard blocked — key is selectable below */ }
+  };
+  const applyPaste = () => {
+    const k = paste.trim();
+    if (!/^[0-9a-f]{64}$/i.test(k)) { setErr(tt('That does not look like a LoneStrike API key (64 hex characters).')); return; }
+    setApiKey(k);
+    location.reload();   // clean re-init: fetches + WebSocket pick up the key
+  };
+  const lbl = {fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8};
+  const btn = {padding:'6px 12px',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer',border:'1px solid var(--border)',background:'var(--bg-raised)',color:'var(--text-1)'};
+  return (
+    <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginTop:14}}>
+      <div style={lbl}>🔑 {tt('API Key')}</div>
+      <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:10}}>
+        {tt('Every request to the pool API is authenticated with this key. This browser paired automatically on first visit. To use LoneStrike from another device or browser, reveal the key here and paste it there.')}
+      </div>
+      {!revealed ? (
+        <button onClick={reveal} style={btn}>{tt('Reveal key')}</button>
+      ) : (
+        <div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--amber)',wordBreak:'break-all',userSelect:'all',padding:'6px 8px',background:'var(--bg)',border:'1px solid var(--border)',marginBottom:6}}>{keyVal}</div>
+          <button onClick={copy} style={btn}>{copied ? '✓ ' + tt('Copied') : tt('Copy')}</button>
+        </div>
+      )}
+      <div style={{...lbl, marginTop:14}}>{tt('Pair this device')}</div>
+      <div style={{display:'flex',gap:6}}>
+        <input value={paste} onChange={e=>setPaste(e.target.value)} placeholder={tt('Paste key from your other device…')}
+          style={{flex:1,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:'0.62rem',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text-1)'}}/>
+        <button onClick={applyPaste} style={btn}>{tt('Apply')}</button>
+      </div>
+      {err && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',marginTop:6}}>{err}</div>}
+    </div>
+  );
+}
+
 function PrivacyTab({tt=(x)=>x,privateMode,setPrivateMode,submit,saved,loading}) {
   return (
     <>
@@ -8286,6 +8371,7 @@ function PrivacyTab({tt=(x)=>x,privateMode,setPrivateMode,submit,saved,loading})
           </div>
         </div>
       </div>
+      <ApiKeySection tt={tt}/>
       <div style={{display:'flex',gap:8,marginTop:14}}>
         <button onClick={submit} disabled={loading} style={{flex:1,padding:'0.7rem',background:saved?'var(--green)':'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
           {loading?tt('SAVING…'):saved?'✓ '+tt('SAVED'):tt('SAVE')}
@@ -16483,7 +16569,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.2.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.3.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>

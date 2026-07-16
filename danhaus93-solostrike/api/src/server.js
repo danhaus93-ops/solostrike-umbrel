@@ -1,6 +1,7 @@
 // SoloStrike API server (v1.11.59 — privacy-aware)
 const fs = require('fs-extra');
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -118,7 +119,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.2.0',
+  version: '3.3.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -655,6 +656,50 @@ function startZmq() {
 // ── HTTP/WS server ────────────────────────────────────────────────────────
 const app = express();
 
+// ── v3.3.0: server-side API authentication (TOFU key) ────────────────────────
+// Umbrel's app_proxy authenticates BROWSERS, but any container on the shared
+// umbrel_main_network could previously reach this API directly and read or
+// mutate config (payout address, miner voltage/frequency, webhooks). Every
+// sensitive route now requires the key below. Trust-on-first-use: the key is
+// generated at first boot and handed out exactly once via /api/auth/claim —
+// the first browser session claims it silently (no login UX), and it persists
+// in that browser's localStorage. Additional devices paste it once (revealed
+// in Settings on a claimed device, or `cat data/config/api-key` over SSH).
+const API_KEY_FILE = path.join(CONFIG_DIR, 'api-key');
+const API_KEY_CLAIM_FILE = path.join(CONFIG_DIR, 'api-key.claimed');
+let apiKey = null;
+try {
+  if (fs.existsSync(API_KEY_FILE)) {
+    apiKey = fs.readFileSync(API_KEY_FILE, 'utf8').trim();
+  }
+  if (!apiKey) {
+    apiKey = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(API_KEY_FILE, apiKey + '\n', { mode: 0o600 });
+    console.log('[auth] generated new API key at', API_KEY_FILE);
+  }
+} catch (e) {
+  console.error('[auth] FATAL: cannot create/read API key:', e.message);
+  process.exit(1);
+}
+const keyClaimed = () => fs.existsSync(API_KEY_CLAIM_FILE);
+const timingSafeEq = (a, b) => {
+  const ba = Buffer.from(String(a || '')), bb = Buffer.from(String(b || ''));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+};
+const requestKey = (req) => req.get('x-api-key') || (req.query ? req.query.key : null);
+// Keyless allowlist — every entry is public-stats or infrastructural:
+//   /api/health            Docker healthcheck (wget from inside the container)
+//   /api/widget/four-stats umbreld fetches it directly for the home-screen tile
+//   /api/auth/claim        the one-time bootstrap itself
+const AUTH_EXEMPT = new Set(['/api/health', '/api/widget/four-stats', '/api/auth/claim']);
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();   // /metrics + static: not ours
+  if (AUTH_EXEMPT.has(req.path)) return next();
+  if (timingSafeEq(requestKey(req), apiKey)) return next();
+  return res.status(401).json({ error: 'unauthorized', hint: 'X-Api-Key required' });
+});
+
+
 // v1.11.x SAFETY: Trust X-Forwarded-* headers only when the immediate
 // proxy is on loopback. The Umbrel app_proxy connects to the API container
 // on the internal docker network (loopback from the API's perspective),
@@ -723,6 +768,12 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/api/ws' });
 
 wss.on('connection', (ws, req) => {
+  // v3.3.0: the WebSocket bypasses Express middleware, so gate it here.
+  try {
+    const u = new URL(req.url, 'http://x');
+    if (!timingSafeEq(u.searchParams.get('key'), apiKey)) { ws.close(4401, 'unauthorized'); return; }
+  } catch (e) { ws.close(4401, 'unauthorized'); return; }
+
   if (wsClients >= MAX_WS_CLIENTS) {
     try { ws.close(); } catch {}
     return;
@@ -748,6 +799,21 @@ wss.on('connection', (ws, req) => {
   try { ws.send(JSON.stringify({ type:'CONFIG', data: cfgPrivate() })); } catch {}
   ws.on('close', () => { wsClients--; });
 });
+
+// v3.3.0 TOFU bootstrap: hands the key out exactly once. After the first
+// successful claim this endpoint returns 403 forever (until the key files are
+// deleted over SSH, which regenerates+unclaims on restart). The race window is
+// first-boot-to-first-browser-visit — same trust model as Bitcoin Core's
+// .cookie file. Claimed devices can reveal the key via GET /api/auth/key.
+app.get('/api/auth/claim', (req, res) => {
+  if (keyClaimed()) return res.status(403).json({ error: 'already-claimed' });
+  try { fs.writeFileSync(API_KEY_CLAIM_FILE, String(Date.now()), { mode: 0o600 }); }
+  catch (e) { return res.status(500).json({ error: 'claim-persist-failed' }); }
+  console.log('[auth] API key claimed by', req.ip);
+  return res.json({ key: apiKey });
+});
+// Authenticated reveal — lets a claimed device show the key for pairing others.
+app.get('/api/auth/key', (req, res) => res.json({ key: apiKey }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
