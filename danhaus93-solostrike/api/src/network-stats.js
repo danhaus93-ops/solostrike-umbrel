@@ -690,7 +690,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     // v3.4.0: Private Mode is a MASTER kill-switch over all Pulse networking.
     // Every connect path (startup bootstrap, resubscribe, reconnect timers)
     // funnels through here, so this one gate blocks them all.
-    if (cfg.privateMode) return;
+    if (cfg.privateMode || (cfg.privacy && cfg.privacy.pulse === false)) return;
     if (sockets.has(url)) {
       try { sockets.get(url).close(); } catch {}
     }
@@ -1045,7 +1045,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
   }
 
   function publishOurStats() {
-    if (cfg.privateMode) return;   // v3.4.0: master kill-switch
+    if (cfg.privateMode || (cfg.privacy && cfg.privacy.pulse === false)) return;   // v3.4.0/v3.6.0 kill-switches
     if (!cfg.networkStatsEnabled) return;
 
     const now = Date.now();
@@ -1160,8 +1160,9 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     };
     // v3.4.0: registry refresh is an external HTTPS fetch — gated per tick so
     // toggling Private Mode later stops it without a restart.
-    if (!cfg.privateMode) refreshRegistry();
-    setInterval(() => { if (!cfg.privateMode) refreshRegistry(); }, 30 * 60 * 1000);
+    const registryAllowed = () => !cfg.privateMode && !(cfg.privacy && cfg.privacy.registry === false);
+    if (registryAllowed()) refreshRegistry();
+    setInterval(() => { if (registryAllowed()) refreshRegistry(); }, 30 * 60 * 1000);
   }
 
   // ── Public controller API ───────────────────────────────────────────────
@@ -1172,7 +1173,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
     // (Close events may schedule reconnects, but connectRelay's gate no-ops
     // them.) OFF: resume the relay pool immediately.
     applyPrivacy() {
-      if (cfg.privateMode) {
+      if (cfg.privateMode || (cfg.privacy && cfg.privacy.pulse === false)) {
         for (const t of reconnectTimers.values()) { try { clearTimeout(t); } catch (e) {} }
         reconnectTimers.clear();
         for (const ws of sockets.values()) { try { ws.close(); } catch (e) {} }
@@ -1191,7 +1192,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       saveIdentity();
     },
     async submitAliasClaim(name) {
-      if (cfg.privateMode) return { ok: false, error: 'private_mode', message: 'Private Mode blocks external connections.' };
+      if (cfg.privateMode || (cfg.privacy && cfg.privacy.registry === false)) return { ok: false, error: 'private_mode', message: 'Privacy settings block external connections.' };
       const display = String(name || '').trim().replace(/\s+/g, ' ');
       if (!/^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(display)) {
         return { ok: false, error: 'invalid_name', message: '1\u201324 chars; letters, digits, space . _ - \' only.' };

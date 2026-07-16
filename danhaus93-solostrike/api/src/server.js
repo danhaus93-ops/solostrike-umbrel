@@ -119,7 +119,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.5.0',
+  version: '3.6.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -258,6 +258,7 @@ function cfgPublic() {
   return {
     poolName: cfg.poolName || 'SoloStrike',
     privateMode: !!cfg.privateMode,
+    privacy: { ...(cfg.privacy || {}) },
     tempOverrides: cfg.tempOverrides || {},
     hasAddress: !!cfg.payoutAddress,
   };
@@ -332,6 +333,9 @@ function isPrivateUrl(urlStr) {
   }
 }
 async function fireHooks(eventName, payload) {
+  // v3.6.0: webhook deliveries are outbound — gated under lockdown (absolute,
+  // LAN included: 'nothing escapes' stays literally true) and by their toggle.
+  if (cfg.privateMode || (cfg.privacy && cfg.privacy.webhooks === false)) return;
   const hooks = (state.webhooks || []).filter(h => Array.isArray(h.events) && h.events.includes(eventName));
   for (const h of hooks) {
     try {
@@ -536,7 +540,8 @@ async function pollBitcoind() {
 }
 
 async function pollMempool() {
-  if (cfg.privateMode) {
+  // v3.6.0: fees toggle — same fallback path as lockdown (internal mempool or skip)
+  if (cfg.privateMode || (cfg.privacy && cfg.privacy.fees === false)) {
     if (INTERNAL_MEMPOOL) {
       const fees = await tryFetchJson(`${INTERNAL_MEMPOOL}/api/v1/fees/recommended`);
       if (fees) {
@@ -563,7 +568,8 @@ async function pollMempool() {
 }
 
 async function pollBlocks() {
-  if (cfg.privateMode) {
+  // v3.6.0: blocks toggle — The Ledger's feed
+  if (cfg.privateMode || (cfg.privacy && cfg.privacy.blocks === false)) {
     if (INTERNAL_MEMPOOL) {
       const blocks = await tryFetchJson(`${INTERNAL_MEMPOOL}/api/v1/blocks`);
       if (Array.isArray(blocks)) state.netBlocks = blocks.slice(0, 30).map(formatNetBlock);
@@ -605,12 +611,14 @@ function formatNetBlock(b) {
 const utxOracle = createOracle({ rpc, log: console.log });
 
 function maybeRunOracle() {
-  if (!cfg.privateMode) return;
+  // v3.6.0: oracle runs under lockdown OR when the external price is toggled off
+  if (!cfg.privateMode && !(cfg.privacy && cfg.privacy.price === false)) return;
   if (!utxOracle.isRunning()) utxOracle.run().catch(() => {});
 }
 
 async function pollPrices() {
-  if (cfg.privateMode) {
+  // v3.6.0: price toggle — UTXOracle takes over, same as lockdown
+  if (cfg.privateMode || (cfg.privacy && cfg.privacy.price === false)) {
     const est = utxOracle.last();
     if (est && (Date.now() - est.at) < 48 * 60 * 60 * 1000) {
       state.prices = { USD: est.price, _oracle: { source: 'utxoracle-v8', priceDate: est.priceDate, blocks: est.blocks, at: est.at } };
@@ -1063,7 +1071,7 @@ app.post('/api/config', async (req, res) => {
   try {
     // v1.11.4: poolName removed from accepted fields — UI no longer exposes it.
     // Webhook payloads now hardcode 'SoloStrike' as the pool value (see line ~271).
-    const { payoutAddress, privateMode } = req.body || {};
+    const { payoutAddress, privateMode, privacy } = req.body || {};
     let addressChanged = false;
     if (payoutAddress != null) {
       const t = String(payoutAddress).trim();
@@ -1081,6 +1089,22 @@ app.post('/api/config', async (req, res) => {
       if (changed) {
         try { if (networkStatsController && networkStatsController.applyPrivacy) networkStatsController.applyPrivacy(); }
         catch (e) { console.warn('[config] applyPrivacy failed:', e.message); }
+      }
+    }
+    // v3.6.0: per-service privacy toggles. Master privateMode always wins; these
+    // only matter with the lockdown off. Unknown keys dropped, values coerced to
+    // boolean, absent = enabled. Pulse flips also tear down / resume live relay
+    // sockets via the same applyPrivacy path as the master toggle.
+    if (privacy && typeof privacy === 'object') {
+      const PRIVACY_KEYS = ['pulse', 'registry', 'fees', 'blocks', 'price', 'webhooks', 'mapData'];
+      const prevPulseOn = !(cfg.privacy && cfg.privacy.pulse === false);
+      cfg.privacy = cfg.privacy || {};
+      for (const k of PRIVACY_KEYS) if (k in privacy) cfg.privacy[k] = !!privacy[k];
+      state.privacy = { ...cfg.privacy };
+      const nowPulseOn = !(cfg.privacy.pulse === false);
+      if (prevPulseOn !== nowPulseOn) {
+        try { if (networkStatsController && networkStatsController.applyPrivacy) networkStatsController.applyPrivacy(); }
+        catch (e) { console.warn('[config] applyPrivacy (pulse toggle) failed:', e.message); }
       }
     }
     // v3.1.1: per-miner temp alert overrides. Merge semantics: { name: {amber,
@@ -1664,6 +1688,7 @@ async function main() {
     }
   }
   state.privateMode = !!cfg.privateMode;
+  state.privacy = { ...(cfg.privacy || {}) };
   state.tempOverrides = cfg.tempOverrides || {};
   state.payoutAddress = cfg.payoutAddress || null;
 

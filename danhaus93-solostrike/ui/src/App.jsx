@@ -409,6 +409,22 @@ const LS_API_KEY         = 'ss_api_key_v1';        // v3.3.0 server-side auth ke
 // (see ensureApiKey) or manual paste on additional devices.
 export function getApiKey() { try { return localStorage.getItem(LS_API_KEY) || ''; } catch (e) { return ''; } }
 export function setApiKey(k) { try { localStorage.setItem(LS_API_KEY, k); } catch (e) {} }
+// v3.6.0: clipboard that works over plain HTTP. navigator.clipboard exists only
+// in secure contexts (HTTPS/localhost); LAN installs are http://, so the copy
+// button silently did nothing. Textarea + execCommand is the honest fallback.
+export function lsCopyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text); return true; }
+  } catch (e) { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
 const _origFetch = window.fetch.bind(window);
 window.fetch = (input, init) => {
   try {
@@ -7700,13 +7716,14 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
   // v1.11.4: poolName field removed from settings — was only used in webhook payloads
   // where 'SoloStrike' is now hardcoded server-side. No user-facing effect lost.
   const [privateMode, setPrivateMode] = useState(!!currentConfig?.privateMode);
+  const [privacy, setPrivacy] = useState(() => ({ ...(currentConfig?.privacy || {}) }));
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
     setLoading(true);
     try {
-      await saveConfig({ payoutAddress: addr || undefined, privateMode });
+      await saveConfig({ payoutAddress: addr || undefined, privateMode, privacy });
       setSaved(true); setTimeout(()=>setSaved(false), 2000);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -7765,6 +7782,7 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
         )}
         {tab==='privacy' && (
           <PrivacyTab tt={tt} privateMode={privateMode} setPrivateMode={setPrivateMode}
+            privacy={privacy} setPrivacy={setPrivacy}
             submit={submit} saved={saved} loading={loading}/>
         )}
         {tab==='pulse' && (
@@ -8480,7 +8498,7 @@ function ApiKeySection({ tt = (x) => x }) {
     } catch (e) { setErr(tt('Could not reach the API.')); }
   };
   const copy = async () => {
-    try { await navigator.clipboard.writeText(keyVal); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    try { if (lsCopyText(keyVal)) { setCopied(true); setTimeout(() => setCopied(false), 1500); } }
     catch (e) { /* clipboard blocked \u2014 the key box is select-all */ }
   };
   const applyPaste = () => {
@@ -8564,18 +8582,55 @@ function PairGate({ tt = (x) => x }) {
   );
 }
 
-function PrivacyTab({tt=(x)=>x,privateMode,setPrivateMode,submit,saved,loading}) {
+function PrivacyTab({tt=(x)=>x,privateMode,setPrivateMode,privacy={},setPrivacy=()=>{},submit,saved,loading}) {
+  // v3.6.0: master lockdown + per-service toggles. The master is the SAME
+  // cfg.privateMode as always — every server gate checks it first, so the
+  // "nothing escapes" guarantee is enforced server-side regardless of what the
+  // sub-toggles say. Sub-states are remembered while locked, just overridden.
+  const services = [
+    { k:'pulse',    name:tt('Pulse network'),            dest:tt('8 nostr relays (wss) · Tor-routable · anonymized stats only'),          off:tt('off — you vanish from the strikers map and benchmarks') },
+    { k:'registry', name:tt('Alias registry'),           dest:tt('alias registry Worker (https) · resolves striker names'),               off:tt('off — everyone shows as striker-XXXX') },
+    { k:'fees',     name:tt('Network fee rates'),        dest:tt('mempool.space · sat/vB recommendations'),                               off:tt('off — uses your local mempool app if installed, else hidden') },
+    { k:'blocks',   name:tt('Network blocks — The Ledger'), dest:tt("mempool.space · who's winning blocks out there"),                    off:tt('off — uses your local mempool app if installed, else the card says so') },
+    { k:'price',    name:tt('Fiat price'),               dest:tt('mempool.space · BTC/USD for the prize ticker'),                         off:tt('off — UTXOracle estimates the price from your own chain data') },
+    { k:'webhooks', name:tt('Webhooks'),                 dest:tt('your configured endpoints · block/miner alerts'),                       off:tt('off — no alert deliveries, even to LAN endpoints') },
+    { k:'mapData',  name:tt('World map data'),           dest:tt('cdn.jsdelivr.net · coastline geometry, only if the bundled copy is missing'), off:tt('off — globe and map cards render without landmass outlines') },
+  ];
+  const isOn = (k) => !(privacy && privacy[k] === false);
+  const flip = (k) => setPrivacy({ ...(privacy || {}), [k]: !isOn(k) });
   return (
     <>
-      <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginBottom:14,display:'flex',alignItems:'center',gap:'0.75rem'}}>
-        <input type="checkbox" id="priv-mode" checked={privateMode} onChange={e=>setPrivateMode(e.target.checked)} style={{accentColor:'var(--cyan)'}}/>
+      <div onClick={()=>setPrivateMode(!privateMode)} style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid ' + (privateMode ? 'var(--cyan)' : 'var(--border)'),marginBottom:14,display:'flex',alignItems:'flex-start',gap:'0.75rem',cursor:'pointer'}}>
+        <input type="checkbox" checked={privateMode} onChange={e=>setPrivateMode(e.target.checked)} onClick={e=>e.stopPropagation()} style={{accentColor:'var(--cyan)',marginTop:2}}/>
         <div style={{flex:1}}>
-          <label htmlFor="priv-mode" style={{display:'block',fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--cyan)',cursor:'pointer',letterSpacing:'0.05em'}}>🔒 {tt('Private Mode')}</label>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.74rem',fontWeight:700,color:'var(--cyan)',letterSpacing:'0.05em'}}>🔒 {tt('Complete Privacy')}</div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',marginTop:3,lineHeight:1.5}}>
-            {tt('Disables external API calls (mempool.space, prices). Pool gets its data exclusively from your local Bitcoin Core node. Some features (fee rates, top finders, fiat prices) become unavailable.')}
+            {tt('Nothing leaves your node. All external connections below are cut immediately — live sockets closed, not just future ones. Fees, network blocks and fiat price switch to local sources where available.')}
+          </div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.56rem',letterSpacing:'0.1em',textTransform:'uppercase',marginTop:8,color:privateMode?'var(--cyan)':'var(--text-3)'}}>
+            {privateMode ? tt('LOCKDOWN — all services cut, live connections closed') : tt('Lockdown off — services below are individually controlled')}
           </div>
         </div>
       </div>
+
+      <div style={{opacity:privateMode?0.38:1,pointerEvents:privateMode?'none':'auto',transition:'opacity .2s'}}>
+        <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>{tt('External services — each can be cut individually')}</div>
+        {services.map(svc => {
+          const on = !privateMode && isOn(svc.k);
+          return (
+            <div key={svc.k} onClick={()=>flip(svc.k)} style={{display:'flex',gap:12,alignItems:'flex-start',background:'var(--bg-raised)',border:'1px solid var(--border)',padding:'0.7rem 0.8rem',marginBottom:7,cursor:'pointer'}}>
+              <input type="checkbox" checked={on} onChange={()=>flip(svc.k)} onClick={e=>e.stopPropagation()} style={{accentColor:'var(--amber)',marginTop:2}}/>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:'var(--fd)',fontSize:'0.68rem',fontWeight:700,color:on?'var(--text-1)':'var(--text-2)'}}>{svc.name}</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:'0.56rem',color:'var(--text-3)',marginTop:2}}>{svc.dest}</div>
+                {!on && <div style={{fontFamily:'var(--fm)',fontSize:'0.56rem',color:'var(--green, #67d17c)',marginTop:3}}>{privateMode ? tt('cut by lockdown') : svc.off}</div>}
+              </div>
+              {privateMode && <div style={{fontSize:'0.7rem',color:'var(--cyan)',flexShrink:0}}>🔒</div>}
+            </div>
+          );
+        })}
+      </div>
+
       <ApiKeySection tt={tt}/>
       <div style={{display:'flex',gap:8,marginTop:14}}>
         <button onClick={submit} disabled={loading} style={{flex:1,padding:'0.7rem',background:saved?'var(--green)':'var(--cyan)',color:'#000',border:'none',fontFamily:'var(--fd)',fontWeight:700,letterSpacing:'0.1em',fontSize:'0.7rem',cursor:loading?'wait':'pointer',textTransform:'uppercase',opacity:loading?0.6:1}}>
@@ -9551,7 +9606,7 @@ function fetchWorldAtlasOnce() {
     };
     fetch('/world-atlas-land-50m.json')
       .then(r => r.ok ? r.json() : Promise.reject(new Error('local atlas missing')))
-      .catch(() => fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()))
+      .catch(() => { if (window.__LS_PRIVACY && (window.__LS_PRIVACY.lock || window.__LS_PRIVACY.mapData === false)) return Promise.reject(new Error('map data disabled')); return fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()); })
       .then(topo => {
         // TopoJSON decoding — matches the live globe's logic byte-for-byte.
         // Defensive: if any field is missing/malformed, finish with empty
@@ -10809,7 +10864,7 @@ const PulsePanel = React.memo(function PulsePanel_Impl({ networkStats, onOpenSet
         // globe whenever the local file wasn't bundled.
         fetch('/world-atlas-land-50m.json')
           .then(r => r.ok ? r.json() : Promise.reject(new Error('local atlas missing')))
-          .catch(() => fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()))
+          .catch(() => { if (window.__LS_PRIVACY && (window.__LS_PRIVACY.lock || window.__LS_PRIVACY.mapData === false)) return Promise.reject(new Error('map data disabled')); return fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json').then(r => r.json()); })
           .then(topo => {
             const decodedArcs = decodeArcs(topo);
             const rings = [];
@@ -15732,6 +15787,9 @@ export default function App() {
     window.addEventListener('ls-auth-401', h);
     return () => window.removeEventListener('ls-auth-401', h);
   }, []);
+  // v3.6.0: map components fetch coastline data outside poolState's reach; give
+  // them the privacy prefs via a window flag refreshed on every state update.
+  useEffect(() => { try { window.__LS_PRIVACY = { lock: !!poolState?.privateMode, ...(poolState?.privacy || {}) }; } catch (e) {} }, [poolState]);
   const { connected, state: poolState, blockAlert, saveConfig, getConfig } = usePool();
   TEMP_OVERRIDES = poolState?.tempOverrides || TEMP_OVERRIDES; // v3.1.1 per-miner thresholds sync
   const lastBlock = blockAlert; // alias — block alert IS the last block info
@@ -16789,7 +16847,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.5.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.6.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
