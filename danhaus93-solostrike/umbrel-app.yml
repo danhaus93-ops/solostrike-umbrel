@@ -88,22 +88,30 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v3.0.4 — TNA-OS miner fixes + LoneStrike rebrand
+  v3.6.1 — Security, privacy and migration
 
 
-  • Rebranded SoloStrike → LoneStrike (same app; your install and data carry over)
+  🔐 API authentication: every device now pairs with a key. Your first browser
+  pairs automatically; add others from Settings → Privacy (or the pairing
+  screen that appears on an unpaired device).
 
-  • Fixed tuning for Antminer S19/S21 on TNA-OS: correct voltage units and working frequency/voltage controls
+  🕶️ Privacy panel: one-tap Complete Privacy lockdown (verifiably zero outbound
+  connections), plus individual toggles for Pulse, alias registry, fee rates,
+  network blocks, fiat price, webhooks and map data.
 
-  • Fixed core-voltage range on NerdQAxe++/Bitaxe (no more false out-of-range on Apply)
+  💾 Backup & Migrate (Settings → Main): move your Pulse identity, payout
+  address, settings and stats history to new hardware.
 
-  • Fixed pool status detection — your pool now correctly shows as primary instead of backup
+  ⛏️ Avalon Q: full telemetry (power, frequency, temps, fans) and tuning
+  benchmark eligibility.
 
-  • Self-healing config so updates don't break on a missing template
+  📋 Crew list: drag to reorder with per-row grips.
 
+  🪪 Blocks now sign as "LoneStrike on Umbrel/".
 
-  Full version history: https://github.com/danhaus93-ops/solostrike-umbrel/blob/main/CHANGELOG.md
-
+  Also: /metrics fixed for Prometheus scrapers, tightened auth whitelist,
+  TLS certificate identity, The Ledger explains Private Mode instead of
+  showing a blank card, copy buttons work over plain HTTP.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
