@@ -1,5 +1,5 @@
-# SoloStrike TLS stratum terminator
-# Listens on :4333 with TLS, forwards plaintext stratum to ckpool:3333
+# LoneStrike TLS stratum terminator
+# Listens on :4333 with TLS, forwards plaintext stratum to @CKPOOL_HOST@:3333
 # Cert is generated on first run by entrypoint.sh and stored in /certs
 #
 # v1.11.53: container runs as nobody from start (USER nobody in Dockerfile).
@@ -15,7 +15,13 @@ sslVersionMin = TLSv1.2
 
 [stratum-tls]
 accept = 0.0.0.0:4333
-connect = ckpool:3333
+# v3.2.0: @CKPOOL_HOST@ is replaced at container start by entrypoint.sh from the
+# CKPOOL_HOST env var. The bare "ckpool" alias was unsafe: umbrel_main_network is
+# shared across all apps, so another installed app running a container aliased
+# "ckpool" would round-robin with ours in Docker DNS — TLS miners could be
+# forwarded to a different app's pool. The full container name is unique, but
+# differs per store, so it cannot be baked into the image.
+connect = @CKPOOL_HOST@:3333
 cert = /certs/stunnel.pem
 key = /certs/stunnel.pem
 

@@ -24,7 +24,12 @@ services:
       # listing "/api/network-stats" would also expose "/api/network-stats/
       # enable" etc. Each entry below is either an exact-match path or
       # ends in /* to mean "this prefix is fine to expose entirely".
-      PROXY_AUTH_WHITELIST: /api/widget/four-stats,/api/health,/api/health/detailed,/api/state,/api/stratum-health,/metrics
+      # v3.2.0: ONLY /metrics bypasses Umbrel auth. Previously /api/state,
+      # /api/health* and the widget endpoint were readable unauthenticated.
+      # The home-screen widget is fetched by umbreld directly at ui:8080
+      # (see `widgets.endpoint` in umbrel-app.yml), not via app_proxy, so it
+      # needs no whitelist entry.
+      PROXY_AUTH_WHITELIST: /metrics
 
   # ═════════════════════════════════════════════════════════════════════
   # init-permissions — one-shot install bootstrap (v1.11.55 chown, v1.11.56 conf-gen)
@@ -221,7 +226,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v3.1.3@sha256:3ae8f9a5fc992478a89ec760df9fbf4cc90c562e29caf349e85ede0d0bc1d9b0
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v3.2.0
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -230,13 +235,18 @@ services:
     depends_on:
       ckpool:
         condition: service_healthy
+    environment:
+      # v3.2.0: full container name of our ckpool. The bare 'ckpool' alias is
+      # shared across apps on umbrel_main_network and could resolve to another
+      # app's pool — TLS miners must never be forwarded there.
+      - CKPOOL_HOST=danhaus93-solostrike_ckpool_1
     ports:
       - "4333:4333"
     volumes:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v3.1.3@sha256:059c1047f59b5c493b2fedfc1747e4f742cde7c867b612cd0f79f7e22067c68c
+    image: ghcr.io/danhaus93-ops/solostrike-api:v3.2.0
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -280,11 +290,14 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v3.1.3@sha256:b14d118f5b29ebd1d2b0a7410175ed1a368377c9b6c0dc2a30cfb9c5cd9a6768
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v3.2.0
     restart: on-failure
     security_opt:
       - no-new-privileges:true
-    container_name: danhaus93-solostrike_ui_1
+    environment:
+      # v3.2.0: full container name of our API, substituted into nginx.conf at
+      # container start. Differs per store — never bake it into the image.
+      - API_HOST=danhaus93-solostrike_api_1
     depends_on:
       - api
 

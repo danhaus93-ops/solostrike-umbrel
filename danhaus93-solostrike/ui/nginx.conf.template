@@ -21,14 +21,15 @@ server {
     add_header Referrer-Policy        "no-referrer" always;
 
     # --- REST API proxy ------------------------------------------------------
-    # v1.11.13: use full container name instead of bare 'api' alias. Umbrel's
-    # umbrel_main_network is shared across all apps, and the bare 'api' alias
-    # collides with other apps (e.g. mempool_api_1) registering the same
-    # alias. Docker DNS round-robins between them, causing intermittent 502s.
-    # The full container name danhaus93-solostrike_api_1 is unique on the
-    # shared network and resolves deterministically to our API container.
+    # v3.2.0: API_HOST is injected per-store by docker-compose and substituted
+    # at container start by nginx's envsubst template mechanism. Umbrel's
+    # umbrel_main_network is shared across all apps, so the bare 'api' alias
+    # collides with other apps (e.g. mempool_api_1) and Docker DNS round-robins
+    # between them, causing intermittent 502s. The FULL container name is unique
+    # — but it differs per store (danhaus93-solostrike_api_1 vs lonestrike_api_1),
+    # so it cannot be baked into the image.
     location /api/ {
-        proxy_pass         http://danhaus93-solostrike_api_1:3001;
+        proxy_pass         http://${API_HOST}:3001;
         proxy_http_version 1.1;
         proxy_set_header   Host               $host;
         proxy_set_header   X-Real-IP          $remote_addr;
@@ -40,10 +41,9 @@ server {
 
     # --- WebSocket proxy (long-lived, needs generous timeouts) --------------
     # UI connects to /api/ws (see WS_URL in App.jsx)
-    # v1.11.13: see comment on REST API location above for why we use the
-    # full container name instead of the 'api' alias.
+    # v3.2.0: see comment on REST API location above re: API_HOST.
     location /api/ws {
-        proxy_pass         http://danhaus93-solostrike_api_1:3001/api/ws;
+        proxy_pass         http://${API_HOST}:3001/api/ws;
         proxy_http_version 1.1;
         proxy_set_header   Upgrade            $http_upgrade;
         proxy_set_header   Connection         "Upgrade";
@@ -52,6 +52,19 @@ server {
         proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
+    }
+
+    # --- Prometheus metrics -------------------------------------------------
+    # v3.2.0: /metrics is the ONLY path allowed to bypass Umbrel's app_proxy
+    # auth (see PROXY_AUTH_WHITELIST in docker-compose.yml). Previously it was
+    # whitelisted but had no location block, so it fell through to the SPA
+    # fallback and returned index.html instead of Prometheus output.
+    location = /metrics {
+        proxy_pass         http://${API_HOST}:3001/metrics;
+        proxy_http_version 1.1;
+        proxy_set_header   Host               $host;
+        proxy_set_header   X-Real-IP          $remote_addr;
+        proxy_read_timeout 30s;
     }
 
     # --- Static assets: aggressive cache, hashed filenames are immutable ----

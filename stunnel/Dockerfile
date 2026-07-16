@@ -3,7 +3,7 @@ FROM alpine:3.20
 RUN apk add --no-cache stunnel openssl ca-certificates
 
 COPY entrypoint.sh /entrypoint.sh
-COPY stunnel.conf /etc/stunnel/stunnel.conf
+COPY stunnel.conf.template /etc/stunnel/stunnel.conf.template
 RUN chmod +x /entrypoint.sh
 
 # Pre-create directories owned by nobody (the runtime user).
