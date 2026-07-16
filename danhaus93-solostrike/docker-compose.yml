@@ -226,7 +226,7 @@ services:
     # new release: rebuild, push, capture the new digest with
     # `docker inspect <image>:latest --format='{{index .RepoDigests 0}}'`,
     # and replace below.
-    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v3.6.1@sha256:4c0e9d670615ae1d1db47fa412118e436b0cf061ee7bce6567b0eed6a7e54375
+    image: ghcr.io/danhaus93-ops/solostrike-stunnel:v3.6.2
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -246,7 +246,7 @@ services:
       - ${APP_DATA_DIR}/data/stunnel:/certs
 
   api:
-    image: ghcr.io/danhaus93-ops/solostrike-api:v3.6.1@sha256:1abc39b1b11b8e0643d1ba1a75cfe2ae5d65c5ba4b524bf28e6a46221faf0329
+    image: ghcr.io/danhaus93-ops/solostrike-api:v3.6.2
     restart: on-failure
     security_opt:
       - no-new-privileges:true
@@ -272,6 +272,9 @@ services:
       - CKPOOL_LOG_DIR=/var/log/ckpool
       - CKPOOL_CONFIG_DIR=/etc/ckpool
       - CONFIG_DIR=/app/config
+      # v3.6.2: authority pubkey for the alias registry. Bump here (no code
+      # release) whenever the Worker's signing key rotates.
+      - SS_REGISTRY_PUBKEY=5bf81c72c7e55ccf53698185691e55a47159a5cce6343fa1f558405ea623a362
       - BITCOIN_RPC_HOST=${APP_BITCOIN_NODE_IP}
       - BITCOIN_RPC_PORT=${APP_BITCOIN_RPC_PORT}
       - BITCOIN_RPC_USER=${APP_BITCOIN_RPC_USER}
@@ -290,7 +293,7 @@ services:
       - STRATUM_PORT_TLS=4333
 
   ui:
-    image: ghcr.io/danhaus93-ops/solostrike-ui:v3.6.1@sha256:4ca11e09f6aa333a34019e68e4fef2aab64254f3e4780d1c1dd7f49705b8538b
+    image: ghcr.io/danhaus93-ops/solostrike-ui:v3.6.2
     restart: on-failure
     security_opt:
       - no-new-privileges:true

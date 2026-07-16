@@ -22,7 +22,12 @@ const REGISTRY_KIND = 30079;
 
 // ↓↓↓ FILL THESE IN after deploying the Worker (or set the env vars). ↓↓↓
 const REGISTRY_BASE   = (process.env.SS_REGISTRY_URL    || 'https://solostrike-alias-registry.rwyft6g28c.workers.dev').replace(/\/+$/, '');
-const AUTHORITY_PUBKEY = (process.env.SS_REGISTRY_PUBKEY || '3d7f7c02e0efb188bb7f5d61464e328d29f2fd2b161f1cf783de8804a51d9705').toLowerCase();
+// v3.6.2: Worker signing key ROTATED (June: 3d7f7c02…, verified then; July:
+// 5bf81c72…, verified via live /registry.json). Clients rejected the registry
+// in between, so no alias resolved (names showed as striker-XXXX and the clean
+// verified label never triggered). Overridable via SS_REGISTRY_PUBKEY so the
+// next rotation is a compose edit, not a release.
+const AUTHORITY_PUBKEY = (process.env.SS_REGISTRY_PUBKEY || '5bf81c72c7e55ccf53698185691e55a47159a5cce6343fa1f558405ea623a362').toLowerCase();
 
 const FETCH_TIMEOUT_MS = 6000;
 
