@@ -7794,6 +7794,133 @@ function SettingsModal({ onClose, saveConfig, currentConfig, currency, onCurrenc
 }
 
 // ── Main settings tab ─────────────────────────────────────────────────────────
+// v3.5.0: Backup & Migrate. Two one-shot actions, not a sync toggle. Export
+// hands back a file; Import previews what's inside before overwriting anything,
+// because the destination's current data is destroyed by the write.
+function BackupSection({ tt = (x) => x }) {
+  const [busy, setBusy]     = useState(false);
+  const [msg, setMsg]       = useState('');
+  const [err, setErr]       = useState('');
+  const [paste, setPaste]   = useState('');
+  const [preview, setPreview] = useState(null);
+
+  const doExport = async () => {
+    setErr(''); setMsg(''); setBusy(true);
+    try {
+      const r = await fetch('/api/backup/export');
+      if (!r.ok) { setErr(tt('Export failed.')); return; }
+      const blob = await r.json();
+      const text = JSON.stringify(blob, null, 2);
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'lonestrike-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMsg(tt('Backup downloaded. It contains your Pulse private key — keep it somewhere safe.'));
+    } catch (e) { setErr(tt('Export failed.')); }
+    finally { setBusy(false); }
+  };
+
+  // Parse + describe, but do NOT send. The user sees what they're about to
+  // overwrite their install with before anything is written.
+  const inspect = (text) => {
+    setErr(''); setMsg(''); setPreview(null);
+    let blob;
+    try { blob = JSON.parse(text); }
+    catch (e) { setErr(tt("That isn't valid backup JSON.")); return; }
+    if (!blob || blob.schema !== 1 || !blob.files) { setErr(tt('Not a LoneStrike backup file.')); return; }
+    const c = blob.files.config || {}, p = blob.files.persist || {};
+    setPreview({
+      blob,
+      exportedAt: blob.exportedAt || '?',
+      appVersion: blob.appVersion || '?',
+      hasIdentity: !!p.nostrPrivkey,
+      firstSeen: p.pulseFirstSeen ? new Date(p.pulseFirstSeen).toLocaleDateString() : null,
+      addr: c.payoutAddress ? (c.payoutAddress.slice(0, 8) + '\u2026' + c.payoutAddress.slice(-4)) : null,
+      nearMisses: Array.isArray(p.closestCalls) ? p.closestCalls.length : 0,
+      hooks: Array.isArray(blob.files.webhooks) ? blob.files.webhooks.length : 0,
+    });
+  };
+
+  const commit = async () => {
+    if (!preview) return;
+    if (!window.confirm(tt('Replace this install\u2019s identity, settings and history with the backup?\n\nThe data currently on this install is overwritten and cannot be recovered.\n\nOnly run one install with a given Pulse identity at a time — two nodes signing as the same identity corrupt the network stats.'))) return;
+    setBusy(true); setErr(''); setMsg('');
+    try {
+      const r = await fetch('/api/backup/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(preview.blob),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) { setErr(tt('Import failed: ') + (j.error || r.status)); return; }
+      setPreview(null); setPaste('');
+      setMsg(tt('Imported. Restart the app from Umbrel to load it.'));
+    } catch (e) { setErr(tt('Import failed.')); }
+    finally { setBusy(false); }
+  };
+
+  const onFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = () => inspect(String(fr.result || ''));
+    fr.onerror = () => setErr(tt('Could not read that file.'));
+    fr.readAsText(file);
+  };
+
+  const group = {fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--amber)',marginBottom:4};
+  const hint  = {fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:8};
+  const btn   = {padding:'6px 12px',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer',border:'1px solid var(--border)',background:'var(--bg-raised)',color:'var(--text-1)'};
+  return (
+    <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginTop:18}}>
+      <div style={{fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8}}>💾 {tt('Backup & Migrate')}</div>
+      <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',lineHeight:1.55,marginBottom:14}}>
+        {tt('Moves your Pulse identity, payout address, settings and stats history to another install. Found blocks and best diff are rebuilt from your pool logs, so they stay behind.')}
+      </div>
+
+      <div style={group}>{tt('Export')}</div>
+      <div style={hint}>{tt('Downloads a file containing your Pulse private key. Treat it like a seed phrase.')}</div>
+      <button onClick={doExport} disabled={busy} style={btn}>{busy ? tt('Working\u2026') : tt('Export backup')}</button>
+
+      <div style={{height:1,background:'var(--border)',margin:'14px 0'}}/>
+
+      <div style={group}>{tt('Import')}</div>
+      <div style={hint}>{tt('Load a backup from another install. You will see what it contains before anything is replaced.')}</div>
+      <input type="file" accept="application/json,.json" onChange={onFile}
+        style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-2)',marginBottom:8,display:'block'}}/>
+      <textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder={tt('\u2026or paste the backup JSON here')}
+        style={{width:'100%',minHeight:52,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:'0.58rem',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text-1)',boxSizing:'border-box',resize:'vertical'}}/>
+      {paste.trim() && !preview && (
+        <button onClick={()=>inspect(paste)} style={{...btn, marginTop:6}}>{tt('Check backup')}</button>
+      )}
+
+      {preview && (
+        <div style={{marginTop:10,padding:'8px 10px',background:'var(--bg)',border:'1px solid var(--amber)'}}>
+          <div style={{fontFamily:'var(--fd)',fontSize:'0.56rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--amber)',marginBottom:6}}>{tt('This backup contains')}</div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-1)',lineHeight:1.7}}>
+            {preview.hasIdentity ? <div>{tt('Pulse identity')}{preview.firstSeen ? ' \u00b7 ' + tt('joined') + ' ' + preview.firstSeen : ''}</div> : <div style={{color:'var(--text-3)'}}>{tt('No Pulse identity')}</div>}
+            {preview.addr && <div>{tt('Payout')} {preview.addr}</div>}
+            <div>{preview.nearMisses} {tt('near misses')} \u00b7 {preview.hooks} {tt('webhooks')}</div>
+            <div style={{color:'var(--text-3)',fontSize:'0.56rem',marginTop:4}}>{tt('From v')}{preview.appVersion} \u00b7 {preview.exportedAt.slice(0,10)}</div>
+          </div>
+          <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--red)',marginTop:8,lineHeight:1.5}}>
+            {tt('Replaces everything on this install.')}
+          </div>
+          <div style={{display:'flex',gap:6,marginTop:8}}>
+            <button onClick={commit} disabled={busy} style={{...btn,background:'var(--amber)',color:'#000',border:'none',fontWeight:700}}>{tt('Import & replace')}</button>
+            <button onClick={()=>{setPreview(null);}} style={btn}>{tt('Cancel')}</button>
+          </div>
+        </div>
+      )}
+
+      {msg && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--cyan)',marginTop:8,lineHeight:1.5}}>{msg}</div>}
+      {err && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',marginTop:8}}>{err}</div>}
+    </div>
+  );
+}
+
 function MainTab({tt=(x)=>x,addr,setAddr,currency,onCurrencyChange,onResetLayout,submit,saved,loading}) {
   return (
     <>
@@ -7820,6 +7947,7 @@ function MainTab({tt=(x)=>x,addr,setAddr,currency,onCurrencyChange,onResetLayout
           {tt('Reset Layout')}
         </button>
       </div>
+      <BackupSection tt={tt}/>
     </>
   );
 }
@@ -16661,7 +16789,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.4.1 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.5.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>

@@ -119,7 +119,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.4.1',
+  version: '3.5.0',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -805,6 +805,76 @@ wss.on('connection', (ws, req) => {
 // deleted over SSH, which regenerates+unclaims on restart). The race window is
 // first-boot-to-first-browser-visit — same trust model as Bitcoin Core's
 // .cookie file. Claimed devices can reveal the key via GET /api/auth/key.
+// ── v3.5.0: Backup & Migrate ────────────────────────────────────────────────
+// Moves an install's identity + settings + history to new hardware, or to the
+// official app-store package (different app id => different data dir => Umbrel
+// treats it as a fresh install). Covers the three JSON files under CONFIG_DIR.
+//
+// EXCLUDED ON PURPOSE: api-key / api-key.claimed. Each install mints its own —
+// carrying one across would hand the destination's credential to whoever holds
+// the backup file. They live in separate files, so they're excluded by
+// construction rather than by filtering.
+//
+// SECURITY: the blob contains the Pulse private key. Both routes sit under
+// /api/, so the v3.3.0 auth middleware already gates them.
+const BACKUP_SCHEMA = 1;
+
+app.get('/api/backup/export', async (req, res) => {
+  try {
+    const readOrNull = async (f) => {
+      try { if (await fs.pathExists(f)) return await fs.readJson(f); } catch (e) {}
+      return null;
+    };
+    const blob = {
+      schema: BACKUP_SCHEMA,
+      exportedAt: new Date().toISOString(),
+      appVersion: state.version,
+      files: {
+        config:   await readOrNull(CONFIG_FILE),
+        persist:  await readOrNull(PERSIST_FILE),
+        webhooks: await readOrNull(HOOKS_FILE),
+      },
+      warning: 'Contains your Pulse private key. Anyone with this file can sign Pulse events as you. Store it offline.',
+    };
+    res.setHeader('Content-Disposition', 'attachment; filename="lonestrike-backup.json"');
+    return res.json(blob);
+  } catch (e) {
+    console.error('[backup] export failed:', e.message);
+    return res.status(500).json({ error: 'export-failed' });
+  }
+});
+
+// The global body limit is 64kb — deliberately tight, since every other route
+// takes small payloads and a low ceiling is free DoS protection. A real backup
+// blows past it (worker status history alone runs ~48kb, before spsHistory and
+// snapshots), so this ONE route gets its own larger parser. Without it the
+// feature would work on empty test installs and 413 for exactly the users with
+// history worth migrating.
+app.post('/api/backup/import', express.json({ limit: '8mb' }), async (req, res) => {
+  try {
+    const blob = req.body;
+    if (!blob || typeof blob !== 'object') return res.status(400).json({ error: 'bad-blob' });
+    if (blob.schema !== BACKUP_SCHEMA) return res.status(400).json({ error: 'schema-mismatch', expected: BACKUP_SCHEMA, got: blob.schema });
+    const f = blob.files;
+    if (!f || typeof f !== 'object') return res.status(400).json({ error: 'no-files' });
+    if (!f.config && !f.persist) return res.status(400).json({ error: 'empty-backup' });
+    // Sanity-check the identity if one is present: a malformed key would leave
+    // Pulse unable to sign, and the failure would surface far from here.
+    const pk = f.persist && f.persist.nostrPrivkey;
+    if (pk != null && typeof pk !== 'string') return res.status(400).json({ error: 'bad-identity' });
+
+    await fs.ensureDir(CONFIG_DIR);
+    if (f.config)   await fs.writeJson(CONFIG_FILE,  f.config,   { spaces: 2 });
+    if (f.persist)  await fs.writeJson(PERSIST_FILE, f.persist,  { spaces: 2 });
+    if (f.webhooks) await fs.writeJson(HOOKS_FILE,   f.webhooks, { spaces: 2 });
+    console.log('[backup] imported (schema', blob.schema + ', from', (blob.appVersion || 'unknown') + ') — restart required');
+    return res.json({ ok: true, restartRequired: true });
+  } catch (e) {
+    console.error('[backup] import failed:', e.message);
+    return res.status(500).json({ error: 'import-failed' });
+  }
+});
+
 app.get('/api/auth/claim', (req, res) => {
   if (keyClaimed()) return res.status(403).json({ error: 'already-claimed' });
   try { fs.writeFileSync(API_KEY_CLAIM_FILE, String(Date.now()), { mode: 0o600 }); }
