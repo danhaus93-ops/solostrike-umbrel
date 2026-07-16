@@ -418,7 +418,16 @@ window.fetch = (input, init) => {
       init.headers = { ...(init.headers || {}), 'X-Api-Key': getApiKey() };
     }
   } catch (e) { /* never break fetch */ }
-  return _origFetch(input, init);
+  // v3.4.1: surface auth failures so App shows the pairing gate instead of
+  // the (misleading) setup screen. Any same-origin /api 401 dispatches.
+  const p = _origFetch(input, init);
+  try {
+    const u = typeof input === 'string' ? input : (input && input.url) || '';
+    if (u.startsWith('/api/')) {
+      p.then((res) => { if (res && res.status === 401) { try { window.dispatchEvent(new Event('ls-auth-401')); } catch (e) {} } return res; }).catch(() => {});
+    }
+  } catch (e) { /* never break fetch */ }
+  return p;
 };
 // TOFU claim: runs once per page load, before the app renders data. If this
 // browser has no key, try to claim; if already claimed elsewhere, the gate in
@@ -429,6 +438,9 @@ export async function ensureApiKey() {
     const r = await _origFetch('/api/auth/claim');
     if (r.ok) { const j = await r.json(); if (j && j.key) { setApiKey(j.key); return true; } }
   } catch (e) { /* offline etc — fall through to gate */ }
+  // v3.4.1: remember the claim failed (already claimed on another device) so
+  // App opens straight on the pairing gate — no flash of the setup form.
+  try { window.__lsNeedsPairing = true; } catch (e) {}
   return false;
 }
 const LS_CURRENCY        = 'ss_currency_v1';
@@ -8319,10 +8331,11 @@ function HuntTab({ tt=(x)=>x, huntAnim, onHuntAnimChange, onPreviewCelebration }
 }
 
 // ── Privacy tab ───────────────────────────────────────────────────────────────
-// v3.3.0: API-key management UI. First device pairs automatically (TOFU claim
-// in main.jsx); this section lets that device REVEAL the key to pair others,
-// and lets an additional device PASTE it — no SSH required. Reveal calls the
-// authed /api/auth/key endpoint, so it only works on an already-paired device.
+// v3.4.1: API-key management. This one panel serves BOTH sides of a pairing —
+// the working device reveals, the new device pastes — so each half is labelled
+// with the situation it's for. (The old copy asserted "this browser paired
+// automatically on first visit", which is false on the very device that needs
+// to read it, and said "reveal here / paste there" without saying which is which.)
 function ApiKeySection({ tt = (x) => x }) {
   const [revealed, setRevealed] = useState(false);
   const [keyVal, setKeyVal]     = useState('');
@@ -8333,44 +8346,92 @@ function ApiKeySection({ tt = (x) => x }) {
     setErr('');
     try {
       const r = await fetch('/api/auth/key');   // wrapper attaches X-Api-Key
-      if (!r.ok) { setErr(tt('This device is not paired — paste a key below.')); return; }
+      if (!r.ok) { setErr(tt("This device isn't paired yet \u2014 use Pair this device below.")); return; }
       const j = await r.json();
       if (j && j.key) { setKeyVal(j.key); setRevealed(true); }
     } catch (e) { setErr(tt('Could not reach the API.')); }
   };
   const copy = async () => {
     try { await navigator.clipboard.writeText(keyVal); setCopied(true); setTimeout(() => setCopied(false), 1500); }
-    catch (e) { /* clipboard blocked — key is selectable below */ }
+    catch (e) { /* clipboard blocked \u2014 the key box is select-all */ }
   };
   const applyPaste = () => {
     const k = paste.trim();
-    if (!/^[0-9a-f]{64}$/i.test(k)) { setErr(tt('That does not look like a LoneStrike API key (64 hex characters).')); return; }
+    if (!/^[0-9a-f]{64}$/i.test(k)) { setErr(tt("That doesn't look like a LoneStrike API key (64 hex characters).")); return; }
     setApiKey(k);
     location.reload();   // clean re-init: fetches + WebSocket pick up the key
   };
-  const lbl = {fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8};
-  const btn = {padding:'6px 12px',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer',border:'1px solid var(--border)',background:'var(--bg-raised)',color:'var(--text-1)'};
+  const eyebrow = {fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--text-2)',marginBottom:8};
+  const group   = {fontFamily:'var(--fd)',fontSize:'0.58rem',letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--amber)',marginBottom:4};
+  const hint    = {fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:8};
+  const btn     = {padding:'6px 12px',fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer',border:'1px solid var(--border)',background:'var(--bg-raised)',color:'var(--text-1)'};
   return (
     <div style={{padding:'0.85rem 1rem',background:'var(--bg-raised)',border:'1px solid var(--border)',marginTop:14}}>
-      <div style={lbl}>🔑 {tt('API Key')}</div>
-      <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',lineHeight:1.5,marginBottom:10}}>
-        {tt('Every request to the pool API is authenticated with this key. This browser paired automatically on first visit. To use LoneStrike from another device or browser, reveal the key here and paste it there.')}
+      <div style={eyebrow}>🔑 {tt('API Key')}</div>
+      <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--text-2)',lineHeight:1.55,marginBottom:14}}>
+        {tt("Every request to the pool API is authenticated with this key. Devices don't share it \u2014 each one needs the key once.")}
       </div>
+
+      <div style={group}>{tt('Add another device')}</div>
+      <div style={hint}>{tt('Reveal the key here, then paste it on the new device under Settings \u2192 Privacy.')}</div>
       {!revealed ? (
         <button onClick={reveal} style={btn}>{tt('Reveal key')}</button>
       ) : (
         <div>
           <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--amber)',wordBreak:'break-all',userSelect:'all',padding:'6px 8px',background:'var(--bg)',border:'1px solid var(--border)',marginBottom:6}}>{keyVal}</div>
-          <button onClick={copy} style={btn}>{copied ? '✓ ' + tt('Copied') : tt('Copy')}</button>
+          <button onClick={copy} style={btn}>{copied ? '\u2713 ' + tt('Copied') : tt('Copy')}</button>
         </div>
       )}
-      <div style={{...lbl, marginTop:14}}>{tt('Pair this device')}</div>
+
+      <div style={{height:1,background:'var(--border)',margin:'14px 0'}}/>
+
+      <div style={group}>{tt('Pair this device')}</div>
+      <div style={hint}>{tt('Paste a key copied from a device that already works.')}</div>
       <div style={{display:'flex',gap:6}}>
-        <input value={paste} onChange={e=>setPaste(e.target.value)} placeholder={tt('Paste key from your other device…')}
-          style={{flex:1,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:'0.62rem',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text-1)'}}/>
-        <button onClick={applyPaste} style={btn}>{tt('Apply')}</button>
+        <input value={paste} onChange={e=>setPaste(e.target.value)} placeholder={tt('Paste API key\u2026')}
+          style={{flex:1,minWidth:0,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:'0.62rem',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text-1)'}}/>
+        <button onClick={applyPaste} style={btn}>{tt('Pair')}</button>
       </div>
       {err && <div style={{fontFamily:'var(--fm)',fontSize:'0.6rem',color:'var(--red)',marginTop:6}}>{err}</div>}
+    </div>
+  );
+}
+
+// v3.4.1: full-screen gate for an unpaired device. Replaces the fallthrough to
+// the setup form (which implied a fresh pool). The how-to lives ON the screen:
+// where the key is, a paste field, and an SSH fallback \u2014 no Discord required.
+function PairGate({ tt = (x) => x }) {
+  const [paste, setPaste] = useState('');
+  const [err, setErr]     = useState('');
+  const apply = () => {
+    const k = paste.trim();
+    if (!/^[0-9a-f]{64}$/i.test(k)) { setErr(tt("That doesn't look like a LoneStrike API key (64 hex characters).")); return; }
+    setApiKey(k);
+    location.reload();
+  };
+  const step = {display:'flex',gap:10,alignItems:'baseline',marginBottom:9};
+  const num  = {fontFamily:'var(--fd)',fontSize:'0.7rem',fontWeight:700,color:'var(--amber)',flexShrink:0};
+  const txt  = {fontFamily:'var(--fm)',fontSize:'0.68rem',color:'var(--text-1)',lineHeight:1.55};
+  return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'1.2rem',background:'var(--bg)'}}>
+      <div style={{maxWidth:440,width:'100%',padding:'1.4rem',background:'var(--bg-raised)',border:'1px solid var(--border)'}} className="fade-in">
+        <div style={{fontFamily:'var(--fd)',fontSize:'1rem',fontWeight:700,letterSpacing:'0.06em',color:'var(--amber)',marginBottom:10}}>🔑 {tt('Pair this device')}</div>
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.66rem',color:'var(--text-2)',lineHeight:1.6,marginBottom:14}}>
+          {tt("Your pool is running normally \u2014 this browser just doesn't have the API key yet. Pair once and this screen won't come back.")}
+        </div>
+        <div style={step}><span style={num}>1.</span><span style={txt}>{tt('On a device that already works, open Settings \u2192 Privacy \u2192 API Key and tap Reveal key.')}</span></div>
+        <div style={step}><span style={num}>2.</span><span style={txt}>{tt('Paste it below.')}</span></div>
+        <div style={{display:'flex',gap:6,marginTop:12}}>
+          <input value={paste} onChange={e=>setPaste(e.target.value)} placeholder={tt('Paste API key\u2026')} autoFocus
+            style={{flex:1,minWidth:0,padding:'10px',fontFamily:'var(--fm)',fontSize:'0.7rem',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text-1)'}}/>
+          <button onClick={apply} style={{padding:'10px 16px',fontFamily:'var(--fd)',fontSize:'0.68rem',fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase',cursor:'pointer',border:'none',background:'var(--amber)',color:'#000'}}>{tt('Pair')}</button>
+        </div>
+        {err && <div style={{fontFamily:'var(--fm)',fontSize:'0.62rem',color:'var(--red)',marginTop:8}}>{err}</div>}
+        <div style={{fontFamily:'var(--fm)',fontSize:'0.58rem',color:'var(--text-3)',marginTop:14,lineHeight:1.6}}>
+          {tt('No paired device handy? Over SSH:')}<br/>
+          <span style={{userSelect:'all',color:'var(--text-2)'}}>cat ~/umbrel/app-data/danhaus93-solostrike/data/config/api-key</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -15534,6 +15595,15 @@ function saveCurrency(c) { try { localStorage.setItem(LS_CURRENCY, c); } catch {
 
 // ── App root ──────────────────────────────────────────────────────────────────
 export default function App() {
+  // v3.4.1: unpaired-device detection. Initial value from the failed TOFU claim
+  // (set before render in main.jsx); runtime 401s (stale key, key regenerated
+  // server-side) arrive via the fetch wrapper's event.
+  const [authBlocked, setAuthBlocked] = useState(() => { try { return !!window.__lsNeedsPairing && !getApiKey(); } catch (e) { return false; } });
+  useEffect(() => {
+    const h = () => setAuthBlocked(true);
+    window.addEventListener('ls-auth-401', h);
+    return () => window.removeEventListener('ls-auth-401', h);
+  }, []);
   const { connected, state: poolState, blockAlert, saveConfig, getConfig } = usePool();
   TEMP_OVERRIDES = poolState?.tempOverrides || TEMP_OVERRIDES; // v3.1.1 per-miner thresholds sync
   const lastBlock = blockAlert; // alias — block alert IS the last block info
@@ -16325,6 +16395,12 @@ export default function App() {
     );
   }
 
+  // v3.4.1: unpaired device gets the pairing gate, NOT the setup form (which
+  // implied a fresh pool and invited re-entering the payout address).
+  if (authBlocked) {
+    return <PairGate tt={tt}/>;
+  }
+
   if (poolState && !poolState.payoutAddress) {
     return (
       <>
@@ -16585,7 +16661,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.4.0 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.4.1 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
