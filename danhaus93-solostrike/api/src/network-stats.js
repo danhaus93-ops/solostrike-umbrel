@@ -532,6 +532,11 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
           // to peers so they can show it for us. Rotates on identity rotation
           // (every 90 days) — that's intentional, fresh identity = fresh start.
           pulseFirstSeen: cfg.pulseFirstSeen,
+          // v3.6.3: THE missing field. The claim handler set cfg.pulseAlias and
+          // called saveIdentity(), but the payload never included it — so every
+          // API restart silently dropped the name from broadcasts and peers saw
+          // bare striker-XXXX again. Registry looked perfect the whole time.
+          pulseAlias: cfg.pulseAlias || null,
         });
       } catch (e) {
         console.warn('[network-stats] saveIdentity failed:', e.message);
@@ -1156,6 +1161,21 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       try {
         const r = await aliasReg.fetchRegistry();
         if (r && r.signedEvent) { cfg.pulseRegistryCache = r.signedEvent; try { saveIdentity(); } catch {} }
+        // v3.6.3 self-heal: installs that claimed a name before this version
+        // lost it on restart (never persisted). The signed registry already
+        // maps our pubkey to the name, so re-adopt it by reverse lookup — no
+        // re-claim needed. Also broadcasts immediately so peers see it.
+        if (!cfg.pulseAlias && r && r.byFolded) {
+          for (const entry of r.byFolded.values()) {
+            if (entry && entry.pubkey === pubkey) {
+              cfg.pulseAlias = entry.display;
+              try { saveIdentity(); } catch {}
+              lastOwnBroadcastAt = 0;
+              console.log('[network-stats] re-adopted claimed alias from registry:', entry.display);
+              break;
+            }
+          }
+        }
       } catch {}
     };
     // v3.4.0: registry refresh is an external HTTPS fetch — gated per tick so

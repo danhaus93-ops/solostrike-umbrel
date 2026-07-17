@@ -119,7 +119,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.6.2',
+  version: '3.6.3',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1650,6 +1650,8 @@ async function main() {
   }
   if (persist.webhooks) state.webhooks = persist.webhooks;
   if (persist.nostrPrivkey) cfg.nostrPrivkey = persist.nostrPrivkey;
+  // v3.6.3: restore the claimed alias (see saveIdentity for why it was lost)
+  if (typeof persist.pulseAlias === 'string' && persist.pulseAlias) cfg.pulseAlias = persist.pulseAlias;
   if (persist.nostrInstallId) cfg.nostrInstallId = persist.nostrInstallId;
   if (typeof persist.networkStatsEnabled === 'boolean') cfg.networkStatsEnabled = persist.networkStatsEnabled;
   if (persist.pulseDeviceSalt) cfg.pulseDeviceSalt = persist.pulseDeviceSalt;
