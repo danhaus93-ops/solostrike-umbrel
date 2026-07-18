@@ -242,6 +242,9 @@ function transformState(state, opts) {
         live,
       }, live);
     }),
+    // v3.6.4: window start for all resettable best-share displays, so the UI
+    // can label session bests honestly ("since <date>") next to lifetime.
+    shareStatsStartedAt:  state.shareStatsStartedAt || 0,
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
     retarget:             state.retarget  || null,

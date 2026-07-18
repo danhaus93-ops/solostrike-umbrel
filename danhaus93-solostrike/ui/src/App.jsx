@@ -2751,6 +2751,11 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                       ★ {fmtDiff(w.bestshare)}
                     </span>
                   )}
+                  {(w.bestever||0) > (w.bestshare||0) && (
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',whiteSpace:'nowrap',opacity:0.85,lineHeight:1.2}}>
+                      🏆 {fmtDiff(w.bestever)}
+                    </span>
+                  )}
                   {(() => {
                     // v1.9.7: temp on its own third line below best-share.
                     // Color tiers:
@@ -6994,7 +6999,7 @@ function ShareStatsModal({ tt = (x) => x, shares, workers, aliases, onClose, onW
 }
 
 // ── Share Stats card ──────────────────────────────────────────────────────────
-function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, bestshareLifetime, onOpen }) {
+function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, bestshareLifetime, shareStatsStartedAt, onOpen }) {
   const s = shares || {};
   const workAccepted = s.accepted || 0;
   const workRejected = s.rejected || 0;
@@ -7051,7 +7056,7 @@ function ShareStats({ tt = (x) => x, shares, hashrate, bestshare, bestshareLifet
         )}
         <div style={{background:'transparent',border:'1px solid transparent',padding:'0.875rem'}}>
           <div style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.15em',color:'var(--text-2)',textTransform:'uppercase',marginBottom:6}}>{tt('Best Difficulty')}</div>
-          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('since reset')}</span></div>
+          <div style={{fontFamily:'var(--fd)',fontSize:'2.1rem',fontWeight:700,color:'var(--amber)',lineHeight:1,textShadow:'0 0 14px rgba(var(--amber-rgb),0.3)'}}>{fmtDiff(bestshare||0)}<span style={{fontSize:'0.65rem',color:'var(--text-2)',marginLeft:6,fontWeight:400}}>{tt('since reset')}{shareStatsStartedAt>0 ? ' \u00b7 '+new Date(shareStatsStartedAt).toLocaleDateString() : ''}</span></div>
           {bestshareLifetime > (bestshare||0) && (
             <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:3}}>{tt('lifetime')}: {fmtDiff(bestshareLifetime)}</div>
           )}
@@ -15514,6 +15519,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
       ['hashrate_hps', w.hashrate || 0],
       ['current_difficulty', w.diff || 0],
       ['best_share', Math.round(w.bestshare || 0)],
+      ['best_ever', Math.round(w.bestever || 0)],
       ['work_accepted', work],
       ['work_rejected', workRej],
       ['ip', w.ip || ''],
@@ -15566,7 +15572,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
         <div style={{padding:'1rem 1.25rem'}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.5rem',marginBottom:'1rem'}}>
             <div style={heroBox}><div style={heroLbl}>{tt('Hashrate')}</div><div style={heroVal}>{on?fmtHr(w.hashrate):'offline'}</div></div>
-            <div style={{...heroBox, position:'relative'}}><div style={heroLbl}>{tt('Best Diff')}</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div><button onClick={()=>resetBestDiff(w.name)} title="Reset best difficulty" style={{position:'absolute',top:5,right:5,background:'none',border:'1px solid var(--border-hot)',color:'var(--text-3)',fontSize:'0.62rem',lineHeight:1,padding:'2px 5px',borderRadius:3,cursor:'pointer'}}>⟲</button></div>
+            <div style={{...heroBox, position:'relative'}}><div style={heroLbl}>{tt('Best Diff')}</div><div style={heroVal}>{fmtDiff(w.bestshare||0)}</div>{(w.bestever||0) > (w.bestshare||0) && <div style={{fontFamily:'var(--fm)',fontSize:'0.55rem',color:'var(--text-3)',marginTop:2}}>{tt('lifetime')}: {fmtDiff(w.bestever)}</div>}<button onClick={()=>resetBestDiff(w.name)} title="Reset best difficulty" style={{position:'absolute',top:5,right:5,background:'none',border:'1px solid var(--border-hot)',color:'var(--text-3)',fontSize:'0.62rem',lineHeight:1,padding:'2px 5px',borderRadius:3,cursor:'pointer'}}>⟲</button></div>
             <div style={heroBox}><div style={heroLbl}>{tt('Work Done')}</div><div style={{...heroVal,color:'var(--green)'}}>{fmtDiff(work)}</div></div>
             <div style={heroBox}><div style={heroLbl}>{tt('Last Share')}</div><div style={{...heroVal,color:on?'var(--green)':'var(--text-2)'}}>{w.lastSeen?fmtAgoShort(w.lastSeen):'—'}</div></div>
           </div>
@@ -16640,7 +16646,7 @@ export default function App() {
     hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
-    shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} bestshareLifetime={poolState?.bestshareLifetime} onOpen={()=>setShowShareStats(true)}/>,
+    shares: <ShareStats tt={tt} shares={poolState?.shares} hashrate={poolState?.hashrate?.current} bestshare={poolState?.bestshare} bestshareLifetime={poolState?.bestshareLifetime} shareStatsStartedAt={poolState?.shareStatsStartedAt} onOpen={()=>setShowShareStats(true)}/>,
     best: <BestShareLeaderboard tt={tt} workers={workers} poolBest={poolState?.bestshare} aliases={aliases}/>,
     closestcalls: <ClosestCallsPanel tt={tt} closestCalls={poolState?.snapshots?.closestCalls} aliases={aliases} networkDifficulty={poolState?.network?.difficulty}/>,
     jumpers: <JumpersPanel tt={tt}
@@ -16800,7 +16806,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.6.3 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.6.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
