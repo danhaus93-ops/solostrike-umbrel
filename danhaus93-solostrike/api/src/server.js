@@ -82,19 +82,37 @@ let networkStatsController = null;
 // ── State ──────────────────────────────────────────────────────────────────
 function startTemplateSourceBadge(state, logDir) {
   const fs = require('fs-extra'); const path = require('path');
+  // Latched detection: the "Connected to bitcoind mining IPC" line prints ONCE at
+  // startup and scrolls out of any trailing window over time. So we must NOT
+  // re-decide from a fixed byte window (that falsely falls back to RPC once the
+  // line ages off). Instead: scan whole log, find the LAST ipc-connect and LAST
+  // ipc-failure, and pick whichever is more recent. Latch to prior state if the
+  // current scan is inconclusive rather than defaulting to RPC.
   function detect() {
     try {
-      // exact ckpool line (confirmed live): "Connected to bitcoind mining IPC /bitcoin/node.sock"
-      let ipc = false, zmq = false;
-      const files = fs.existsSync(logDir) ? fs.readdirSync(logDir).filter(f=>f.endsWith('.log')) : [];
+      const files = fs.existsSync(logDir)
+        ? fs.readdirSync(logDir).filter(f => f.endsWith('.log')).sort()
+        : [];
+      let lastIpcConnect = -1, lastIpcFail = -1, sawZmq = false;
+      let globalPos = 0;
       for (const f of files) {
         let txt = '';
-        try { txt = fs.readFileSync(path.join(logDir, f), 'utf8').slice(-20000); } catch(e){ continue; }
-        if (/Connected to bitcoind mining IPC/i.test(txt)) ipc = true;
-        if (/zmqblock|ZMQ/i.test(txt)) zmq = true;
+        try { txt = fs.readFileSync(path.join(logDir, f), 'utf8'); } catch (e) { continue; }
+        // record positions (monotonic across files via globalPos offset)
+        const idxConnect = txt.lastIndexOf('Connected to bitcoind mining IPC');
+        if (idxConnect >= 0) lastIpcConnect = Math.max(lastIpcConnect, globalPos + idxConnect);
+        const failMatch = /Failed to connect to mining IPC|IPC.*disconnect|falling back to (ZMQ|RPC)/i.exec(txt);
+        if (failMatch) lastIpcFail = Math.max(lastIpcFail, globalPos + failMatch.index);
+        if (/zmqblock|ZMQ connected/i.test(txt)) sawZmq = true;
+        globalPos += txt.length;
       }
-      state.templateSource = ipc ? 'ipc' : (zmq ? 'zmq' : 'rpc');
-    } catch(e) { /* leave prior value */ }
+      let src;
+      if (lastIpcConnect >= 0 && lastIpcConnect > lastIpcFail) src = 'ipc';
+      else if (lastIpcFail > lastIpcConnect && lastIpcFail >= 0) src = sawZmq ? 'zmq' : 'rpc';
+      else if (sawZmq) src = 'zmq';
+      else src = state.templateSource || 'rpc'; // inconclusive: keep prior, don't flap to RPC
+      state.templateSource = src;
+    } catch (e) { /* keep prior value */ }
   }
   detect(); setInterval(detect, 30000);
 }
