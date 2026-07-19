@@ -120,8 +120,8 @@ async function pollOnce(state) {
     let chans;
     try { chans = await httpGetJson(`/api/v1/clients/${client.client_id}/channels`); }
     catch (e) { continue; }
-    const extended = (chans && chans.extended) || [];
-    const standard = (chans && chans.standard) || [];
+    const extended = (chans && chans.extended_channels) || [];
+    const standard = (chans && chans.standard_channels) || [];
     for (const ch of extended.concat(standard)) {
       seen.add(mergeChannel(state, ch, nowTs));
     }
