@@ -245,6 +245,7 @@ function transformState(state, opts) {
     // v3.6.4: window start for all resettable best-share displays, so the UI
     // can label session bests honestly ("since <date>") next to lifetime.
     shareStatsStartedAt:  state.shareStatsStartedAt || 0,
+    templateSource:       state.templateSource || 'zmq',
     odds:                 computeOdds(state),
     luck:                 computeLuck(state),
     retarget:             state.retarget  || null,

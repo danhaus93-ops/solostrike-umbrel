@@ -46,6 +46,7 @@ const {
 const { startStratumHealthPoller, getStratumHealth } = require('./stratum-health');
 const { startBlockWatcher } = require('./block-watcher');
 const { startShareWatcher } = require('./share-watcher');
+const { startSv2Poller } = require('./sv2-poller');
 const { startNetworkStats } = require('./network-stats');
 
 const PORT          = parseInt(process.env.PORT, 10) || 3001;
@@ -79,6 +80,25 @@ const PUBLIC_PRICE_URL   = 'https://mempool.space/api/v1/prices';
 let networkStatsController = null;
 
 // ── State ──────────────────────────────────────────────────────────────────
+function startTemplateSourceBadge(state, logDir) {
+  const fs = require('fs-extra'); const path = require('path');
+  function detect() {
+    try {
+      // exact ckpool line (confirmed live): "Connected to bitcoind mining IPC /bitcoin/node.sock"
+      let ipc = false, zmq = false;
+      const files = fs.existsSync(logDir) ? fs.readdirSync(logDir).filter(f=>f.endsWith('.log')) : [];
+      for (const f of files) {
+        let txt = '';
+        try { txt = fs.readFileSync(path.join(logDir, f), 'utf8').slice(-20000); } catch(e){ continue; }
+        if (/Connected to bitcoind mining IPC/i.test(txt)) ipc = true;
+        if (/zmqblock|ZMQ/i.test(txt)) zmq = true;
+      }
+      state.templateSource = ipc ? 'ipc' : (zmq ? 'zmq' : 'rpc');
+    } catch(e) { /* leave prior value */ }
+  }
+  detect(); setInterval(detect, 30000);
+}
+
 const state = {
   status: 'starting',
   payoutAddress: null,
@@ -119,7 +139,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.6.4',
+  version: '3.7.0-sv2dev',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -1758,6 +1778,8 @@ async function main() {
   startStratumHealthPoller();
   startBlockWatcher({ state, broadcast, fireHooks, savePersist, logDir: CKPOOL_LOG_DIR });
   startShareWatcher({ state, logDir: CKPOOL_LOG_DIR, savePersist, broadcast });
+  startSv2Poller(state);
+  startTemplateSourceBadge(state, CKPOOL_LOG_DIR);
   networkStatsController = startNetworkStats({ state, cfg, savePersist, getLive: getAllLive });
 
   // iter28-fix: persist Strike Velocity ring buffer + per-worker uptime

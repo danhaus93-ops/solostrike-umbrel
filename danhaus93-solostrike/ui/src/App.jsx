@@ -2756,6 +2756,11 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                       🏆 {fmtDiff(w.bestever)}
                     </span>
                   )}
+                  {w.protocol && w.protocol.includes('sv2') && (
+                    <span style={{fontFamily:'var(--fm)',fontSize:'0.5rem',fontWeight:700,letterSpacing:'0.05em',color: w.protocol==='sv1+sv2'?'var(--amber)':'#7cc4ff',border:'1px solid currentColor',borderRadius:3,padding:'0 3px',whiteSpace:'nowrap',opacity:0.9,lineHeight:1.3}}>
+                      {w.protocol==='sv1+sv2'?'SV1+SV2':'SV2'}
+                    </span>
+                  )}
                   {(() => {
                     // v1.9.7: temp on its own third line below best-share.
                     // Color tiers:
@@ -6427,7 +6432,7 @@ function DebugOverlay({ settings, onSettingsChange, appState }) {
 // useStratumHost() so the footer ports and any other stratum URL builder
 // uses the same configured value.
 // v1.11.41: memoized to skip re-renders when props unchanged across WS broadcasts
-const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stratumHealth, startedAt }) {
+const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stratumHealth, startedAt, templateSource }) {
   const [copied, setCopied] = useState('');
 
   // Persistent fields — load from localStorage, save on blur.
@@ -6443,6 +6448,10 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
   const addrShort = payoutAddress
     ? (payoutAddress.length > 16 ? `${payoutAddress.slice(0,8)}…${payoutAddress.slice(-6)}` : payoutAddress)
     : 'YOUR_BTC_ADDRESS';
+  const tmpl = templateSource || 'zmq';
+  const tmplBadge = tmpl==='ipc' ? {t:'🟢 IPC', c:'#4ade80', d:'Templates via Core IPC'}
+                  : tmpl==='zmq' ? {t:'🟢 ZMQ', c:'#4ade80', d:'Templates via ZMQ'}
+                  : {t:'🟡 RPC', c:'#fbbf24', d:'Fallback: RPC polling'};
   const fullUser  = payoutAddress
     ? `${payoutAddress}.${workername}`
     : `bc1q...your_address.${workername}`;
@@ -6534,7 +6543,7 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
 
   return (
     <div style={{...card, minWidth:0, maxWidth:'100%', overflow:'hidden', display:'flex', flexDirection:'column', height:'100%'}} className="fade-in ss-card-chrome">
-      <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem', flexShrink:0}}>▸ Stratum Connection</div>
+      <div style={{...cardTitle, color:'var(--amber)', marginBottom:'0.5rem', flexShrink:0, display:'flex', justifyContent:'space-between', alignItems:'center'}}><span>▸ Stratum Connection</span><span title={tmplBadge.d} style={{fontFamily:'var(--fm)', fontSize:'0.55rem', fontWeight:700, color:tmplBadge.c, border:`1px solid ${tmplBadge.c}`, borderRadius:3, padding:'1px 5px', letterSpacing:'0.05em'}}>{tmplBadge.t}</span></div>
 
       {/* HOST — editable */}
       <div style={fieldRowStyle}>
@@ -16642,7 +16651,7 @@ export default function App() {
     workers: <WorkerGrid workers={workers} aliases={aliases} onWorkerClick={setSelectedWorker}/>,
     network: <NetworkStats network={poolState?.network} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} privateMode={!!poolState?.privateMode} latestBlock={poolState?.latestBlock}/>,
     node: <BitcoinNodePanel nodeInfo={poolState?.nodeInfo}/>,
-    stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt}/>,
+    stratum: <StratumPanel payoutAddress={poolState?.payoutAddress} stratumHealth={stratumHealth} startedAt={poolState?.shareStatsStartedAt} templateSource={poolState?.templateSource}/>,
     hunt: <HuntPanel odds={poolState?.odds} hashrate={poolState?.hashrate?.current} blockReward={poolState?.blockReward} mempool={poolState?.mempool} prices={poolState?.prices} currency={currency} huntAnim={huntAnim} performanceMode={performanceMode} onOpen={()=>setShowReckoning(true)} lang={lang}/>,
     luck: <LuckGauge luck={poolState?.luck}/>,
     retarget: <RetargetPanel retarget={poolState?.retarget}/>,
@@ -16806,7 +16815,7 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.6.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.7.0-sv2dev — ckpool + SV2{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
