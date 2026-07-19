@@ -76,6 +76,11 @@ function mergeChannel(state, ch, nowTs) {
       shareCounters: { accepted: 0, rejected: 0 },
       bestshare: 0,
       hashrate: 0,
+      shares: 0,
+      rejected: 0,
+      diff: 0,
+      status: 'online',
+      lastSeen: nowTs,
     };
   }
   // dedup: same workername already present via SV1 -> tag combined, don't double-count hashrate
@@ -85,13 +90,19 @@ function mergeChannel(state, ch, nowTs) {
   w.shareCounters = w.shareCounters || { accepted: 0, rejected: 0 };
   w.shareCounters.accepted += dAcc;
   w.shareCounters.rejected += dRej;
+  w.shares = w.shareCounters.accepted;
+  w.rejected = w.shareCounters.rejected;
   if (ch.shares_rejected_by_reason && Object.keys(ch.shares_rejected_by_reason).length) {
     w.rejectReasons = ch.shares_rejected_by_reason; // pre-bucketed by SRI
   }
-  // hashrate: prefer SV2 figure when this row is SV2-only; for combined take max
+  // hashrate: SRI nominal_hashrate can read 0 before stable; keep last nonzero,
+  // and mark online since shares are actively arriving.
   const sv2Hr = ch.nominal_hashrate || 0;
-  w.hashrate = existingSv1 ? Math.max(w.hashrate || 0, sv2Hr) : sv2Hr;
+  if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, sv2Hr);
+  else if (sv2Hr > 0) w.hashrate = sv2Hr;
   w.stableHashrate = !!ch.stable_hashrate;
+  w.status = 'online';
+  w.lastSeen = nowTs;
   // best diff feeds Near Strikes; keep the max across protocols
   if ((ch.best_diff || 0) > (w.bestshare || 0)) w.bestshare = ch.best_diff;
   if (ch.blocks_found) w.sv2BlocksFound = ch.blocks_found;

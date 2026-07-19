@@ -1127,27 +1127,33 @@ function fmtClockDate(d) {
 }
 
 // ── ZMQ badge ─────────────────────────────────────────────────────────────────
-function ZmqBadge({ zmq }) {
-  if (!zmq) return null;
-  const z = zmq;
+function ZmqBadge({ zmq, templateSource }) {
   const now = Date.now();
-  const idleMs = 30 * 60 * 1000;
-  const recentlyHeard = z.lastBlockHeardAt && (now - z.lastBlockHeardAt < idleMs);
-
+  const src = templateSource || (zmq ? 'zmq' : 'rpc');
   let color, text, title;
-  if (!z.enabled) {
-    color = 'var(--text-3)'; text = 'ZMQ OFF';
-    title = 'ZMQ not configured — pool relies on RPC polling (slightly slower block notifications)';
-  } else if (recentlyHeard) {
-    color = 'var(--green)'; text = 'ZMQ';
-    title = `ZMQ active — last block heard ${Math.floor((now - z.lastBlockHeardAt)/60000)}m ago${z.endpoint ? '\n' + z.endpoint : ''}`;
+  if (src === 'ipc') {
+    color = 'var(--green)'; text = 'IPC';
+    title = 'Block templates via Bitcoin Core IPC (node.sock) \u2014 supersedes ZMQ';
+  } else if (src === 'zmq') {
+    const z = zmq || {};
+    const idleMs = 30 * 60 * 1000;
+    const recentlyHeard = z.lastBlockHeardAt && (now - z.lastBlockHeardAt < idleMs);
+    if (!z.enabled) {
+      color = 'var(--text-3)'; text = 'ZMQ OFF';
+      title = 'ZMQ not configured \u2014 pool relies on RPC polling';
+    } else if (recentlyHeard) {
+      color = 'var(--green)'; text = 'ZMQ';
+      title = `ZMQ active \u2014 last block heard ${Math.floor((now - z.lastBlockHeardAt)/60000)}m ago`;
+    } else {
+      color = 'var(--amber)'; text = 'ZMQ IDLE';
+      title = 'ZMQ configured but no recent block. Normal during quiet periods.';
+    }
   } else {
-    color = 'var(--amber)'; text = 'ZMQ IDLE';
-    title = `ZMQ configured but no recent block. Normal during quiet periods.${z.endpoint ? '\n' + z.endpoint : ''}`;
+    color = 'var(--amber)'; text = 'RPC';
+    title = 'Fallback: templates via RPC polling (no IPC/ZMQ notify)';
   }
-
   return (
-    <span title={title} style={{ display:'inline-flex', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.12em', textTransform:'uppercase', color, flexShrink:0, marginLeft:4, textShadow: z.enabled ? `0 0 5px ${color}` : 'none' }}>
+    <span title={title} style={{ display:'inline-flex', alignItems:'center', fontFamily:'var(--fd)', fontSize:'0.52rem', letterSpacing:'0.12em', textTransform:'uppercase', color, flexShrink:0, marginLeft:4, textShadow: `0 0 5px ${color}` }}>
       {text}
     </span>
   );
@@ -1449,7 +1455,7 @@ function UpdateBanner({ tier, urgency, version, notes, expanded, onToggleExpande
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header({ connected, status, onSettings, privateMode, minimalMode, performanceMode, zmq, blocksFound }) {
+function Header({ connected, status, onSettings, privateMode, minimalMode, performanceMode, zmq, blocksFound, templateSource }) {
   const now = useNow(30000);
   const statusMap = { running:{c:'var(--green)',t:'MINING'}, mining:{c:'var(--green)',t:'MINING'}, no_address:{c:'var(--amber)',t:'SETUP'}, setup:{c:'var(--amber)',t:'SETUP'}, starting:{c:'var(--amber)',t:'STARTING'}, error:{c:'var(--red)',t:'ERROR'}, loading:{c:'var(--text-2)',t:'...'} };
   const st = statusMap[status] || statusMap.loading;
@@ -1481,7 +1487,7 @@ function Header({ connected, status, onSettings, privateMode, minimalMode, perfo
           <>
             <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0 }}/>
             <span style={{ fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', color:st.c, textShadow:`0 0 6px ${st.c}`, animation:'pulse 2s ease-in-out infinite', willChange:'opacity', flexShrink:0 }}>{st.t}</span>
-            <ZmqBadge zmq={zmq}/>
+            <ZmqBadge zmq={zmq} templateSource={templateSource}/>
             {privateMode && (
               <span title="Private Mode" style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--cyan)', fontFamily:'var(--fd)', fontSize:'0.54rem', letterSpacing:'0.12em', textTransform:'uppercase', textShadow:'0 0 6px rgba(0,255,209,0.4)', animation:'pulse 3s ease-in-out infinite', willChange:'opacity', flexShrink:0, marginLeft:4 }}>🔒</span>
             )}
@@ -16558,7 +16564,7 @@ export default function App() {
   if (poolState && !poolState.payoutAddress) {
     return (
       <>
-        <Header connected={connected} status="setup" onSettings={()=>setShowSettings(true)} privateMode={!!poolState.privateMode} minimalMode={minimalMode} performanceMode={performanceMode} zmq={poolState?.zmq}/>
+        <Header connected={connected} status="setup" onSettings={()=>setShowSettings(true)} privateMode={!!poolState.privateMode} minimalMode={minimalMode} performanceMode={performanceMode} zmq={poolState?.zmq} templateSource={poolState?.templateSource}/>
         <SetupForm tt={tt} saveConfig={saveConfig}/>
         {showSettings && (
           <SettingsModal
@@ -16720,6 +16726,7 @@ export default function App() {
             minimalMode={minimalMode}
             performanceMode={performanceMode}
             zmq={poolState?.zmq}
+            templateSource={poolState?.templateSource}
             blocksFound={Array.isArray(poolState?.blocks) ? poolState.blocks.length : null}
           />
         )}
