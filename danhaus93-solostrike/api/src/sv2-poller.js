@@ -95,11 +95,26 @@ function mergeChannel(state, ch, nowTs) {
   if (ch.shares_rejected_by_reason && Object.keys(ch.shares_rejected_by_reason).length) {
     w.rejectReasons = ch.shares_rejected_by_reason; // pre-bucketed by SRI
   }
-  // hashrate: SRI nominal_hashrate can read 0 before stable; keep last nonzero,
-  // and mark online since shares are actively arriving.
+  // hashrate: SRI nominal_hashrate is miner-declared and can be 0 (S19XP does this).
+  // Fallback: derive from measured work. share_work_sum is cumulative pool-measured
+  // work; rate = delta_work * 2^32 / delta_seconds gives observed hashrate,
+  // independent of what the miner declared (same principle ckpool uses for SV1).
   const sv2Hr = ch.nominal_hashrate || 0;
-  if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, sv2Hr);
-  else if (sv2Hr > 0) w.hashrate = sv2Hr;
+  const workSum = ch.share_work_sum || 0;
+  const prevWork = cur.workSum || 0;
+  const prevTs = cur.workTs || nowTs;
+  let computedHr = w._sv2ComputedHr || 0;
+  const dtSec = (nowTs - prevTs) / 1000;
+  if (dtSec >= 5 && workSum >= prevWork) {
+    const dWork = workSum - prevWork;
+    // 2^32 hashes per unit of difficulty-work
+    computedHr = (dWork * 4294967296) / dtSec;
+    w._sv2ComputedHr = computedHr;
+  }
+  cur.workSum = workSum; cur.workTs = nowTs;
+  const effHr = sv2Hr > 0 ? sv2Hr : computedHr;
+  if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, effHr);
+  else w.hashrate = effHr;
   w.stableHashrate = !!ch.stable_hashrate;
   w.status = 'online';
   w.lastSeen = nowTs;
