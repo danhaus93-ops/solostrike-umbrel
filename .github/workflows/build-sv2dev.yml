@@ -1,0 +1,46 @@
+name: Build SV2-Dev Images (api+ui only)
+
+# Builds ghcr.io/danhaus93-ops/solostrike-{api,ui}:sv2dev from the sv2-dev branch.
+# ISOLATED: only :sv2dev tag, only api+ui. Never touches :latest, :v3.6.4,
+# stunnel, or ckpool. Prod images are completely unaffected. Manual trigger.
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: danhaus93-ops
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: sv2-dev }
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Build & push api:sv2dev
+        run: |
+          cd danhaus93-solostrike/api
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t ${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-api:sv2dev \
+            --push .
+  ui:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: sv2-dev }
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Build & push ui:sv2dev
+        run: |
+          cd danhaus93-solostrike/ui
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t ${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-ui:sv2dev \
+            --push .
