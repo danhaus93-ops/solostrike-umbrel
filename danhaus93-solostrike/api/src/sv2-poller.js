@@ -95,21 +95,27 @@ function mergeChannel(state, ch, nowTs) {
   if (ch.shares_rejected_by_reason && Object.keys(ch.shares_rejected_by_reason).length) {
     w.rejectReasons = ch.shares_rejected_by_reason; // pre-bucketed by SRI
   }
-  // hashrate: SRI nominal_hashrate is miner-declared and can be 0 (S19XP does this).
-  // Fallback: derive from measured work. share_work_sum is cumulative pool-measured
-  // work; rate = delta_work * 2^32 / delta_seconds gives observed hashrate,
-  // independent of what the miner declared (same principle ckpool uses for SV1).
+  // hashrate: SRI nominal_hashrate is miner-declared and often 0 (S19XP/AxeOS SV2).
+  // Fallback derived from measured work: share_work_sum is cumulative work in units
+  // where 1.0 = one share at difficulty 2^32. Total hashes = work_sum * 2^64, so
+  // observed hashrate = delta(work_sum) * 2^64 / delta_seconds. Constant calibrated
+  // against known device output (2^64 = 18446744073709551616). Pool-measured, so it's
+  // truthful regardless of what the miner declares — same principle ckpool uses for SV1.
+  const TWO_POW_64 = 18446744073709551616;
   const sv2Hr = ch.nominal_hashrate || 0;
   const workSum = ch.share_work_sum || 0;
-  const prevWork = cur.workSum || 0;
-  const prevTs = cur.workTs || nowTs;
+  const prevWork = cur.workSum;
+  const prevTs = cur.workTs;
   let computedHr = w._sv2ComputedHr || 0;
-  const dtSec = (nowTs - prevTs) / 1000;
-  if (dtSec >= 5 && workSum >= prevWork) {
-    const dWork = workSum - prevWork;
-    // 2^32 hashes per unit of difficulty-work
-    computedHr = (dWork * 4294967296) / dtSec;
-    w._sv2ComputedHr = computedHr;
+  if (prevWork !== undefined && prevTs !== undefined) {
+    const dtSec = (nowTs - prevTs) / 1000;
+    if (dtSec >= 5 && workSum >= prevWork) {
+      const dWork = workSum - prevWork;
+      const hr = (dWork * TWO_POW_64) / dtSec;
+      // smooth lightly to avoid poll-to-poll jitter (EMA), seed on first value
+      computedHr = w._sv2ComputedHr ? (w._sv2ComputedHr * 0.6 + hr * 0.4) : hr;
+      w._sv2ComputedHr = computedHr;
+    }
   }
   cur.workSum = workSum; cur.workTs = nowTs;
   const effHr = sv2Hr > 0 ? sv2Hr : computedHr;
