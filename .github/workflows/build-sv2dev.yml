@@ -1,8 +1,8 @@
 name: Build SV2-Dev Images (api+ui only)
 
-# Builds ghcr.io/danhaus93-ops/solostrike-{api,ui}:sv2dev from the sv2-dev branch.
-# ISOLATED: only :sv2dev tag, only api+ui. Never touches :latest, :v3.6.4,
-# stunnel, or ckpool. Prod images are completely unaffected. Manual trigger.
+# Both arches via NATIVE per-arch runners (no QEMU). QEMU-emulated arm64 crashes
+# on Node/V8 musl ("illegal instruction"), so we mirror prod build.yml: build each
+# arch natively, merge digests. ISOLATED: only :sv2dev, only api+ui. Never prod tags.
 
 on:
   workflow_dispatch:
@@ -12,35 +12,114 @@ env:
   OWNER: danhaus93-ops
 
 jobs:
-  api:
-    runs-on: ubuntu-latest
+  build-api:
+    runs-on: ${{ matrix.runner }}
     permissions: { contents: read, packages: write }
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
+      - name: Prepare
+        run: echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+        env: { platform: "${{ matrix.platform }}" }
       - uses: actions/checkout@v4
         with: { ref: sv2-dev }
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - name: Build & push api:sv2dev
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./danhaus93-solostrike/api
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-api,push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
         run: |
-          cd danhaus93-solostrike/api
-          docker buildx build --platform linux/amd64,linux/arm64 \
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-api-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-api:
+    needs: build-api
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: /tmp/digests, pattern: digests-api-*, merge-multiple: true }
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-api:sv2dev \
-            --push .
-  ui:
-    runs-on: ubuntu-latest
+            $(printf '${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-api@sha256:%s ' *)
+
+  build-ui:
+    runs-on: ${{ matrix.runner }}
     permissions: { contents: read, packages: write }
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
+      - name: Prepare
+        run: echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+        env: { platform: "${{ matrix.platform }}" }
       - uses: actions/checkout@v4
         with: { ref: sv2-dev }
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - name: Build & push ui:sv2dev
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./danhaus93-solostrike/ui
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-ui,push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
         run: |
-          cd danhaus93-solostrike/ui
-          docker buildx build --platform linux/amd64,linux/arm64 \
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-ui-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-ui:
+    needs: build-ui
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: /tmp/digests, pattern: digests-ui-*, merge-multiple: true }
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-ui:sv2dev \
-            --push .
+            $(printf '${{ env.REGISTRY }}/${{ env.OWNER }}/solostrike-ui@sha256:%s ' *)
