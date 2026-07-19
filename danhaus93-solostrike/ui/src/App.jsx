@@ -2710,6 +2710,11 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                 {/* Middle: name + miner type stacked, with thin progress bar below */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',alignItems:'baseline',gap:6,minWidth:0}}>
+                    {w.protocol && w.protocol.includes('sv2') && (
+                      <span style={{alignSelf:'center',fontFamily:'var(--fm)',fontSize:'0.48rem',fontWeight:700,letterSpacing:'0.05em',color: w.protocol==='sv1+sv2'?'var(--amber)':'#7cc4ff',border:'1px solid currentColor',borderRadius:3,padding:'0 3px',whiteSpace:'nowrap',opacity:0.9,lineHeight:1.4,flexShrink:0}}>
+                        {w.protocol==='sv1+sv2'?'SV1+SV2':'SV2'}
+                      </span>
+                    )}
                     <span style={{fontFamily:'var(--fm)',fontSize:'0.72rem',color:'var(--text-1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:500,minWidth:0}} title={w.name}>{disp}</span>
                     {minerLabel(w) && <span style={{fontFamily:'var(--fd)',fontSize:'0.6rem',letterSpacing:'0.08em',color:'var(--text-3)',textTransform:'uppercase',whiteSpace:'nowrap',flexShrink:0}}>{minerLabel(w)}</span>}
                     {(() => {
@@ -2762,11 +2767,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
                       🏆 {fmtDiff(w.bestever)}
                     </span>
                   )}
-                  {w.protocol && w.protocol.includes('sv2') && (
-                    <span style={{fontFamily:'var(--fm)',fontSize:'0.5rem',fontWeight:700,letterSpacing:'0.05em',color: w.protocol==='sv1+sv2'?'var(--amber)':'#7cc4ff',border:'1px solid currentColor',borderRadius:3,padding:'0 3px',whiteSpace:'nowrap',opacity:0.9,lineHeight:1.3}}>
-                      {w.protocol==='sv1+sv2'?'SV1+SV2':'SV2'}
-                    </span>
-                  )}
+
                   {(() => {
                     // v1.9.7: temp on its own third line below best-share.
                     // Color tiers:

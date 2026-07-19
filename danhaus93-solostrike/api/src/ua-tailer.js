@@ -242,9 +242,19 @@ async function startUaTailer({ configDir, logDir }) {
   console.log(`[UA-Tailer] Watching ${logFile} for auth/drop/ua events`);
 }
 
+// v3.7-sv2: allow the SV2 poller to inject a worker->IP mapping so SV2 miners
+// (whose shares go through SRI, not ckpool, so they never appear in ckpool logs)
+// still get LAN telemetry via miner-poller — identical path to SV1 workers.
+function setMetaForWorker(workerName, ip, extra) {
+  if (!workerName || !ip) return;
+  const prev = metaByWorker.get(workerName) || {};
+  metaByWorker.set(workerName, { ...prev, ip, lastSeen: Date.now(), source: 'sv2', ...(extra || {}) });
+}
+
 module.exports = {
   startUaTailer,
   getMetaForWorker,
   getIpForWorker,
   getAllMeta,
+  setMetaForWorker,
 };

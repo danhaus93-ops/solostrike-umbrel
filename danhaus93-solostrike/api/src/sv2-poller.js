@@ -16,6 +16,26 @@
 
 const http = require('http');
 
+// v3.7-sv2: LAN telemetry bridge. SRI's monitoring API exposes NO miner IP, so
+// SV2 workers can't get temp/fan/freq/real-hashrate the way SV1 does (via web UI
+// polling). Fix: user provides per-worker IP hints (env SV2_MINER_IPS=
+// "workername=ip,workername2=ip2"); we register them into ua-tailer's meta map,
+// and miner-poller then polls them exactly like SV1 miners. The miner's own web
+// UI reports its true hashrate, which we prefer over SRI's declared/computed value.
+let setMetaForWorker = null;
+try { ({ setMetaForWorker } = require('./ua-tailer')); } catch (e) { /* optional */ }
+
+function parseIpHints() {
+  const raw = process.env.SV2_MINER_IPS || '';
+  const map = {};
+  for (const pair of raw.split(',')) {
+    const [name, ip] = pair.split('=').map(s => (s || '').trim());
+    if (name && ip) map[name] = ip;
+  }
+  return map;
+}
+const IP_HINTS = parseIpHints();
+
 const POLL_INTERVAL_MS = 10000; // respect monitoring_cache_refresh_secs=10
 const SV2_HOST = process.env.SV2POOL_HOST || null; // full container name per store
 const SV2_MONITOR_PORT = parseInt(process.env.SV2_MONITOR_PORT || '9091', 10);
@@ -53,6 +73,12 @@ function mergeChannel(state, ch, nowTs) {
   if (!state.sv2Cursors) state.sv2Cursors = {}; // persisted high-water marks
 
   const name = parseWorkerName(ch.user_identity);
+  // v3.7-sv2: if we have an IP hint for this worker, register it into the LAN meta
+  // map so miner-poller picks it up and polls the miner's web UI (real hashrate,
+  // temp, fan, freq, vendor) — same telemetry path as SV1.
+  if (setMetaForWorker && IP_HINTS[name]) {
+    setMetaForWorker(name, IP_HINTS[name]);
+  }
   const key = `sv2:${ch.channel_id}`;
   const cur = state.sv2Cursors[key] || { accepted: 0, rejected: 0 };
 
@@ -118,9 +144,17 @@ function mergeChannel(state, ch, nowTs) {
     }
   }
   cur.workSum = workSum; cur.workTs = nowTs;
+  // Hashrate precedence: (1) miner web-UI via miner-poller live (real, set elsewhere
+  // by IP-hint match) wins and we DON'T overwrite it; (2) SRI declared nominal;
+  // (3) our work-derived estimate. We only set w.hashrate from SV2 sources if the
+  // worker isn't already getting a live web-UI reading (marked by w._liveHashrate).
   const effHr = sv2Hr > 0 ? sv2Hr : computedHr;
-  if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, effHr);
-  else w.hashrate = effHr;
+  const hasLive = !!(w._liveHashrate && w._liveHashrate > 0);
+  if (!hasLive) {
+    if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, effHr);
+    else w.hashrate = effHr;
+  }
+  w.sv2EstHashrate = effHr; // keep the SV2-derived estimate for reference/debug
   w.stableHashrate = !!ch.stable_hashrate;
   w.status = 'online';
   w.lastSeen = nowTs;
