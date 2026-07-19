@@ -24,6 +24,8 @@ const http = require('http');
 // UI reports its true hashrate, which we prefer over SRI's declared/computed value.
 let setMetaForWorker = null;
 try { ({ setMetaForWorker } = require('./ua-tailer')); } catch (e) { /* optional */ }
+let getLiveForWorker = null;
+try { ({ getLiveForWorker } = require('./miner-poller')); } catch (e) { /* optional */ }
 
 function parseIpHints() {
   const raw = process.env.SV2_MINER_IPS || '';
@@ -144,22 +146,32 @@ function mergeChannel(state, ch, nowTs) {
     }
   }
   cur.workSum = workSum; cur.workTs = nowTs;
-  // Hashrate precedence: (1) miner web-UI via miner-poller live (real, set elsewhere
-  // by IP-hint match) wins and we DON'T overwrite it; (2) SRI declared nominal;
-  // (3) our work-derived estimate. We only set w.hashrate from SV2 sources if the
-  // worker isn't already getting a live web-UI reading (marked by w._liveHashrate).
+  // Hashrate precedence: (1) miner web-UI reading (real 43.4 TH/s, from miner-poller
+  // via the IP-hint match) wins; (2) SRI declared; (3) our work-derived estimate.
   const effHr = sv2Hr > 0 ? sv2Hr : computedHr;
-  const hasLive = !!(w._liveHashrate && w._liveHashrate > 0);
-  if (!hasLive) {
-    if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, effHr);
-    else w.hashrate = effHr;
+  let liveHr = 0;
+  if (getLiveForWorker) {
+    try {
+      const live = getLiveForWorker(name);
+      // prefer sustained/avg, fall back to reported instant
+      liveHr = (live && (live.hashrateSustained || live.hashrateAvg || live.hashrateReported)) || 0;
+    } catch (e) { /* ignore */ }
   }
-  w.sv2EstHashrate = effHr; // keep the SV2-derived estimate for reference/debug
+  const finalHr = liveHr > 0 ? liveHr : effHr;
+  if (existingSv1) w.hashrate = Math.max(w.hashrate || 0, finalHr);
+  else w.hashrate = finalHr;
+  w.sv2EstHashrate = effHr;      // SV2-derived estimate (debug/reference)
+  w.hashrateReported = liveHr || w.hashrateReported; // surface web-UI value
   w.stableHashrate = !!ch.stable_hashrate;
   w.status = 'online';
   w.lastSeen = nowTs;
-  // best diff feeds Near Strikes; keep the max across protocols
-  if ((ch.best_diff || 0) > (w.bestshare || 0)) w.bestshare = ch.best_diff;
+  // best diff feeds Near Strikes leaderboard + detail hero; SRI reports best_diff
+  // as a float (e.g. 774209.08). Round and keep the max across protocols.
+  const bd = Math.floor(ch.best_diff || 0);
+  if (bd > (w.bestshare || 0)) w.bestshare = bd;
+  if (bd > (w.bestever || 0)) w.bestever = bd;
+  // surface the IP hint on the worker so the detail view + click-to-open work
+  if (IP_HINTS[name]) w.ip = IP_HINTS[name];
   if (ch.blocks_found) w.sv2BlocksFound = ch.blocks_found;
   w.channelType = 'extended';
   w.lastUpdate = nowTs;
