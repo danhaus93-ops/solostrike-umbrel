@@ -88,30 +88,41 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v3.6.1 — Security, privacy and migration
+  ⚠️ HEADS-UP — OFFICIAL APP STORE VERSION COMING (READ THIS FIRST)
 
 
-  🔐 API authentication: every device now pairs with a key. Your first browser
-  pairs automatically; add others from Settings → Privacy (or the pairing
-  screen that appears on an unpaired device).
+  LoneStrike is in final review for the official Umbrel App Store. When it
+  lands, it installs as a SEPARATE app — Umbrel cannot carry your data across
+  automatically. Your community install keeps working and keeps getting
+  updates; switching is optional. When you do switch:
 
-  🕶️ Privacy panel: one-tap Complete Privacy lockdown (verifiably zero outbound
-  connections), plus individual toggles for Pulse, alias registry, fee rates,
-  network blocks, fiat price, webhooks and map data.
+  1. FIRST: Settings → Main → Backup & Migrate → Export backup (your Pulse
+  identity, reserved name, payout address, settings and stats — treat the
+  file like a seed phrase)
 
-  💾 Backup & Migrate (Settings → Main): move your Pulse identity, payout
-  address, settings and stats history to new hardware.
+  2. Install LoneStrike from the official App Store
 
-  ⛏️ Avalon Q: full telemetry (power, frequency, temps, fans) and tuning
-  benchmark eligibility.
+  3. New install: Settings → Main → Import your backup → restart the app
 
-  📋 Crew list: drag to reorder with per-row grips.
+  4. Uninstall the community version — NEVER run both: two copies of one
+  identity corrupt your Pulse stats
 
-  🪪 Blocks now sign as "LoneStrike on Umbrel/".
+  5. ⚠️ THE PORTS CHANGE — repoint every miner: ASICs 3333 → 32222 · hobby
+  miners (BitAxe, NerdQAxe) 3334 → 32223 · TLS 4333 → 32224 · NiceHash
+  4334 → 32225. The Stratum Connection card in the new install shows the
+  correct ports — copy from there.
 
-  Also: /metrics fixed for Prometheus scrapers, tightened auth whitelist,
-  TLS certificate identity, The Ledger explains Private Mode instead of
-  showing a blank card, copy buttons work over plain HTTP.
+  Found-block history and best diff rebuild from pool logs and stay with the
+  old install. Everything else comes with you.
+
+
+  v3.6.5 — Install-aware ports
+
+
+  📌 The app now displays the correct stratum ports for whichever store it is
+  installed from (community keeps 3333/3334/4333/4334; the official package
+  shows its own scheme automatically). Groundwork for the official release —
+  no action needed on community installs.
 developer: danhaus93-ops
 website: https://github.com/danhaus93-ops/solostrike-umbrel
 dependencies:
