@@ -100,17 +100,17 @@ async function runHealthCheck() {
   // ckpool listens on ckpool:3333, ckpool:3334 and ckpool:4334 (NiceHash high-diff)
   // stunnel listens on stunnel:4333
   const checks = [
-    { port: '3333', host: 'ckpool',  tls: false },
-    { port: '3334', host: 'ckpool',  tls: false },
-    { port: '4334', host: 'ckpool',  tls: false },
-    { port: '4333', host: 'stunnel', tls: true  },
+    { port: '3333', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT          || '3333' },
+    { port: '3334', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_HOBBY    || '3334' },
+    { port: '4334', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_NICEHASH || '4334' },
+    { port: '4333', host: 'stunnel', tls: true,  label: process.env.STRATUM_PORT_TLS      || '4333' },
   ];
   const results = await Promise.all(
     checks.map(async (c) => {
       const result = c.tls
         ? await checkTlsPort(Number(c.port), c.host)
         : await checkPlainPort(Number(c.port), c.host);
-      return [c.port, result];
+      return [c.label, result];
     })
   );
   const ports = {};
