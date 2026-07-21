@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App, { ensureApiKey } from './App.jsx'
+import App, { ensureApiKey, loadPorts } from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import './styles/global.css'
 import { createAnimatedBackground } from './animated-bg-webgl.js'
@@ -45,7 +45,7 @@ import { loadTheme, getThemeById, applyThemeCSS, applyThemeColorMeta } from './t
 // burst and the WebSocket carry it. finally() not then(): render even if the
 // claim fails (already claimed elsewhere / offline) — App then prompts for a
 // paste, the intended additional-device flow, rather than hard-failing.
-ensureApiKey().finally(() => {
+Promise.allSettled([ensureApiKey(), loadPorts()]).then(() => {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary fullscreen>

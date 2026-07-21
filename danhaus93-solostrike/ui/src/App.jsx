@@ -407,6 +407,17 @@ const LS_API_KEY         = 'ss_api_key_v1';        // v3.3.0 server-side auth ke
 // One wrapper instead of touching all fetch sites. External fetches (CDN,
 // world-atlas) are untouched. The key arrives via TOFU claim on first visit
 // (see ensureApiKey) or manual paste on additional devices.
+// v3.6.5: host-side stratum ports. Defaults match the community package; the
+// official store maps 32222-32225 and the API tells us via /api/ports. Loaded
+// BEFORE first render (main.jsx), so components read plain values — the ports
+// are fixed per install, no reactivity needed. A failed fetch keeps defaults.
+export let LS_PORTS = { main: '3333', hobby: '3334', tls: '4333', nicehash: '4334' };
+export async function loadPorts() {
+  try {
+    const r = await window.fetch('/api/ports');
+    if (r.ok) { const j = await r.json(); if (j && j.main) LS_PORTS = j; }
+  } catch (e) { /* keep defaults */ }
+}
 export function getApiKey() { try { return localStorage.getItem(LS_API_KEY) || ''; } catch (e) { return ''; } }
 export function setApiKey(k) { try { localStorage.setItem(LS_API_KEY, k); } catch (e) {} }
 // v3.6.0: clipboard that works over plain HTTP. navigator.clipboard exists only
@@ -2671,7 +2682,7 @@ function WorkerGrid({ workers, aliases, onWorkerClick }) {
       </div>
       {sorted.length === 0 ? (
         <div style={{textAlign:'center',padding:'1.5rem',border:'1px dashed var(--border)',color:'var(--text-2)',fontSize:'0.75rem',fontFamily:'var(--fd)',lineHeight:2}}>
-          No miners connected yet.<br/><span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--cyan)'}}>stratum+tcp://umbrel.local:3333</span><br/><span style={{color:'var(--text-3)',fontSize:'0.65rem'}}>user: worker_name · pass: x</span>
+          No miners connected yet.<br/><span style={{fontFamily:'var(--fm)',fontSize:'0.7rem',color:'var(--cyan)'}}>stratum+tcp://umbrel.local:{LS_PORTS.main}</span><br/><span style={{color:'var(--text-3)',fontSize:'0.65rem'}}>user: worker_name · pass: x</span>
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',flex:1,minHeight:0,overflowY:'auto'}}>
@@ -6558,12 +6569,12 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
 
         {/* Three port chips — tap to copy stratum URL */}
         <div style={{display:'flex', gap:6, marginTop:8}}>
-          <PortChip port="3333" accent="var(--amber)" />
-          <PortChip port="3334" accent="var(--text-1)" />
-          <PortChip port="4333" accent="var(--cyan)" ssl />
+          <PortChip port={LS_PORTS.main} accent="var(--amber)" />
+          <PortChip port={LS_PORTS.hobby} accent="var(--text-1)" />
+          <PortChip port={LS_PORTS.tls} accent="var(--cyan)" ssl />
         </div>
         <div style={{...helperStyle, marginTop:5, fontSize:'0.6rem'}}>
-          3333 ASIC · 3334 Hobby · 4334 NiceHash · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>4333 SSL
+          {LS_PORTS.main} ASIC · {LS_PORTS.hobby} Hobby · {LS_PORTS.nicehash} NiceHash · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>{LS_PORTS.tls} SSL
         </div>
       </div>
 
@@ -15105,7 +15116,7 @@ function TuningControls({ tt = (x) => x, worker }) {
   const [fan, setFan] = useState(70);
   const [auto, setAuto] = useState(true);
   const [level, setLevel] = useState(1);            // avalon power mode 0/1/2
-  const [pool, setPool] = useState({ url: 'umbrel.local', port: '3333', user: name || '', pass: 'x', tls: false });
+  const [pool, setPool] = useState({ url: 'umbrel.local', port: LS_PORTS.main, user: name || '', pass: 'x', tls: false });
   const [checks, setChecks] = useState([false, false, false]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -15319,8 +15330,8 @@ function TuningControls({ tt = (x) => x, worker }) {
           ) : (
             <div style={{ padding: '4px 0' }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button onClick={() => setPool(p => ({ ...p, url: 'umbrel.local', port: p.tls ? '4333' : '3333', pass: 'x' }))} style={{ flex: 1, fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(var(--amber-rgb),0.3)', background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>⚡ {tt('Point at LoneStrike')}</button>
-                <button onClick={() => setPool(p => ({ ...p, tls: !p.tls, port: !p.tls ? '4333' : '3333' }))} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 11px', borderRadius: 8, border: `1px solid ${pool.tls ? 'var(--cyan)' : 'var(--border)'}`, background: pool.tls ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: pool.tls ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{pool.tls ? 'TLS · 4333' : tt('TLS off')}</button>
+                <button onClick={() => setPool(p => ({ ...p, url: 'umbrel.local', port: p.tls ? LS_PORTS.tls : LS_PORTS.main, pass: 'x' }))} style={{ flex: 1, fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(var(--amber-rgb),0.3)', background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>⚡ {tt('Point at LoneStrike')}</button>
+                <button onClick={() => setPool(p => ({ ...p, tls: !p.tls, port: !p.tls ? LS_PORTS.tls : LS_PORTS.main }))} style={{ fontFamily: 'var(--fd)', fontSize: '0.55rem', padding: '8px 11px', borderRadius: 8, border: `1px solid ${pool.tls ? 'var(--cyan)' : 'var(--border)'}`, background: pool.tls ? 'rgba(0,255,209,0.1)' : 'var(--bg-raised)', color: pool.tls ? 'var(--cyan)' : 'var(--text-2)', cursor: 'pointer' }}>{pool.tls ? 'TLS · ' + LS_PORTS.tls : tt('TLS off')}</button>
               </div>
               {[['url', 'Stratum URL', 'text'], ['port', 'Port', 'numeric'], ['user', 'Worker · addr.name', 'text'], ['pass', 'Password', 'text']].map(([k, lbl, im]) => (
                 <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '9px 0' }}>
@@ -15484,9 +15495,9 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
   })();
 
   const host = loadStratumHost() || 'umbrel.local';
-  const stratumUrl      = `stratum+tcp://${host}:3333`;
-  const stratumUrlHobby = `stratum+tcp://${host}:3334`;
-  const stratumUrlNicehash = `stratum+tcp://${host}:4334`;
+  const stratumUrl      = `stratum+tcp://${host}:${LS_PORTS.main}`;
+  const stratumUrlHobby = `stratum+tcp://${host}:${LS_PORTS.hobby}`;
+  const stratumUrlNicehash = `stratum+tcp://${host}:${LS_PORTS.nicehash}`;
   const minerUrl        = w.ip ? `http://${w.ip}` : null;
 
   const copy = async (val, lbl) => {
@@ -16806,13 +16817,13 @@ export default function App() {
       </main>
         {showChrome && (
         <footer ref={footerRef} style={{borderTop:'1px solid var(--border)',padding:'0.35rem 0.75rem',paddingBottom:'calc(0.35rem + env(safe-area-inset-bottom))',display:'flex',justifyContent:'space-between',alignItems:'center',fontFamily:'var(--fd)',fontSize:'0.5rem',color:'var(--text-3)',letterSpacing:'0.06em',textTransform:'uppercase',gap:'0.5rem',flexWrap:'nowrap',width:'100%',maxWidth:'100%',boxSizing:'border-box',whiteSpace:'nowrap',position:'fixed',left:0,right:0,bottom:0,background:'rgba(6,7,8,0.92)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',zIndex:50}}>
-        <span>LoneStrike v3.6.4 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
+        <span>LoneStrike v3.6.5 — ckpool-solo{poolState?.privateMode && ' · 🔒 PRIVATE'}{minimalMode && ' · MIN'}</span>
         <a href="https://github.com/danhaus93-ops/solostrike-umbrel" target="_blank" rel="noopener noreferrer" title="View source on GitHub" style={{display:'inline-flex', alignItems:'center', justifyContent:'center', color:'var(--text-2)', textDecoration:'none', padding:'2px 6px', lineHeight:1, flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
           </svg>
         </a>
-        <span>Ports <CopyablePort health={stratumHealth} port="3333"/> · <CopyablePort health={stratumHealth} port="3334"/> · <span title="TLS encryption via stunnel" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span><CopyablePort health={stratumHealth} port="4333" ssl/></span>
+        <span>Ports <CopyablePort health={stratumHealth} port={LS_PORTS.main}/> · <CopyablePort health={stratumHealth} port={LS_PORTS.hobby}/> · <span title="TLS encryption via stunnel" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span><CopyablePort health={stratumHealth} port={LS_PORTS.tls} ssl/></span>
       </footer>
       )}
 

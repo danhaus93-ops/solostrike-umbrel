@@ -119,7 +119,7 @@ const state = {
   sharelogCursors: {},
   webhooks: [],
   shareStatsStartedAt: 0,
-  version: '3.6.4',
+  version: '3.6.5',
   // Compose/manifest version — bump only when umbrel-app.yml or docker-compose.yml
   // change in ways that require Umbrel to re-read them. Soft updates leave this
   // untouched; hard updates bump this so the UI banner can prompt the user to
@@ -699,7 +699,7 @@ const requestKey = (req) => req.get('x-api-key') || (req.query ? req.query.key :
 //   /api/health            Docker healthcheck (wget from inside the container)
 //   /api/widget/four-stats umbreld fetches it directly for the home-screen tile
 //   /api/auth/claim        the one-time bootstrap itself
-const AUTH_EXEMPT = new Set(['/api/health', '/api/widget/four-stats', '/api/auth/claim']);
+const AUTH_EXEMPT = new Set(['/api/health', '/api/widget/four-stats', '/api/auth/claim', '/api/ports']);
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();   // /metrics + static: not ours
   if (AUTH_EXEMPT.has(req.path)) return next();
@@ -893,6 +893,18 @@ app.get('/api/auth/claim', (req, res) => {
 // Authenticated reveal — lets a claimed device show the key for pairing others.
 app.get('/api/auth/key', (req, res) => res.json({ key: apiKey }));
 
+// v3.6.5: host-side stratum ports, resolved from compose env. The official
+// app-store package maps different host ports (32222-32225) than the community
+// package (3333/3334/4333/4334); the UI displays whatever the env says so
+// in-app connection instructions are always correct for the install. Keyless:
+// these are connection instructions, not secrets.
+const STRATUM_PORTS = {
+  main:     process.env.STRATUM_PORT          || '3333',
+  hobby:    process.env.STRATUM_PORT_HOBBY    || '3334',
+  tls:      process.env.STRATUM_PORT_TLS      || '4333',
+  nicehash: process.env.STRATUM_PORT_NICEHASH || '4334',
+};
+app.get('/api/ports', (req, res) => res.json(STRATUM_PORTS));
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // v1.8.4: detailed system health endpoint for the System Health card.
