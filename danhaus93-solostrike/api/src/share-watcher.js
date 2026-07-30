@@ -313,6 +313,9 @@ function startShareWatcher({ state, logDir, savePersist, broadcast }) {
       const td = typeof obj.diff  === 'number' ? obj.diff  : 0;
       if (sd > c.bestSdiff) c.bestSdiff = sd;
       if (sd > (c.bestSinceReset || 0)) c.bestSinceReset = sd;
+      // v3.7.0 Best Diff leaderboard: feed the pool-wide tracker (keeps the
+      // all-time best WITH a timestamp; counters have only the value).
+      try { const t = require('./best-diff').getBestDiffTracker({ state }); if (t) t.record(sd); } catch (_) {}
       // v1.12.x Strike Force: retain per-share achieved diff for the histogram,
       // but ONLY for rental high-diff ports (NiceHash/MRR connect on >4000,
       // e.g. 4334). Owned miners on 3333/3334 skip this so payload stays small.

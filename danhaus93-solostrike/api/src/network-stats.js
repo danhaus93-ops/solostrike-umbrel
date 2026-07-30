@@ -26,6 +26,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const WebSocket = require('ws');
+const { getBestDiffTracker, sanitizeInboundBd, mergePeerBd } = require('./best-diff');
 const crypto = require('crypto');
 const fs = require('fs-extra');
 const path = require('path');
@@ -455,6 +456,10 @@ function validateAndExtractEvent(ev, ourPubkey) {
     }
   }
 
+  // v3.7.0: optional bd — peer's best accepted-share diff record. Shape,
+  // range and timestamp validated; monotonic merge happens in the consumer.
+  const bd = sanitizeInboundBd(data.bd, ev.created_at);
+
   // v2.x: optional benchmarks — peer's per-bucket tuning summaries. Each entry
   // is independently shape-validated and range-clamped; anything malformed is
   // dropped. Hard sanity ceilings defend against forged "champion" numbers (the
@@ -504,7 +509,7 @@ function validateAndExtractEvent(ev, ourPubkey) {
     ok: true,
     pubkey: ev.pubkey,
     created_at: ev.created_at,
-    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, rf, lastStrike, firstSeen, benchmarks,
+    payload: { hashrate, workers, blocks, version: version || 'unknown', loc, rf, lastStrike, firstSeen, benchmarks, bd,
       alias: (typeof data.alias === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9 ._'\-]{0,22}[A-Za-z0-9])?$/.test(data.alias.trim().replace(/\s+/g,' ')) ? data.alias.trim().replace(/\s+/g,' ') : null) },
   };
 }
@@ -838,6 +843,8 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       // v1.12.x: most recent block this peer claims to have found
       lastStrike: result.payload.lastStrike || (existing && existing.lastStrike) || null,
       benchmarks: result.payload.benchmarks || (existing && existing.benchmarks) || null,
+      // v3.7.0: best-diff record only ever rises (replay/reset defense).
+      bd: mergePeerBd(existing && existing.bd, result.payload.bd),
     });
     state.networkStats.security.eventsAccepted++;
     recomputeAggregates();
@@ -971,6 +978,7 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       pubkey: pk,
       hashrate: e.hashrate,
       workers: e.workers,
+      bd: e.bd || null,
       blocks: e.blocks,
       version: e.version,
       loc: e.loc || null,  // [lat, lon] on 5° grid, or null
@@ -1108,6 +1116,11 @@ function startNetworkStats({ state, cfg, savePersist, getLive }) {
       ...(Number.isFinite(cfg.pulseFirstSeen) && cfg.pulseFirstSeen > 0
         ? { firstSeen: cfg.pulseFirstSeen }
         : {}),
+      // v3.7.0: best accepted-share diff (+ when struck) for the Best Diff
+      // leaderboard. Sourced from the sharelog-fed tracker, never client
+      // input; bounds re-clamped inside forBroadcast(). Rides the same
+      // opt-in Pulse gate as everything else in this event.
+      ...((() => { const t = getBestDiffTracker(); const bd = t && t.forBroadcast(); return bd ? { bd } : {}; })()),
       // v2.x: crowdsourced tuning benchmarks — ALWAYS shared (no opt-in toggle).
       // Per-bucket summaries only, each already passed through
       // sanitizeBenchmarkPayload() (fail-closed whitelist). Only Tier-3 operator
