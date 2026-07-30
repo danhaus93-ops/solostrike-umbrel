@@ -53,7 +53,7 @@ export default function BestDiffTab({ tt, networkStats, netDifficulty = null }) 
   const [win, setWin] = useState('all');
   const [showInfo, setShowInfo] = useState(false);
 
-  const entries = Array.isArray(networkStats?.entries) ? networkStats.entries : [];
+  const entries = Array.isArray(networkStats?.peers) ? networkStats.peers : (Array.isArray(networkStats?.entries) ? networkStats.entries : []);
 
   // Every peer with a valid record, newest-strike info attached.
   const ranked = useMemo(() => {
