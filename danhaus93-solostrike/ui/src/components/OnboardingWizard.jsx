@@ -1,3 +1,4 @@
+import { LS_PORTS } from '../App';
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { isValidBtcAddress } from '../utils.js';
@@ -232,9 +233,9 @@ function StepAddress({ tt = (x)=>x, addr, setAddr, onNext, onBack, onSkip, loadi
 // ── STEP 4: Connect Your Miners ───────────────────────────────────────────
 function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
   const host = typeof window !== 'undefined' ? window.location.hostname : 'umbrel.local';
-  const urlAsic  = `stratum+tcp://${host}:3333`;
-  const urlHobby = `stratum+tcp://${host}:3334`;
-  const urlNicehash = `stratum+tcp://${host}:4334`;
+  const urlAsic  = `stratum+tcp://${host}:${LS_PORTS.main}`;
+  const urlHobby = `stratum+tcp://${host}:${LS_PORTS.hobby}`;
+  const urlNicehash = `stratum+tcp://${host}:${LS_PORTS.nicehash}`;
   const [copied, setCopied] = useState('');
 
   const copy = async (val, lbl) => {
@@ -284,19 +285,19 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
       <div style={heading}>{tt('Connect Your Miners')}</div>
       <div style={subheading}>{tt('Stratum Configuration')}</div>
       <div style={{...body, marginBottom:'1.25rem'}}>
-        {tt('Point your miners at one of these URLs. Most ASICs (S19, S21, Whatsminer) use port 3333; hobby miners (BitAxe, NerdQaxe, Avalon Nano) use 3334 with lower starting difficulty.')}
+        {tt('Point your miners at one of these URLs. Most ASICs (S19, S21, Whatsminer) use port 3333; hobby miners (BitAxe, NerdQaxe, Avalon Nano) use 3334 with lower starting difficulty.').replace(/3333/g,LS_PORTS.main).replace(/3334/g,LS_PORTS.hobby)}
       </div>
       <div style={{display:'flex', gap:'0.75rem', marginBottom:'1.25rem', flexWrap:'wrap'}}>
-        {minerCard(tt('ASIC Port'), urlAsic, 3333, 'asic')}
-        {minerCard(tt('Hobby Port'), urlHobby, 3334, 'hobby')}
-        {minerCard(tt('NiceHash Port'), urlNicehash, 4334, 'nicehash')}
+        {minerCard(tt('ASIC Port'), urlAsic, LS_PORTS.main, 'asic')}
+        {minerCard(tt('Hobby Port'), urlHobby, LS_PORTS.hobby, 'hobby')}
+        {minerCard(tt('NiceHash Port'), urlNicehash, LS_PORTS.nicehash, 'nicehash')}
       </div>
       <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
         padding:'0.75rem', marginBottom:'1.25rem'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em',
           textTransform:'uppercase', color:'var(--amber)', marginBottom:6}}>{tt('Renting hashrate from NiceHash?')}</div>
         <div style={{fontFamily:'var(--fm)', fontSize:'0.68rem', color:'var(--text-1)', lineHeight:1.6}}>
-          {tt('Use port 4334 for NiceHash, not 3333/3334. In NiceHash, add a SHA-256 pool with this URL; Username = your BTC payout address (a worker suffix like .nh is optional); Password = x. Port 4334 is a high-difficulty port that starts every connection at 500,000 difficulty — sized for large rented hashrate, so NiceHash will not flood the pool. Your block stays 100% yours.')}
+          {tt('Use port 4334 for NiceHash, not 3333/3334. In NiceHash, add a SHA-256 pool with this URL; Username = your BTC payout address (a worker suffix like .nh is optional); Password = x. Port 4334 is a high-difficulty port that starts every connection at 500,000 difficulty — sized for large rented hashrate, so NiceHash will not flood the pool. Your block stays 100% yours.').replace(/4334/g,LS_PORTS.nicehash).replace(/3333/g,LS_PORTS.main).replace(/3334/g,LS_PORTS.hobby)}
         </div>
       </div>
       <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',

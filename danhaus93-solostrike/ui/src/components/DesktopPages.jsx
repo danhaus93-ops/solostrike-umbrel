@@ -17,6 +17,7 @@
 // template's fit(). Single track translateX between pages. Desktop only (≥600).
 // ============================================================================
 
+import { LS_PORTS } from '../App';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { makeTT } from '../i18n.js';
 
@@ -698,7 +699,7 @@ export default function DesktopPages({
 
   // health flags
   const H=stratumHealth||{};
-  const healthItems=[[_tt('API'),true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :4333',H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],[_tt('ZMQ synced'),zmqOk]];
+  const healthItems=[[_tt('API'),true],['ckpool',H.ckpool!==false],['stunnel',H.tls!==false],['TLS :'+LS_PORTS.tls,H.tls!==false],['node RPC',poolState?.nodeInfo?.connected!==false],[_tt('ZMQ synced'),zmqOk]];
 
   // top miners
   const topMiners=[...(workers||[])].filter(w=>(w.bestshare||0)>0).sort((a,b)=>(b.bestshare||0)-(a.bestshare||0)).slice(0,3);
@@ -804,7 +805,7 @@ export default function DesktopPages({
                   {DL(_tt('Pool uptime'),poolState?.pool?.runtimeSec?fmtUptime(poolState.pool.runtimeSec):'—','green')}
                   {DL(_tt('Node height'),net.height!=null?fmtNum(net.height):'—')}
                   {DL(_tt('Node peers'),poolState?.nodeInfo?.peers!=null?`${fmtNum(poolState.nodeInfo.peers)}${poolState?.nodeInfo?.peersOut!=null?` (${poolState.nodeInfo.peersIn||0}↓ ${poolState.nodeInfo.peersOut||0}↑)`:''}`:'—')}
-                  {DL(_tt('TLS :4333'),H.ports&&H.ports['4333']?.status==='healthy'?'● secure':(H.tls!==false?'● up':'○'),H.ports&&H.ports['4333']?.status==='healthy'?'green':'')}
+                  {DL(_tt('TLS :4333').replace('4333',LS_PORTS.tls),H.ports&&H.ports[LS_PORTS.tls]?.status==='healthy'?'● secure':(H.tls!==false?'● up':'○'),H.ports&&H.ports[LS_PORTS.tls]?.status==='healthy'?'green':'')}
                   {DL(_tt('ZMQ'),zmqOk?'● synced':'○',zmqOk?'green':'red')}
                   {DL(_tt('Workers live'),`${liveW}/${totW}`,liveW>0?'green':'')}
                 </div>
@@ -910,7 +911,7 @@ export default function DesktopPages({
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
         <span className="ff-r">Ports
-          {[['3333','3333'],['3334','3334'],['4333','4333']].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">{_tt('TLS')}</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p==='4333'?'ssl':'tcp'}://umbrel.local:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
+          {[[LS_PORTS.main,LS_PORTS.main],[LS_PORTS.hobby,LS_PORTS.hobby],[LS_PORTS.tls,LS_PORTS.tls]].map(([p,lbl],i)=>{const st=H.ports&&H.ports[p]&&H.ports[p].status;const c=st==='healthy'?'var(--green)':st==='degraded'?'var(--amber)':st==='down'?'var(--red)':'var(--cyan)';const glow=st==='healthy'||st==='degraded'||st==='down';return <React.Fragment key={p}>{i>0&&(i===2?<span className="tls">{_tt('TLS')}</span>:<span style={{opacity:.5}}> · </span>)}<b className="port" style={{color:c,textShadow:glow?`0 0 6px ${c}`:'none'}} onClick={()=>{try{navigator.clipboard.writeText(`stratum+${p===LS_PORTS.tls?'ssl':'tcp'}://${window.location.hostname}:${p}`);}catch(e){}}} title={st?`Port ${p} — ${st}`:`Port ${p} — checking…`}>{lbl}</b></React.Fragment>;})}
         </span>
       </footer>
 
