@@ -2,7 +2,7 @@ manifestVersion: 1
 id: danhaus93-solostrike
 category: bitcoin
 name: LoneStrike
-version: "3.7.2"
+version: "3.7.3"
 tagline: Zero-fee solo Bitcoin mining pool with airgapped Private Mode
 description: >-
   LoneStrike is a self-hosted solo Bitcoin mining pool for Umbrel, powered by
@@ -88,7 +88,7 @@ description: >-
 
   100% self-custody. Truly zero fees. Your node, your rules, your blocks.
 releaseNotes: >-
-  v3.7.2 — Best Diff leaderboard
+  v3.7.3 — Best Diff leaderboard
 
 
   📊 New Pulse tab: BEST DIFF — see the highest-difficulty share every pool
