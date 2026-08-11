@@ -160,7 +160,7 @@ services:
         echo "[init-permissions] complete"
 
   ckpool:
-    image: ghcr.io/danhaus93-ops/lonestrike-ckpool@sha256:0953d316e0a78082f84e31ff1c7da97a3d1ec83a7be45e5b00634bea12397b52
+    image: ghcr.io/danhaus93-ops/lonestrike-ckpool@sha256:3d101e2a946b1df845bf7b2c0e3bce0d3f82a7a27647a89db97b7932d0991512
     # v1.11.54: run ckpool as UID 1000 (matches api's `node` user) so sharelog
     # files written by ckpool are readable by the api container. Without this,
     # v1.11.53 broke dashboard stats: api (UID 1000) couldn't read sharelog
