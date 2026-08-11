@@ -28,6 +28,8 @@ process.on('uncaughtException', (err) => {
 
 const { startStatusPoller }             = require('./status-poller');
 const { startUaTailer, getAllMeta }     = require('./ua-tailer');
+const { upsertMetaForWorker }           = require('./ua-tailer');
+const { pollSv2Telemetry }              = require('./sv2-telemetry');
 const { startMinerPoller, setEnabled: setMinerPollerEnabled,
         isEnabled: isMinerPollerEnabled, getAllAlignments, getAllLive,
         getAllRecords, pollOne: pollOneMiner } = require('./miner-poller');
@@ -1746,6 +1748,18 @@ async function main() {
     if (loaded) state.snapshots = loaded;
   } catch (e) { console.error('snapshot load failed:', e.message); }
 
+  // v3.8.x: bridge SV2 miners' real device IP + telemetry from the
+  // translator monitoring API into worker-meta for the miner-poller.
+  async function pollSv2Bridge() {
+    try {
+      const tel = await pollSv2Telemetry(cfg.payoutAddress);
+      for (const [worker, info] of Object.entries(tel)) {
+        upsertMetaForWorker(worker, { ip: info.ip, sv2: info });
+      }
+    } catch (_) { /* proxy absent - silent no-op */ }
+  }
+  pollSv2Bridge();
+  setInterval(pollSv2Bridge, 30000);
   setInterval(pollBitcoind, 15000);
   setInterval(pollMempool,  60000);
   setInterval(pollBlocks,   120000);

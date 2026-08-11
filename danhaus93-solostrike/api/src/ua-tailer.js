@@ -242,8 +242,16 @@ async function startUaTailer({ configDir, logDir }) {
   console.log(`[UA-Tailer] Watching ${logFile} for auth/drop/ua events`);
 }
 
+function upsertMetaForWorker(workerName, fields) {
+  // v3.8.x SV2 bridge: overlay real device IP + identity from the
+  // translator monitoring API without clobbering ckpool-derived meta.
+  const prev = metaByWorker.get(workerName) || {};
+  metaByWorker.set(workerName, { ...prev, ...fields, lastSeen: Date.now() });
+}
+
 module.exports = {
   startUaTailer,
+  upsertMetaForWorker,
   getMetaForWorker,
   getIpForWorker,
   getAllMeta,
