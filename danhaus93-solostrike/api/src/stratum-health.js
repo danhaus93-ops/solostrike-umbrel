@@ -96,6 +96,24 @@ function checkTlsPort(port, host = '127.0.0.1') {
   });
 }
 
+// v3.8.0: SV2 (Noise) ports can't answer a V1 mining.subscribe, so a
+// protocol probe always reads degraded. Liveness = TCP accept only.
+function checkTcpOnly(port, host) {
+  return new Promise((resolve) => {
+    const net = require('net');
+    const socket = new net.Socket();
+    const done = (status, reason) => {
+      try { socket.destroy(); } catch (_) {}
+      resolve({ status, reason });
+    };
+    socket.setTimeout(4000);
+    socket.once('connect', () => done('healthy', 'tcp_ok'));
+    socket.once('timeout', () => done('down', 'tcp_timeout'));
+    socket.once('error', () => done('down', 'tcp_error'));
+    socket.connect(Number(port), host);
+  });
+}
+
 async function runHealthCheck() {
   // ckpool listens on ckpool:3333, ckpool:3334 and ckpool:4334 (NiceHash high-diff)
   // stunnel listens on stunnel:4333
@@ -104,11 +122,13 @@ async function runHealthCheck() {
     { port: '3334', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_HOBBY    || '3334' },
     { port: '4334', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_NICEHASH || '4334' },
     { port: '4333', host: 'stunnel', tls: true,  label: process.env.STRATUM_PORT_TLS      || '4333' },
-    { port: '3336', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_SV2      || '3336' },
+    { port: '3336', host: 'ckpool',  tls: false, tcpOnly: true, label: process.env.STRATUM_PORT_SV2      || '3336' },
   ];
   const results = await Promise.all(
     checks.map(async (c) => {
-      const result = c.tls
+      const result = c.tcpOnly
+        ? await checkTcpOnly(Number(c.port), c.host)
+        : c.tls
         ? await checkTlsPort(Number(c.port), c.host)
         : await checkPlainPort(Number(c.port), c.host);
       return [c.label, result];
