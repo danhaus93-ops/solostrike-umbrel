@@ -120,9 +120,9 @@ services:
           BTC_ADDR="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
         fi
 
-        if [ ! -f "$$TPL" ]; then
-          echo "[init-permissions] template missing in /data — writing bundled default" >&2
-          printf '{\n  "btcd" : [\n    {\n      "url" : "__BITCOIN_RPC_HOST__:__BITCOIN_RPC_PORT__",\n      "auth" : "__BITCOIN_RPC_USER__",\n      "pass" : "__BITCOIN_RPC_PASS__"\n    }\n  ],\n  "btcaddress" : "__BTC_ADDR__",\n  "btcsig" : "LoneStrike on Umbrel/",\n  "blockpoll" : 50,\n  "update_interval" : 20,\n  "serverurl" : [\n    "0.0.0.0:3333",\n    "0.0.0.0:3334",\n    "0.0.0.0:4334"\n  ],\n  "mindiff" : 1,\n  "startdiff" : 10000,\n  "maxdiff" : 0,\n  "highdiff" : 500000,\n  "logdir" : "/var/log/ckpool",\n  "zmqblock" : "__BITCOIN_ZMQ_HASHBLOCK__"\n}\n' > "$$TPL"
+        if [ ! -f "$$TPL" ] || ! grep -q '"_lonestrike_tpl_version" : 2' "$$TPL"; then
+          echo "[init-permissions] seeding/upgrading template (v2 SV2-aware)" >&2
+          printf '{\n  "_lonestrike_tpl_version" : 2,\n  "btcd" : [\n    {\n      "url" : "__BITCOIN_RPC_HOST__:__BITCOIN_RPC_PORT__",\n      "auth" : "__BITCOIN_RPC_USER__",\n      "pass" : "__BITCOIN_RPC_PASS__"\n    }\n  ],\n  "btcaddress" : "__BTC_ADDR__",\n  "btcsig" : "LoneStrike on Umbrel/",\n  "blockpoll" : 50,\n  "update_interval" : 20,\n  "serverurl" : [\n    "0.0.0.0:3333",\n    "0.0.0.0:3334",\n    "0.0.0.0:4334"\n  ],\n  "sv2url" : [\n    "0.0.0.0:3336"\n  ],\n  "sv2_authority_key" : "/etc/ckpool/sv2_authority.key",\n  "sv2_static_key" : "/etc/ckpool/sv2_static.key",\n  "mindiff" : 1,\n  "startdiff" : 10000,\n  "maxdiff" : 0,\n  "highdiff" : 500000,\n  "logdir" : "/var/log/ckpool",\n  "zmqblock" : "__BITCOIN_ZMQ_HASHBLOCK__"\n}\n' > "$$TPL"
         fi
 
         # Substitute placeholders with live values using awk index()/substr()
@@ -160,7 +160,7 @@ services:
         echo "[init-permissions] complete"
 
   ckpool:
-    image: ghcr.io/getumbrel/docker-ckpool-solo:590fb2a@sha256:4e6b8f4f9c7d74c2111a6e082a2bbdc936fa510989a81e7cef714d1da944336b
+    image: ghcr.io/danhaus93-ops/lonestrike-ckpool@sha256:0953d316e0a78082f84e31ff1c7da97a3d1ec83a7be45e5b00634bea12397b52
     # v1.11.54: run ckpool as UID 1000 (matches api's `node` user) so sharelog
     # files written by ckpool are readable by the api container. Without this,
     # v1.11.53 broke dashboard stats: api (UID 1000) couldn't read sharelog
@@ -199,6 +199,7 @@ services:
       - "3333:3333"
       - "3334:3334"
       - "4334:4334"
+      - "3336:3336"
     volumes:
       - ${APP_DATA_DIR}/data/ckpool/config:/etc/ckpool
       - ${APP_DATA_DIR}/data/ckpool/logs:/var/log/ckpool
@@ -291,6 +292,7 @@ services:
       - STRATUM_PORT_NICEHASH=4334
       - HIGH_DIFFICULTY=500000
       - STRATUM_PORT_TLS=4333
+      - STRATUM_PORT_SV2=3336
 
   ui:
     image: ghcr.io/danhaus93-ops/solostrike-ui:v3.7.5@sha256:7ff1634126ec05bcf07d58f066cd9e4a6ffd6abbe11bdb13a708a9decea85309

@@ -413,7 +413,7 @@ const LS_API_KEY         = 'ss_api_key_v1';        // v3.3.0 server-side auth ke
 // BEFORE first render (main.jsx), so components read plain values — the ports
 // are fixed per install, no reactivity needed. A failed fetch keeps defaults.
 export const APP_VERSION = '3.7.5'; // single source of truth - both footers render this
-export let LS_PORTS = { main: '3333', hobby: '3334', tls: '4333', nicehash: '4334' };
+export let LS_PORTS = { main: '3333', hobby: '3334', tls: '4333', nicehash: '4334', sv2: '3336', sv2Pubkey: null };
 export async function loadPorts() {
   try {
     const r = await window.fetch('/api/ports');
@@ -15505,6 +15505,9 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
   const stratumUrl      = `stratum+tcp://${host}:${LS_PORTS.main}`;
   const stratumUrlHobby = `stratum+tcp://${host}:${LS_PORTS.hobby}`;
   const stratumUrlNicehash = `stratum+tcp://${host}:${LS_PORTS.nicehash}`;
+  const stratumUrlSv2 = LS_PORTS.sv2Pubkey
+    ? `stratum2+tcp://${host}:${LS_PORTS.sv2}/${LS_PORTS.sv2Pubkey}`
+    : null;
   const minerUrl        = w.ip ? `http://${w.ip}` : null;
 
   const copy = async (val, lbl) => {
@@ -15667,6 +15670,7 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
             <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('NiceHash Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlNicehash}</span></div>
+            {stratumUrlSv2 && (<div style={kvRow}><span style={kvLabel}>{tt('SV2 Port')}</span><span style={{...kvVal,fontSize:'0.54rem',color:'var(--amber)',wordBreak:'break-all'}}>{stratumUrlSv2}</span></div>)}
             <div style={kvRow}>
               <span style={kvLabel}>{tt('Miner IP')}</span>
               {w.ip ? (
@@ -16830,7 +16834,7 @@ export default function App() {
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
           </svg>
         </a>
-        <span style={{flexShrink:0}}>Ports <CopyablePort health={stratumHealth} port={LS_PORTS.main}/> · <CopyablePort health={stratumHealth} port={LS_PORTS.hobby}/> · <span title="TLS encryption via stunnel" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span><CopyablePort health={stratumHealth} port={LS_PORTS.tls} ssl/></span>
+        <span style={{flexShrink:0}}>Ports <CopyablePort health={stratumHealth} port={LS_PORTS.main}/> · <CopyablePort health={stratumHealth} port={LS_PORTS.hobby}/> · <span title="TLS encryption via stunnel" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span><CopyablePort health={stratumHealth} port={LS_PORTS.tls} ssl/>{LS_PORTS.sv2Pubkey && (<span> · <span title="Native Stratum V2 (Noise) — requires an SV2 proxy" style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.5rem', letterSpacing:'0.14em', color:'var(--amber)', border:'1px solid rgba(245,166,35,0.45)', background:'rgba(245,166,35,0.05)', verticalAlign:'1px'}}>SV2</span><CopyablePort health={stratumHealth} port={LS_PORTS.sv2}/></span>)}</span>
       </footer>
       )}
 

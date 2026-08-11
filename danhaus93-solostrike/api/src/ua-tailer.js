@@ -6,8 +6,8 @@ const chokidar = require('chokidar');
 // ckpool-solo logs don't include user-agent strings, but they DO include IPs
 // on "Authorised client" lines, which is exactly what we need for the
 // "click IP to open miner web UI" feature.
-const AUTH_PATTERN = /Authorised\s+client\s+(\d+)\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+worker\s+(\S+)\s+as\s+user/i;
-const DROP_PATTERN = /Dropped\s+client\s+(\d+)\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+user\s+\S+\s+worker\s+(\S+)/i;
+const AUTH_PATTERN = /Authorised\s+client\s+(\S+)\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+worker\s+(\S+)\s+as\s+user/i;
+const DROP_PATTERN = /Dropped\s+client\s+(\S+)\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+user\s+\S+\s+worker\s+(\S+)/i;
 // Some ckpool builds emit useragent strings on subscribe lines — capture if present
 const UA_PATTERN   = /client\s+(\d+)\s+.*useragent[=:\s]+"?([^"\n\r]+)"?/i;
 

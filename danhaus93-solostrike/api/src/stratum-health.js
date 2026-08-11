@@ -104,6 +104,7 @@ async function runHealthCheck() {
     { port: '3334', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_HOBBY    || '3334' },
     { port: '4334', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_NICEHASH || '4334' },
     { port: '4333', host: 'stunnel', tls: true,  label: process.env.STRATUM_PORT_TLS      || '4333' },
+    { port: '3336', host: 'ckpool',  tls: false, label: process.env.STRATUM_PORT_SV2      || '3336' },
   ];
   const results = await Promise.all(
     checks.map(async (c) => {

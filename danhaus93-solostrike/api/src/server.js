@@ -197,7 +197,12 @@ async function saveConfig() {
 async function writeCkpoolConf() {
   try {
     if (!cfg.payoutAddress) return; // nothing to write yet
+    // v3.8.0: start from the existing conf so keys this function does not
+    // own (sv2url, sv2 key paths, future engine keys) survive the rewrite.
+    let existing = {};
+    try { existing = await fs.readJson(CKPOOL_CONFIG_FILE); } catch (_) {}
     const conf = {
+      ...existing,
       btcd: [{
         url:  `${RPC_HOST}:${RPC_PORT}`,
         auth: RPC_USER,
@@ -903,8 +908,30 @@ const STRATUM_PORTS = {
   hobby:    process.env.STRATUM_PORT_HOBBY    || '3334',
   tls:      process.env.STRATUM_PORT_TLS      || '4333',
   nicehash: process.env.STRATUM_PORT_NICEHASH || '4334',
+  sv2:      process.env.STRATUM_PORT_SV2      || '3336',
 };
-app.get('/api/ports', (req, res) => res.json(STRATUM_PORTS));
+// v3.8.0: SV2 authority pubkey for connect string host:port/<pubkey>.
+// One-shot scan of the ckpool log (best-effort, cached).
+let _sv2Pk = null, _sv2Scanned = false;
+function scanSv2Pubkey() {
+  if (_sv2Scanned) return _sv2Pk;
+  _sv2Scanned = true;
+  try {
+    const p = require('path').join(CKPOOL_LOG_DIR, 'ckpool.log');
+    const txt = require('fs').readFileSync(p, 'utf8');
+    const re = new RegExp(
+      'SV2 authority URL path ' +
+      '\\(stratum2\\+tcp://[^/]*/([1-9A-HJ-NP-Za-km-z]+)\\)', 'g');
+    let m, last = null;
+    while ((m = re.exec(txt)) !== null) last = m[1];
+    _sv2Pk = last;
+  } catch (_) { _sv2Pk = null; }
+  return _sv2Pk;
+}
+app.get('/api/ports', (req, res) => {
+  const pk = scanSv2Pubkey();
+  res.json(pk ? { ...STRATUM_PORTS, sv2Pubkey: pk } : STRATUM_PORTS);
+});
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // v1.8.4: detailed system health endpoint for the System Health card.
