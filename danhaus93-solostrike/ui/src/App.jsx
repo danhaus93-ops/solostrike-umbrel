@@ -15670,8 +15670,8 @@ function WorkerDetailModal({ tt = (x) => x, worker, onClose, aliases, onAliasesC
             <div style={kvRow}><span style={kvLabel}>{tt('ASIC Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrl}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('Hobby Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlHobby}</span></div>
             <div style={kvRow}><span style={kvLabel}>{tt('NiceHash Port')}</span><span style={{...kvVal,fontSize:'0.66rem',color:'var(--cyan)'}}>{stratumUrlNicehash}</span></div>
-            {stratumUrlSv2 && (<div style={kvRow}><span style={kvLabel}>{tt('SV2 Port')}</span><span style={{...kvVal,fontSize:'0.54rem',color:'var(--amber)',wordBreak:'break-all'}}>{stratumUrlSv2}</span></div>
-              <div style={{fontSize:'0.5rem',opacity:.55,textAlign:'right',margin:'-2px 0 4px'}}>{tt('for SV2 proxies — V1 miners connect via your translator')}</div>)}
+            {stratumUrlSv2 && (<><div style={kvRow}><span style={kvLabel}>{tt('SV2 Port')}</span><span style={{...kvVal,fontSize:'0.54rem',color:'var(--amber)',wordBreak:'break-all'}}>{stratumUrlSv2}</span></div>
+              <div style={{fontSize:'0.5rem',opacity:.55,textAlign:'right',margin:'-2px 0 4px'}}>{tt('for SV2 proxies — V1 miners connect via your translator')}</div></>)}
             <div style={kvRow}>
               <span style={kvLabel}>{tt('Miner IP')}</span>
               {w.ip ? (
