@@ -236,6 +236,24 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
   const urlAsic  = `stratum+tcp://${host}:${LS_PORTS.main}`;
   const urlHobby = `stratum+tcp://${host}:${LS_PORTS.hobby}`;
   const urlNicehash = `stratum+tcp://${host}:${LS_PORTS.nicehash}`;
+  const urlSv2 = LS_PORTS.sv2Pubkey
+    ? `stratum2+tcp://${host}:${LS_PORTS.sv2}/${LS_PORTS.sv2Pubkey}`
+    : null;
+  const tproxyCmd = LS_PORTS.sv2Pubkey ? [
+    'docker run -d --name sv2-translator --restart unless-stopped \\',
+    '  -p 34255:34255 \\',
+    '  -e TPROXY__DOWNSTREAM_ADDRESS=0.0.0.0 -e TPROXY__DOWNSTREAM_PORT=34255 \\',
+    '  -e TPROXY__MAX_SUPPORTED_VERSION=2 -e TPROXY__MIN_SUPPORTED_VERSION=2 \\',
+    '  -e TPROXY__DOWNSTREAM_EXTRANONCE2_SIZE=4 -e TPROXY__VERIFY_PAYOUT=false \\',
+    '  -e TPROXY__AGGREGATE_CHANNELS=false \\',
+    '  -e TPROXY__DOWNSTREAM_DIFFICULTY_CONFIG__MIN_INDIVIDUAL_MINER_HASHRATE=1000000000000.0 \\',
+    '  -e TPROXY__DOWNSTREAM_DIFFICULTY_CONFIG__SHARES_PER_MINUTE=20.0 \\',
+    '  -e TPROXY__DOWNSTREAM_DIFFICULTY_CONFIG__ENABLE_VARDIFF=false \\',
+    `  -e TPROXY__UPSTREAM_PRIMARY__ADDRESS=${host} -e TPROXY__UPSTREAM_PRIMARY__PORT=${LS_PORTS.sv2} \\`,
+    `  -e TPROXY__UPSTREAM_PRIMARY__AUTHORITY_PUBKEY=${LS_PORTS.sv2Pubkey} \\`,
+    '  -e TPROXY__UPSTREAM_PRIMARY__USER_IDENTITY=<YOUR_BTC_ADDRESS>.sv2 \\',
+    '  stratumv2/translator_sv2:main',
+  ].join('\n') : '';
   const [copied, setCopied] = useState('');
 
   const copy = async (val, lbl) => {
@@ -291,7 +309,25 @@ function StepConnect({ tt = (x)=>x, onNext, onBack, onSkip }) {
         {minerCard(tt('ASIC Port'), urlAsic, LS_PORTS.main, 'asic')}
         {minerCard(tt('Hobby Port'), urlHobby, LS_PORTS.hobby, 'hobby')}
         {minerCard(tt('NiceHash Port'), urlNicehash, LS_PORTS.nicehash, 'nicehash')}
+        {urlSv2 && minerCard(tt('SV2 Port'), urlSv2, LS_PORTS.sv2, 'sv2')}
       </div>
+      {urlSv2 && (
+        <div style={{background:'var(--bg-deep)', border:'1px solid rgba(245,166,35,0.35)',
+          padding:'0.75rem', marginBottom:'1.25rem'}}>
+          <div style={{color:'var(--amber)', fontSize:'0.72rem', letterSpacing:'0.08em',
+            marginBottom:'0.4rem'}}>{tt('Stratum V2 (advanced)')}</div>
+          <div style={{...body, fontSize:'0.68rem', marginBottom:'0.6rem'}}>
+            {tt('The SV2 port speaks encrypted Stratum V2 only. Regular miners (BitAxe, ASICs) cannot connect to it directly — run an SV2 translator proxy on your network, point it at the SV2 port, and point your miners at the translator (port 34255 by default, any free port works). Replace <YOUR_BTC_ADDRESS> with your payout address and set MIN_INDIVIDUAL_MINER_HASHRATE to your miner size.')}
+          </div>
+          <button onClick={()=>{try{navigator.clipboard.writeText(tproxyCmd);}catch(e){}}}
+            style={{background:'transparent', color:'var(--amber)',
+            border:'1px solid rgba(245,166,35,0.45)', padding:'0.4rem 0.8rem',
+            fontFamily:'inherit', fontSize:'0.66rem', cursor:'pointer',
+            letterSpacing:'0.06em'}}>
+            {tt('Copy translator command')}
+          </button>
+        </div>
+      )}
       <div style={{background:'var(--bg-deep)', border:'1px solid var(--border)',
         padding:'0.75rem', marginBottom:'1.25rem'}}>
         <div style={{fontFamily:'var(--fd)', fontSize:'0.58rem', letterSpacing:'0.12em',
