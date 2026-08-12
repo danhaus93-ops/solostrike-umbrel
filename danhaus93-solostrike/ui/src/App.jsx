@@ -6517,9 +6517,9 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
   });
 
   // ── Port chip — tappable, copies stratum+tcp://host:port ─────────────────
-  const PortChip = ({ port, accent, ssl }) => {
+  const PortChip = ({ port, accent, ssl, urlOverride, tag }) => {
     const ps = portStatus(port);
-    const url = `${ssl ? 'stratum+ssl' : 'stratum+tcp'}://${host}:${port}`;
+    const url = urlOverride || `${ssl ? 'stratum+ssl' : 'stratum+tcp'}://${host}:${port}`;
     const lbl = `port${port}`;
     const isCopied = copied === lbl;
     return (
@@ -6574,9 +6574,11 @@ const StratumPanel = React.memo(function StratumPanel_Impl({ payoutAddress, stra
           <PortChip port={LS_PORTS.main} accent="var(--amber)" />
           <PortChip port={LS_PORTS.hobby} accent="var(--text-1)" />
           <PortChip port={LS_PORTS.tls} accent="var(--cyan)" ssl />
+          {LS_PORTS.sv2Pubkey && (<PortChip port={LS_PORTS.sv2} accent="rgba(245,166,35,0.8)"
+            urlOverride={`stratum2+tcp://${host}:${LS_PORTS.sv2}/${LS_PORTS.sv2Pubkey}`} />)}
         </div>
         <div style={{...helperStyle, marginTop:5, fontSize:'0.6rem'}}>
-          {LS_PORTS.main} ASIC · {LS_PORTS.hobby} Hobby · {LS_PORTS.nicehash} NiceHash · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>{LS_PORTS.tls} SSL
+          {LS_PORTS.main} ASIC · {LS_PORTS.hobby} Hobby · {LS_PORTS.nicehash} NiceHash · <span style={{display:'inline-block', padding:'1px 5px', borderRadius:3, fontSize:'0.55rem', letterSpacing:'0.14em', color:'var(--cyan)', border:'1px solid rgba(0,255,209,0.45)', background:'rgba(0,255,209,0.05)', verticalAlign:'1px', marginRight:4}}>TLS</span>{LS_PORTS.tls} SSL{LS_PORTS.sv2Pubkey && (<span> · {LS_PORTS.sv2} SV2 <span style={{opacity:.6}}>(proxy required)</span></span>)}
         </div>
       </div>
 
